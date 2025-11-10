@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertChart
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Warning
@@ -61,6 +62,7 @@ fun HomeScreen(
     onProviders: () -> Unit,          // NUEVO
     onExpenses: () -> Unit,
     onSyncNow: () -> Unit = {},
+    onViewStockMovements: () -> Unit = {},
     onAlertAdjustStock: (Int) -> Unit = {},
     onAlertCreatePurchase: (Int) -> Unit = {}
     ) {
@@ -162,6 +164,10 @@ fun HomeScreen(
                     OutlinedButton(onClick = onSyncNow, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.Sync, contentDescription = null)
                         Spacer(Modifier.width(8.dp)); Text("Sincronizar Ahora!")
+                    }
+                    OutlinedButton(onClick = onViewStockMovements, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.History, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Historial de stock")
                     }
                 }
             }

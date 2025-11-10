@@ -8,6 +8,7 @@ import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
+import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.model.Invoice
@@ -100,15 +101,15 @@ class InvoiceRepositoryImpl @Inject constructor(
                 )
                 require(affected == 1) { "Stock insuficiente o producto inexistente (id=${item.productId})" }
 
-                movementDao.insert(
-                    StockMovementEntity(
-                        productId = item.productId,
-                        delta = -item.quantity,
-                        reason = "SALE",
-                        ts = Instant.ofEpochMilli(now),
-                        user = null
+                    movementDao.insert(
+                        StockMovementEntity(
+                            productId = item.productId,
+                            delta = -item.quantity,
+                            reason = StockMovementReasons.SALE,
+                            ts = Instant.ofEpochMilli(now),
+                            user = null
+                        )
                     )
-                )
                 touchedProducts += item.productId
             }
 
@@ -192,15 +193,15 @@ class InvoiceRepositoryImpl @Inject constructor(
             for (item in itemsWithFk) {
                 val affected = productDao.decrementStockIfEnough(item.productId, item.quantity)
                 require(affected == 1) { "Stock insuficiente o producto inexistente (id=${item.productId})" }
-                movementDao.insert(
-                    StockMovementEntity(
-                        productId = item.productId,
-                        delta = -item.quantity,
-                        reason = "SALE",
-                        ts = Instant.ofEpochMilli(now),
-                        user = null
+                    movementDao.insert(
+                        StockMovementEntity(
+                            productId = item.productId,
+                            delta = -item.quantity,
+                            reason = StockMovementReasons.SALE,
+                            ts = Instant.ofEpochMilli(now),
+                            user = null
+                        )
                     )
-                )
                 touchedProducts += item.productId
             }
 

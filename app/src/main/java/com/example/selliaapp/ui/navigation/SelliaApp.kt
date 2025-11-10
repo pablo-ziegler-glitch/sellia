@@ -53,17 +53,23 @@ import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
+import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
+import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
 import com.example.selliaapp.ui.screens.stock.StockImportScreen
+import com.example.selliaapp.ui.screens.stock.StockMovementsScreen
 import com.example.selliaapp.ui.screens.stock.StockScreen
 import com.example.selliaapp.viewmodel.ClientMetricsViewModel
 import com.example.selliaapp.viewmodel.ClientPurchasesViewModel
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
+import com.example.selliaapp.viewmodel.QuickReorderViewModel
+import com.example.selliaapp.viewmodel.QuickStockAdjustViewModel
 import com.example.selliaapp.viewmodel.ReportsViewModel
 import com.example.selliaapp.viewmodel.SellViewModel
 import com.example.selliaapp.viewmodel.StockImportViewModel
 import com.example.selliaapp.viewmodel.UserViewModel
+import com.example.selliaapp.viewmodel.StockMovementsViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
 
@@ -109,13 +115,14 @@ fun SelliaApp(
                     onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                     onSyncNow = { SyncScheduler.enqueueNow(context) },
                     onAlertAdjustStock = { productId ->
-                        navController.navigate(Routes.AddProduct.withId(productId.toLong()))
+                        navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
                     },
-                    onAlertCreatePurchase = {
-                        navController.navigate(Routes.ProviderInvoices.route)
+                    onAlertCreatePurchase = { productId ->
+                        navController.navigate(Routes.QuickReorder.withProduct(productId))
                     },
+                    onViewStockMovements = { navController.navigate(Routes.StockMovements.route) },
                     vm = homeVm,
- 
+
                 )
             }
 
@@ -260,6 +267,65 @@ fun SelliaApp(
                 StockImportScreen(
                     viewModel = vm,
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Routes.QuickAdjustStock.route,
+                arguments = Routes.QuickAdjustStock.arguments
+            ) {
+                val vm: QuickStockAdjustViewModel = hiltViewModel()
+                val uiState by vm.state.collectAsState()
+                LaunchedEffect(uiState.success) {
+                    if (uiState.success) {
+                        snackbarHostState.showSnackbar("Ajuste registrado correctamente")
+                        navController.popBackStack()
+                    }
+                }
+                QuickStockAdjustScreen(
+                    state = uiState,
+                    onBack = { navController.popBackStack() },
+                    onDeltaChange = vm::onDeltaChange,
+                    onReasonSelected = vm::onReasonSelected,
+                    onNoteChange = vm::onNoteChange,
+                    onSubmit = vm::submit
+                )
+            }
+
+            composable(
+                route = Routes.QuickReorder.route,
+                arguments = Routes.QuickReorder.arguments
+            ) {
+                val vm: QuickReorderViewModel = hiltViewModel()
+                val uiState by vm.state.collectAsState()
+                LaunchedEffect(uiState.success) {
+                    if (uiState.success) {
+                        snackbarHostState.showSnackbar("Orden creada")
+                        val invoiceId = uiState.createdInvoiceId
+                        navController.popBackStack()
+                        if (invoiceId != null) {
+                            navController.navigate(Routes.ProviderInvoiceDetail.build(invoiceId))
+                        }
+                    }
+                }
+                QuickReorderScreen(
+                    state = uiState,
+                    onBack = { navController.popBackStack() },
+                    onProviderSelected = vm::onProviderSelected,
+                    onQuantityChange = vm::onQuantityChange,
+                    onUnitPriceChange = vm::onUnitPriceChange,
+                    onToggleReceive = vm::onToggleAutoReceive,
+                    onSubmit = vm::createOrder
+                )
+            }
+
+            composable(Routes.StockMovements.route) {
+                val vm: StockMovementsViewModel = hiltViewModel()
+                val uiState by vm.state.collectAsState()
+                StockMovementsScreen(
+                    state = uiState,
+                    onBack = { navController.popBackStack() },
+                    onFilterChange = vm::selectReason
                 )
             }
 

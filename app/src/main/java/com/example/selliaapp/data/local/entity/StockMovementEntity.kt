@@ -32,5 +32,6 @@ data class StockMovementEntity(
     val delta: Int,             // >0 entrada, <0 salida
     val reason: String,         // ejemplo: "CSV_APPEND", "CSV_REPLACE", "SALE", "ADJUST", "SCAN_ADD"
     val ts: Instant = Instant.now(),
-    val user: String? = null    // opcional: operador
+    val user: String? = null,   // opcional: operador
+    val note: String? = null    // detalle libre del ajuste
 )

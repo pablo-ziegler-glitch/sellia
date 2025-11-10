@@ -9,6 +9,7 @@ import com.example.selliaapp.data.csv.ProductCsvImporter
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.model.Product
+import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.ProductRepository // <-- TU clase concreta existente
 import kotlinx.coroutines.flow.Flow
@@ -46,6 +47,13 @@ class IProductRepositoryAdapter @Inject constructor(
         legacy.pagingSearchFlow(query)
 
     override fun getProducts(): Flow<List<ProductEntity>> = legacy.getProducts()
+    override fun observeStockMovements(
+        productId: Int,
+        limit: Int
+    ): Flow<List<StockMovementWithProduct>> = legacy.observeStockMovements(productId, limit)
+
+    override fun observeRecentStockMovements(limit: Int): Flow<List<StockMovementWithProduct>> =
+        legacy.observeRecentStockMovements(limit)
 
     // ---------- Cache util ----------
     override suspend fun cachedOrEmpty(): List<ProductEntity> = legacy.cachedOrEmpty()
@@ -53,6 +61,13 @@ class IProductRepositoryAdapter @Inject constructor(
     // ---------- Stock ----------
     override suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean =
         legacy.increaseStockByBarcode(barcode, delta)
+
+    override suspend fun adjustStock(
+        productId: Int,
+        delta: Int,
+        reason: String,
+        note: String?
+    ): Boolean = legacy.adjustStock(productId, delta, reason, note)
 
     // ---------- Archivo tabular: filas parseadas ----------
     override suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) =

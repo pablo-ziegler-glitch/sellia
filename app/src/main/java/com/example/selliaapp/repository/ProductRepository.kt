@@ -3,6 +3,7 @@ package com.example.selliaapp.repository
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -16,10 +17,16 @@ import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.data.local.entity.StockMovementEntity
+import com.example.selliaapp.data.local.entity.SyncEntityType
+import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.mappers.toModel
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.model.Product
 import com.example.selliaapp.data.model.dashboard.LowStockProduct
+import com.example.selliaapp.data.model.stock.StockAdjustmentReason
+import com.example.selliaapp.data.model.stock.StockMovementReasons
+import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import com.example.selliaapp.data.remote.ProductRemoteDataSource
 import com.example.selliaapp.di.IoDispatcher
 import com.example.selliaapp.sync.CsvImportWorker
@@ -28,6 +35,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
 import kotlin.math.max
 
@@ -50,12 +58,16 @@ class ProductRepository(
     // ---------- Cache simple en memoria ----------
     @Volatile private var lastCache: List<ProductEntity> = emptyList()
 
+    private val stockMovementDao = db.stockMovementDao()
+    private val syncOutboxDao = db.syncOutboxDao()
+    private val remote = ProductRemoteDataSource(firestore)
 
-    suspend fun insert(entity: ProductEntity): Int = productDao.upsert(entity)
+    suspend fun insert(entity: ProductEntity): Int = withContext(io) {
+        persistProduct(entity.copy(id = 0), StockMovementReasons.PRODUCT_CREATE)
+    }
 
-
-    suspend fun update(entity: ProductEntity): Int {
-        return productDao.update(entity)
+    suspend fun update(entity: ProductEntity): Int = withContext(io) {
+        updateProductInternal(entity, StockMovementReasons.PRODUCT_UPDATE)
     }
     // -------- Lecturas --------
 
@@ -113,37 +125,72 @@ class ProductRepository(
 
     // ---------- Importación tabular: bulkUpsert desde filas parseadas ----------
     suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) = withContext(io) {
-        for (r in rows) {
-            val updated = r.updatedAt ?: LocalDate.now()
+        if (rows.isEmpty()) return@withContext
+        val now = System.currentTimeMillis()
+        val touchedIds = mutableSetOf<Int>()
 
-            // Convertir legacy 'price' a tripleta E4
-            val priceTrip = computePrice(
-                basePrice = null, taxRate = null, finalPrice = null, legacyPrice = r.price
-            )
+        db.withTransaction {
+            rows.forEach { r ->
+                val updated = r.updatedAt ?: LocalDate.now()
+                val priceTrip = computePrice(
+                    basePrice = null,
+                    taxRate = null,
+                    finalPrice = null,
+                    legacyPrice = r.price
+                )
 
-            val incoming = ProductEntity(
-                // id=0 → autogenerado
-                code = r.code,
-                barcode = r.barcode,
-                name = r.name,
-                basePrice = priceTrip.base,
-                taxRate = priceTrip.tax,
-                finalPrice = priceTrip.final,
-                price = r.price, // legacy
-                quantity = max(0, r.quantity),
-                description = r.description,
-                imageUrl = r.imageUrl,
-                // Normalización diferida: si necesitás ids concretos podés llamar a ensureCategoryId/ensureProviderId
-                categoryId = null,
-                providerId = null,
-                providerName = null,
-                category = r.category,
-                minStock = r.minStock?.let { max(0, it) },
-                updatedAt = updated
-            )
-            productDao.upsertByKeys(incoming)
+                val existing = when {
+                    !r.barcode.isNullOrBlank() -> productDao.getByBarcodeOnce(r.barcode!!)
+                    !r.name.isNullOrBlank() -> productDao.getByNameOnce(r.name)
+                    else -> null
+                }
+                val beforeQty = existing?.quantity ?: 0
+                val incoming = ProductEntity(
+                    code = r.code,
+                    barcode = r.barcode,
+                    name = r.name,
+                    basePrice = priceTrip.base,
+                    taxRate = priceTrip.tax,
+                    finalPrice = priceTrip.final,
+                    price = r.price,
+                    quantity = max(0, r.quantity),
+                    description = r.description,
+                    imageUrl = r.imageUrl,
+                    categoryId = existing?.categoryId,
+                    providerId = existing?.providerId,
+                    providerName = existing?.providerName,
+                    category = r.category ?: existing?.category,
+                    minStock = r.minStock?.let { max(0, it) } ?: existing?.minStock,
+                    updatedAt = updated
+                )
+
+                val id = productDao.upsertByKeys(incoming)
+                touchedIds += id
+                val current = productDao.getById(id) ?: return@forEach
+                val delta = current.quantity - beforeQty
+                if (delta != 0) {
+                    stockMovementDao.insert(
+                        StockMovementEntity(
+                            productId = id,
+                            delta = delta,
+                            reason = StockMovementReasons.CSV_IMPORT,
+                            ts = Instant.ofEpochMilli(now),
+                            note = if (existing == null) "Importación CSV (nuevo)" else "Importación CSV (actualización)"
+                        )
+                    )
+                }
+                syncOutboxDao.upsert(
+                    SyncOutboxEntity(
+                        entityType = SyncEntityType.PRODUCT.storageKey,
+                        entityId = id.toLong(),
+                        createdAt = now
+                    )
+                )
+            }
+            lastCache = productDao.getAllOnce()
         }
-        lastCache = productDao.getAllOnce()
+
+        trySyncProductsNow(touchedIds, now)
     }
 
     // ---------- Flujo/consultas básicas ----------
@@ -196,6 +243,8 @@ class ProductRepository(
         var inserted = 0
         var updated = 0
         val errors = mutableListOf<String>()
+        val touchedIds = mutableSetOf<Int>()
+        val now = System.currentTimeMillis()
 
         db.withTransaction {
             rows.forEachIndexed { idx, r ->
@@ -226,7 +275,26 @@ class ProductRepository(
                             minStock = r.minStock?.let { max(0, it) },
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
-                        productDao.insert(p)
+                        val id = productDao.insert(p).toInt()
+                        touchedIds += id
+                        if (p.quantity != 0) {
+                            stockMovementDao.insert(
+                                StockMovementEntity(
+                                    productId = id,
+                                    delta = p.quantity,
+                                    reason = StockMovementReasons.CSV_IMPORT,
+                                    ts = Instant.ofEpochMilli(now),
+                                    note = "Importación CSV (nuevo)"
+                                )
+                            )
+                        }
+                        syncOutboxDao.upsert(
+                            SyncOutboxEntity(
+                                entityType = SyncEntityType.PRODUCT.storageKey,
+                                entityId = id.toLong(),
+                                createdAt = now
+                            )
+                        )
                         inserted++
                     } else {
                         val newQty = when (strategy) {
@@ -249,13 +317,35 @@ class ProductRepository(
                             updatedAt   = r.updatedAt ?: LocalDate.now()
                         )
                         productDao.update(merged)
+                        touchedIds += existing.id
+                        val delta = newQty - existing.quantity
+                        if (delta != 0) {
+                            stockMovementDao.insert(
+                                StockMovementEntity(
+                                    productId = existing.id,
+                                    delta = delta,
+                                    reason = StockMovementReasons.CSV_IMPORT,
+                                    ts = Instant.ofEpochMilli(now),
+                                    note = "Importación CSV (${strategy.name.lowercase()})"
+                                )
+                            )
+                        }
+                        syncOutboxDao.upsert(
+                            SyncOutboxEntity(
+                                entityType = SyncEntityType.PRODUCT.storageKey,
+                                entityId = existing.id.toLong(),
+                                createdAt = now
+                            )
+                        )
                         updated++
                     }
                 } catch (e: Exception) {
                     errors += "Línea ${idx + 2}: ${e.message}"
                 }
             }
+            lastCache = productDao.getAllOnce()
         }
+        trySyncProductsNow(touchedIds, now)
         ImportResult(inserted, updated, errors)
     }
 
@@ -295,22 +385,33 @@ class ProductRepository(
         WorkManager.getInstance(context).enqueue(request)
     }
 
-    private val remote = ProductRemoteDataSource(firestore)
-
-
-    // ---------- CRUD coordinado ----------
-    suspend fun add(product: ProductEntity): Int = withContext(io) {
-        val id = db.withTransaction { productDao.upsert(product.copy(id = 0)) }
-        // subir a Firestore con docId = id
-        remote.upsert(product.copy(id = id))
-        id
-    }
-
-
-
     suspend fun deleteById(id: Int) = withContext(io) {
-        db.withTransaction { productDao.deleteById(id) }
-        remote.deleteById(id)
+        val now = System.currentTimeMillis()
+        val product = productDao.getById(id) ?: return@withContext
+        db.withTransaction {
+            productDao.deleteById(id)
+            if (product.quantity != 0) {
+                stockMovementDao.insert(
+                    StockMovementEntity(
+                        productId = id,
+                        delta = -product.quantity,
+                        reason = StockMovementReasons.MANUAL_ADJUST,
+                        ts = Instant.ofEpochMilli(now),
+                        note = "Eliminación de producto"
+                    )
+                )
+            }
+            syncOutboxDao.deleteByTypeAndIds(
+                SyncEntityType.PRODUCT.storageKey,
+                listOf(id.toLong())
+            )
+            lastCache = productDao.getAllOnce()
+        }
+        try {
+            remote.deleteById(id)
+        } catch (t: Throwable) {
+            Log.w("ProductRepository", "Error eliminando producto en Firestore", t)
+        }
     }
 
 
@@ -367,7 +468,7 @@ class ProductRepository(
         productDao.observeLowStock(limit)
 
     /** Alta de producto (alias más semántico para la UI). */
-    suspend fun addProduct(p: ProductEntity): Int = add(p)
+    suspend fun addProduct(p: ProductEntity): Int = insert(p)
 
     /** Actualización de producto (alias más semántico para la UI). */
     suspend fun updateProduct(p: ProductEntity): Int = update(p)
@@ -387,10 +488,15 @@ class ProductRepository(
     fun getProducts(): Flow<List<ProductEntity>> =
         productDao.observeAll()
             .map { list ->
-                // mantenemos una cache simple en memoria para filtros locales
                 lastCache = list
                 list
             }
+
+    fun observeStockMovements(productId: Int, limit: Int = 20): Flow<List<StockMovementWithProduct>> =
+        stockMovementDao.observeByProductDetailed(productId, limit)
+
+    fun observeRecentStockMovements(limit: Int = 50): Flow<List<StockMovementWithProduct>> =
+        stockMovementDao.observeRecentDetailed(limit)
 
     /**
      * Aumenta (o disminuye si delta < 0) el stock de un producto identificado por su barcode.
@@ -399,27 +505,163 @@ class ProductRepository(
      */
     suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean = withContext(io) {
         if (delta == 0) return@withContext true
-        val current = productDao.getByBarcodeOnce(barcode) ?: return@withContext false
+        val product = productDao.getByBarcodeOnce(barcode) ?: return@withContext false
+        adjustStockInternal(
+            productId = product.id,
+            delta = delta,
+            reason = StockMovementReasons.SCAN_ADJUST,
+            note = "Ajuste por escaneo ($barcode)"
+        )
+    }
 
-        val currentQty = current.quantity ?: 0
-        val newQty = (currentQty + delta).coerceAtLeast(0) // no bajar de 0
+    suspend fun adjustStock(
+        productId: Int,
+        delta: Int,
+        reason: String,
+        note: String? = null
+    ): Boolean = withContext(io) {
+        adjustStockInternal(productId, delta, reason, note)
+    }
 
-        // Podés hacerlo con update(entity) o con un UPDATE directo; dejo ambas opciones:
+    suspend fun adjustStock(
+        productId: Int,
+        delta: Int,
+        reason: StockAdjustmentReason,
+        note: String? = null
+    ): Boolean = adjustStock(productId, delta, reason.code, note)
 
-        // Opción A: update con copia del entity
-        val rows = productDao.update(current.copy(quantity = newQty))
-
-        // Opción B: (si preferís SQL directo) descomenta y añade el método en el DAO:
-        // val rows = productDao.updateQuantityByBarcode(barcode, newQty)
-
-        if (rows > 0) {
-            // refrescamos caché para la UI
+    private suspend fun persistProduct(entity: ProductEntity, reason: String): Int {
+        val normalized = entity.copy(id = 0, updatedAt = LocalDate.now())
+        val now = System.currentTimeMillis()
+        var newId = 0
+        db.withTransaction {
+            newId = productDao.upsert(normalized)
+            if (normalized.quantity != 0) {
+                stockMovementDao.insert(
+                    StockMovementEntity(
+                        productId = newId,
+                        delta = normalized.quantity,
+                        reason = reason,
+                        ts = Instant.ofEpochMilli(now),
+                        note = "Alta de producto"
+                    )
+                )
+            }
+            syncOutboxDao.upsert(
+                SyncOutboxEntity(
+                    entityType = SyncEntityType.PRODUCT.storageKey,
+                    entityId = newId.toLong(),
+                    createdAt = now
+                )
+            )
             lastCache = productDao.getAllOnce()
-            true
-        } else {
-            false
         }
+        trySyncProductsNow(listOf(newId), now)
+        return newId
+    }
 
+    private suspend fun updateProductInternal(entity: ProductEntity, reason: String): Int {
+        val now = System.currentTimeMillis()
+        var rows = 0
+        db.withTransaction {
+            val current = productDao.getById(entity.id) ?: return@withTransaction
+            val normalized = entity.copy(updatedAt = LocalDate.now())
+            rows = productDao.update(normalized)
+            if (rows > 0) {
+                val delta = normalized.quantity - current.quantity
+                if (delta != 0) {
+                    stockMovementDao.insert(
+                        StockMovementEntity(
+                            productId = current.id,
+                            delta = delta,
+                            reason = reason,
+                            ts = Instant.ofEpochMilli(now),
+                            note = "Edición manual"
+                        )
+                    )
+                }
+                syncOutboxDao.upsert(
+                    SyncOutboxEntity(
+                        entityType = SyncEntityType.PRODUCT.storageKey,
+                        entityId = current.id.toLong(),
+                        createdAt = now
+                    )
+                )
+                lastCache = productDao.getAllOnce()
+            }
+        }
+        if (rows > 0) {
+            trySyncProductsNow(listOf(entity.id), now)
+        }
+        return rows
+    }
+
+    private suspend fun adjustStockInternal(
+        productId: Int,
+        delta: Int,
+        reason: String,
+        note: String?
+    ): Boolean {
+        if (delta == 0) return true
+        val now = System.currentTimeMillis()
+        var success = false
+        db.withTransaction {
+            val product = productDao.getById(productId) ?: return@withTransaction
+            val newQty = (product.quantity + delta).coerceAtLeast(0)
+            val affected = productDao.update(
+                product.copy(quantity = newQty, updatedAt = LocalDate.now())
+            )
+            if (affected == 0) return@withTransaction
+            stockMovementDao.insert(
+                StockMovementEntity(
+                    productId = productId,
+                    delta = delta,
+                    reason = reason,
+                    ts = Instant.ofEpochMilli(now),
+                    note = note
+                )
+            )
+            syncOutboxDao.upsert(
+                SyncOutboxEntity(
+                    entityType = SyncEntityType.PRODUCT.storageKey,
+                    entityId = productId.toLong(),
+                    createdAt = now
+                )
+            )
+            lastCache = productDao.getAllOnce()
+            success = true
+        }
+        if (success) {
+            trySyncProductsNow(listOf(productId), now)
+        }
+        return success
+    }
+
+    private suspend fun trySyncProductsNow(ids: Collection<Int>, now: Long) {
+        val uniqueIds = ids.mapNotNull { id -> id.takeIf { it > 0 } }.distinct()
+        if (uniqueIds.isEmpty()) return
+        val entities = productDao.getByIds(uniqueIds)
+        if (entities.isEmpty()) return
+        try {
+            remote.upsertAll(entities)
+            syncOutboxDao.deleteByTypeAndIds(
+                SyncEntityType.PRODUCT.storageKey,
+                uniqueIds.map(Int::toLong)
+            )
+        } catch (t: Throwable) {
+            val error = t.message?.take(512) ?: t::class.java.simpleName
+            syncOutboxDao.markAttempt(
+                SyncEntityType.PRODUCT.storageKey,
+                uniqueIds.map(Int::toLong),
+                now,
+                error
+            )
+            Log.w(
+                "ProductRepository",
+                "Fallo al sincronizar ${uniqueIds.joinToString()} con Firestore",
+                t
+            )
+        }
     }
 
 
