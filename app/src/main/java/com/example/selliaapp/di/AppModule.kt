@@ -24,6 +24,7 @@ import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.ReportDataDao
+import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ExpenseRepository
@@ -82,6 +83,7 @@ object AppModule {
     @Provides fun provideCustomerDao(db: AppDatabase): CustomerDao = db.customerDao()
     @Provides fun provideInvoiceDao(db: AppDatabase): InvoiceDao = db.invoiceDao()
     @Provides fun provideInvoiceItemDao(db: AppDatabase): InvoiceItemDao = db.invoiceItemDao()
+    @Provides fun provideSyncOutboxDao(db: AppDatabase): SyncOutboxDao = db.syncOutboxDao()
     @Provides fun provideReportDataDao(db: AppDatabase): ReportDataDao = db.reportDataDao()
 
 

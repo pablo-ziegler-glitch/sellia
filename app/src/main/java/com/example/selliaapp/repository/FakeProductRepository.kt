@@ -51,12 +51,18 @@ class FakeProductRepository : IProductRepository {
         flowOf(PagingData.empty())
 
     override fun getProducts(): Flow<List<ProductEntity>> = productsFlow
+    override fun observeStockMovements(productId: Int, limit: Int): Flow<List<com.example.selliaapp.data.model.stock.StockMovementWithProduct>> =
+        flowOf(emptyList())
+
+    override fun observeRecentStockMovements(limit: Int): Flow<List<com.example.selliaapp.data.model.stock.StockMovementWithProduct>> =
+        flowOf(emptyList())
 
     // ---------- Cache util ----------
     override suspend fun cachedOrEmpty(): List<ProductEntity> = emptyList()
 
     // ---------- Stock ----------
     override suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean = false
+    override suspend fun adjustStock(productId: Int, delta: Int, reason: String, note: String?): Boolean = false
 
     // ---------- Archivo tabular: filas parseadas ----------
     override suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) {}

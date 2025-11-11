@@ -32,6 +32,9 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE id = :id")
     suspend fun getById(id: Int): ProductEntity?
 
+    @Query("SELECT * FROM products WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<Int>): List<ProductEntity>
+
     @Query("SELECT * FROM products WHERE barcode = :barcode LIMIT 1")
     suspend fun getByBarcodeOnce(barcode: String): ProductEntity?
 

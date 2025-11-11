@@ -2,6 +2,7 @@ package com.example.selliaapp.data.remote
 
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 
 class ProductRemoteDataSource(
@@ -14,6 +15,17 @@ class ProductRemoteDataSource(
         val map = ProductFirestoreMappers.toMap(product).toMutableMap()
         map["id"] = docRef.id.toIntOrNull() ?: product.id
         docRef.set(map).await()
+    }
+
+    suspend fun upsertAll(products: List<ProductEntity>) {
+        if (products.isEmpty()) return
+        val batch = firestore.batch()
+        products.forEach { product ->
+            if (product.id == 0) return@forEach
+            val doc = col.document(product.id.toString())
+            batch.set(doc, ProductFirestoreMappers.toMap(product), SetOptions.merge())
+        }
+        batch.commit().await()
     }
 
     suspend fun deleteById(id: Int) {

@@ -13,8 +13,8 @@ interface InvoiceItemDao {
     suspend fun insertAll(items: List<InvoiceItem>)
 
     @Query("DELETE FROM invoice_items WHERE invoiceId = :invoiceId")
-    suspend fun deleteByInvoiceId(invoiceId: Int)
+    suspend fun deleteByInvoiceId(invoiceId: Long)
 
     @Query("SELECT * FROM invoice_items WHERE invoiceId = :invoiceId")
-    suspend fun getByInvoiceId(invoiceId: Int): List<InvoiceItem>
+    suspend fun getByInvoiceId(invoiceId: Long): List<InvoiceItem>
 }

@@ -12,6 +12,17 @@ sealed class Routes(val route: String) {
     object Sell : Routes("sell")
     object Stock : Routes("stock")
     object Stock_import : Routes("stock_import")
+    object QuickAdjustStock : Routes("stock/adjust/{productId}") {
+        const val ARG_PRODUCT_ID = "productId"
+        fun withProduct(productId: Int) = "stock/adjust/$productId"
+        val arguments = listOf(navArgument(ARG_PRODUCT_ID) { type = NavType.IntType })
+    }
+    object QuickReorder : Routes("stock/reorder/{productId}") {
+        const val ARG_PRODUCT_ID = "productId"
+        fun withProduct(productId: Int) = "stock/reorder/$productId"
+        val arguments = listOf(navArgument(ARG_PRODUCT_ID) { type = NavType.IntType })
+    }
+    object StockMovements : Routes("stock/movements")
 
     object Config : Routes("config")
     object Checkout : Routes("checkout")
@@ -34,7 +45,10 @@ sealed class Routes(val route: String) {
     object ProvidersHub : Routes("providers_hub")
     object ManageProviders : Routes("manage_providers")
     object ProviderInvoices : Routes("provider_invoices")              // listado por proveedor
-    object ProviderInvoiceDetail : Routes("provider_invoice_detail?invoiceId={invoiceId}")
+    object ProviderInvoiceDetail : Routes("provider_invoice_detail?invoiceId={invoiceId}") {
+        const val ARG_ID = "invoiceId"
+        fun build(id: Int) = "provider_invoice_detail?invoiceId=$id"
+    }
     object ProviderPayments : Routes("provider_payments")              // pendientes
 
     // ---------- NUEVO: Gastos ----------
@@ -131,6 +145,8 @@ sealed class Routes(val route: String) {
                 defaultValue = null
             }
         )
+        val quickAdjustArgs = Routes.QuickAdjustStock.arguments
+        val quickReorderArgs = Routes.QuickReorder.arguments
     }
 
 }
