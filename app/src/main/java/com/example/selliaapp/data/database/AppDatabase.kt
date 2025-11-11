@@ -14,6 +14,7 @@ import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.StockMovementDao
+import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.data.local.converters.Converters
@@ -24,6 +25,7 @@ import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
 import com.example.selliaapp.data.local.entity.ReportDataEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
+import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.local.entity.VariantEntity
 import com.example.selliaapp.data.model.ExpenseRecord
 import com.example.selliaapp.data.model.ExpenseTemplate
@@ -47,6 +49,7 @@ import com.example.selliaapp.data.model.User
         StockMovementEntity::class,
         CategoryEntity::class,
         VariantEntity::class,
+        SyncOutboxEntity::class,
 
         // Tablas de negocio basadas en modelos (ya tienen @Entity)
         Invoice::class,
@@ -57,7 +60,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 23,
+    version = 26,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -76,5 +79,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun stockMovementDao(): StockMovementDao
     abstract fun categoryDao(): CategoryDao
     abstract fun variantDao(): VariantDao
+    abstract fun syncOutboxDao(): SyncOutboxDao
 }
 

@@ -22,8 +22,16 @@ import androidx.room.PrimaryKey
 
 data class Invoice(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
-    val dateMillis: Long ,
-    val customerId: Int? ,
-    val customerName: String? ,
-    val total: Double
+    val dateMillis: Long,
+    val customerId: Int?,
+    val customerName: String?,
+    val subtotal: Double,
+    val taxes: Double,
+    val discountPercent: Int,
+    val discountAmount: Double,
+    val surchargePercent: Int,
+    val surchargeAmount: Double,
+    val total: Double,
+    val paymentMethod: String,
+    val paymentNotes: String?
 )

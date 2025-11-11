@@ -70,6 +70,13 @@ class FakeScanProductRepository(
         flowOf(PagingData.from(products))
 
     override fun getProducts(): Flow<List<ProductEntity>> = productsFlow
+    override fun observeStockMovements(
+        productId: Int,
+        limit: Int
+    ): Flow<List<com.example.selliaapp.data.model.stock.StockMovementWithProduct>> = flowOf(emptyList())
+
+    override fun observeRecentStockMovements(limit: Int): Flow<List<com.example.selliaapp.data.model.stock.StockMovementWithProduct>> =
+        flowOf(emptyList())
 
     // ---------- Cache util ----------
     override suspend fun cachedOrEmpty(): List<ProductEntity> = products.toList()
@@ -82,6 +89,15 @@ class FakeScanProductRepository(
         val current = products[idx]
         val q = (current.quantity ?: 0) + delta
         val newQty = if (q < 0) 0 else q
+        products[idx] = current.copy(quantity = newQty)
+        productsFlow.value = products.toList()
+        return true
+    }
+    override suspend fun adjustStock(productId: Int, delta: Int, reason: String, note: String?): Boolean {
+        val idx = products.indexOfFirst { it.id == productId }
+        if (idx < 0) return false
+        val current = products[idx]
+        val newQty = (current.quantity ?: 0) + delta
         products[idx] = current.copy(quantity = newQty)
         productsFlow.value = products.toList()
         return true

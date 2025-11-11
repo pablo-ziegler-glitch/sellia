@@ -33,6 +33,16 @@ interface InvoiceDao {
     @Query("SELECT * FROM invoices ORDER BY dateMillis DESC, id DESC")
     fun getAllInvoices(): Flow<List<InvoiceWithItems>>
 
+    @Transaction
+    @Query("SELECT * FROM invoices ORDER BY dateMillis DESC, id DESC")
+    suspend fun getAllInvoicesOnce(): List<InvoiceWithItems>
+
+    @Transaction
+    @Query(
+        "SELECT * FROM invoices WHERE id IN (:ids) ORDER BY dateMillis DESC, id DESC"
+    )
+    suspend fun getInvoicesWithItemsByIds(ids: List<Long>): List<InvoiceWithItems>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertInvoiceItems(items: List<InvoiceItem>)
 

@@ -9,6 +9,7 @@ import com.example.selliaapp.data.csv.ProductCsvImporter
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.model.Product
+import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -40,12 +41,15 @@ interface IProductRepository {
     // ---------- Paging ----------
     fun pagingSearchFlow(query: String): Flow<PagingData<ProductEntity>>
     fun getProducts(): Flow<List<ProductEntity>>
+    fun observeStockMovements(productId: Int, limit: Int = 20): Flow<List<StockMovementWithProduct>>
+    fun observeRecentStockMovements(limit: Int = 50): Flow<List<StockMovementWithProduct>>
 
     // ---------- Cache util ----------
     suspend fun cachedOrEmpty(): List<ProductEntity>
 
     // ---------- Stock ----------
     suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean
+    suspend fun adjustStock(productId: Int, delta: Int, reason: String, note: String? = null): Boolean
 
     // ---------- Archivo tabular: filas parseadas ----------
     suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>)

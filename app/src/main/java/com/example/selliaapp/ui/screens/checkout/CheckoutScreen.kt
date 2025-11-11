@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -34,8 +36,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -69,6 +73,7 @@ fun CheckoutScreen(
     val moneda = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var isProcessing by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -227,23 +232,44 @@ fun CheckoutScreen(
                                 snackbarHostState.showSnackbar("No podés cobrar hasta corregir el stock.")
                             }
                         } else {
-                            val resultado = vm.placeOrder()
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "Venta confirmada: ${moneda.format(resultado.total)} (${resultado.paymentMethod.nombreLegible()})"
-                                )
-                                onCancel()
-                            }
+                            isProcessing = true
+                            vm.placeOrder(
+                                onSuccess = { resultado ->
+                                    isProcessing = false
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            message = "Venta #${resultado.invoiceNumber}: ${moneda.format(resultado.total)} (${resultado.paymentMethod.nombreLegible()})"
+                                        )
+                                        onCancel()
+                                    }
+                                },
+                                onError = { error ->
+                                    isProcessing = false
+                                    scope.launch {
+                                        val mensaje = error.message?.takeIf { it.isNotBlank() }
+                                            ?: "No se pudo confirmar la venta."
+                                        snackbarHostState.showSnackbar(mensaje)
+                                    }
+                                }
+                            )
                         }
                     },
-                    enabled = state.items.isNotEmpty(),
+                    enabled = state.items.isNotEmpty() && !isProcessing,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                     )
                 ) {
-                    Text("Confirmar cobro")
+                    if (isProcessing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text("Confirmar cobro")
+                    }
                 }
             }
         }

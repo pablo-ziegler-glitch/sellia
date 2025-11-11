@@ -3,7 +3,10 @@ package com.example.selliaapp.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.data.model.sales.CartItem
+import com.example.selliaapp.data.model.sales.InvoiceDraft
 import com.example.selliaapp.repository.IProductRepository
+import com.example.selliaapp.repository.InvoiceRepository
 import com.example.selliaapp.ui.state.CartItemUi
 import com.example.selliaapp.ui.state.PaymentMethod
 import com.example.selliaapp.ui.state.SellUiState
@@ -15,12 +18,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
 class SellViewModel @Inject constructor(
-    private val repo: IProductRepository
+    private val repo: IProductRepository,
+    private val invoiceRepo: InvoiceRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SellUiState())
@@ -193,31 +196,64 @@ class SellViewModel @Inject constructor(
             ui.copy(paymentNotes = notes.take(280))
         }
     }
-    /**
-     * [NUEVO] Finaliza la venta de forma local:
-     * - Si hay violaciones de stock lanza excepción.
-     * - (TODO) Persistir venta en DB/Firestore si ya tenés entidades.
-     * - Limpia el carrito y devuelve un id simbólico.
-     */
-    fun placeOrder(): CheckoutResult {
+    fun placeOrder(
+        customerId: Long? = null,
+        customerName: String? = null,
+        onSuccess: (CheckoutResult) -> Unit = {},
+        onError: (Throwable) -> Unit = {}
+    ) {
         val current = state.value
-        require(current.stockViolations.isEmpty()) { "Hay ítems con falta de stock." }
-        val orderId = UUID.randomUUID().toString()
-        val resultado = CheckoutResult(
-            id = orderId,
-            total = current.total,
-            paymentMethod = current.paymentMethod,
-            discountPercent = current.discountPercent,
-            surchargePercent = current.surchargePercent,
-            notes = current.paymentNotes
-        )
-        clear()
-        return resultado
+        if (current.stockViolations.isNotEmpty()) {
+            onError(IllegalStateException("Hay ítems con falta de stock."))
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val draft = InvoiceDraft(
+                    items = current.items.map { item ->
+                        CartItem(
+                            productId = item.productId.toLong(),
+                            name = item.name,
+                            quantity = item.qty,
+                            unitPrice = item.unitPrice
+                        )
+                    },
+                    subtotal = current.subtotal,
+                    taxes = 0.0,
+                    total = current.total,
+                    discountPercent = current.discountPercent,
+                    discountAmount = current.discountAmount,
+                    surchargePercent = current.surchargePercent,
+                    surchargeAmount = current.surchargeAmount,
+                    paymentMethod = current.paymentMethod.name,
+                    paymentNotes = current.paymentNotes.takeIf { it.isNotBlank() },
+                    customerId = customerId,
+                    customerName = customerName
+                )
+
+                val result = invoiceRepo.confirmInvoice(draft)
+                val checkoutResult = CheckoutResult(
+                    invoiceId = result.invoiceId,
+                    invoiceNumber = result.invoiceNumber,
+                    total = current.total,
+                    paymentMethod = current.paymentMethod,
+                    discountPercent = current.discountPercent,
+                    surchargePercent = current.surchargePercent,
+                    notes = current.paymentNotes
+                )
+                clear()
+                onSuccess(checkoutResult)
+            } catch (t: Throwable) {
+                onError(t)
+            }
+        }
     }
 }
 
 data class CheckoutResult(
-    val id: String,
+    val invoiceId: Long,
+    val invoiceNumber: String,
     val total: Double,
     val paymentMethod: PaymentMethod,
     val discountPercent: Int,
