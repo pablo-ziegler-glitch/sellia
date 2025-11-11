@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.example.selliaapp.viewmodel.HomeViewModel
 import java.text.NumberFormat
 import java.util.Locale
+import java.time.format.DateTimeFormatter
 
 /**
  * Pantalla principal con búsqueda, accesos rápidos y listado de ventas recientes.
