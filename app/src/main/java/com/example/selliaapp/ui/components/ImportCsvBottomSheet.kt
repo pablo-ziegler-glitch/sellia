@@ -21,16 +21,14 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Hoja inferior que explica el formato de importación y
- * lanza el picker de CSV (compatible con exportación de Excel/Sheets).
- *
- * Ventaja: sin libs externas (POI) y confiable. Excel/Sheets exportan a CSV fácilmente.
+ * lanza el picker de archivos tabulares (CSV, Excel, Google Sheets).
  */
 @Composable
 fun ImportCsvBottomSheet(
     onPickCsv: (Uri) -> Unit
 ) {
     val picker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
+        contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri -> if (uri != null) onPickCsv(uri) }
     )
 
@@ -47,19 +45,28 @@ fun ImportCsvBottomSheet(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Importar stock desde CSV", style = MaterialTheme.typography.titleMedium)
+        Text("Importar stock desde archivo", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Podés exportar desde Excel o Google Sheets a CSV y cargarlo acá. " +
+            "Podés cargar directamente un CSV o una planilla de Excel/Google Sheets. " +
                     "Las columnas aceptadas son (en este orden):"
         )
         HorizontalDivider()
         Text(template, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
         Button(
-            onClick = { picker.launch("text/*") },
+            onClick = {
+                picker.launch(
+                    arrayOf(
+                        "text/*",
+                        "application/vnd.ms-excel",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/vnd.google-apps.spreadsheet"
+                    )
+                )
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Seleccionar archivo CSV")
+            Text("Seleccionar archivo")
         }
     }
 }

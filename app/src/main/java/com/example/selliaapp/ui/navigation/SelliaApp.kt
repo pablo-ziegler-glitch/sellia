@@ -126,7 +126,8 @@ fun SelliaApp(
             composable(Routes.ManageCustomers.route) {
                 // Versión que usa repos inyectados desde SelliaApp()
                 ManageCustomersScreen(
-                    customerRepository = customerRepo
+                    customerRepository = customerRepo,
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -241,7 +242,8 @@ fun SelliaApp(
                     onProductClick = { product ->
                         // EDICIÓN: ir a add_product/{id}
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
-                    }
+                    },
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -389,7 +391,8 @@ fun SelliaApp(
             composable(Routes.ManageProducts.route) {
                 val vm: ManageProductsViewModel = hiltViewModel()
                 ManageProductsScreen(
-                     vm = vm
+                     vm = vm,
+                     onBack = { navController.popBackStack() }
                 )
             }
 

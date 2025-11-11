@@ -5,8 +5,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.selliaapp.data.csv.CsvUtils
 import com.example.selliaapp.data.csv.ProductCsvImporter
+import com.example.selliaapp.data.csv.TabularFileReader
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.di.IoDispatcher
 import com.example.selliaapp.repository.IProductRepository
@@ -54,12 +54,16 @@ class StockImportViewModel @Inject constructor(
     private var currentUri: Uri? = null
     private var cachedRows: List<ProductCsvImporter.Row> = emptyList() // reservado si luego querés flujo avanzado
 
-    /** Carga preview (primeras 20 filas) del CSV seleccionado. */
+    /** Carga preview (primeras 20 filas) del archivo tabular seleccionado. */
     fun loadPreview(uri: Uri) {
         currentUri = uri
         viewModelScope.launch {
-            appContext.contentResolver.openInputStream(uri)?.use { ins ->
-                _preview.value = CsvUtils.readAll(ins).take(20)
+            runCatching {
+                TabularFileReader.readAll(appContext.contentResolver, uri).take(20)
+            }.onSuccess { table ->
+                _preview.value = table
+            }.onFailure {
+                _preview.value = emptyList()
             }
         }
     }
@@ -84,10 +88,10 @@ class StockImportViewModel @Inject constructor(
     }
 
     /**
-     * Importa desde un CSV referenciado por [uri] con la estrategia indicada.
+     * Importa desde un archivo tabular (CSV/Excel/Sheets) referenciado por [uri] con la estrategia indicada.
      * Mantiene la firma pública con ProductRepository.ImportStrategy para no romper la UI.
      */
-    fun importFromCsv(
+    fun importFromFile(
         context: Context,
         uri: Uri,
         strategy: ProductRepository.ImportStrategy = ProductRepository.ImportStrategy.Append,
@@ -95,7 +99,7 @@ class StockImportViewModel @Inject constructor(
     ) {
         val resolver: ContentResolver = context.contentResolver
         viewModelScope.launch(io) {
-            val result = repo.importFromCsv(resolver, uri, strategy)
+            val result = repo.importFromFile(resolver, uri, strategy)
             withContext(Dispatchers.Main) {
                 onCompleted(result)
             }

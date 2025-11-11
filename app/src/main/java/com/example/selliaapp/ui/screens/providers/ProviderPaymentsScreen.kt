@@ -13,12 +13,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.repository.ProviderInvoiceRepository
+import com.example.selliaapp.ui.components.BackTopAppBar
 import kotlinx.coroutines.launch
 import java.util.Date
 
@@ -48,7 +47,7 @@ fun ProviderPaymentsScreen(
     var ref by remember { mutableStateOf(TextFieldValue("")) }
     var amount by remember { mutableStateOf(TextFieldValue("")) }
 
-    Scaffold(topBar = {  TopAppBar(title = { Text("Pagos a Proveedores") }) }) { inner ->
+    Scaffold(topBar = { BackTopAppBar(title = "Pagos a Proveedores", onBack = onBack) }) { inner ->
         Column(Modifier.padding(inner).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(pending) { row ->
@@ -66,7 +65,6 @@ fun ProviderPaymentsScreen(
                     }
                 }
             }
-            OutlinedButton(onClick = onBack) { Text("Volver") }
         }
     }
 

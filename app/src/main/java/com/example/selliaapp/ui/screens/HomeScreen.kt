@@ -1,11 +1,9 @@
 package com.example.selliaapp.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,7 +21,6 @@ import androidx.compose.material.icons.filled.InsertChart
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ViewList
@@ -68,20 +65,19 @@ fun HomeScreen(
     val state by vm.state.collectAsState()
     val localeEsAr = Locale("es", "AR")
     val currency = NumberFormat.getCurrencyInstance(localeEsAr)
-    val dayFormatter = DateTimeFormatter.ofPattern("EEE d", localeEsAr)
 
-    Box(modifier = Modifier.fillMaxSize()) {
-
-        // -------- Contenido superior (franja + botones) ----------
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .navigationBarsPadding()
+    ) {
         Column(
             modifier = Modifier
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .imePadding()
-                .navigationBarsPadding()
-                .fillMaxSize()
-                .padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             state.errorMessage?.let { mensaje ->
                 Card(
@@ -90,7 +86,7 @@ fun HomeScreen(
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(vertical = 8.dp)
                 ) {
                     Text(
                         text = mensaje,
@@ -125,67 +121,45 @@ fun HomeScreen(
                 }
             }
 
-            Card(elevation = CardDefaults.cardElevation(2.dp)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.ShowChart, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "Ventas de los últimos 7 días",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+            // Botonera superior (puedes ajustar layout si querés 3 por fila)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onStock, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.ViewList, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Stock")
                     }
-
-                    if (state.weekSales.isEmpty()) {
-                        Text(
-                            text = "Aún no hay ventas registradas en esta semana.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        state.weekSales.forEach { punto ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val etiqueta = punto.fecha.format(dayFormatter).replaceFirstChar { ch ->
-                                    if (ch.isLowerCase()) ch.titlecase(localeEsAr) else ch.toString()
-                                }
-                                Text(
-                                    text = etiqueta,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = currency.format(punto.total),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        }
-
-                        Divider()
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Total semanal",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            val totalSemana = state.weekSales.sumOf { it.total }
-                            Text(
-                                text = currency.format(totalSemana),
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                        }
+                    OutlinedButton(onClick = onClientes, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Business, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Clientes")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onConfig, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Settings, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Configuración")
+                    }
+                    OutlinedButton(onClick = onReports, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.InsertChart, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Reportes")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onProviders, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Business, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Proveedores")
+                    }
+                    OutlinedButton(onClick = onExpenses, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.AttachMoney, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Administración Gastos")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onSyncNow, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Sync, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Sincronizar Ahora!")
                     }
                 }
             }
@@ -246,68 +220,15 @@ fun HomeScreen(
                     }
                 }
             }
-
-            Spacer(Modifier.height(16.dp))
-
-            // Botonera superior (puedes ajustar layout si querés 3 por fila)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onStock, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.ViewList, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Stock")
-                    }
-                    OutlinedButton(onClick = onClientes, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Business, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Clientes")
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onConfig, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Settings, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Configuración")
-                    }
-                    OutlinedButton(onClick = onReports, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.InsertChart, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Reportes")
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onProviders, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Business, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Proveedores")
-                    }
-                    OutlinedButton(onClick = onExpenses, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.AttachMoney, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Administración Gastos")
-                    }
-                }
-                // El resto del espacio hasta el botón inferior queda libre
-                Spacer(Modifier.weight(1f))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onSyncNow, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Sync, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Sincronizar Ahora!")
-                    }
-                }
-            }
         }
 
-        // -------- Botón VENDER: franja inferior ocupando 1/4 de la pantalla ----------
         Button(
             onClick = onNewSale,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.25f) // ocupa 1/4 de la altura total
-                .padding(0.dp),       // sin padding para que sea de borde a borde
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {

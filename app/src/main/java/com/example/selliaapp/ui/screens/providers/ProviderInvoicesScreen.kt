@@ -14,11 +14,9 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -32,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.local.entity.ProviderEntity
 import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
+import com.example.selliaapp.ui.components.BackTopAppBar
 import java.util.Date
 import java.util.Locale
 
@@ -60,7 +59,7 @@ fun ProviderInvoicesScreen(
         }
     }
 
-    Scaffold(topBar = {  TopAppBar(title = { Text("Facturas por Proveedor") }) }) { inner ->
+    Scaffold(topBar = { BackTopAppBar(title = "Facturas por Proveedor", onBack = onBack) }) { inner ->
         Column(Modifier.padding(inner).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Selector de proveedor
             Text("Proveedor")
@@ -104,8 +103,6 @@ fun ProviderInvoicesScreen(
                     }
                 }
             }
-
-            OutlinedButton(onClick = onBack) { Text("Volver") }
         }
     }
 }

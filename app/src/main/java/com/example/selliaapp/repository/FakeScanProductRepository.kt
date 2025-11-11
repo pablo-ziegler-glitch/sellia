@@ -88,20 +88,20 @@ class FakeScanProductRepository(
         return true
     }
 
-    // ---------- CSV: filas parseadas ----------
+    // ---------- Archivo tabular: filas parseadas ----------
     override suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) { /* no usado acá */ }
 
-    // ---------- CSV: desde archivo ----------
+    // ---------- Archivo tabular: desde archivo ----------
     override suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult =
         ImportResult(0, 0, emptyList())
 
-    override suspend fun importProductsFromCsv(
+    override suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,
         strategy: ProductRepository.ImportStrategy
     ): ImportResult = ImportResult(0, 0, emptyList())
 
-    override suspend fun importFromCsv(
+    override suspend fun importFromFile(
         resolver: ContentResolver,
         uri: Uri,
         strategy: ProductRepository.ImportStrategy

@@ -203,14 +203,14 @@ class ProductViewModel @Inject constructor(
         withContext(Dispatchers.IO) { repo.getByBarcodeOrNull(barcode) }
 
 
-    fun importProductsFromCsv(
+    fun importProductsFromFile(
         context: Context,
         fileUri: Uri,
         strategy: ProductRepository.ImportStrategy,
         onResult: (ImportResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = repo.importProductsFromCsv(context, fileUri, strategy)
+            val result = repo.importProductsFromFile(context, fileUri, strategy)
             onResult(result)
         }
     }

@@ -170,12 +170,16 @@ class ProductCsvImporter(
 
     // -------------------- Helpers internos --------------------
 
-    private fun openAndParse(resolver: ContentResolver, uri: Uri): List<Row>? {
-        val input = resolver.openInputStream(uri) ?: return null
-        input.use { ins ->
-            return runCatching { parseCsv(ins) }
-                .getOrElse { t -> throw IllegalArgumentException(t.message ?: "Error de parseo CSV") }
-        }
+    private fun openAndParse(resolver: ContentResolver, uri: Uri): List<Row>? = try {
+        parseFile(resolver, uri)
+    } catch (notFound: java.io.FileNotFoundException) {
+        null
+    } catch (illegal: IllegalArgumentException) {
+        throw illegal
+    } catch (state: IllegalStateException) {
+        throw IllegalArgumentException(state.message ?: "Error al procesar el archivo")
+    } catch (t: Exception) {
+        throw IllegalArgumentException(t.message ?: "Error al procesar el archivo", t)
     }
 
     companion object {
@@ -183,9 +187,13 @@ class ProductCsvImporter(
          * Parser robusto que usa CsvUtils para leer todo el CSV.
          * Devuelve una lista de Row (normalizada y saneada).
          */
-        fun parseCsv(input: InputStream): List<Row> {
-            val table = CsvUtils.readAll(input)
-            require(table.isNotEmpty()) { "CSV vacío" }
+        fun parseCsv(input: InputStream): List<Row> = parseTable(CsvUtils.readAll(input))
+
+        fun parseFile(resolver: ContentResolver, uri: Uri): List<Row> =
+            parseTable(TabularFileReader.readAll(resolver, uri))
+
+        fun parseTable(table: List<List<String>>): List<Row> {
+            require(table.isNotEmpty()) { "Archivo vacío" }
 
             val header = table.first()
             val idx = CsvUtils.HeaderIndex(header)

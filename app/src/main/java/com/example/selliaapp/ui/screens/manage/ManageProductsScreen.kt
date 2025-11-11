@@ -21,6 +21,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.example.selliaapp.ui.components.BackTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,7 +55,8 @@ fun ManageProductsRoute(
  */
 @Composable
 fun ManageProductsScreen(
-    vm: ManageProductsViewModel
+    vm: ManageProductsViewModel,
+    onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val state by vm.state.collectAsState()
@@ -67,6 +69,7 @@ fun ManageProductsScreen(
     var q by remember { mutableStateOf(state.query) }
 
     Scaffold(
+        topBar = { BackTopAppBar(title = "Productos", onBack = onBack) },
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 editing = null

@@ -30,7 +30,7 @@ fun StockImportWizardScreen(
     val ui by viewModel.ui.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Importar CSV de Productos", style = MaterialTheme.typography.titleLarge)
+        Text("Importar archivo de productos", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(12.dp))
         when (step) {
             1 -> StepPreview(fileUri, viewModel) { step = 2 }

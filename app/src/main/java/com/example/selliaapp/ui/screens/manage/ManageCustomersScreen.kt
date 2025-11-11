@@ -17,6 +17,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.example.selliaapp.ui.components.BackTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,7 +37,8 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ManageCustomersScreen(
-    customerRepository: CustomerRepository
+    customerRepository: CustomerRepository,
+    onBack: () -> Unit
 ) {
         val scope = rememberCoroutineScope()
         val customers by customerRepository.observeAll().collectAsState(initial = emptyList())
@@ -44,14 +46,15 @@ fun ManageCustomersScreen(
         var editing by remember { mutableStateOf<CustomerEntity?>(null) }
         var showEditor by remember { mutableStateOf(false) }
 
-        Scaffold(
-            floatingActionButton = {
-                FloatingActionButton(onClick = {
-                    editing = null
-                    showEditor = true
-                }) { Icon(Icons.Default.Add, contentDescription = "Nuevo cliente") }
-            }
-        ) { padding ->
+    Scaffold(
+        topBar = { BackTopAppBar(title = "Clientes", onBack = onBack) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = {
+                editing = null
+                showEditor = true
+            }) { Icon(Icons.Default.Add, contentDescription = "Nuevo cliente") }
+        }
+    ) { padding ->
             LazyColumn(Modifier.fillMaxWidth().padding(padding)) {
                 items(customers) { c ->
                     ListItem(

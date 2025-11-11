@@ -23,7 +23,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +39,7 @@ import com.example.selliaapp.data.model.Provider
 import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.ui.components.MultiSelectChipPicker
 import kotlinx.coroutines.launch
+import com.example.selliaapp.ui.components.BackTopAppBar
 
 /**
  * Gestión de Proveedores con:
@@ -102,7 +102,7 @@ fun ManageProvidersScreen(
 
 
     Scaffold(
-        topBar = {  TopAppBar(title = { Text("Proveedores") }) },
+        topBar = { BackTopAppBar(title = "Proveedores", onBack = onBack) },
         floatingActionButton = {
             FloatingActionButton(onClick = { editing = null; showEditor = true }) {
                 Text("+")

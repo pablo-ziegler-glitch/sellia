@@ -42,7 +42,7 @@ class StockViewModel @Inject constructor(
     suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? =
         repo.getByBarcodeOrNull(barcode)
 
-    // ====== Importación CSV ======
+    // ====== Importación desde archivo ======
 
     /** Simula importación sin escribir en DB (dry-run). */
     suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult =
@@ -52,11 +52,11 @@ class StockViewModel @Inject constructor(
      * Importa con estrategia (Append/Replace) escribiendo en DB.
      * Devuelve resumen (insertados/actualizados/errores).
      */
-    suspend fun importProductsFromCsv(
+    suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,
         strategy: ProductRepository.ImportStrategy
-    ): ImportResult = repo.importProductsFromCsv(context, fileUri, strategy)
+    ): ImportResult = repo.importProductsFromFile(context, fileUri, strategy)
 
     /** Encola importación en background con WorkManager. */
     fun importProductsInBackground(context: Context, fileUri: Uri) =

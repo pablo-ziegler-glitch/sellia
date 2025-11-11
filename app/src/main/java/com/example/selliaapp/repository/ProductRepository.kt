@@ -35,7 +35,7 @@ import kotlin.math.max
 /**
  * Repository de productos.
  * - Acceso a Room.
- * - Importación CSV (dry-run + background WorkManager).
+ * - Importación de archivos tabulares (dry-run + background WorkManager).
  * - Helpers de precios (E4) y normalización de categoría/proveedor.
  */
 class ProductRepository(
@@ -111,7 +111,7 @@ class ProductRepository(
         }
     }
 
-    // ---------- Importación CSV: bulkUpsert desde filas parseadas ----------
+    // ---------- Importación tabular: bulkUpsert desde filas parseadas ----------
     suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) = withContext(io) {
         for (r in rows) {
             val updated = r.updatedAt ?: LocalDate.now()
@@ -155,14 +155,14 @@ class ProductRepository(
     fun pagingSearch(query: String): Flow<PagingData<ProductEntity>> =
         Pager(PagingConfig(pageSize = 30)) { productDao.pagingSearch(query) }.flow
 
-    // ---------- Importación CSV: desde archivo ----------
+    // ---------- Importación tabular: desde archivo ----------
     enum class ImportStrategy { Append, Replace }
 
     /**
      * Importa SIN escribir en DB: útil para dry-run.
      */
     suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult = withContext(io) {
-        val rows = context.contentResolver.openInputStream(fileUri)?.use { ProductCsvImporter.parseCsv(it) } ?: emptyList()
+        val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
         var inserted = 0
         var updated = 0
         val errors = mutableListOf<String>()
@@ -186,12 +186,12 @@ class ProductRepository(
     /**
      * Importa con escritura en DB, con estrategia de stock (Append/Replace).
      */
-    suspend fun importProductsFromCsv(
+    suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,
         strategy: ImportStrategy
     ): ImportResult = withContext(io) {
-        val rows = context.contentResolver.openInputStream(fileUri)?.use { ProductCsvImporter.parseCsv(it) } ?: emptyList()
+        val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
 
         var inserted = 0
         var updated = 0
@@ -260,10 +260,10 @@ class ProductRepository(
     }
 
     /**
-     * Importa productos desde un CSV (resolver + uri) con la estrategia dada.
+     * Importa productos desde un archivo tabular (resolver + uri) con la estrategia dada.
      * Internamente delega en ProductCsvImporter para parsear y aplicar cambios.
      */
-    suspend fun importFromCsv(
+    suspend fun importFromFile(
         resolver: ContentResolver,
         uri: Uri,
         strategy: ImportStrategy
@@ -275,9 +275,9 @@ class ProductRepository(
             // ImportStrategy.UpsertByBarcode -> importer.importUpsertByBarcode(resolver, uri)
             ImportStrategy.Replace -> {
                 // Si Replace para vos significa "reemplazar stock" en existentes,
-                // podés reutilizar importProductsFromCsv con tu estrategia Replace:
+                // podés reutilizar importProductsFromFile con tu estrategia Replace:
                 // (necesitarías un Context; si no lo tenés acá, dejá sólo Append/Upsert y remové Replace)
-                ImportResult(0, 0, listOf("Replace no soportado en este método. Usá importProductsFromCsv(...)"))
+                ImportResult(0, 0, listOf("Replace no soportado en este método. Usá importProductsFromFile(...)"))
             }
         }
     }

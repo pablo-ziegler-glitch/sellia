@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,6 +30,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -100,6 +102,7 @@ fun SellScreen(
 
     // Selección de productos y diálogo de cantidad
     var showPicker by remember { mutableStateOf(false) }
+    var showAddOptions by remember { mutableStateOf(false) }
     var askFor by remember { mutableStateOf<ProductEntity?>(null) }
 
     if (showPicker) {
@@ -107,6 +110,41 @@ fun SellScreen(
             products = allProducts.filter { (remainingById[it.id] ?: 0) > 0 },
             onPick = { p -> showPicker = false; askFor = p },
             onDismiss = { showPicker = false }
+        )
+    }
+
+    if (showAddOptions) {
+        AlertDialog(
+            onDismissRequest = { showAddOptions = false },
+            title = { Text("Agregar producto") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = {
+                            showAddOptions = false
+                            showPicker = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Seleccionar manualmente")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showAddOptions = false
+                            onScanClick()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Escanear código")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAddOptions = false }) {
+                    Text("Cerrar")
+                }
+            }
         )
     }
 
@@ -141,7 +179,7 @@ fun SellScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onScanClick) {
+            FloatingActionButton(onClick = { showAddOptions = true }) {
                 Icon(Icons.Default.Add, contentDescription = "Escanear/Agregar")
             }
         },

@@ -16,12 +16,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,6 +35,7 @@ import com.example.selliaapp.data.model.ExpenseRecord
 import com.example.selliaapp.data.model.ExpenseStatus
 import com.example.selliaapp.data.model.ExpenseTemplate
 import com.example.selliaapp.repository.ExpenseRepository
+import com.example.selliaapp.ui.components.BackTopAppBar
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -65,7 +64,7 @@ fun ExpenseEntriesScreen(
     // Alta rápida
     var showNew by remember { mutableStateOf(false) }
 
-    Scaffold(topBar = {  TopAppBar(title = { Text("Gastos") }) },
+    Scaffold(topBar = { BackTopAppBar(title = "Gastos", onBack = onBack) },
         floatingActionButton = {
             FloatingActionButton(onClick = { showNew = true }) { Text("+") }
         }
@@ -122,8 +121,6 @@ fun ExpenseEntriesScreen(
                     }
                 }
             }
-
-            OutlinedButton(onClick = onBack) { Text("Volver") }
         }
     }
 

@@ -21,6 +21,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel.UiState
 import com.example.selliaapp.viewmodel.PrefillData
@@ -152,14 +154,21 @@ fun AddProductScreen(
         }
     }
 
-    Column(
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .verticalScroll(rememberScrollState())
-            .imePadding()
-            .navigationBarsPadding()
-            .padding(16.dp),
-     ) {
+    Scaffold(
+        topBar = {
+            val title = if (editId == null) "Agregar producto" else "Editar producto"
+            BackTopAppBar(title = title, onBack = { navController.popBackStack() })
+        }
+    ) { padding ->
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(padding)
+                .padding(16.dp),
+         ) {
         // --- Estado de OFF (loading/error/imagen) ---
         when (offState) {
             UiState.Loading -> {
@@ -364,59 +373,59 @@ fun AddProductScreen(
         )
 
         // --- Acciones ---
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = {
-                // Parseo robusto (E4)
-                val base = basePriceText.replace(',', '.').toDoubleOrNull()
-                val tax = taxRateText.replace(',', '.').toDoubleOrNull()?.let { it / 100.0 }
-                val final = finalPriceText.replace(',', '.').toDoubleOrNull()
-                val legacy = priceText.replace(',', '.').toDoubleOrNull()
-                val qty = stockText.toIntOrNull() ?: 0
-                val minStock = minStockText.toIntOrNull()
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = {
+                    // Parseo robusto (E4)
+                    val base = basePriceText.replace(',', '.').toDoubleOrNull()
+                    val tax = taxRateText.replace(',', '.').toDoubleOrNull()?.let { it / 100.0 }
+                    val final = finalPriceText.replace(',', '.').toDoubleOrNull()
+                    val legacy = priceText.replace(',', '.').toDoubleOrNull()
+                    val qty = stockText.toIntOrNull() ?: 0
+                    val minStock = minStockText.toIntOrNull()
 
-                if (editId == null) {
-                    viewModel.addProduct(
-                        name = name,
-                        barcode = barcode.ifBlank { null },
-                        basePrice = base,
-                        taxRate = tax,
-                        finalPrice = final,
-                        legacyPrice = legacy,
-                        stock = qty,
-                        code = code.ifBlank { null },
-                        description = description.ifBlank { null },
-                        imageUrl = imageUrl.ifBlank { null },
-                        categoryName = selectedCategoryName.ifBlank { null },
-                        providerName = selectedProviderName.ifBlank { null },
-                        minStock = minStock
-                    )
-                } else {
-                    viewModel.updateProduct(
-                        id = editId,
-                        name = name,
-                        barcode = barcode.ifBlank { null },
-                        basePrice = base,
-                        taxRate = tax,
-                        finalPrice = final,
-                        legacyPrice = legacy,
-                        stock = qty,
-                        code = code.ifBlank { null },
-                        description = description.ifBlank { null },
-                        imageUrl = imageUrl.ifBlank { null },
-                        categoryName = selectedCategoryName.ifBlank { null },
-                        providerName = selectedProviderName.ifBlank { null },
-                        minStock = minStock
-                    )
+                    if (editId == null) {
+                        viewModel.addProduct(
+                            name = name,
+                            barcode = barcode.ifBlank { null },
+                            basePrice = base,
+                            taxRate = tax,
+                            finalPrice = final,
+                            legacyPrice = legacy,
+                            stock = qty,
+                            code = code.ifBlank { null },
+                            description = description.ifBlank { null },
+                            imageUrl = imageUrl.ifBlank { null },
+                            categoryName = selectedCategoryName.ifBlank { null },
+                            providerName = selectedProviderName.ifBlank { null },
+                            minStock = minStock
+                        )
+                    } else {
+                        viewModel.updateProduct(
+                            id = editId,
+                            name = name,
+                            barcode = barcode.ifBlank { null },
+                            basePrice = base,
+                            taxRate = tax,
+                            finalPrice = final,
+                            legacyPrice = legacy,
+                            stock = qty,
+                            code = code.ifBlank { null },
+                            description = description.ifBlank { null },
+                            imageUrl = imageUrl.ifBlank { null },
+                            categoryName = selectedCategoryName.ifBlank { null },
+                            providerName = selectedProviderName.ifBlank { null },
+                            minStock = minStock
+                        )
+                    }
+
+                    onSaved()
+                }) {
+                    Text(if (editId == null) "Guardar" else "Actualizar")
                 }
 
-                onSaved()
-                navController.popBackStack()
-            }) {
-                Text(if (editId == null) "Guardar" else "Actualizar")
-            }
-
-            TextButton(onClick = { navController.popBackStack() }) {
-                Text("Cancelar")
+                TextButton(onClick = { navController.popBackStack() }) {
+                    Text("Cancelar")
+                }
             }
         }
     }

@@ -27,7 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.example.selliaapp.ui.components.BackTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,11 +43,11 @@ fun ConfigScreen(
     onManageProducts: () -> Unit,
     onManageCustomers: () -> Unit,
     onSync: () -> Unit,
-    onBack: () -> Boolean
+    onBack: () -> Unit
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Configuración") })
+            BackTopAppBar(title = "Configuración", onBack = onBack)
         },
         content = { padding ->
             Column(

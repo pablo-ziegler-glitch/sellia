@@ -162,6 +162,9 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    implementation("org.apache.poi:poi:5.2.5")
+    implementation("org.apache.poi:poi-ooxml-lite:5.2.5")
+
     // --- Tests (unit) ---
     testImplementation("junit:junit:4.13.2")
     // Alineo coroutines a 1.9.0 (compat con Kotlin 2.1.x)

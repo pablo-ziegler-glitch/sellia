@@ -57,7 +57,7 @@ fun StockImportScreen(
     var lastFileName by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    val openCsv = rememberLauncherForActivityResult(
+    val openFile = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -77,7 +77,7 @@ fun StockImportScreen(
 
         isImporting = true
         message = null
-        viewModel.importFromCsv(context, uri, ProductRepository.ImportStrategy.Append) { result ->
+        viewModel.importFromFile(context, uri, ProductRepository.ImportStrategy.Append) { result ->
             isImporting = false
             message = result.toUserMessage(lastFileName)
         }
@@ -86,7 +86,7 @@ fun StockImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Importar productos por CSV") },
+                title = { Text("Importar productos desde archivo") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
@@ -107,7 +107,7 @@ fun StockImportScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Cómo funciona", style = MaterialTheme.typography.titleMedium)
-            Text("Seleccioná un archivo .csv. La app creará/actualizará productos.")
+            Text("Seleccioná un archivo .csv o una planilla de Excel/Google Sheets. La app creará/actualizará productos.")
             Text("Formato recomendado:", style = MaterialTheme.typography.titleSmall)
             Text("name, barcode, price, quantity")
             Text(
@@ -121,9 +121,18 @@ fun StockImportScreen(
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
-                    onClick = { openCsv.launch(arrayOf("text/csv", "text/*")) },
+                    onClick = {
+                        openFile.launch(
+                            arrayOf(
+                                "text/*",
+                                "application/vnd.ms-excel",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "application/vnd.google-apps.spreadsheet"
+                            )
+                        )
+                    },
                     enabled = !isImporting
-                ) { Text(if (isImporting) "Importando..." else "Elegir CSV") }
+                ) { Text(if (isImporting) "Importando..." else "Elegir archivo") }
 
                 if (lastFileName != null) {
                     Text("Archivo: $lastFileName", style = MaterialTheme.typography.bodyMedium)

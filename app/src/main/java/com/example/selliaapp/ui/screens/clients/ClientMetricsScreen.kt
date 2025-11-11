@@ -12,12 +12,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.ClientMetricsViewModel
 
 @Composable
@@ -27,21 +29,24 @@ fun ClientMetricsScreen(
 ) {
     val state by vm.state.collectAsState()
 
-    Column(
-        modifier = Modifier.verticalScroll(rememberScrollState())
-            .imePadding()
-            .navigationBarsPadding()
-            .padding(16.dp)
-            .fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        MetricCard("Altas hoy", state.day)
-        MetricCard("Altas esta semana", state.week)
-        MetricCard("Altas este mes", state.month)
-        MetricCard("Altas este año", state.year)
+    Scaffold(topBar = { BackTopAppBar(title = "Métricas de clientes", onBack = onBack) }) { padding ->
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(padding)
+                .padding(16.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            MetricCard("Altas hoy", state.day)
+            MetricCard("Altas esta semana", state.week)
+            MetricCard("Altas este mes", state.month)
+            MetricCard("Altas este año", state.year)
 
-        Button(onClick = { vm.refresh() }) { Text("Actualizar") }
-        Button(onClick = onBack) { Text("Volver") }
+            Button(onClick = { vm.refresh() }) { Text("Actualizar") }
+        }
     }
 }
 

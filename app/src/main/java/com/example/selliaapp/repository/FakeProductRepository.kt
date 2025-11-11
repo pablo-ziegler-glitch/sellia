@@ -23,7 +23,7 @@ class FakeProductRepository : IProductRepository {
 
     // Señales para verificar llamadas
     var lastSimulateUri: Uri? = null
-    var lastImportFromCsv: Triple<Uri, ProductRepository.ImportStrategy, Boolean>? = null
+    var lastImportFromFile: Triple<Uri, ProductRepository.ImportStrategy, Boolean>? = null
     var importInBackgroundCalledWith: Uri? = null
 
     // Config del fake
@@ -58,30 +58,30 @@ class FakeProductRepository : IProductRepository {
     // ---------- Stock ----------
     override suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean = false
 
-    // ---------- CSV: filas parseadas ----------
+    // ---------- Archivo tabular: filas parseadas ----------
     override suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) {}
 
-    // ---------- CSV: desde archivo ----------
+    // ---------- Archivo tabular: desde archivo ----------
     override suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult {
         lastSimulateUri = fileUri
         return simulateResult
     }
 
-    override suspend fun importProductsFromCsv(
+    override suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,
         strategy: ProductRepository.ImportStrategy
     ): ImportResult {
-        lastImportFromCsv = Triple(fileUri, strategy, true)
+        lastImportFromFile = Triple(fileUri, strategy, true)
         return importResult
     }
 
-    override suspend fun importFromCsv(
+    override suspend fun importFromFile(
         resolver: ContentResolver,
         uri: Uri,
         strategy: ProductRepository.ImportStrategy
     ): ImportResult {
-        lastImportFromCsv = Triple(uri, strategy, false)
+        lastImportFromFile = Triple(uri, strategy, false)
         return importResult
     }
 

@@ -42,7 +42,6 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.repository.ProductRepository
+import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.ProductViewModel
 import java.text.NumberFormat
 import java.util.Locale
@@ -68,7 +68,7 @@ import java.util.Locale
  * Pantalla de Stock:
  * - Franja superior con buscador.
  * - Debajo, listado de productos.
- * - FAB redondo “+” con speed-dial (Importar CSV / Escanear / Agregar).
+ * - FAB redondo “+” con speed-dial (Importar archivo / Escanear / Agregar).
  *
  * [NUEVO] Mejores UX:
  *   - Snackbar para mensajes de importación.
@@ -82,7 +82,8 @@ fun StockScreen(
     onAddProduct: () -> Unit,
     onScan: () -> Unit,
     onImportCsv: () -> Unit,
-    onProductClick: (ProductEntity) -> Unit
+    onProductClick: (ProductEntity) -> Unit,
+    onBack: () -> Unit
 ) {
     val products by vm.products.collectAsState(initial = emptyList())
 
@@ -111,8 +112,8 @@ fun StockScreen(
         }
     }
 
-    // Launcher SAF para abrir documento (CSV)
-    val openCsvLauncher = rememberLauncherForActivityResult(
+    // Launcher SAF para abrir documento (CSV/Excel/Sheets)
+    val openImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -133,7 +134,7 @@ fun StockScreen(
         // Lanzar importación
         isImporting = true
         importMessage = null
-        vm.importProductsFromCsv(
+        vm.importProductsFromFile(
             context = context,
             fileUri = uri,
             // strategy: "append" suma al stock existente; "replace" pisa valores
@@ -171,9 +172,7 @@ fun StockScreen(
         topBar = {
             // Barra superior con la franja de búsqueda
             Column(Modifier.fillMaxWidth()) {
-                TopAppBar(
-                    title = { Text("Stock") }
-                )
+                BackTopAppBar(title = "Stock", onBack = onBack)
                 // Indicador de importación bajo la AppBar
                 if (isImporting) { // [NUEVO]
                     LinearProgressIndicator(
@@ -210,14 +209,20 @@ fun StockScreen(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Importar CSV
+                            // Importar archivo de productos
                             SmallFabWithLabel(
-                                label = "Importar CSV",
-                                icon = { Icon(Icons.Default.Description, contentDescription = "Importar CSV") },
+                                label = "Importar archivo",
+                                icon = { Icon(Icons.Default.Description, contentDescription = "Importar archivo") },
                                 onClick = {
                                     fabExpanded = false
-                                    // Aceptamos CSV y variantes comunes de texto
-                                    openCsvLauncher.launch(arrayOf("text/csv", "text/*"))
+                                    openImportLauncher.launch(
+                                        arrayOf(
+                                            "text/*",
+                                            "application/vnd.ms-excel",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            "application/vnd.google-apps.spreadsheet"
+                                        )
+                                    )
                                 }
                             )
                             // Escanear

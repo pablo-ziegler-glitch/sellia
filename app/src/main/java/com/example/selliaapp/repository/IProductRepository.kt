@@ -47,18 +47,18 @@ interface IProductRepository {
     // ---------- Stock ----------
     suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean
 
-    // ---------- CSV: filas parseadas ----------
+    // ---------- Archivo tabular: filas parseadas ----------
     suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>)
 
-    // ---------- CSV: desde archivo ----------
+    // ---------- Archivo tabular: desde archivo ----------
     enum class ImportStrategy { Append, Replace } // espejo del enum, por conveniencia
     suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult
-    suspend fun importProductsFromCsv(
+    suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,
         strategy: ProductRepository.ImportStrategy // se permite el tipo del repo legacy
     ): ImportResult
-    suspend fun importFromCsv(
+    suspend fun importFromFile(
         resolver: ContentResolver,
         uri: Uri,
         strategy: ProductRepository.ImportStrategy

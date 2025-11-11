@@ -23,7 +23,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,6 +35,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.model.ExpenseTemplate
 import com.example.selliaapp.repository.ExpenseRepository
+import com.example.selliaapp.ui.components.BackTopAppBar
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,7 +51,7 @@ fun ExpenseTemplatesScreen(
     var editing by remember { mutableStateOf<ExpenseTemplate?>(null) }
 
     Scaffold(
-        topBar = {  TopAppBar(title = { Text("Tipos de Gasto") }) },
+        topBar = { BackTopAppBar(title = "Tipos de Gasto", onBack = onBack) },
         floatingActionButton = {
             FloatingActionButton(onClick = { editing = null; showEditor = true }) { Text("+") }
         }
