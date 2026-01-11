@@ -26,6 +26,7 @@ import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
+import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.ProductRepository
@@ -107,6 +108,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideProviderDao(db: AppDatabase): ProviderDao = db.providerDao()
+
+    @Provides
+    @Singleton
+    fun provideVariantDao(db: AppDatabase): VariantDao = db.variantDao()
 
 
     // -----------------------------
