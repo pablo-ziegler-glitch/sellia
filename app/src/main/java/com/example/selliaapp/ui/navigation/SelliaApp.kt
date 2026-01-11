@@ -47,6 +47,7 @@ import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoicesScreen
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.providers.ProviderPaymentsScreen
+import com.example.selliaapp.ui.screens.providers.ProviderSuggestionsScreen
 import com.example.selliaapp.ui.screens.providers.ProvidersHubScreen
 import com.example.selliaapp.ui.screens.reports.ReportsScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
@@ -63,6 +64,8 @@ import com.example.selliaapp.viewmodel.ClientPurchasesViewModel
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
+import com.example.selliaapp.viewmodel.ProviderSuggestionsViewModel
+import com.example.selliaapp.viewmodel.ProvidersHubViewModel
 import com.example.selliaapp.viewmodel.QuickReorderViewModel
 import com.example.selliaapp.viewmodel.QuickStockAdjustViewModel
 import com.example.selliaapp.viewmodel.ReportsViewModel
@@ -477,10 +480,20 @@ fun SelliaApp(
 
             // ---------- PROVEEDORES ----------
             composable(Routes.ProvidersHub.route) {
+                val hubVm: ProvidersHubViewModel = hiltViewModel()
+                val hubState by hubVm.state.collectAsState()
                 ProvidersHubScreen(
                     onManageProviders = { navController.navigate(Routes.ManageProviders.route) },
                     onProviderInvoices = { navController.navigate(Routes.ProviderInvoices.route) },
                     onProviderPayments = { navController.navigate(Routes.ProviderPayments.route) },
+                    onSuggestions = { navController.navigate(Routes.ProviderSuggestions.route) },
+                    lowStockAlerts = hubState.lowStockAlerts,
+                    onAlertCreateOrder = { productId ->
+                        navController.navigate(Routes.QuickReorder.withProduct(productId))
+                    },
+                    onAlertAdjustStock = { productId ->
+                        navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
+                    },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -510,6 +523,17 @@ fun SelliaApp(
             composable(Routes.ProviderPayments.route) {
                 val invRepo = hiltViewModel<ProviderInvoicesEntryPoint>().repo
                 ProviderPaymentsScreen(repo = invRepo, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.ProviderSuggestions.route) {
+                val vm: ProviderSuggestionsViewModel = hiltViewModel()
+                ProviderSuggestionsScreen(
+                    vm = vm,
+                    onCreateOrder = { productId ->
+                        navController.navigate(Routes.QuickReorder.withProduct(productId))
+                    },
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             // ---------- GASTOS ----------

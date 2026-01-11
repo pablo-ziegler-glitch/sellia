@@ -10,6 +10,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.dashboard.LowStockProduct
+import com.example.selliaapp.data.model.stock.ProductSalesSummary
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
@@ -72,6 +73,33 @@ interface ProductDao {
         """
     )
     fun observeLowStock(limit: Int): Flow<List<LowStockProduct>>
+
+    /**
+     * Ventas recientes por producto (basado en movimientos de stock).
+     */
+    @Query(
+        """
+        SELECT p.id AS productId,
+               p.name AS name,
+               p.quantity AS quantity,
+               COALESCE(p.minStock, 0) AS minStock,
+               p.providerId AS providerId,
+               p.providerName AS providerName,
+               COALESCE(SUM(CASE WHEN sm.delta < 0 THEN -sm.delta ELSE 0 END), 0) AS soldUnits
+        FROM products p
+        LEFT JOIN stock_movements sm
+            ON sm.productId = p.id
+           AND sm.reason = :saleReason
+           AND sm.ts BETWEEN :fromTs AND :toTs
+        GROUP BY p.id
+        ORDER BY soldUnits DESC, p.name COLLATE NOCASE ASC
+        """
+    )
+    suspend fun getSalesSummary(
+        fromTs: java.time.Instant,
+        toTs: java.time.Instant,
+        saleReason: String
+    ): List<ProductSalesSummary>
 
     // --------- Escrituras ---------
 

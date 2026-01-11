@@ -50,6 +50,7 @@ sealed class Routes(val route: String) {
         fun build(id: Int) = "provider_invoice_detail?invoiceId=$id"
     }
     object ProviderPayments : Routes("provider_payments")              // pendientes
+    object ProviderSuggestions : Routes("provider_suggestions")
 
     // ---------- NUEVO: Gastos ----------
     object ExpensesHub : Routes("expenses_hub")

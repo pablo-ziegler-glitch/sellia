@@ -24,6 +24,7 @@ import com.example.selliaapp.data.mappers.toModel
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.model.Product
 import com.example.selliaapp.data.model.dashboard.LowStockProduct
+import com.example.selliaapp.data.model.stock.ReorderSuggestion
 import com.example.selliaapp.data.model.stock.StockAdjustmentReason
 import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.data.model.stock.StockMovementWithProduct
@@ -37,7 +38,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlin.math.max
+import kotlin.math.ceil
 
 
 /**
@@ -466,6 +469,44 @@ class ProductRepository(
     /** Top-N de productos con stock crítico para el dashboard. */
     fun lowStockAlerts(limit: Int = 5): Flow<List<LowStockProduct>> =
         productDao.observeLowStock(limit)
+
+    /**
+     * Sugerencias de reposición basadas en ventas recientes.
+     */
+    suspend fun getReorderSuggestions(
+        windowDays: Int = 14,
+        targetCoverageDays: Int = 14,
+        limit: Int = 20
+    ): List<ReorderSuggestion> = withContext(io) {
+        val safeWindow = windowDays.coerceAtLeast(1)
+        val now = Instant.now()
+        val from = now.minus(safeWindow.toLong(), ChronoUnit.DAYS)
+        val sales = productDao.getSalesSummary(from, now, StockMovementReasons.SALE)
+        sales.mapNotNull { summary ->
+            val avgDaily = summary.soldUnits.toDouble() / safeWindow.toDouble()
+            val projectedDays = if (avgDaily > 0) summary.quantity / avgDaily else null
+            val desiredStock = max(
+                summary.minStock,
+                ceil(avgDaily * targetCoverageDays).toInt()
+            )
+            val suggested = (desiredStock - summary.quantity).coerceAtLeast(0)
+            if (suggested <= 0) return@mapNotNull null
+            ReorderSuggestion(
+                productId = summary.productId,
+                name = summary.name,
+                providerId = summary.providerId,
+                providerName = summary.providerName,
+                currentStock = summary.quantity,
+                minStock = summary.minStock,
+                soldLastDays = summary.soldUnits,
+                windowDays = safeWindow,
+                avgDailySales = avgDaily,
+                projectedDaysOfStock = projectedDays,
+                suggestedOrderQty = suggested
+            )
+        }.sortedByDescending { it.suggestedOrderQty }
+            .take(limit)
+    }
 
     /** Alta de producto (alias más semántico para la UI). */
     suspend fun addProduct(p: ProductEntity): Int = insert(p)
