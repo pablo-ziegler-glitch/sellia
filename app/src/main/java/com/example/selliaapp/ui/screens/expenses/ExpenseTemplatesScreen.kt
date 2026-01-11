@@ -59,9 +59,13 @@ fun ExpenseTemplatesScreen(
         LazyColumn(Modifier.padding(inner).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(items) { t ->
                 ElevatedCard(Modifier.fillMaxWidth()) {
-                    ListItem(
-                        headlineContent = { Text(t.name) },
-                        supportingContent = { Text("Obligatorio: ${t.required}  •  Monto sugerido: ${t.defaultAmount ?: "-"}") },
+                        ListItem(
+                            headlineContent = { Text(t.name) },
+                            supportingContent = {
+                                Text(
+                                    "Categoría: ${t.category}  •  Obligatorio: ${t.required}  •  Monto sugerido: ${t.defaultAmount ?: "-"}"
+                                )
+                            },
                         trailingContent = {
                             Row {
                                 IconButton(onClick = { editing = t; showEditor = true }) {
@@ -97,6 +101,7 @@ private fun TemplateEditorDialog(
     onSave: (ExpenseTemplate) -> Unit
 ) {
     var name by remember { mutableStateOf(TextFieldValue(initial?.name.orEmpty())) }
+    var category by remember { mutableStateOf(TextFieldValue(initial?.category.orEmpty())) }
     var amount by remember { mutableStateOf(TextFieldValue(initial?.defaultAmount?.toString().orEmpty())) }
     var required by remember { mutableStateOf(initial?.required ?: false) }
 
@@ -106,6 +111,7 @@ private fun TemplateEditorDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nombre *") })
+                OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Categoría *") })
                 OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Monto sugerido (opcional)") })
                 Row { Checkbox(checked = required, onCheckedChange = { required = it }); Text("Obligatorio") }
             }
@@ -116,6 +122,7 @@ private fun TemplateEditorDialog(
                 onSave(
                     base.copy(
                         name = name.text.trim(),
+                        category = category.text.trim().ifBlank { "General" },
                         defaultAmount = amount.text.toDoubleOrNull(),
                         required = required
                     )

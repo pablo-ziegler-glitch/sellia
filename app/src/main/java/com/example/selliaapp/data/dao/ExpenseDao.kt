@@ -6,6 +6,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.example.selliaapp.data.model.ExpenseCategoryBudget
 import com.example.selliaapp.data.model.ExpenseRecord
 import com.example.selliaapp.data.model.ExpenseStatus
 import com.example.selliaapp.data.model.ExpenseTemplate
@@ -40,9 +41,45 @@ interface ExpenseRecordDao {
         status: ExpenseStatus?
     ): Flow<List<ExpenseRecord>>
 
+    @Query("""
+        SELECT categorySnapshot AS category,
+               SUM(amount) AS total
+        FROM expense_records
+        WHERE month = :month AND year = :year
+        GROUP BY categorySnapshot
+        ORDER BY categorySnapshot COLLATE NOCASE
+    """)
+    suspend fun sumByCategory(month: Int, year: Int): List<CategoryTotal>
+
+    @Query("""
+        SELECT year AS year,
+               month AS month,
+               SUM(amount) AS total
+        FROM expense_records
+        GROUP BY year, month
+        ORDER BY year DESC, month DESC
+    """)
+    suspend fun sumByMonth(): List<MonthlyTotal>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(r: ExpenseRecord): Long
 
     @Delete
     suspend fun delete(r: ExpenseRecord): Int
+}
+
+@Dao
+interface ExpenseBudgetDao {
+    @Query("""
+        SELECT * FROM expense_category_budgets
+        WHERE month = :month AND year = :year
+        ORDER BY category COLLATE NOCASE
+    """)
+    fun observeByMonth(month: Int, year: Int): Flow<List<ExpenseCategoryBudget>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(budget: ExpenseCategoryBudget): Long
+
+    @Delete
+    suspend fun delete(budget: ExpenseCategoryBudget): Int
 }

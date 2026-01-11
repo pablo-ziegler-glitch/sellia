@@ -15,10 +15,12 @@ data class ExpenseRecord(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val templateId: Int,
     val nameSnapshot: String,   // guardamos el nombre del template en el momento
+    val categorySnapshot: String = "General",
     val amount: Double,
     val month: Int,
     val year: Int,
-    val status: ExpenseStatus = ExpenseStatus.IMPAGO
+    val status: ExpenseStatus = ExpenseStatus.IMPAGO,
+    val receiptUris: List<String> = emptyList()
 )
 
 enum class ExpenseStatus { PAGO, IMPAGO, EN_PROCESO, EN_MORA }

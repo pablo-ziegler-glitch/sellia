@@ -38,6 +38,7 @@ import com.example.selliaapp.ui.screens.config.AddUserScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseTemplatesScreen
+import com.example.selliaapp.ui.screens.expenses.ExpensesCashflowScreen
 import com.example.selliaapp.ui.screens.expenses.ExpensesHubScreen
 import com.example.selliaapp.ui.screens.manage.ManageCustomersScreen
 import com.example.selliaapp.ui.screens.manage.ManageProductsScreen
@@ -517,6 +518,7 @@ fun SelliaApp(
                 ExpensesHubScreen(
                     onTemplates = { navController.navigate(Routes.ExpenseTemplates.route) },
                     onEntries = { navController.navigate(Routes.ExpenseEntries.route) },
+                    onCashflow = { navController.navigate(Routes.ExpensesCashflow.route) },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -529,6 +531,11 @@ fun SelliaApp(
             composable(Routes.ExpenseEntries.route) {
                 val repo = hiltViewModel<ExpensesEntryPoint>().repo
                 ExpenseEntriesScreen(repo = repo, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.ExpensesCashflow.route) {
+                val repo = hiltViewModel<ExpensesEntryPoint>().repo
+                ExpensesCashflowScreen(repo = repo, onBack = { navController.popBackStack() })
             }
 
 

@@ -47,4 +47,16 @@ interface ProviderInvoiceDao {
 
     @Update
     suspend fun updateInvoice(invoice: ProviderInvoice): Int
+
+    @Query("""
+        SELECT CAST(strftime('%Y', (paymentDateMillis/1000), 'unixepoch') AS INTEGER) AS year,
+               CAST(strftime('%m', (paymentDateMillis/1000), 'unixepoch') AS INTEGER) AS month,
+               SUM(COALESCE(paymentAmount, total)) AS total
+        FROM provider_invoices
+        WHERE status = :status
+          AND paymentDateMillis IS NOT NULL
+        GROUP BY year, month
+        ORDER BY year DESC, month DESC
+    """)
+    suspend fun sumPaidByMonth(status: ProviderInvoiceStatus = ProviderInvoiceStatus.PAGA): List<MonthlyTotal>
 }

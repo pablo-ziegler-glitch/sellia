@@ -13,6 +13,7 @@ import androidx.room.PrimaryKey
 data class ExpenseTemplate(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
+    val category: String = "General",
     val defaultAmount: Double? = null,
     val required: Boolean = false
 )

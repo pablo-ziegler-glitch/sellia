@@ -1,7 +1,6 @@
-plugins {
-    kotlin("android") version "1.6.0"
-    kotlin("kapt") version "1.6.0"
-}
+apply(plugin = "com.android.application")
+apply(plugin = "org.jetbrains.kotlin.android")
+apply(plugin = "org.jetbrains.kotlin.kapt")
 
 android {
     compileSdk = 35
@@ -24,5 +23,6 @@ dependencies {
     implementation(platform("com.example:catalog:1.0")) // using the version catalog
     implementation("com.squareup.retrofit2:retrofit")
     implementation("com.squareup.retrofit2:converter-gson")
+    testImplementation("junit:junit:4.13.2")
     // other dependencies without duplicates
 }

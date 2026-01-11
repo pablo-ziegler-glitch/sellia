@@ -55,6 +55,7 @@ sealed class Routes(val route: String) {
     object ExpensesHub : Routes("expenses_hub")
     object ExpenseTemplates : Routes("expense_templates")
     object ExpenseEntries : Routes("expense_entries")
+    object ExpensesCashflow : Routes("expenses_cashflow")
 
 
 

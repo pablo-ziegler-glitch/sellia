@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.CustomerDao
+import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
 import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
@@ -27,6 +28,7 @@ import com.example.selliaapp.data.local.entity.ReportDataEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.local.entity.VariantEntity
+import com.example.selliaapp.data.model.ExpenseCategoryBudget
 import com.example.selliaapp.data.model.ExpenseRecord
 import com.example.selliaapp.data.model.ExpenseTemplate
 import com.example.selliaapp.data.model.Invoice
@@ -56,11 +58,12 @@ import com.example.selliaapp.data.model.User
         InvoiceItem::class,
         ExpenseTemplate::class,
         ExpenseRecord::class,
+        ExpenseCategoryBudget::class,
         ProviderInvoice::class,
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 26,
+    version = 27,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -76,9 +79,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun providerInvoiceDao(): ProviderInvoiceDao
     abstract fun expenseTemplateDao(): ExpenseTemplateDao
     abstract fun expenseRecordDao(): ExpenseRecordDao
+    abstract fun expenseBudgetDao(): ExpenseBudgetDao
     abstract fun stockMovementDao(): StockMovementDao
     abstract fun categoryDao(): CategoryDao
     abstract fun variantDao(): VariantDao
     abstract fun syncOutboxDao(): SyncOutboxDao
 }
-
