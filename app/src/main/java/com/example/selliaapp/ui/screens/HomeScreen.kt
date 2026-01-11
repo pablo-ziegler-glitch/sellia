@@ -44,9 +44,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.viewmodel.HomeViewModel
+import com.example.selliaapp.viewmodel.HomeKpi
 import java.text.NumberFormat
 import java.util.Locale
-import java.time.format.DateTimeFormatter
 
 /**
  * Pantalla principal con búsqueda, accesos rápidos y listado de ventas recientes.
@@ -102,29 +102,20 @@ fun HomeScreen(
                 }
             }
 
-            ElevatedCard {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(36.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = "Total vendido (mes)",
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (state.isLoading) "Cargando…" else currency.format(state.monthTotal),
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-                    }
-                }
-            }
+            KpiModuleContainer(
+                isLoading = state.isLoading,
+                selectedKpis = state.selectedKpis,
+                dailySales = state.dailySales,
+                dailyMargin = state.dailyMargin,
+                averageTicket = state.averageTicket,
+                monthTotal = state.monthTotal,
+                currency = currency
+            )
+
+            PendingTasksSection(
+                restockCount = state.lowStockAlerts.size,
+                overdueInvoices = state.overdueProviderInvoices
+            )
 
             // Botonera superior (puedes ajustar layout si querés 3 por fila)
             Column(
@@ -264,6 +255,157 @@ fun HomeScreen(
                 Text(
                     "VENDER",
                     style = MaterialTheme.typography.headlineMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun KpiModuleContainer(
+    isLoading: Boolean,
+    selectedKpis: List<HomeKpi>,
+    dailySales: Double,
+    dailyMargin: Double,
+    averageTicket: Double,
+    monthTotal: Double,
+    currency: NumberFormat
+) {
+    Card(elevation = CardDefaults.cardElevation(2.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "KPIs",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            Text(
+                text = "Total vendido (mes): ${if (isLoading) "Cargando…" else currency.format(monthTotal)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            selectedKpis.chunked(2).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    rowItems.forEach { kpi ->
+                        KpiCard(
+                            modifier = Modifier.weight(1f),
+                            title = kpi.label,
+                            value = if (isLoading) {
+                                "Cargando…"
+                            } else {
+                                currency.format(kpiValue(kpi, dailySales, dailyMargin, averageTicket))
+                            }
+                        )
+                    }
+                    if (rowItems.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KpiCard(
+    modifier: Modifier,
+    title: String,
+    value: String
+) {
+    ElevatedCard(
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
+    }
+}
+
+private fun kpiValue(
+    kpi: HomeKpi,
+    dailySales: Double,
+    dailyMargin: Double,
+    averageTicket: Double
+): Double =
+    when (kpi) {
+        HomeKpi.DAILY_SALES -> dailySales
+        HomeKpi.MARGIN -> dailyMargin
+        HomeKpi.AVG_TICKET -> averageTicket
+    }
+
+@Composable
+private fun PendingTasksSection(
+    restockCount: Int,
+    overdueInvoices: Int
+) {
+    Card(elevation = CardDefaults.cardElevation(2.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.ViewList,
+                    contentDescription = null
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Tareas pendientes",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Reposición",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = restockCount.toString(),
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            Divider()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Facturas vencidas",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = overdueInvoices.toString(),
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
         }
