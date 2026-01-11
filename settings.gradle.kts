@@ -7,7 +7,11 @@ pluginManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
+        maven(url = "https://maven.aliyun.com/repository/google")
+        maven(url = "https://maven.google.com")
         mavenCentral()
+        maven(url = "https://maven.aliyun.com/repository/central")
+        maven(url = "https://repo1.maven.org/maven2")
         gradlePluginPortal()
     }
 }

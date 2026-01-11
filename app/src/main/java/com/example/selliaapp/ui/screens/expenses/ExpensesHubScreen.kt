@@ -21,6 +21,7 @@ import com.example.selliaapp.ui.components.BackTopAppBar
 fun ExpensesHubScreen(
     onTemplates: () -> Unit,
     onEntries: () -> Unit,
+    onCashflow: () -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(topBar = { BackTopAppBar(title = "Gastos", onBack = onBack) }) { padding ->
@@ -36,6 +37,7 @@ fun ExpensesHubScreen(
         ) {
             Button(onClick = onTemplates) { Text("ABM de Tipos de Gasto") }
             Button(onClick = onEntries) { Text("Carga/Listado de Gastos") }
+            Button(onClick = onCashflow) { Text("Cashflow (Ventas + Gastos + Proveedores)") }
         }
     }
 }

@@ -2,6 +2,8 @@ package com.example.selliaapp.data.local.converters
 
 
 import androidx.room.TypeConverter
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -13,6 +15,7 @@ import java.time.ZoneOffset
  * Se usa sólo en @TypeConverters(Converters::class) del AppDatabase.
  */
 object Converters {
+    private val gson = Gson()
 
 
     // ----- LocalDate -----
@@ -41,4 +44,16 @@ object Converters {
     @TypeConverter
     fun ldtToEpochMillis(ldt: LocalDateTime?): Long? =
         ldt?.toInstant(ZoneOffset.UTC)?.toEpochMilli()
+
+    // ----- List<String> -----
+    @TypeConverter
+    fun stringListToJson(value: List<String>?): String? =
+        value?.let { gson.toJson(it) }
+
+    @TypeConverter
+    fun jsonToStringList(value: String?): List<String> {
+        if (value.isNullOrBlank()) return emptyList()
+        val type = object : TypeToken<List<String>>() {}.type
+        return gson.fromJson(value, type)
+    }
 }

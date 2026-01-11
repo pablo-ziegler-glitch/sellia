@@ -15,6 +15,8 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -36,6 +38,8 @@ import com.example.selliaapp.data.model.ExpenseStatus
 import com.example.selliaapp.data.model.ExpenseTemplate
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.ui.components.BackTopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -116,7 +120,10 @@ fun ExpenseEntriesScreen(
                     ElevatedCard(Modifier.fillMaxWidth()) {
                         ListItem(
                             headlineContent = { Text("${r.nameSnapshot}  •  ${"%.2f".format(r.amount)}") },
-                            supportingContent = { Text("Mes/Año: ${r.month}/${r.year}  •  Estado: ${r.status}") }
+                            supportingContent = {
+                                val attachments = if (r.receiptUris.isEmpty()) "Sin adjuntos" else "${r.receiptUris.size} adjunto(s)"
+                                Text("Categoría: ${r.categorySnapshot}  •  Mes/Año: ${r.month}/${r.year}  •  Estado: ${r.status}  •  $attachments")
+                            }
                         )
                     }
                 }
@@ -145,6 +152,8 @@ private fun NewExpenseDialog(
     var month by remember { mutableStateOf(TextFieldValue((Calendar.getInstance().get(Calendar.MONTH) + 1).toString())) }
     var year by remember { mutableStateOf(TextFieldValue(Calendar.getInstance().get(Calendar.YEAR).toString())) }
     var status by remember { mutableStateOf(ExpenseStatus.IMPAGO) }
+    var receiptInput by remember { mutableStateOf(TextFieldValue("")) }
+    var receiptUris by remember { mutableStateOf(listOf<String>()) }
 
     LaunchedEffect(selected) {
         if (selected?.defaultAmount != null && amount.text.isBlank()) {
@@ -194,6 +203,33 @@ private fun NewExpenseDialog(
                         }
                     }
                 }
+                OutlinedTextField(
+                    value = receiptInput,
+                    onValueChange = { receiptInput = it },
+                    label = { Text("Adjuntar ticket (URI o ruta)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                TextButton(
+                    onClick = {
+                        val value = receiptInput.text.trim()
+                        if (value.isNotBlank()) {
+                            receiptUris = receiptUris + value
+                            receiptInput = TextFieldValue("")
+                        }
+                    }
+                ) { Text("Agregar adjunto") }
+                if (receiptUris.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        receiptUris.forEach { uri ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(uri, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { receiptUris = receiptUris - uri }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Quitar adjunto")
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -206,10 +242,12 @@ private fun NewExpenseDialog(
                     ExpenseRecord(
                         templateId = t.id,
                         nameSnapshot = t.name,
+                        categorySnapshot = t.category,
                         amount = amt,
                         month = m,
                         year = y,
-                        status = status
+                        status = status,
+                        receiptUris = receiptUris
                     )
                 )
             }) { Text("Guardar") }

@@ -16,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.CustomerDao
+import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
 import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
@@ -94,6 +95,7 @@ object AppModule {
     @Provides fun provideProviderInvoiceDao(db: AppDatabase): ProviderInvoiceDao = db.providerInvoiceDao()
     @Provides fun provideExpenseTemplateDao(db: AppDatabase): ExpenseTemplateDao = db.expenseTemplateDao()
     @Provides fun provideExpenseRecordDao(db: AppDatabase): ExpenseRecordDao = db.expenseRecordDao()
+    @Provides fun provideExpenseBudgetDao(db: AppDatabase): ExpenseBudgetDao = db.expenseBudgetDao()
 
 
 
@@ -181,10 +183,16 @@ object AppModule {
     @Singleton
     fun provideExpenseRepository(
         templateDao: ExpenseTemplateDao,
-        recordDao: ExpenseRecordDao
+        recordDao: ExpenseRecordDao,
+        budgetDao: ExpenseBudgetDao,
+        invoiceDao: InvoiceDao,
+        providerInvoiceDao: ProviderInvoiceDao
     ): ExpenseRepository = ExpenseRepository(
         tDao = templateDao,
-        rDao = recordDao
+        rDao = recordDao,
+        bDao = budgetDao,
+        invoiceDao = invoiceDao,
+        providerInvoiceDao = providerInvoiceDao
     )
 
     // --- Dispatchers ---

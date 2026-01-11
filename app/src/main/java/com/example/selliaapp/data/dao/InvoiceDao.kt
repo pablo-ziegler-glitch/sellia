@@ -144,6 +144,16 @@ interface InvoiceDao {
     """)
     suspend fun sumTotalBetween(startMillis: Long, endMillis: Long): Double
 
+    @Query("""
+        SELECT CAST(strftime('%Y', (dateMillis/1000), 'unixepoch') AS INTEGER) AS year,
+               CAST(strftime('%m', (dateMillis/1000), 'unixepoch') AS INTEGER) AS month,
+               SUM(total) AS total
+        FROM invoices
+        GROUP BY year, month
+        ORDER BY year DESC, month DESC
+    """)
+    suspend fun sumSalesByMonth(): List<MonthlyTotal>
+
 
     // Búsqueda por cliente (se filtra por customerName conteniendo el query)
     @Transaction
@@ -158,8 +168,6 @@ interface InvoiceDao {
 
 
 }
-
-
 
 
 
