@@ -8,13 +8,17 @@ import com.example.selliaapp.data.model.sales.InvoiceDraft
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.InvoiceRepository
 import com.example.selliaapp.ui.state.CartItemUi
+import com.example.selliaapp.ui.state.CustomerSummaryUi
+import com.example.selliaapp.ui.state.OrderType
 import com.example.selliaapp.ui.state.PaymentMethod
 import com.example.selliaapp.ui.state.SellUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,6 +32,7 @@ class SellViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(SellUiState())
     val state: StateFlow<SellUiState> = _state.asStateFlow()
+    private var customerSummaryJob: Job? = null
 
     // ----- Escaneo: helper de resultado -----
     data class ScanResult(val foundId: Int?, val prefillBarcode: String)
@@ -153,18 +158,28 @@ class SellViewModel @Inject constructor(
     private fun recalc(base: SellUiState, nuevosItems: List<CartItemUi>? = null): SellUiState {
         val items = nuevosItems ?: base.items
         val subtotal = items.sumOf { it.unitPrice * it.qty }
+        val promoDiscount = items.sumOf { item ->
+            val eligible = item.qty / 3
+            eligible * item.unitPrice
+        }
         val violations = items
             .filter { it.qty > it.maxStock }
             .associate { it.productId to it.maxStock }
-        val descuento = subtotal * base.discountPercent / 100.0
-        val baseConDescuento = subtotal - descuento
+        val baseAfterPromo = (subtotal - promoDiscount).coerceAtLeast(0.0)
+        val customerDiscount = baseAfterPromo * base.customerDiscountPercent / 100.0
+        val manualDiscount = baseAfterPromo * base.discountPercent / 100.0
+        val totalDiscount = promoDiscount + customerDiscount + manualDiscount
+        val baseConDescuento = (subtotal - totalDiscount).coerceAtLeast(0.0)
         val recargo = baseConDescuento * base.surchargePercent / 100.0
         val total = baseConDescuento + recargo
 
         return base.copy(
             items = items,
             subtotal = subtotal,
-            discountAmount = descuento,
+            discountAmount = totalDiscount,
+            manualDiscountAmount = manualDiscount,
+            customerDiscountAmount = customerDiscount,
+            promoDiscountAmount = promoDiscount,
             surchargeAmount = recargo,
             total = total,
             stockViolations = violations
@@ -196,6 +211,50 @@ class SellViewModel @Inject constructor(
             ui.copy(paymentNotes = notes.take(280))
         }
     }
+
+    fun updateOrderType(orderType: OrderType) {
+        _state.update { ui ->
+            ui.copy(orderType = orderType)
+        }
+    }
+
+    fun setCustomer(customerId: Int?, customerName: String?) {
+        customerSummaryJob?.cancel()
+        _state.update { ui ->
+            val next = ui.copy(
+                selectedCustomerId = customerId,
+                selectedCustomerName = customerName,
+                customerSummary = null,
+                customerDiscountPercent = 0
+            )
+            recalc(next)
+        }
+        if (customerName.isNullOrBlank()) {
+            return
+        }
+        customerSummaryJob = viewModelScope.launch {
+            invoiceRepo.observeInvoicesByCustomerQuery(customerName)
+                .collect { invoices ->
+                    val totalSpent = invoices.sumOf { it.invoice.total }
+                    val purchaseCount = invoices.size
+                    val lastPurchaseMillis = invoices.maxOfOrNull { it.invoice.dateMillis }
+                    val discountPercent = calculateCustomerDiscountPercent(totalSpent, purchaseCount)
+                    _state.update { ui ->
+                        recalc(
+                            ui.copy(
+                                customerSummary = CustomerSummaryUi(
+                                    totalSpent = totalSpent,
+                                    purchaseCount = purchaseCount,
+                                    lastPurchaseMillis = lastPurchaseMillis
+                                ),
+                                customerDiscountPercent = discountPercent
+                            )
+                        )
+                    }
+                }
+        }
+    }
+
     fun placeOrder(
         customerId: Long? = null,
         customerName: String? = null,
@@ -210,6 +269,8 @@ class SellViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                val resolvedCustomerId = customerId ?: current.selectedCustomerId?.toLong()
+                val resolvedCustomerName = customerName ?: current.selectedCustomerName
                 val draft = InvoiceDraft(
                     items = current.items.map { item ->
                         CartItem(
@@ -222,14 +283,14 @@ class SellViewModel @Inject constructor(
                     subtotal = current.subtotal,
                     taxes = 0.0,
                     total = current.total,
-                    discountPercent = current.discountPercent,
+                    discountPercent = current.totalDiscountPercent,
                     discountAmount = current.discountAmount,
                     surchargePercent = current.surchargePercent,
                     surchargeAmount = current.surchargeAmount,
                     paymentMethod = current.paymentMethod.name,
                     paymentNotes = current.paymentNotes.takeIf { it.isNotBlank() },
-                    customerId = customerId,
-                    customerName = customerName
+                    customerId = resolvedCustomerId,
+                    customerName = resolvedCustomerName
                 )
 
                 val result = invoiceRepo.confirmInvoice(draft)
@@ -260,3 +321,12 @@ data class CheckoutResult(
     val surchargePercent: Int,
     val notes: String
 )
+
+private fun calculateCustomerDiscountPercent(totalSpent: Double, purchaseCount: Int): Int {
+    return when {
+        totalSpent >= 150000 || purchaseCount >= 12 -> 10
+        totalSpent >= 80000 || purchaseCount >= 6 -> 5
+        totalSpent >= 40000 || purchaseCount >= 3 -> 3
+        else -> 0
+    }
+}

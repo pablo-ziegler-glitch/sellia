@@ -51,10 +51,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.selliaapp.ui.navigation.Routes.SellRoutes.SELL_FLOW_ROUTE
+import com.example.selliaapp.ui.state.CustomerSummaryUi
+import com.example.selliaapp.ui.state.OrderType
 import com.example.selliaapp.ui.state.PaymentMethod
 import com.example.selliaapp.viewmodel.SellViewModel
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,6 +76,7 @@ fun CheckoutScreen(
     val vm: SellViewModel = hiltViewModel(parentEntry)
     val state by vm.state.collectAsStateWithLifecycle()
     val moneda = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/uuuu") }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var isProcessing by remember { mutableStateOf(false) }
@@ -153,15 +159,40 @@ fun CheckoutScreen(
                         }
                     }
                     item {
+                        if (!state.selectedCustomerName.isNullOrBlank()) {
+                            CustomerSummaryCard(
+                                customerName = state.selectedCustomerName ?: "",
+                                summary = state.customerSummary,
+                                moneda = moneda,
+                                dateFormatter = dateFormatter
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+                    item {
                         Card(elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
                             Column(Modifier.padding(16.dp)) {
                                 Text("Detalle del cobro", style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(8.dp))
                                 ResumenCheckoutFila("Subtotal", moneda.format(state.subtotal))
+                                if (state.promoDiscountAmount > 0) {
+                                    ResumenCheckoutFila(
+                                        etiqueta = "Promo 3x2",
+                                        valor = "-${moneda.format(state.promoDiscountAmount)}",
+                                        colorValor = Color(0xFF2E7D32)
+                                    )
+                                }
+                                if (state.customerDiscountPercent > 0) {
+                                    ResumenCheckoutFila(
+                                        etiqueta = "Descuento cliente (${state.customerDiscountPercent}%)",
+                                        valor = "-${moneda.format(state.customerDiscountAmount)}",
+                                        colorValor = Color(0xFF2E7D32)
+                                    )
+                                }
                                 if (state.discountPercent > 0) {
                                     ResumenCheckoutFila(
-                                        etiqueta = "Descuento (${state.discountPercent}%)",
-                                        valor = "-${moneda.format(state.discountAmount)}",
+                                        etiqueta = "Descuento manual (${state.discountPercent}%)",
+                                        valor = "-${moneda.format(state.manualDiscountAmount)}",
                                         colorValor = Color(0xFF2E7D32)
                                     )
                                 }
@@ -190,6 +221,15 @@ fun CheckoutScreen(
                         }
                     }
                 }
+
+                Spacer(Modifier.height(16.dp))
+
+                Text("Tipo de pedido", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                TipoPedidoSelector(
+                    seleccionado = state.orderType,
+                    onSeleccion = { vm.updateOrderType(it) }
+                )
 
                 Spacer(Modifier.height(16.dp))
 
@@ -330,6 +370,83 @@ private fun MetodoPagoSelector(
             ) {
                 Text(etiqueta)
             }
+        }
+    }
+}
+
+@Composable
+private fun TipoPedidoSelector(
+    seleccionado: OrderType,
+    onSeleccion: (OrderType) -> Unit
+) {
+    val opciones = listOf(
+        OrderType.INMEDIATA to "Inmediata",
+        OrderType.RESERVA to "Reserva",
+        OrderType.ENVIO to "Envío"
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        opciones.forEach { (tipo, etiqueta) ->
+            val activo = tipo == seleccionado
+            OutlinedButton(
+                onClick = { onSeleccion(tipo) },
+                modifier = Modifier.weight(1f),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (activo) Color.Transparent else MaterialTheme.colorScheme.outline
+                ),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (activo) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    contentColor = if (activo) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(etiqueta)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomerSummaryCard(
+    customerName: String,
+    summary: CustomerSummaryUi?,
+    moneda: NumberFormat,
+    dateFormatter: DateTimeFormatter
+) {
+    Card(elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Cliente", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(6.dp))
+            Text(customerName, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(8.dp))
+            if (summary == null) {
+                Text(
+                    text = "Cargando historial...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                return
+            }
+            ResumenCheckoutFila(
+                etiqueta = "Saldo histórico",
+                valor = moneda.format(summary.totalSpent)
+            )
+            ResumenCheckoutFila(
+                etiqueta = "Compras registradas",
+                valor = summary.purchaseCount.toString()
+            )
+            ResumenCheckoutFila(
+                etiqueta = "Última compra",
+                valor = summary.lastPurchaseMillis?.let {
+                    dateFormatter.format(
+                        Instant.ofEpochMilli(it)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                    )
+                } ?: "-"
+            )
         }
     }
 }

@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.ui.components.CustomerPickerSheet
 import com.example.selliaapp.ui.components.ProductPickerSheet
 import com.example.selliaapp.ui.components.QuantityInputDialog
 import com.example.selliaapp.ui.navigation.Routes
@@ -83,6 +84,7 @@ fun SellScreen(
 ) {
     val ui by sellVm.state.collectAsState()
     val allProducts by productVm.products.collectAsState(initial = emptyList())
+    val customers by customersVm.customers.collectAsState(initial = emptyList())
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
 
 
@@ -104,6 +106,7 @@ fun SellScreen(
     var showPicker by remember { mutableStateOf(false) }
     var showAddOptions by remember { mutableStateOf(false) }
     var askFor by remember { mutableStateOf<ProductEntity?>(null) }
+    var showCustomerPicker by remember { mutableStateOf(false) }
 
     if (showPicker) {
         ProductPickerSheet(
@@ -145,6 +148,17 @@ fun SellScreen(
                     Text("Cerrar")
                 }
             }
+        )
+    }
+
+    if (showCustomerPicker) {
+        CustomerPickerSheet(
+            customers = customers,
+            onPick = { customer ->
+                showCustomerPicker = false
+                sellVm.setCustomer(customer.id, customer.name)
+            },
+            onDismiss = { showCustomerPicker = false }
         )
     }
 
@@ -192,6 +206,48 @@ fun SellScreen(
                 .navigationBarsPadding()
                 .padding(12.dp)
         ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Cliente",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    if (ui.selectedCustomerName.isNullOrBlank()) {
+                        Text(
+                            text = "Sin cliente seleccionado.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(onClick = { showCustomerPicker = true }) {
+                            Text("Elegir cliente")
+                        }
+                    } else {
+                        Text(ui.selectedCustomerName, style = MaterialTheme.typography.bodyMedium)
+                        if (ui.customerDiscountPercent > 0) {
+                            Text(
+                                text = "Descuento cliente: ${ui.customerDiscountPercent}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF2E7D32)
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { showCustomerPicker = true }) {
+                                Text("Cambiar")
+                            }
+                            TextButton(onClick = { sellVm.setCustomer(null, null) }) {
+                                Text("Quitar")
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             TextButton(onClick = { showPicker = true }) { Text("Agregar producto") }
             Spacer(Modifier.height(8.dp))
 
@@ -234,12 +290,28 @@ fun SellScreen(
                                     etiqueta = "Subtotal",
                                     valor = currency.format(ui.subtotal)
                                 )
+                                if (ui.promoDiscountAmount > 0) {
+                                    Spacer(Modifier.height(8.dp))
+                                    ResumenRow(
+                                        etiqueta = "Promo 3x2",
+                                        valor = "-${currency.format(ui.promoDiscountAmount)}",
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
+                                if (ui.customerDiscountPercent > 0) {
+                                    Spacer(Modifier.height(8.dp))
+                                    ResumenRow(
+                                        etiqueta = "Descuento cliente (${ui.customerDiscountPercent}%)",
+                                        valor = "-${currency.format(ui.customerDiscountAmount)}",
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
                                 Spacer(Modifier.height(12.dp))
                                 PorcentajeControl(
-                                    titulo = "Descuento",
+                                    titulo = "Descuento manual",
                                     valor = ui.discountPercent,
                                     onValorChange = { sellVm.setDiscountPercent(it) },
-                                    descripcion = if (ui.discountPercent == 0) "Sin descuento" else "-" + currency.format(ui.discountAmount),
+                                    descripcion = if (ui.discountPercent == 0) "Sin descuento" else "-" + currency.format(ui.manualDiscountAmount),
                                     colorDescripcion = if (ui.discountPercent == 0) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF2E7D32)
                                 )
                                 Spacer(Modifier.height(12.dp))
@@ -392,7 +464,12 @@ fun CartItemRow(
 }
 
 @Composable
-private fun ResumenRow(etiqueta: String, valor: String, resaltar: Boolean = false) {
+private fun ResumenRow(
+    etiqueta: String,
+    valor: String,
+    resaltar: Boolean = false,
+    color: Color? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -405,7 +482,7 @@ private fun ResumenRow(etiqueta: String, valor: String, resaltar: Boolean = fals
         Text(
             text = valor,
             style = if (resaltar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
-            color = if (resaltar) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            color = color ?: if (resaltar) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
         )
     }
 }
@@ -440,5 +517,3 @@ private fun PorcentajeControl(
         Text(descripcion, color = colorDescripcion, style = MaterialTheme.typography.bodySmall)
     }
 }
-
-
