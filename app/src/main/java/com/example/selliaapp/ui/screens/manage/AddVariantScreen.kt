@@ -16,24 +16,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.selliaapp.repository.ProductRepository
-import com.example.selliaapp.viewmodel.ManageProductsViewModel
-import kotlinx.coroutines.launch
+import com.example.selliaapp.viewmodel.AddVariantViewModel
 
 @Composable
 fun AddVariantScreen(
     productId: Int,
-    repo: ProductRepository = hiltViewModel<ManageProductsViewModel>().let { it -> // quick access
-        // Inyección directa sería mejor con @HiltViewModel propio
-        // Para simplificar en este snippet tomamos repo desde VM si ya lo expones;
-        // si no, crea un VM específico para variantes.
-        throw NotImplementedError("Crea un ViewModel para variantes o inyecta repo con Hilt")
-    }
+    viewModel: AddVariantViewModel = hiltViewModel()
 ) {
     var sku by remember { mutableStateOf("") }
     var opt1 by remember { mutableStateOf("") }
@@ -41,8 +33,6 @@ fun AddVariantScreen(
     var qtyText by remember { mutableStateOf("0") }
     var baseText by remember { mutableStateOf("") }
     var taxText by remember { mutableStateOf("") }
-
-    val scope = rememberCoroutineScope()
 
     Column(Modifier
         .verticalScroll(rememberScrollState())
@@ -62,10 +52,15 @@ fun AddVariantScreen(
             val qty = qtyText.toIntOrNull() ?: 0
             val base = baseText.replace(',', '.').toDoubleOrNull()
             val tax = taxText.replace(',', '.').toDoubleOrNull()?.div(100.0)
-            scope.launch {
-                // repo.createVariant(...)
-                // ver nota en el constructor; idealmente usá un VM con @Inject repo
-            }
+            viewModel.addVariant(
+                productId = productId,
+                sku = sku,
+                option1 = opt1,
+                option2 = opt2,
+                quantity = qty,
+                basePrice = base,
+                taxRate = tax
+            )
         }) { Text("Crear variante") }
     }
 }
