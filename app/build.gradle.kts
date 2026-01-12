@@ -10,6 +10,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         release {
@@ -24,5 +25,11 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit")
     implementation("com.squareup.retrofit2:converter-gson")
     testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.truth)
+    testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.espresso.core)
     // other dependencies without duplicates
 }
