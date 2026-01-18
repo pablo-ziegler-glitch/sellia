@@ -42,6 +42,7 @@ fun ConfigScreen(
     onAddUser: () -> Unit,
     onManageProducts: () -> Unit,
     onManageCustomers: () -> Unit,
+    onPricingConfig: () -> Unit,
     onSync: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -93,6 +94,11 @@ fun ConfigScreen(
                     icon = Icons.Filled.Inventory2, // inventario/productos
                     title = "Productos",
                     onClick = onManageProducts
+                )
+                SettingsItem(
+                    icon = Icons.Filled.Inventory2,
+                    title = "Pricing y costos",
+                    onClick = onPricingConfig
                 )
                 SettingsItem(
                     icon = Icons.Filled.Group, // clientes

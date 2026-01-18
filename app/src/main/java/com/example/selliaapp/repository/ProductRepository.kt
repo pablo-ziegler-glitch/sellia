@@ -29,6 +29,7 @@ import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import com.example.selliaapp.data.remote.ProductRemoteDataSource
 import com.example.selliaapp.di.IoDispatcher
+import com.example.selliaapp.pricing.PricingCalculator
 import com.example.selliaapp.sync.CsvImportWorker
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineDispatcher
@@ -51,6 +52,7 @@ class ProductRepository(
     private val productDao: ProductDao,
     private val categoryDao: CategoryDao,
     private val providerDao: ProviderDao,
+    private val pricingConfigRepository: PricingConfigRepository,
     private val firestore: FirebaseFirestore,
     @IoDispatcher private val io: CoroutineDispatcher   // <-- igual que en el VM
 ) {
@@ -123,6 +125,52 @@ class ProductRepository(
         }
     }
 
+    private suspend fun applyAutoPricing(
+        incoming: ProductEntity,
+        existing: ProductEntity? = null,
+        force: Boolean = false
+    ): ProductEntity {
+        val purchasePrice = incoming.purchasePrice ?: existing?.purchasePrice ?: return incoming
+        val hasManualPrices = listOf(
+            incoming.listPrice,
+            incoming.cashPrice,
+            incoming.transferPrice,
+            incoming.price
+        ).any { it != null }
+        val shouldAuto = when {
+            force -> true
+            hasManualPrices -> false
+            incoming.autoPricing -> true
+            existing != null -> existing.autoPricing
+            else -> true
+        }
+        if (!shouldAuto) {
+            return incoming.copy(autoPricing = false)
+        }
+        val settings = pricingConfigRepository.getSettings()
+        val fixedCosts = pricingConfigRepository.getFixedCosts()
+        val mlFixedCostTiers = pricingConfigRepository.getMlFixedCostTiers()
+        val mlShippingTiers = pricingConfigRepository.getMlShippingTiers()
+        val result = PricingCalculator.calculate(
+            purchasePrice = purchasePrice,
+            settings = settings,
+            fixedCosts = fixedCosts,
+            mlFixedCostTiers = mlFixedCostTiers,
+            mlShippingTiers = mlShippingTiers
+        )
+        return incoming.copy(
+            listPrice = result.listPrice,
+            cashPrice = result.cashPrice,
+            transferPrice = result.transferPrice,
+            transferNetPrice = result.transferNetPrice,
+            mlPrice = result.mlPrice,
+            ml3cPrice = result.ml3cPrice,
+            ml6cPrice = result.ml6cPrice,
+            price = incoming.price ?: result.listPrice,
+            autoPricing = true
+        )
+    }
+
     // ---------- Importación tabular: bulkUpsert desde filas parseadas ----------
     suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) = withContext(io) {
         if (rows.isEmpty()) return@withContext
@@ -152,13 +200,16 @@ class ProductRepository(
                     basePrice = priceTrip.base,
                     taxRate = priceTrip.tax,
                     finalPrice = priceTrip.final,
+                    purchasePrice = r.purchasePrice,
                     price = r.price,
                     listPrice = r.listPrice,
                     cashPrice = r.cashPrice,
                     transferPrice = r.transferPrice,
+                    transferNetPrice = r.transferNetPrice,
                     mlPrice = r.mlPrice,
                     ml3cPrice = r.ml3cPrice,
                     ml6cPrice = r.ml6cPrice,
+                    autoPricing = false,
                     quantity = max(0, r.quantity),
                     description = r.description,
                     imageUrl = r.imageUrl,
@@ -171,7 +222,8 @@ class ProductRepository(
                     updatedAt = updated
                 )
 
-                val prepared = if (existing == null) ensureAutoCodes(incoming) else incoming
+                val priced = applyAutoPricing(incoming, existing)
+                val prepared = if (existing == null) ensureAutoCodes(priced) else priced
                 val id = productDao.upsertByKeys(prepared)
                 touchedIds += id
                 val current = productDao.getById(id) ?: return@forEach
@@ -272,13 +324,16 @@ class ProductRepository(
                             basePrice = priceTrip.base,
                             taxRate = priceTrip.tax,
                             finalPrice = priceTrip.final,
+                            purchasePrice = r.purchasePrice,
                             price = r.price, // legacy
                             listPrice = r.listPrice,
                             cashPrice = r.cashPrice,
                             transferPrice = r.transferPrice,
+                            transferNetPrice = r.transferNetPrice,
                             mlPrice = r.mlPrice,
                             ml3cPrice = r.ml3cPrice,
                             ml6cPrice = r.ml6cPrice,
+                            autoPricing = false,
                             quantity = max(0, r.quantity),
                             description = r.description,
                             imageUrl = r.imageUrl,
@@ -290,7 +345,8 @@ class ProductRepository(
                             minStock = r.minStock?.let { max(0, it) },
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
-                        val prepared = ensureAutoCodes(p)
+                        val priced = applyAutoPricing(p, existing)
+                        val prepared = ensureAutoCodes(priced)
                         val id = productDao.insert(prepared).toInt()
                         touchedIds += id
                         if (prepared.quantity != 0) {
@@ -324,13 +380,16 @@ class ProductRepository(
                             basePrice   = priceTrip.base ?: existing.basePrice,
                             taxRate     = priceTrip.tax  ?: existing.taxRate,
                             finalPrice  = priceTrip.final?: existing.finalPrice,
+                            purchasePrice = r.purchasePrice ?: existing.purchasePrice,
                             price       = r.price ?: existing.price,
                             listPrice   = r.listPrice ?: existing.listPrice,
                             cashPrice   = r.cashPrice ?: existing.cashPrice,
                             transferPrice = r.transferPrice ?: existing.transferPrice,
+                            transferNetPrice = r.transferNetPrice ?: existing.transferNetPrice,
                             mlPrice     = r.mlPrice ?: existing.mlPrice,
                             ml3cPrice   = r.ml3cPrice ?: existing.ml3cPrice,
                             ml6cPrice   = r.ml6cPrice ?: existing.ml6cPrice,
+                            autoPricing = existing.autoPricing,
                             quantity    = newQty,
                             description = r.description ?: existing.description,
                             imageUrl    = r.imageUrl ?: existing.imageUrl,
@@ -340,7 +399,8 @@ class ProductRepository(
                             minStock    = r.minStock ?: existing.minStock,
                             updatedAt   = r.updatedAt ?: LocalDate.now()
                         )
-                        productDao.update(merged)
+                        val priced = applyAutoPricing(merged, existing)
+                        productDao.update(priced)
                         touchedIds += existing.id
                         val delta = newQty - existing.quantity
                         if (delta != 0) {
@@ -522,6 +582,27 @@ class ProductRepository(
     fun observeRecentStockMovements(limit: Int = 50): Flow<List<StockMovementWithProduct>> =
         stockMovementDao.observeRecentDetailed(limit)
 
+    suspend fun recalculateAutoPricingForAll(): Int = withContext(io) {
+        val now = System.currentTimeMillis()
+        val updatedIds = mutableListOf<Int>()
+        db.withTransaction {
+            val all = productDao.getAllOnce()
+            all.forEach { product ->
+                if (!product.autoPricing || product.purchasePrice == null) return@forEach
+                val priced = applyAutoPricing(product, product, force = true)
+                if (priced != product) {
+                    productDao.update(priced.copy(updatedAt = LocalDate.now()))
+                    updatedIds += product.id
+                }
+            }
+            lastCache = productDao.getAllOnce()
+        }
+        if (updatedIds.isNotEmpty()) {
+            trySyncProductsNow(updatedIds, now)
+        }
+        updatedIds.size
+    }
+
     /**
      * Aumenta (o disminuye si delta < 0) el stock de un producto identificado por su barcode.
      *
@@ -559,7 +640,8 @@ class ProductRepository(
         val now = System.currentTimeMillis()
         var newId = 0
         db.withTransaction {
-            val prepared = ensureAutoCodes(normalized)
+            val priced = applyAutoPricing(normalized)
+            val prepared = ensureAutoCodes(priced)
             newId = productDao.upsert(prepared)
             if (prepared.quantity != 0) {
                 stockMovementDao.insert(
@@ -612,9 +694,14 @@ class ProductRepository(
         db.withTransaction {
             val current = productDao.getById(entity.id) ?: return@withTransaction
             val normalized = entity.copy(updatedAt = LocalDate.now())
-            rows = productDao.update(normalized)
+            val purchaseChanged = current.purchasePrice != normalized.purchasePrice
+            val priced = when {
+                purchaseChanged && current.autoPricing -> applyAutoPricing(normalized, current, force = true)
+                else -> applyAutoPricing(normalized, current)
+            }
+            rows = productDao.update(priced)
             if (rows > 0) {
-                val delta = normalized.quantity - current.quantity
+                val delta = priced.quantity - current.quantity
                 if (delta != 0) {
                     stockMovementDao.insert(
                         StockMovementEntity(

@@ -25,6 +25,7 @@ sealed class Routes(val route: String) {
     object StockMovements : Routes("stock/movements")
 
     object Config : Routes("config")
+    object PricingConfig : Routes("pricing_config")
     object Checkout : Routes("checkout")
     object Reports : Routes("reports")
 

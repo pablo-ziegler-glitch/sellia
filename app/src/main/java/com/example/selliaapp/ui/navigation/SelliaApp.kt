@@ -36,6 +36,7 @@ import com.example.selliaapp.ui.screens.clients.ClientPurchasesScreen
 import com.example.selliaapp.ui.screens.clients.ClientsHubScreen
 import com.example.selliaapp.ui.screens.config.AddUserScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
+import com.example.selliaapp.ui.screens.config.PricingConfigScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseTemplatesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpensesCashflowScreen
@@ -403,7 +404,14 @@ fun SelliaApp(
                     onAddUser = { navController.navigate(Routes.AddUser.route) },
                     onManageProducts = { navController.navigate(Routes.ManageProducts.route) },
                     onManageCustomers = { navController.navigate(Routes.ManageCustomers.route) },
+                    onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.PricingConfig.route) {
+                PricingConfigScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

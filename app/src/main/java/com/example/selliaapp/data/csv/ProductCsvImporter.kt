@@ -32,9 +32,11 @@ class ProductCsvImporter(
         val name: String,
         val quantity: Int,
         val price: Double?,
+        val purchasePrice: Double?,
         val listPrice: Double?,
         val cashPrice: Double?,
         val transferPrice: Double?,
+        val transferNetPrice: Double?,
         val mlPrice: Double?,
         val ml3cPrice: Double?,
         val ml6cPrice: Double?,
@@ -71,13 +73,16 @@ class ProductCsvImporter(
                     basePrice = null,
                     taxRate = null,
                     finalPrice = null,
+                    purchasePrice = r.purchasePrice,
                     price = r.price,
                     listPrice = r.listPrice,
                     cashPrice = r.cashPrice,
                     transferPrice = r.transferPrice,
+                    transferNetPrice = r.transferNetPrice,
                     mlPrice = r.mlPrice,
                     ml3cPrice = r.ml3cPrice,
                     ml6cPrice = r.ml6cPrice,
+                    autoPricing = false,
                     quantity = r.quantity,
                     description = r.description,
                     imageUrl = r.imageUrl,
@@ -127,13 +132,16 @@ class ProductCsvImporter(
                             basePrice = null,
                             taxRate = null,
                             finalPrice = null,
+                            purchasePrice = r.purchasePrice,
                             price = r.price,
                             listPrice = r.listPrice,
                             cashPrice = r.cashPrice,
                             transferPrice = r.transferPrice,
+                            transferNetPrice = r.transferNetPrice,
                             mlPrice = r.mlPrice,
                             ml3cPrice = r.ml3cPrice,
                             ml6cPrice = r.ml6cPrice,
+                            autoPricing = false,
                             quantity = r.quantity,
                             description = r.description,
                             imageUrl = r.imageUrl,
@@ -153,10 +161,13 @@ class ProductCsvImporter(
                             listPrice   = r.listPrice ?: existing.listPrice,
                             cashPrice   = r.cashPrice ?: existing.cashPrice,
                             transferPrice = r.transferPrice ?: existing.transferPrice,
+                            transferNetPrice = r.transferNetPrice ?: existing.transferNetPrice,
+                            purchasePrice = r.purchasePrice ?: existing.purchasePrice,
                             mlPrice     = r.mlPrice ?: existing.mlPrice,
                             ml3cPrice   = r.ml3cPrice ?: existing.ml3cPrice,
                             ml6cPrice   = r.ml6cPrice ?: existing.ml6cPrice,
-                            quantity    = (existing.quantity ?: 0) + (r.quantity),
+                            autoPricing = existing.autoPricing,
+                            quantity    = (existing.quantity) + (r.quantity),
                             description = r.description ?: existing.description,
                             imageUrl    = r.imageUrl ?: existing.imageUrl,
                             category    = r.category ?: existing.category,
@@ -178,13 +189,16 @@ class ProductCsvImporter(
                         basePrice = null,
                         taxRate = null,
                         finalPrice = null,
+                        purchasePrice = r.purchasePrice,
                         price = r.price,
                         listPrice = r.listPrice,
                         cashPrice = r.cashPrice,
                         transferPrice = r.transferPrice,
+                        transferNetPrice = r.transferNetPrice,
                         mlPrice = r.mlPrice,
                         ml3cPrice = r.ml3cPrice,
                         ml6cPrice = r.ml6cPrice,
+                        autoPricing = false,
                         quantity = r.quantity,
                         description = r.description,
                         imageUrl = r.imageUrl,
@@ -249,6 +263,11 @@ class ProductCsvImporter(
 
                 val price = idx.get(row, "price", aliases = listOf("precio", "amount"))
                     ?.replace(',', '.')?.toDoubleOrNull()
+                val purchasePrice = idx.get(
+                    row,
+                    "purchase_price",
+                    aliases = listOf("precio_adquisicion", "cost_price", "purchase")
+                )?.replace(',', '.')?.toDoubleOrNull()
                 val listPrice = idx.get(row, "list_price", aliases = listOf("precio_lista", "price_list"))
                     ?.replace(',', '.')?.toDoubleOrNull()
                 val cashPrice = idx.get(row, "cash_price", aliases = listOf("precio_efectivo", "price_cash"))
@@ -257,6 +276,11 @@ class ProductCsvImporter(
                     row,
                     "transfer_price",
                     aliases = listOf("precio_transferencia", "price_transfer")
+                )?.replace(',', '.')?.toDoubleOrNull()
+                val transferNetPrice = idx.get(
+                    row,
+                    "transfer_net_price",
+                    aliases = listOf("precio_transferencia_neto", "transfer_net")
                 )?.replace(',', '.')?.toDoubleOrNull()
                 val mlPrice = idx.get(row, "ml_price", aliases = listOf("precio_ml", "price_ml"))
                     ?.replace(',', '.')?.toDoubleOrNull()
@@ -296,9 +320,11 @@ class ProductCsvImporter(
                     name = name,
                     quantity = if (quantity < 0) 0 else quantity,
                     price = price,
+                    purchasePrice = purchasePrice,
                     listPrice = listPrice,
                     cashPrice = cashPrice,
                     transferPrice = transferPrice,
+                    transferNetPrice = transferNetPrice,
                     mlPrice = mlPrice,
                     ml3cPrice = ml3cPrice,
                     ml6cPrice = ml6cPrice,

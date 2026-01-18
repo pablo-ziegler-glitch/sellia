@@ -109,15 +109,17 @@ fun StockImportScreen(
             Text("Cómo funciona", style = MaterialTheme.typography.titleMedium)
             Text("Seleccioná un archivo .csv o una planilla de Excel/Google Sheets. La app creará/actualizará productos.")
             Text("Formato recomendado:", style = MaterialTheme.typography.titleSmall)
-            Text("name, barcode, price, list_price, cash_price, transfer_price, ml_price, ml_3c_price, ml_6c_price, quantity")
+            Text("name, barcode, purchase_price, price, list_price, cash_price, transfer_price, transfer_net_price, ml_price, ml_3c_price, ml_6c_price, quantity")
             Text(
                 "Alias aceptados:\n" +
                         "• name: nombre, product, producto\n" +
                         "• barcode: codigo, código, ean, sku\n" +
                         "• price: precio, amount\n" +
+                        "• purchase_price: precio_adquisicion, cost_price, purchase\n" +
                         "• list_price: precio_lista, price_list\n" +
                         "• cash_price: precio_efectivo, price_cash\n" +
                         "• transfer_price: precio_transferencia, price_transfer\n" +
+                        "• transfer_net_price: precio_transferencia_neto, transfer_net\n" +
                         "• ml_price: precio_ml, price_ml\n" +
                         "• ml_3c_price: precio_ml_3c, price_ml_3c\n" +
                         "• ml_6c_price: precio_ml_6c, price_ml_6c\n" +

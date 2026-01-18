@@ -24,12 +24,19 @@ import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
+import com.example.selliaapp.data.dao.PricingAuditDao
+import com.example.selliaapp.data.dao.PricingFixedCostDao
+import com.example.selliaapp.data.dao.PricingMlFixedCostTierDao
+import com.example.selliaapp.data.dao.PricingMlShippingTierDao
+import com.example.selliaapp.data.dao.PricingSettingsDao
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ExpenseRepository
+import com.example.selliaapp.repository.IProductRepository
+import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
@@ -115,6 +122,28 @@ object AppModule {
     @Singleton
     fun provideVariantDao(db: AppDatabase): VariantDao = db.variantDao()
 
+    @Provides
+    @Singleton
+    fun providePricingFixedCostDao(db: AppDatabase): PricingFixedCostDao = db.pricingFixedCostDao()
+
+    @Provides
+    @Singleton
+    fun providePricingSettingsDao(db: AppDatabase): PricingSettingsDao = db.pricingSettingsDao()
+
+    @Provides
+    @Singleton
+    fun providePricingAuditDao(db: AppDatabase): PricingAuditDao = db.pricingAuditDao()
+
+    @Provides
+    @Singleton
+    fun providePricingMlFixedCostTierDao(db: AppDatabase): PricingMlFixedCostTierDao =
+        db.pricingMlFixedCostTierDao()
+
+    @Provides
+    @Singleton
+    fun providePricingMlShippingTierDao(db: AppDatabase): PricingMlShippingTierDao =
+        db.pricingMlShippingTierDao()
+
 
     // -----------------------------
     // REPOSITORIES
@@ -131,6 +160,7 @@ object AppModule {
         productDao: ProductDao,
         categoryDao: CategoryDao,
         providerDao: ProviderDao,
+        pricingConfigRepository: PricingConfigRepository,
         firestore: FirebaseFirestore,
         @IoDispatcher io: CoroutineDispatcher   // <-- INYECTADO
 
@@ -139,8 +169,31 @@ object AppModule {
         productDao = productDao,
         categoryDao = categoryDao,
         providerDao = providerDao,
+        pricingConfigRepository = pricingConfigRepository,
         firestore = firestore,
         io = io                                  // <-- AQUÍ
+    )
+
+    @Provides
+    @Singleton
+    fun provideIProductRepository(repo: ProductRepository): IProductRepository = repo
+
+    @Provides
+    @Singleton
+    fun providePricingConfigRepository(
+        pricingFixedCostDao: PricingFixedCostDao,
+        pricingSettingsDao: PricingSettingsDao,
+        pricingAuditDao: PricingAuditDao,
+        pricingMlFixedCostTierDao: PricingMlFixedCostTierDao,
+        pricingMlShippingTierDao: PricingMlShippingTierDao,
+        @IoDispatcher io: CoroutineDispatcher
+    ): PricingConfigRepository = PricingConfigRepository(
+        pricingFixedCostDao = pricingFixedCostDao,
+        pricingSettingsDao = pricingSettingsDao,
+        pricingAuditDao = pricingAuditDao,
+        pricingMlFixedCostTierDao = pricingMlFixedCostTierDao,
+        pricingMlShippingTierDao = pricingMlShippingTierDao,
+        io = io
     )
     @Provides
     @Singleton
