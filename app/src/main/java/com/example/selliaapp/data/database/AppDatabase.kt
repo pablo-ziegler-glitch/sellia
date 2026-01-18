@@ -63,7 +63,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 27,
+    version = 29,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )

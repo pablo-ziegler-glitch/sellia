@@ -49,6 +49,15 @@ fun ProductItem(product: ProductEntity) {
         .fillMaxWidth()
         .padding(16.dp)) {
         Text(text = product.name, style = MaterialTheme.typography.titleMedium)
-        Text(text = "$${product.price}", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = "Lista: ${product.listPrice ?: product.price ?: "-"} · " +
+                "Efectivo: ${product.cashPrice ?: product.listPrice ?: product.price ?: "-"} · " +
+                "Transferencia: ${product.transferPrice ?: product.listPrice ?: product.price ?: "-"}",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            text = "ML: ${product.mlPrice ?: "-"} · ML 3C: ${product.ml3cPrice ?: "-"} · ML 6C: ${product.ml6cPrice ?: "-"}",
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }

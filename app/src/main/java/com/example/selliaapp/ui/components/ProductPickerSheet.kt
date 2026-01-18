@@ -68,7 +68,14 @@ fun ProductPickerSheet(
                     items(filtered) { p ->
                         ListItem(
                             headlineContent = { Text(p.name) },
-                            supportingContent = { Text("Stock: ${p.quantity} · ${p.barcode}") },
+                            supportingContent = {
+                                Text(
+                                    "Lista: ${p.listPrice ?: p.price ?: "-"} · " +
+                                        "Efectivo: ${p.cashPrice ?: p.listPrice ?: p.price ?: "-"} · " +
+                                        "Transferencia: ${p.transferPrice ?: p.listPrice ?: p.price ?: "-"} · " +
+                                        "Stock: ${p.quantity} · ${p.barcode}"
+                                )
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onPick(p) }

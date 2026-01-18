@@ -81,7 +81,10 @@ class SellViewModel @Inject constructor(
     fun addToCart(product: ProductEntity, qty: Int = 1) {
         _state.update { ui ->
             val max = (product.quantity ?: 0).coerceAtLeast(0)
-            val unit = (product.finalPrice ?: product.price ?: 0.0)
+            val listPrice = product.listPrice ?: product.finalPrice ?: product.price ?: 0.0
+            val cashPrice = product.cashPrice ?: listPrice
+            val transferPrice = product.transferPrice ?: listPrice
+            val unit = resolveUnitPrice(ui.paymentMethod, listPrice, cashPrice, transferPrice)
             val current = ui.items.find { it.productId == product.id }
             val nuevosItems =
                 if (current == null) {
@@ -91,6 +94,9 @@ class SellViewModel @Inject constructor(
                         name = product.name,
                         barcode = product.barcode,
                         unitPrice = unit,
+                        listPrice = listPrice,
+                        cashPrice = cashPrice,
+                        transferPrice = transferPrice,
                         qty = q,
                         maxStock = max
                     )
@@ -202,7 +208,11 @@ class SellViewModel @Inject constructor(
 
     fun updatePaymentMethod(method: PaymentMethod) {
         _state.update { ui ->
-            ui.copy(paymentMethod = method)
+            val updatedItems = ui.items.map { item ->
+                val unit = resolveUnitPrice(method, item.listPrice, item.cashPrice, item.transferPrice)
+                item.copy(unitPrice = unit)
+            }
+            recalc(ui.copy(paymentMethod = method), updatedItems)
         }
     }
 
@@ -215,6 +225,19 @@ class SellViewModel @Inject constructor(
     fun updateOrderType(orderType: OrderType) {
         _state.update { ui ->
             ui.copy(orderType = orderType)
+        }
+    }
+
+    private fun resolveUnitPrice(
+        method: PaymentMethod,
+        listPrice: Double,
+        cashPrice: Double,
+        transferPrice: Double
+    ): Double {
+        return when (method) {
+            PaymentMethod.LISTA -> listPrice
+            PaymentMethod.EFECTIVO -> cashPrice
+            PaymentMethod.TRANSFERENCIA -> transferPrice
         }
     }
 

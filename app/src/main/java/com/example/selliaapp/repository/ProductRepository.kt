@@ -153,18 +153,26 @@ class ProductRepository(
                     taxRate = priceTrip.tax,
                     finalPrice = priceTrip.final,
                     price = r.price,
+                    listPrice = r.listPrice,
+                    cashPrice = r.cashPrice,
+                    transferPrice = r.transferPrice,
+                    mlPrice = r.mlPrice,
+                    ml3cPrice = r.ml3cPrice,
+                    ml6cPrice = r.ml6cPrice,
                     quantity = max(0, r.quantity),
                     description = r.description,
                     imageUrl = r.imageUrl,
                     categoryId = existing?.categoryId,
                     providerId = existing?.providerId,
                     providerName = existing?.providerName,
+                    providerSku = existing?.providerSku,
                     category = r.category ?: existing?.category,
                     minStock = r.minStock?.let { max(0, it) } ?: existing?.minStock,
                     updatedAt = updated
                 )
 
-                val id = productDao.upsertByKeys(incoming)
+                val prepared = if (existing == null) ensureAutoCodes(incoming) else incoming
+                val id = productDao.upsertByKeys(prepared)
                 touchedIds += id
                 val current = productDao.getById(id) ?: return@forEach
                 val delta = current.quantity - beforeQty
@@ -265,23 +273,31 @@ class ProductRepository(
                             taxRate = priceTrip.tax,
                             finalPrice = priceTrip.final,
                             price = r.price, // legacy
+                            listPrice = r.listPrice,
+                            cashPrice = r.cashPrice,
+                            transferPrice = r.transferPrice,
+                            mlPrice = r.mlPrice,
+                            ml3cPrice = r.ml3cPrice,
+                            ml6cPrice = r.ml6cPrice,
                             quantity = max(0, r.quantity),
                             description = r.description,
                             imageUrl = r.imageUrl,
                             categoryId = null,                      // si querés, usar ensureCategoryId(r.category)
                             providerId = null,                      // si en el futuro sumamos CSV con proveedor
-                            providerName = null,
+                            providerName = r.providerName,
+                            providerSku = r.providerSku,
                             category = r.category,
                             minStock = r.minStock?.let { max(0, it) },
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
-                        val id = productDao.insert(p).toInt()
+                        val prepared = ensureAutoCodes(p)
+                        val id = productDao.insert(prepared).toInt()
                         touchedIds += id
-                        if (p.quantity != 0) {
+                        if (prepared.quantity != 0) {
                             stockMovementDao.insert(
                                 StockMovementEntity(
                                     productId = id,
-                                    delta = p.quantity,
+                                    delta = prepared.quantity,
                                     reason = StockMovementReasons.CSV_IMPORT,
                                     ts = Instant.ofEpochMilli(now),
                                     note = "Importación CSV (nuevo)"
@@ -309,10 +325,18 @@ class ProductRepository(
                             taxRate     = priceTrip.tax  ?: existing.taxRate,
                             finalPrice  = priceTrip.final?: existing.finalPrice,
                             price       = r.price ?: existing.price,
+                            listPrice   = r.listPrice ?: existing.listPrice,
+                            cashPrice   = r.cashPrice ?: existing.cashPrice,
+                            transferPrice = r.transferPrice ?: existing.transferPrice,
+                            mlPrice     = r.mlPrice ?: existing.mlPrice,
+                            ml3cPrice   = r.ml3cPrice ?: existing.ml3cPrice,
+                            ml6cPrice   = r.ml6cPrice ?: existing.ml6cPrice,
                             quantity    = newQty,
                             description = r.description ?: existing.description,
                             imageUrl    = r.imageUrl ?: existing.imageUrl,
                             category    = r.category ?: existing.category,
+                            providerName = r.providerName ?: existing.providerName,
+                            providerSku  = r.providerSku ?: existing.providerSku,
                             minStock    = r.minStock ?: existing.minStock,
                             updatedAt   = r.updatedAt ?: LocalDate.now()
                         )
@@ -535,12 +559,13 @@ class ProductRepository(
         val now = System.currentTimeMillis()
         var newId = 0
         db.withTransaction {
-            newId = productDao.upsert(normalized)
-            if (normalized.quantity != 0) {
+            val prepared = ensureAutoCodes(normalized)
+            newId = productDao.upsert(prepared)
+            if (prepared.quantity != 0) {
                 stockMovementDao.insert(
                     StockMovementEntity(
                         productId = newId,
-                        delta = normalized.quantity,
+                        delta = prepared.quantity,
                         reason = reason,
                         ts = Instant.ofEpochMilli(now),
                         note = "Alta de producto"
@@ -558,6 +583,27 @@ class ProductRepository(
         }
         trySyncProductsNow(listOf(newId), now)
         return newId
+    }
+
+    private suspend fun ensureAutoCodes(entity: ProductEntity): ProductEntity {
+        val existingCode = entity.code?.trim()?.takeIf { it.isNotBlank() }
+        val existingBarcode = entity.barcode?.trim()?.takeIf { it.isNotBlank() }
+        var code = existingCode
+        if (code == null) {
+            val prefix = "VLK"
+            val offset = prefix.length + 1
+            var next = (productDao.getMaxSequenceForCode(prefix, offset) ?: 0) + 1
+            while (true) {
+                val candidate = "$prefix$next"
+                if (productDao.getByCodeOnce(candidate) == null) {
+                    code = candidate
+                    break
+                }
+                next += 1
+            }
+        }
+        val barcode = existingBarcode ?: code
+        return entity.copy(code = code, barcode = barcode)
     }
 
     private suspend fun updateProductInternal(entity: ProductEntity, reason: String): Int {

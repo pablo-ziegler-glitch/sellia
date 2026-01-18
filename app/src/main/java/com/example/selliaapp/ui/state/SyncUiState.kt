@@ -9,6 +9,9 @@ data class CartItemUi(
     val name: String,
     val barcode: String?,
     val unitPrice: Double,
+    val listPrice: Double,
+    val cashPrice: Double,
+    val transferPrice: Double,
     val qty: Int,
     val maxStock: Int
 ) {
@@ -35,7 +38,7 @@ data class SellUiState(
     val total: Double = 0.0,
     /** Mapa de violaciones: productId -> stockDisponible (cuando qty > stock) */
     val stockViolations: Map<Int, Int> = emptyMap(),
-    val paymentMethod: PaymentMethod = PaymentMethod.EFECTIVO,
+    val paymentMethod: PaymentMethod = PaymentMethod.LISTA,
     val paymentNotes: String = "",
     val orderType: OrderType = OrderType.INMEDIATA,
     val selectedCustomerId: Int? = null,
@@ -51,8 +54,8 @@ data class SellUiState(
 }
 
 enum class PaymentMethod {
+    LISTA,
     EFECTIVO,
-    TARJETA,
     TRANSFERENCIA
 }
 

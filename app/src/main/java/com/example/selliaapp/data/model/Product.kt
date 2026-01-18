@@ -25,12 +25,19 @@ data class Product(
     val finalPrice: Double? = null,
     // Legacy:
     val price: Double? = null,
+    val listPrice: Double? = null,
+    val cashPrice: Double? = null,
+    val transferPrice: Double? = null,
+    val mlPrice: Double? = null,
+    val ml3cPrice: Double? = null,
+    val ml6cPrice: Double? = null,
     val quantity: Int = 0,
     val description: String? = null,
     val imageUrl: String? = null,
     // E1:
     val category: String? = null,
     val providerName: String? = null,
+    val providerSku: String? = null,
     val minStock: Int? = null,
     val updatedAt: LocalDate? = null
 )

@@ -24,7 +24,7 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Item de listado de producto con información clave.
- * Muestra: Código, Nombre, Cantidad, MinStock, Precio (si existe), Actualizado.
+ * Muestra: Código, Nombre, Cantidad, MinStock, Precios, Actualizado.
  */
 @Composable
 fun ProductListItem(
@@ -71,13 +71,17 @@ fun ProductListItem(
                 )
             }
             Divider(Modifier.padding(vertical = 8.dp))
+            Text(
+                text = "Lista: ${product.listPrice ?: product.price ?: "-"} · " +
+                    "Efectivo: ${product.cashPrice ?: product.listPrice ?: product.price ?: "-"} · " +
+                    "Transferencia: ${product.transferPrice ?: product.listPrice ?: product.price ?: "-"}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = "ML: ${product.mlPrice ?: "-"} · ML 3C: ${product.ml3cPrice ?: "-"} · ML 6C: ${product.ml6cPrice ?: "-"}",
+                style = MaterialTheme.typography.bodySmall
+            )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                product.price?.let { price ->
-                    Text(
-                        text = "Precio: $price",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
                 product.updatedAt?.let { instant ->
                     val date = DateTimeFormatter.ISO_LOCAL_DATE_TIME // ajustar si guardás zoned
                     Text(
