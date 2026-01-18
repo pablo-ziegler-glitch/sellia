@@ -36,15 +36,18 @@ data class ProductEntity(
     val basePrice: Double? = null,   // precio neto (sin impuesto)
     val taxRate: Double? = null,     // 0..1 (ej. 0.21 para 21%)
     val finalPrice: Double? = null,  // base * (1 + tax)
+    val purchasePrice: Double? = null, // costo de adquisición al proveedor
 
     // Legacy: mantenemos por compatibilidad con flows antiguos
     val price: Double? = null,
     val listPrice: Double? = null,
     val cashPrice: Double? = null,
     val transferPrice: Double? = null,
+    val transferNetPrice: Double? = null,
     val mlPrice: Double? = null,
     val ml3cPrice: Double? = null,
     val ml6cPrice: Double? = null,
+    val autoPricing: Boolean = false,
 
     // Stock total (cuando no hay variantes / o suma derivada)
     val quantity: Int = 0,

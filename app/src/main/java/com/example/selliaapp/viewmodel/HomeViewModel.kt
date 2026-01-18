@@ -178,7 +178,7 @@ class HomeViewModel @Inject constructor(
         val dailyMargin = todayInvoices.sumOf { invoice ->
             invoice.items.sumOf { item ->
                 val product = productMap[item.productId]
-                val cost = product?.basePrice ?: product?.price ?: 0.0
+                val cost = product?.purchasePrice ?: product?.basePrice ?: product?.price ?: 0.0
                 (item.unitPrice - cost) * item.quantity
             }
         }

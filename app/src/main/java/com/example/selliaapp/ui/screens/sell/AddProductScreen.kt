@@ -72,10 +72,11 @@ fun AddProductScreen(
     var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode ?: "") }
 
     // Precios y stock (tu bloque E4, intacto)
-    var priceText by remember { mutableStateOf("0") }          // legacy
+    var priceText by remember { mutableStateOf("") }          // legacy
     var basePriceText by remember { mutableStateOf("") }
     var taxRateText by remember { mutableStateOf("") }
     var finalPriceText by remember { mutableStateOf("") }
+    var purchasePriceText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
     var cashPriceText by remember { mutableStateOf("") }
     var transferPriceText by remember { mutableStateOf("") }
@@ -109,10 +110,11 @@ fun AddProductScreen(
                 code = p.code.orEmpty()
                 barcode = p.barcode.orEmpty()
 
-                priceText = ((p.price) ?: 0.0).toString()
+                priceText = p.price?.toString() ?: ""
                 listPriceText = p.listPrice?.toString() ?: ""
                 cashPriceText = p.cashPrice?.toString() ?: ""
                 transferPriceText = p.transferPrice?.toString() ?: ""
+                purchasePriceText = p.purchasePrice?.toString() ?: ""
                 mlPriceText = p.mlPrice?.toString() ?: ""
                 ml3cPriceText = p.ml3cPrice?.toString() ?: ""
                 ml6cPriceText = p.ml6cPrice?.toString() ?: ""
@@ -253,6 +255,13 @@ fun AddProductScreen(
         )
 
         // --- Precios (E4) ---
+        OutlinedTextField(
+            value = purchasePriceText,
+            onValueChange = { purchasePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+            label = { Text("Costo de adquisición") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
                 value = basePriceText,
@@ -457,10 +466,12 @@ fun AddProductScreen(
                     val base = basePriceText.replace(',', '.').toDoubleOrNull()
                     val tax = taxRateText.replace(',', '.').toDoubleOrNull()?.let { it / 100.0 }
                     val final = finalPriceText.replace(',', '.').toDoubleOrNull()
+                    val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
                     val legacy = priceText.replace(',', '.').toDoubleOrNull()
                     val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
                     val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
                     val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
+                    val transferNetPrice = null
                     val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
                     val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
                     val ml6cPrice = ml6cPriceText.replace(',', '.').toDoubleOrNull()
@@ -474,10 +485,12 @@ fun AddProductScreen(
                             basePrice = base,
                             taxRate = tax,
                             finalPrice = final,
+                            purchasePrice = purchase,
                             legacyPrice = legacy,
                             listPrice = listPrice,
                             cashPrice = cashPrice,
                             transferPrice = transferPrice,
+                            transferNetPrice = transferNetPrice,
                             mlPrice = mlPrice,
                             ml3cPrice = ml3cPrice,
                             ml6cPrice = ml6cPrice,
@@ -498,10 +511,12 @@ fun AddProductScreen(
                             basePrice = base,
                             taxRate = tax,
                             finalPrice = final,
+                            purchasePrice = purchase,
                             legacyPrice = legacy,
                             listPrice = listPrice,
                             cashPrice = cashPrice,
                             transferPrice = transferPrice,
+                            transferNetPrice = transferNetPrice,
                             mlPrice = mlPrice,
                             ml3cPrice = ml3cPrice,
                             ml6cPrice = ml6cPrice,

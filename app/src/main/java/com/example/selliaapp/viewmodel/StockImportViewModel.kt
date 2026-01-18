@@ -1,6 +1,5 @@
 package com.example.selliaapp.viewmodel
 
-import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -97,9 +96,8 @@ class StockImportViewModel @Inject constructor(
         strategy: ProductRepository.ImportStrategy = ProductRepository.ImportStrategy.Append,
         onCompleted: (ImportResult) -> Unit
     ) {
-        val resolver: ContentResolver = context.contentResolver
         viewModelScope.launch(io) {
-            val result = repo.importFromFile(resolver, uri, strategy)
+            val result = repo.importProductsFromFile(context, uri, strategy)
             withContext(Dispatchers.Main) {
                 onCompleted(result)
             }

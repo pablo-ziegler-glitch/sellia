@@ -10,6 +10,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager    // BuildConfig del módulo app (mismo namespace)
 import com.example.selliaapp.sync.SyncWorker
+import com.example.selliaapp.sync.PricingScheduler
 import com.google.firebase.ktx.BuildConfig
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
@@ -58,5 +59,7 @@ class SelliaAppApplication : Application(), Configuration.Provider {
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )
+
+        PricingScheduler.enqueuePeriodic(this, 30)
     }
 }

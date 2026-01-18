@@ -13,6 +13,11 @@ import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
+import com.example.selliaapp.data.dao.PricingAuditDao
+import com.example.selliaapp.data.dao.PricingFixedCostDao
+import com.example.selliaapp.data.dao.PricingMlFixedCostTierDao
+import com.example.selliaapp.data.dao.PricingMlShippingTierDao
+import com.example.selliaapp.data.dao.PricingSettingsDao
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.StockMovementDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
@@ -24,6 +29,11 @@ import com.example.selliaapp.data.local.entity.CategoryEntity
 import com.example.selliaapp.data.local.entity.CustomerEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
+import com.example.selliaapp.data.local.entity.PricingAuditEntity
+import com.example.selliaapp.data.local.entity.PricingFixedCostEntity
+import com.example.selliaapp.data.local.entity.PricingMlFixedCostTierEntity
+import com.example.selliaapp.data.local.entity.PricingMlShippingTierEntity
+import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.data.local.entity.ReportDataEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
@@ -52,6 +62,11 @@ import com.example.selliaapp.data.model.User
         CategoryEntity::class,
         VariantEntity::class,
         SyncOutboxEntity::class,
+        PricingFixedCostEntity::class,
+        PricingSettingsEntity::class,
+        PricingAuditEntity::class,
+        PricingMlFixedCostTierEntity::class,
+        PricingMlShippingTierEntity::class,
 
         // Tablas de negocio basadas en modelos (ya tienen @Entity)
         Invoice::class,
@@ -63,7 +78,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 29,
+    version = 31,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -84,4 +99,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun variantDao(): VariantDao
     abstract fun syncOutboxDao(): SyncOutboxDao
+    abstract fun pricingFixedCostDao(): PricingFixedCostDao
+    abstract fun pricingSettingsDao(): PricingSettingsDao
+    abstract fun pricingAuditDao(): PricingAuditDao
+    abstract fun pricingMlFixedCostTierDao(): PricingMlFixedCostTierDao
+    abstract fun pricingMlShippingTierDao(): PricingMlShippingTierDao
 }
