@@ -316,7 +316,12 @@ private fun ProductRow(
     currency: NumberFormat,
     onClick: () -> Unit
 ) {
-    val price = product.price ?: 0.0
+    val listPrice = product.listPrice ?: product.price ?: 0.0
+    val cashPrice = product.cashPrice ?: product.listPrice ?: product.price ?: 0.0
+    val transferPrice = product.transferPrice ?: product.listPrice ?: product.price ?: 0.0
+    val mlPriceLabel = product.mlPrice?.let { currency.format(it) } ?: "-"
+    val ml3cPriceLabel = product.ml3cPrice?.let { currency.format(it) } ?: "-"
+    val ml6cPriceLabel = product.ml6cPrice?.let { currency.format(it) } ?: "-"
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -336,8 +341,15 @@ private fun ProductRow(
             ) {
                 Text("Stock: ${product.quantity}", style = MaterialTheme.typography.bodyMedium)
                 HorizontalDivider(Modifier.weight(1f))
-                Text(currency.format(price), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Lista: ${currency.format(listPrice)} · Efectivo: ${currency.format(cashPrice)} · Transferencia: ${currency.format(transferPrice)}",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
+            Text(
+                text = "ML: $mlPriceLabel · ML 3C: $ml3cPriceLabel · ML 6C: $ml6cPriceLabel",
+                style = MaterialTheme.typography.bodySmall
+            )
             product.barcode?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.size(2.dp))
                 Text("Barcode: $it", style = MaterialTheme.typography.bodySmall)

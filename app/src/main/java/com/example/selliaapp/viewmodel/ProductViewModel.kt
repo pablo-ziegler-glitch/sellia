@@ -109,12 +109,19 @@ class ProductViewModel @Inject constructor(
         taxRate: Double?,
         finalPrice: Double?,
         legacyPrice: Double?,
+        listPrice: Double?,
+        cashPrice: Double?,
+        transferPrice: Double?,
+        mlPrice: Double?,
+        ml3cPrice: Double?,
+        ml6cPrice: Double?,
         stock: Int,
         code: String?,
         description: String?,
         imageUrl: String?,
         categoryName: String?,
         providerName: String?,
+        providerSku: String?,
         minStock: Int?
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -129,6 +136,12 @@ class ProductViewModel @Inject constructor(
                 finalPrice = finalPrice,
                 // Legacy:
                 price = legacyPrice,
+                listPrice = listPrice,
+                cashPrice = cashPrice,
+                transferPrice = transferPrice,
+                mlPrice = mlPrice,
+                ml3cPrice = ml3cPrice,
+                ml6cPrice = ml6cPrice,
                 // stock:
                 quantity = stock,
                 // extras:
@@ -137,6 +150,7 @@ class ProductViewModel @Inject constructor(
                 // E1:
                 category = categoryName,
                 providerName = providerName,
+                providerSku = providerSku,
                 minStock = minStock,
                 // timestamps si los tenés, dejá null o setéalos en DAO/DB trigger
                 updatedAt = LocalDate.now()
@@ -154,12 +168,19 @@ class ProductViewModel @Inject constructor(
         taxRate: Double?,
         finalPrice: Double?,
         legacyPrice: Double?,
+        listPrice: Double?,
+        cashPrice: Double?,
+        transferPrice: Double?,
+        mlPrice: Double?,
+        ml3cPrice: Double?,
+        ml6cPrice: Double?,
         stock: Int,
         code: String?,
         description: String?,
         imageUrl: String?,
         categoryName: String?,
         providerName: String?,
+        providerSku: String?,
         minStock: Int?
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -172,11 +193,18 @@ class ProductViewModel @Inject constructor(
                 taxRate = taxRate,
                 finalPrice = finalPrice,
                 price = legacyPrice,
+                listPrice = listPrice,
+                cashPrice = cashPrice,
+                transferPrice = transferPrice,
+                mlPrice = mlPrice,
+                ml3cPrice = ml3cPrice,
+                ml6cPrice = ml6cPrice,
                 quantity = stock,
                 description = description,
                 imageUrl = imageUrl,
                 category = categoryName,
                 providerName = providerName,
+                providerSku = providerSku,
                 minStock = minStock,
                 updatedAt = LocalDate.now()
             )

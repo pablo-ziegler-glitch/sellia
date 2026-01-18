@@ -38,11 +38,23 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE barcode = :barcode LIMIT 1")
     suspend fun getByBarcodeOnce(barcode: String): ProductEntity?
 
+    @Query("SELECT * FROM products WHERE code = :code LIMIT 1")
+    suspend fun getByCodeOnce(code: String): ProductEntity?
+
     @Query("SELECT * FROM products WHERE name = :name LIMIT 1")
     suspend fun getByNameOnce(name: String): ProductEntity?
 
     @Query("SELECT * FROM products WHERE barcode = :barcode LIMIT 1")
     suspend fun getByBarcode(barcode: String): ProductEntity?
+
+    @Query(
+        """
+        SELECT MAX(CAST(SUBSTR(code, :offset) AS INTEGER))
+        FROM products
+        WHERE code LIKE :prefix || '%'
+        """
+    )
+    suspend fun getMaxSequenceForCode(prefix: String, offset: Int): Int?
 
 
     @Query("""
@@ -134,12 +146,19 @@ interface ProductDao {
                 taxRate     = incoming.taxRate     ?: existing.taxRate,
                 finalPrice  = incoming.finalPrice  ?: existing.finalPrice,
                 price       = incoming.price       ?: existing.price,
+                listPrice   = incoming.listPrice   ?: existing.listPrice,
+                cashPrice   = incoming.cashPrice   ?: existing.cashPrice,
+                transferPrice = incoming.transferPrice ?: existing.transferPrice,
+                mlPrice     = incoming.mlPrice     ?: existing.mlPrice,
+                ml3cPrice   = incoming.ml3cPrice   ?: existing.ml3cPrice,
+                ml6cPrice   = incoming.ml6cPrice   ?: existing.ml6cPrice,
                 quantity    = if (incoming.quantity != 0) incoming.quantity else existing.quantity,
                 description = incoming.description ?: existing.description,
                 imageUrl    = incoming.imageUrl    ?: existing.imageUrl,
                 categoryId  = incoming.categoryId  ?: existing.categoryId,
                 providerId  = incoming.providerId  ?: existing.providerId,
                 providerName= incoming.providerName?: existing.providerName,
+                providerSku = incoming.providerSku ?: existing.providerSku,
                 category    = incoming.category    ?: existing.category,
                 minStock    = incoming.minStock    ?: existing.minStock,
                 updatedAt   = incoming.updatedAt   // no forzamos si viene null; si querés: incoming.updatedAt ?: existing.updatedAt

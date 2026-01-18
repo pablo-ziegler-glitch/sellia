@@ -346,8 +346,8 @@ private fun MetodoPagoSelector(
     onSeleccion: (PaymentMethod) -> Unit
 ) {
     val opciones = listOf(
+        PaymentMethod.LISTA to "Lista",
         PaymentMethod.EFECTIVO to "Efectivo",
-        PaymentMethod.TARJETA to "Tarjeta",
         PaymentMethod.TRANSFERENCIA to "Transferencia"
     )
     Row(
@@ -452,7 +452,7 @@ private fun CustomerSummaryCard(
 }
 
 private fun PaymentMethod.nombreLegible(): String = when (this) {
+    PaymentMethod.LISTA -> "Lista"
     PaymentMethod.EFECTIVO -> "Efectivo"
-    PaymentMethod.TARJETA -> "Tarjeta"
     PaymentMethod.TRANSFERENCIA -> "Transferencia"
 }

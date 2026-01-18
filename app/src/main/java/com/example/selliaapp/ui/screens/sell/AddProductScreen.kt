@@ -76,12 +76,19 @@ fun AddProductScreen(
     var basePriceText by remember { mutableStateOf("") }
     var taxRateText by remember { mutableStateOf("") }
     var finalPriceText by remember { mutableStateOf("") }
+    var listPriceText by remember { mutableStateOf("") }
+    var cashPriceText by remember { mutableStateOf("") }
+    var transferPriceText by remember { mutableStateOf("") }
+    var mlPriceText by remember { mutableStateOf("") }
+    var ml3cPriceText by remember { mutableStateOf("") }
+    var ml6cPriceText by remember { mutableStateOf("") }
     var stockText by remember { mutableStateOf("0") }
 
     // Extras
     var description by remember { mutableStateOf("") }
     var selectedCategoryName by remember { mutableStateOf("") }
     var selectedProviderName by remember { mutableStateOf("") }
+    var providerSku by remember { mutableStateOf("") }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var minStockText by remember { mutableStateOf("") }
@@ -103,6 +110,12 @@ fun AddProductScreen(
                 barcode = p.barcode.orEmpty()
 
                 priceText = ((p.price) ?: 0.0).toString()
+                listPriceText = p.listPrice?.toString() ?: ""
+                cashPriceText = p.cashPrice?.toString() ?: ""
+                transferPriceText = p.transferPrice?.toString() ?: ""
+                mlPriceText = p.mlPrice?.toString() ?: ""
+                ml3cPriceText = p.ml3cPrice?.toString() ?: ""
+                ml6cPriceText = p.ml6cPrice?.toString() ?: ""
                 stockText = p.quantity.toString()
                 description = p.description.orEmpty()
                 imageUrl = p.imageUrl.orEmpty()
@@ -110,6 +123,7 @@ fun AddProductScreen(
                 selectedCategoryName = p.category.orEmpty()
                 // Si tu modelo aún no tiene providerName, quedará vacío
                 selectedProviderName = p.providerName.orEmpty()
+                providerSku = p.providerSku.orEmpty()
 
                 minStockText = p.minStock?.toString() ?: ""
             }
@@ -279,6 +293,63 @@ fun AddProductScreen(
             )
         }
 
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = listPriceText,
+                onValueChange = {
+                    listPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                },
+                label = { Text("Precio de lista") },
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = cashPriceText,
+                onValueChange = {
+                    cashPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                },
+                label = { Text("Precio en efectivo") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = transferPriceText,
+                onValueChange = {
+                    transferPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                },
+                label = { Text("Precio transferencia") },
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = mlPriceText,
+                onValueChange = {
+                    mlPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                },
+                label = { Text("Precio ML") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = ml3cPriceText,
+                onValueChange = {
+                    ml3cPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                },
+                label = { Text("Precio ML 3C") },
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = ml6cPriceText,
+                onValueChange = {
+                    ml6cPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                },
+                label = { Text("Precio ML 6C") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
         // Stock
         OutlinedTextField(
             value = stockText,
@@ -364,6 +435,13 @@ fun AddProductScreen(
             }
         }
 
+        OutlinedTextField(
+            value = providerSku,
+            onValueChange = { providerSku = it },
+            label = { Text("SKU proveedor") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         // Stock mínimo
         OutlinedTextField(
             value = minStockText,
@@ -380,6 +458,12 @@ fun AddProductScreen(
                     val tax = taxRateText.replace(',', '.').toDoubleOrNull()?.let { it / 100.0 }
                     val final = finalPriceText.replace(',', '.').toDoubleOrNull()
                     val legacy = priceText.replace(',', '.').toDoubleOrNull()
+                    val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
+                    val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
+                    val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
+                    val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
+                    val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
+                    val ml6cPrice = ml6cPriceText.replace(',', '.').toDoubleOrNull()
                     val qty = stockText.toIntOrNull() ?: 0
                     val minStock = minStockText.toIntOrNull()
 
@@ -391,12 +475,19 @@ fun AddProductScreen(
                             taxRate = tax,
                             finalPrice = final,
                             legacyPrice = legacy,
+                            listPrice = listPrice,
+                            cashPrice = cashPrice,
+                            transferPrice = transferPrice,
+                            mlPrice = mlPrice,
+                            ml3cPrice = ml3cPrice,
+                            ml6cPrice = ml6cPrice,
                             stock = qty,
                             code = code.ifBlank { null },
                             description = description.ifBlank { null },
                             imageUrl = imageUrl.ifBlank { null },
                             categoryName = selectedCategoryName.ifBlank { null },
                             providerName = selectedProviderName.ifBlank { null },
+                            providerSku = providerSku.ifBlank { null },
                             minStock = minStock
                         )
                     } else {
@@ -408,12 +499,19 @@ fun AddProductScreen(
                             taxRate = tax,
                             finalPrice = final,
                             legacyPrice = legacy,
+                            listPrice = listPrice,
+                            cashPrice = cashPrice,
+                            transferPrice = transferPrice,
+                            mlPrice = mlPrice,
+                            ml3cPrice = ml3cPrice,
+                            ml6cPrice = ml6cPrice,
                             stock = qty,
                             code = code.ifBlank { null },
                             description = description.ifBlank { null },
                             imageUrl = imageUrl.ifBlank { null },
                             categoryName = selectedCategoryName.ifBlank { null },
                             providerName = selectedProviderName.ifBlank { null },
+                            providerSku = providerSku.ifBlank { null },
                             minStock = minStock
                         )
                     }

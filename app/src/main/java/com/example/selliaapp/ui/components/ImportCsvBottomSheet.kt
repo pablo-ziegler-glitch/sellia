@@ -35,9 +35,9 @@ fun ImportCsvBottomSheet(
     val template = remember {
         buildAnnotatedString {
             appendLine("Plantilla CSV (separador coma ,):")
-            appendLine("code,barcode,name,quantity,price,category,min_stock")
-            appendLine("SKU-001,7791234567890,Shampoo 500ml,24,2500.00,Higiene,5")
-            appendLine("SKU-002,,Jabón Neutro x3,50,1800.00,Higiene,10")
+            appendLine("code,barcode,name,quantity,price,list_price,cash_price,transfer_price,ml_price,ml_3c_price,ml_6c_price,category,min_stock")
+            appendLine("SKU-001,7791234567890,Shampoo 500ml,24,2500.00,2600.00,2550.00,2580.00,2800.00,2900.00,3000.00,Higiene,5")
+            appendLine("SKU-002,,Jabón Neutro x3,50,1800.00,1900.00,1850.00,1880.00,2100.00,2200.00,2300.00,Higiene,10")
         }.toString()
     }
 

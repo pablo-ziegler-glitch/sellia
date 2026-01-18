@@ -137,7 +137,12 @@ fun ManageProductsScreen(
                     ListItem(
                         headlineContent = { Text(p.name) },
                         supportingContent = {
-                            Text("Precio: ${p.price ?: 0.0} · Stock: ${p.quantity} · Código: ${p.barcode ?: "—"}")
+                            Text(
+                                "Lista: ${p.listPrice ?: p.price ?: 0.0} · " +
+                                    "Efectivo: ${p.cashPrice ?: p.listPrice ?: p.price ?: 0.0} · " +
+                                    "Transferencia: ${p.transferPrice ?: p.listPrice ?: p.price ?: 0.0} · " +
+                                    "Stock: ${p.quantity} · Código: ${p.barcode ?: "—"}"
+                            )
                         },
                         trailingContent = {
                             Row {
@@ -169,7 +174,7 @@ fun ManageProductsScreen(
         ProductEditorDialog(
             initial = editing, // ahora asumimos ProductEditorDialog<ProductEntity?>
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, price, stock, description ->
+            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, description ->
                 scope.launch {
                     val base: ProductEntity = editing ?: ProductEntity(
                         id = 0,
@@ -177,6 +182,12 @@ fun ManageProductsScreen(
                         barcode = barcode,
                         name = name,
                         price = price,
+                        listPrice = listPrice,
+                        cashPrice = cashPrice,
+                        transferPrice = transferPrice,
+                        mlPrice = mlPrice,
+                        ml3cPrice = ml3cPrice,
+                        ml6cPrice = ml6cPrice,
                         quantity = stock,
                         description = description,
                         imageUrl = null,
@@ -189,6 +200,12 @@ fun ManageProductsScreen(
                         name = name,
                         barcode = barcode,
                         price = price,
+                        listPrice = listPrice,
+                        cashPrice = cashPrice,
+                        transferPrice = transferPrice,
+                        mlPrice = mlPrice,
+                        ml3cPrice = ml3cPrice,
+                        ml6cPrice = ml6cPrice,
                         quantity = stock,
                         description = description,
                         updatedAt = LocalDate.now()
