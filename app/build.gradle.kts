@@ -21,9 +21,8 @@ android {
 }
 
 dependencies {
-    implementation(platform("com.example:catalog:1.0")) // using the version catalog
-    implementation("com.squareup.retrofit2:retrofit")
-    implementation("com.squareup.retrofit2:converter-gson")
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.truth)
     testImplementation(libs.kotlinx.coroutines.test)
