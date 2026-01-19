@@ -3,9 +3,10 @@ apply(plugin = "org.jetbrains.kotlin.android")
 apply(plugin = "org.jetbrains.kotlin.kapt")
 
 android {
+    namespace = "com.example.selliaapp"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.example.sellia"
+        applicationId = "com.example.selliaapp"
         minSdk = 21
         targetSdk = 35
         versionCode = 1

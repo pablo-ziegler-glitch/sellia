@@ -11,7 +11,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager    // BuildConfig del módulo app (mismo namespace)
 import com.example.selliaapp.sync.SyncWorker
 import com.example.selliaapp.sync.PricingScheduler
-import com.google.firebase.ktx.BuildConfig
+import com.example.selliaapp.BuildConfig
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
