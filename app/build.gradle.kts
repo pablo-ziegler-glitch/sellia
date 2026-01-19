@@ -29,8 +29,7 @@ android {
 
 dependencies {
     implementation(platform("com.example:catalog:1.0")) // using the version catalog
-    implementation("com.squareup.retrofit2:retrofit")
-    implementation("com.squareup.retrofit2:converter-gson")
+
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.foundation:foundation")
@@ -47,6 +46,9 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.50")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-compiler:2.50")
+
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.truth)
     testImplementation(libs.kotlinx.coroutines.test)
