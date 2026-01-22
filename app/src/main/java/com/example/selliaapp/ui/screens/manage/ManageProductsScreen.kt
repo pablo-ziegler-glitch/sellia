@@ -44,7 +44,10 @@ import java.time.LocalDate
 fun ManageProductsRoute(
     vm: ManageProductsViewModel = hiltViewModel()
 ) {
-    ManageProductsScreen(vm = vm)
+    ManageProductsScreen(
+        vm = vm,
+        onBack = TODO()
+    )
 }
 
 /**

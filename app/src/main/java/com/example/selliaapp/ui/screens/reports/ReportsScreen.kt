@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +46,7 @@ import java.util.Locale
 /**
  * Pantalla de reportes centrada en las ventas de los últimos 7 días.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportsScreen(
     vm: ReportsViewModel = hiltViewModel(),
@@ -150,7 +153,7 @@ fun ReportsScreen(
                             }
 
                             Spacer(modifier = Modifier.height(12.dp))
-                            Divider()
+                            HorizontalDivider()
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

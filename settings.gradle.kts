@@ -5,6 +5,8 @@ pluginManagement {
                 includeGroupByRegex("com\\.android.*")
                 includeGroupByRegex("com\\.google.*")
                 includeGroupByRegex("androidx.*")
+                includeGroupByRegex("org\\.jetbrains\\.kotlin.*")
+
             }
         }
         maven(url = "https://maven.aliyun.com/repository/google")
@@ -27,4 +29,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "selliaApp"
 include(":app")
- 
+

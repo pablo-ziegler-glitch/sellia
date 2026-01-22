@@ -1,5 +1,6 @@
 package com.example.selliaapp.sync
 
+import androidx.room.withTransaction
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
@@ -8,7 +9,7 @@ import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
-import com.example.selliaapp.di.AppModule.IoDispatcher
+import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier real del ZIP está dentro de AppModule
 import com.example.selliaapp.repository.ProductRepository
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -27,6 +28,10 @@ class SyncRepositoryImpl @Inject constructor(
     private val syncOutboxDao: SyncOutboxDao,
     private val productRepository: ProductRepository,
     private val firestore: FirebaseFirestore,
+    /* [ANTERIOR]
+    import com.example.selliaapp.di.IoDispatcher
+    @IoDispatcher private val io: CoroutineDispatcher
+    */
     @IoDispatcher private val io: CoroutineDispatcher
 ) : SyncRepository {
 
@@ -118,12 +123,18 @@ class SyncRepositoryImpl @Inject constructor(
         relations.forEach { relation ->
             val invoice = relation.invoice
             val doc = invoicesCollection.document(invoice.id.toString())
+
+            /* [ANTERIOR]
+            batch.set(doc, InvoiceFirestoreMappers.toMap(invoice, relation.items), SetOptions.merge())
+            */
+
+            // [NUEVO] toMap requiere (invoice, number:String, items:List<InvoiceItem>)
             batch.set(
                 doc,
                 InvoiceFirestoreMappers.toMap(
-                    invoice,
-                    formatInvoiceNumber(invoice.id),
-                    relation.items
+                    invoice = invoice,
+                    number = formatInvoiceNumber(invoice.id),
+                    items = relation.items
                 ),
                 SetOptions.merge()
             )
@@ -147,6 +158,7 @@ class SyncRepositoryImpl @Inject constructor(
         }
     }
 
+    // [NUEVO] Mismo formato que el ZIP (y evita inventar un campo "number" en Room)
     private fun formatInvoiceNumber(id: Long): String =
         "F-" + id.toString().padStart(8, '0')
 

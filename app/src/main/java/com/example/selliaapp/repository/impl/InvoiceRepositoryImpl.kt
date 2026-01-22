@@ -398,8 +398,8 @@ class InvoiceRepositoryImpl @Inject constructor(
          invoiceDao.observeInvoicesWithItems().map { list -> list.map { mapToSummary(it) } }
 
      // Búsqueda por cliente
-     override fun observeInvoicesByCustomerQuery(query: String) =
-         invoiceDao.observeInvoicesWithItemsByCustomerQuery(query)
+     override fun observeInvoicesByCustomerQuery(q: String) =
+         invoiceDao.observeInvoicesWithItemsByCustomerQuery(q)
 
 
 

@@ -64,7 +64,7 @@ fun StockImportWizardScreen(
         LazyColumn(Modifier.fillMaxHeight(0.6f)) {
             itemsIndexed(preview.take(10)) { idx, row ->
                 Text("${idx + 1}. ${row.joinToString(" | ")}")
-                Divider()
+                HorizontalDivider()
             }
         }
     }

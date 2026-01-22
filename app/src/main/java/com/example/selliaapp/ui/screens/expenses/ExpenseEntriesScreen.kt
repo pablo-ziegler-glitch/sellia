@@ -40,6 +40,8 @@ import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.ui.components.BackTopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MenuAnchorType
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -100,7 +102,10 @@ fun ExpenseEntriesScreen(
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Estado") },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                    modifier = Modifier.menuAnchor(
+                        type = MenuAnchorType.PrimaryNotEditable,
+                        enabled = true
+                    )
                 )
                 ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     listOf(null) + ExpenseStatus.entries
@@ -113,7 +118,7 @@ fun ExpenseEntriesScreen(
                 }
             }
 
-            Divider()
+            HorizontalDivider()
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(records) { r ->
@@ -174,7 +179,10 @@ private fun NewExpenseDialog(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Tipo de gasto") },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                        modifier = Modifier.menuAnchor(
+                            type = MenuAnchorType.PrimaryNotEditable,
+                            enabled = true
+                        )
                     )
                     ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         templates.forEach { t ->
@@ -195,7 +203,10 @@ private fun NewExpenseDialog(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Estado") },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                        modifier = Modifier.menuAnchor(
+                            type = MenuAnchorType.PrimaryNotEditable,
+                            enabled = true
+                        )
                     )
                     ExposedDropdownMenu(expanded = exp, onDismissRequest = { exp = false }) {
                         ExpenseStatus.values().forEach { st ->

@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.util.Size
 import androidx.activity.compose.BackHandler
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -147,7 +148,8 @@ fun BarcodeScannerScreen(
                 val selector = CameraSelector.DEFAULT_BACK_CAMERA
 
                 val analysis = ImageAnalysis.Builder()
-                    .setTargetResolution(Size(1280, 720))
+                    .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                    .setTargetRotation(previewView.display.rotation)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
 

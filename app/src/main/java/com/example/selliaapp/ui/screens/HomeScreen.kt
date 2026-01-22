@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.History
@@ -31,6 +32,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -124,7 +126,7 @@ fun HomeScreen(
             ) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = onStock, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.ViewList, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null)
                         Spacer(Modifier.width(8.dp)); Text("Stock")
                     }
                     OutlinedButton(onClick = onClientes, modifier = Modifier.weight(1f)) {
@@ -193,7 +195,7 @@ fun HomeScreen(
                     } else {
                         state.lowStockAlerts.forEachIndexed { index, alert ->
                             if (index > 0) {
-                                Divider()
+                                HorizontalDivider()
                             }
                             Column(
                                 modifier = Modifier
@@ -370,7 +372,7 @@ private fun PendingTasksSection(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.ViewList,
+                    imageVector = Icons.AutoMirrored.Filled.ViewList,
                     contentDescription = null
                 )
                 Spacer(Modifier.width(8.dp))
@@ -393,7 +395,7 @@ private fun PendingTasksSection(
                     style = MaterialTheme.typography.titleMedium
                 )
             }
-            Divider()
+            HorizontalDivider()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

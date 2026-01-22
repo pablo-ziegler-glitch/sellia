@@ -35,7 +35,6 @@ import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ExpenseRepository
-import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
@@ -59,6 +58,11 @@ import javax.inject.Singleton
  * - fallbackToDestructiveMigration() sin booleano
  * - Provee TODOS los DAOs (incl. Provider/Expense)
  * - ReportsRepository SOLO con InvoiceDao (baseline actual)
+ *
+ * /* [ANTERIOR]
+ *  @Provides fun provideIProductRepository(repo: ProductRepository): IProductRepository = repo
+ *  (Esto es lo que te rompía: ProductRepository NO implementa IProductRepository y además duplicaba bindings)
+ * */
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -72,7 +76,8 @@ object AppModule {
     fun provideDatabase(@ApplicationContext appContext: Context): AppDatabase =
         Room.databaseBuilder(appContext, AppDatabase::class.java, "sellia_db_v1")
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // WAL
-            .fallbackToDestructiveMigration() // Política por defecto del proyecto (sin booleano)
+            // [NUEVO] Room no admite booleano acá. Si no hay Migration, esto evita que el build/runtime se rompa.
+            .fallbackToDestructiveMigration(dropAllTables = true)
             .addCallback(object : RoomDatabase.Callback() {
                 /**
                  * Nota: RoomDatabase.Callback no tiene onConfigure(...).
@@ -80,76 +85,42 @@ object AppModule {
                  */
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
-                    db.setForeignKeyConstraintsEnabled(true)
+                    db.execSQL("PRAGMA foreign_keys=ON;")
                 }
             })
             .build()
 
     // -----------------------------
-    // DAOs BÁSICOS
+    // DAOs
     // -----------------------------
-     @Provides fun provideUserDao(db: AppDatabase): UserDao = db.userDao()
-    @Provides fun provideCustomerDao(db: AppDatabase): CustomerDao = db.customerDao()
-    @Provides fun provideInvoiceDao(db: AppDatabase): InvoiceDao = db.invoiceDao()
-    @Provides fun provideInvoiceItemDao(db: AppDatabase): InvoiceItemDao = db.invoiceItemDao()
-    @Provides fun provideSyncOutboxDao(db: AppDatabase): SyncOutboxDao = db.syncOutboxDao()
-    @Provides fun provideReportDataDao(db: AppDatabase): ReportDataDao = db.reportDataDao()
+    @Provides @Singleton fun provideProductDao(db: AppDatabase): ProductDao = db.productDao()
+    @Provides @Singleton fun provideCategoryDao(db: AppDatabase): CategoryDao = db.categoryDao()
+    @Provides @Singleton fun provideVariantDao(db: AppDatabase): VariantDao = db.variantDao()
+    @Provides @Singleton fun provideCustomerDao(db: AppDatabase): CustomerDao = db.customerDao()
+    @Provides @Singleton fun provideUserDao(db: AppDatabase): UserDao = db.userDao()
+    @Provides @Singleton fun provideProviderDao(db: AppDatabase): ProviderDao = db.providerDao()
+    @Provides @Singleton fun provideProviderInvoiceDao(db: AppDatabase): ProviderInvoiceDao = db.providerInvoiceDao()
+    @Provides @Singleton fun provideInvoiceDao(db: AppDatabase): InvoiceDao = db.invoiceDao()
+    @Provides @Singleton fun provideInvoiceItemDao(db: AppDatabase): InvoiceItemDao = db.invoiceItemDao()
+    @Provides @Singleton fun provideSyncOutboxDao(db: AppDatabase): SyncOutboxDao = db.syncOutboxDao()
+    @Provides @Singleton fun provideReportDataDao(db: AppDatabase): ReportDataDao = db.reportDataDao()
 
+    // Gastos
+    @Provides @Singleton fun provideExpenseBudgetDao(db: AppDatabase): ExpenseBudgetDao = db.expenseBudgetDao()
+    @Provides @Singleton fun provideExpenseRecordDao(db: AppDatabase): ExpenseRecordDao = db.expenseRecordDao()
+    @Provides @Singleton fun provideExpenseTemplateDao(db: AppDatabase): ExpenseTemplateDao = db.expenseTemplateDao()
 
-    // -----------------------------
-    // DAOs PROVEEDORES / GASTOS
-    // -----------------------------
-    @Provides fun provideProviderInvoiceDao(db: AppDatabase): ProviderInvoiceDao = db.providerInvoiceDao()
-    @Provides fun provideExpenseTemplateDao(db: AppDatabase): ExpenseTemplateDao = db.expenseTemplateDao()
-    @Provides fun provideExpenseRecordDao(db: AppDatabase): ExpenseRecordDao = db.expenseRecordDao()
-    @Provides fun provideExpenseBudgetDao(db: AppDatabase): ExpenseBudgetDao = db.expenseBudgetDao()
-
-
-
-    @Provides
-    @Singleton
-    fun provideProductDao(db: AppDatabase): ProductDao = db.productDao()
-
-    @Provides
-    @Singleton
-    fun provideCategoryDao(db: AppDatabase): CategoryDao = db.categoryDao()
-
-    @Provides
-    @Singleton
-    fun provideProviderDao(db: AppDatabase): ProviderDao = db.providerDao()
-
-    @Provides
-    @Singleton
-    fun provideVariantDao(db: AppDatabase): VariantDao = db.variantDao()
-
-    @Provides
-    @Singleton
-    fun providePricingFixedCostDao(db: AppDatabase): PricingFixedCostDao = db.pricingFixedCostDao()
-
-    @Provides
-    @Singleton
-    fun providePricingSettingsDao(db: AppDatabase): PricingSettingsDao = db.pricingSettingsDao()
-
-    @Provides
-    @Singleton
-    fun providePricingAuditDao(db: AppDatabase): PricingAuditDao = db.pricingAuditDao()
-
-    @Provides
-    @Singleton
-    fun providePricingMlFixedCostTierDao(db: AppDatabase): PricingMlFixedCostTierDao =
-        db.pricingMlFixedCostTierDao()
-
-    @Provides
-    @Singleton
-    fun providePricingMlShippingTierDao(db: AppDatabase): PricingMlShippingTierDao =
-        db.pricingMlShippingTierDao()
-
+    // Pricing DAOs
+    @Provides @Singleton fun providePricingFixedCostDao(db: AppDatabase): PricingFixedCostDao = db.pricingFixedCostDao()
+    @Provides @Singleton fun providePricingSettingsDao(db: AppDatabase): PricingSettingsDao = db.pricingSettingsDao()
+    @Provides @Singleton fun providePricingAuditDao(db: AppDatabase): PricingAuditDao = db.pricingAuditDao()
+    @Provides @Singleton fun providePricingMlFixedCostTierDao(db: AppDatabase): PricingMlFixedCostTierDao = db.pricingMlFixedCostTierDao()
+    @Provides @Singleton fun providePricingMlShippingTierDao(db: AppDatabase): PricingMlShippingTierDao = db.pricingMlShippingTierDao()
 
     // -----------------------------
     // REPOSITORIES
     // -----------------------------
 
-    // --------- Repos ---------
     /**
      * ProductRepository actualizado: coordina Room (local) + Firestore (remoto).
      * La UI observa Room; las operaciones escriben en ambos y sincronizan.
@@ -162,8 +133,8 @@ object AppModule {
         providerDao: ProviderDao,
         pricingConfigRepository: PricingConfigRepository,
         firestore: FirebaseFirestore,
-        @IoDispatcher io: CoroutineDispatcher   // <-- INYECTADO
-
+        // [NUEVO] Qualifier global (CoroutinesModule)
+        @IoDispatcher io: CoroutineDispatcher
     ): ProductRepository = ProductRepository(
         db = db,
         productDao = productDao,
@@ -171,12 +142,8 @@ object AppModule {
         providerDao = providerDao,
         pricingConfigRepository = pricingConfigRepository,
         firestore = firestore,
-        io = io                                  // <-- AQUÍ
+        io = io
     )
-
-    @Provides
-    @Singleton
-    fun provideIProductRepository(repo: ProductRepository): IProductRepository = repo
 
     @Provides
     @Singleton
@@ -195,42 +162,19 @@ object AppModule {
         pricingMlShippingTierDao = pricingMlShippingTierDao,
         io = io
     )
-    @Provides
-    @Singleton
-    fun provideCustomerRepository(dao: CustomerDao): CustomerRepository =
-        CustomerRepository(dao)
 
-    @Provides
-    @Singleton
-    fun provideUserRepository(dao: UserDao): UserRepository = UserRepository(dao)
-
-
-
+    @Provides @Singleton fun provideCustomerRepository(dao: CustomerDao): CustomerRepository = CustomerRepository(dao)
+    @Provides @Singleton fun provideUserRepository(dao: UserDao): UserRepository = UserRepository(dao)
 
     /**
      * ⚠️ Baseline actual (04/09/2025): ReportsRepository SOLO con InvoiceDao.
-     * Mantenemos ReportDataDao disponible pero no lo inyectamos todavía.
-     * Si ya migraste ReportsRepository a (invoiceDao, reportDataDao),
-     * cambiá la firma y el constructor aquí.
      */
     @Provides @Singleton
     fun provideReportsRepository(invoiceDao: InvoiceDao): ReportsRepository =
         ReportsRepository(invoiceDao)
 
-    // -----------------------------
-    // REPOS PROVEEDORES / GASTOS
-    // -----------------------------
-    @Provides
-    @Singleton
-    fun provideProviderRepository(
-        dao: ProviderDao
-    ): ProviderRepository = ProviderRepository(dao)
-
-    @Provides
-    @Singleton
-    fun provideProviderInvoiceRepository(
-        dao: ProviderInvoiceDao
-    ): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
+    @Provides @Singleton fun provideProviderRepository(dao: ProviderDao): ProviderRepository = ProviderRepository(dao)
+    @Provides @Singleton fun provideProviderInvoiceRepository(dao: ProviderInvoiceDao): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
 
     @Provides
     @Singleton
@@ -240,38 +184,29 @@ object AppModule {
         budgetDao: ExpenseBudgetDao,
         invoiceDao: InvoiceDao,
         providerInvoiceDao: ProviderInvoiceDao
-    ): ExpenseRepository = ExpenseRepository(
-        tDao = templateDao,
-        rDao = recordDao,
-        bDao = budgetDao,
-        invoiceDao = invoiceDao,
-        providerInvoiceDao = providerInvoiceDao
-    )
+    ): ExpenseRepository =
+        ExpenseRepository(
+            tDao = templateDao,
+            rDao = recordDao,
+            bDao = budgetDao,
+            invoiceDao = invoiceDao,
+            providerInvoiceDao = providerInvoiceDao
+        )
+    // -----------------------------
+    // FIRESTORE
+    // -----------------------------
+    //@Provides
+    //@Singleton
+    //fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
 
-    // --- Dispatchers ---
     @Qualifier
     @Retention(AnnotationRetention.BINARY)
     annotation class IoDispatcher
-
-    @Qualifier
-    @Retention(AnnotationRetention.BINARY)
-    annotation class MainDispatcher
-
-    @Qualifier
-    @Retention(AnnotationRetention.BINARY)
-    annotation class DefaultDispatcher
-
 
     @Provides
     @IoDispatcher
     fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
 
-    @Provides
-    @MainDispatcher
-    fun provideMainDispatcher(): CoroutineDispatcher = Dispatchers.Main
 
-    @Provides
-    @DefaultDispatcher
-    fun provideDefaultDispatcher(): CoroutineDispatcher = Dispatchers.Default
 
 }

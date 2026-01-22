@@ -6,6 +6,7 @@ import androidx.paging.PagingData
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.repository.IProductRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,7 @@ class ManageProductsViewModel @Inject constructor(
     val state: StateFlow<ManageProductsUiState> = _state.asStateFlow()
 
     // Flujo Paginado según búsqueda (filtros simples se aplican en UI por ahora)
+    @OptIn(ExperimentalCoroutinesApi::class)
     val productsPaged: Flow<PagingData<ProductEntity>> =
         _state
             .map { it.query.trim() }

@@ -104,6 +104,6 @@ fun SyncScreen(
             }
         }
     }
-
+}
 
 

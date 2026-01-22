@@ -18,7 +18,8 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryBridgeModule {
 
-    @Binds @Singleton
+    @Binds
+    @Singleton
     abstract fun bindIProductRepository(
         impl: IProductRepositoryAdapter
     ): IProductRepository

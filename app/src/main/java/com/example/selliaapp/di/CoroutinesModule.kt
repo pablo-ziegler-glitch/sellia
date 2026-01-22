@@ -1,6 +1,5 @@
 package com.example.selliaapp.di
 
-
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -9,7 +8,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Qualifier
 import javax.inject.Singleton
-
 
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
@@ -22,7 +20,6 @@ annotation class MainDispatcher
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class DefaultDispatcher
-
 
 /**
  * Módulo de Coroutines para exponer Dispatchers vía DI.

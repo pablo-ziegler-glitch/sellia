@@ -19,6 +19,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -231,7 +232,10 @@ private fun ProviderEditorDialog(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Seleccionar") },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.menuAnchor(
+                            type = MenuAnchorType.PrimaryNotEditable,
+                            enabled = true
+                        )
                     )
                     ExposedDropdownMenu(expanded = expandedTerm, onDismissRequest = { expandedTerm = false }) {
                         PaymentTerm.values().forEach { t ->
@@ -252,7 +256,10 @@ private fun ProviderEditorDialog(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Seleccionar") },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.menuAnchor(
+                            type = MenuAnchorType.PrimaryNotEditable,
+                            enabled = true
+                        )
                     )
                     ExposedDropdownMenu(expanded = expandedMethod, onDismissRequest = { expandedMethod = false }) {
                         PaymentMethod.values().forEach { m ->

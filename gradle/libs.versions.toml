@@ -1,23 +1,92 @@
 [versions]
-retrofit = "2.9.0"
-converter-gson = "2.9.0"
-okhttp = "4.9.2"
-moshi = "1.12.0"
-coil = "2.1.0"
-apache-poi = "5.2.3"
-truth = "1.4.2"
-kotlinx-coroutines-test = "1.8.1"
-androidx-test-ext-junit = "1.2.1"
-androidx-test-core = "1.6.1"
-androidx-test-runner = "1.6.1"
-androidx-test-espresso-core = "3.6.1"
+cameraxVersion = "1.4.2"
+charts = "0.2.2-alpha"
+composeBom = "2025.08.00"
+concurrentFutures = "1.3.0"
+core = "3.5.3"
+firebaseAuthKtx = "23.2.1"
+firebaseBom = "34.1.0"
+firebaseFirestoreKtx = "25.1.4"
+coreKtx = "1.10.1"
+junit = "4.13.2"
+junitVersion = "1.2.1"
+espressoCore = "3.6.1"
+appcompat = "1.7.1"
+kotlinxCoroutinesGuava = "1.9.0"
+listenablefuture = "9999.0-empty-to-avoid-conflict-with-guava"
+material = "1.13.0"
+pagingCompose = "3.3.2"
+pagingRuntimeKtx = "3.3.2"
+roomCompiler = "<ROOM_VERSION>"
+roomRuntime = "2.7.2"
+ui = "1.8.3"
+workRuntimeKtxVersion = "2.9.0"
+zxingAndroidEmbedded = "4.3.0"
+roomExternalAntlr = "2.7.2"
+runtimeLivedata = "1.8.3"
+cameraCore = "1.3.4"
+playServicesMlkitBarcodeScanning = "18.3.1"
+material3Android = "1.3.2"
+foundationAndroid = "1.7.2"
+benchmarkTraceprocessorAndroid = "1.4.0"
+databindingAdapters = "8.12.2"
+engageCore = "1.5.9"
+tvMaterial = "1.0.1"
+coreVersion = "1.13.0"
+pagingCommonAndroid = "3.3.6"
+composeMaterial3 = "1.5.1"
+storage = "1.5.0"
+firebaseCrashlyticsBuildtools = "3.0.6"
+junitJunit = "4.12"
+viewbinding = "7.3.1"
+
 
 [libraries]
-truth = { module = "com.google.truth:truth", version.ref = "truth" }
-kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines-test" }
-retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
-retrofit-converter-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "converter-gson" }
-androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-ext-junit" }
-androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-test-core" }
-androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
-androidx-test-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "androidx-test-espresso-core" }
+accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version = "0.37.3" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "cameraxVersion" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "cameraxVersion" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraxVersion" }
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-concurrent-futures = { module = "androidx.concurrent:concurrent-futures", version.ref = "concurrentFutures" }
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-paging-compose = { module = "androidx.paging:paging-compose", version.ref = "pagingCompose" }
+androidx-paging-runtime-ktx = { module = "androidx.paging:paging-runtime-ktx", version.ref = "pagingRuntimeKtx" }
+androidx-room-compiler-vroomversion = { module = "androidx.room:room-compiler", version.ref = "roomCompiler" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomRuntime" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomRuntime" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
+androidx-ui = { module = "androidx.compose.ui:ui", version.ref = "ui" }
+androidx-work-runtime-ktx-v290 = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntimeKtxVersion" }
+charts = { module = "com.github.tehras:charts", version.ref = "charts" }
+core = { module = "com.google.zxing:core", version.ref = "core" }
+firebase-auth-ktx = { module = "com.google.firebase:firebase-auth-ktx", version.ref = "firebaseAuthKtx" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-firestore-ktx = { module = "com.google.firebase:firebase-firestore-ktx", version.ref = "firebaseFirestoreKtx" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+kotlinx-coroutines-guava = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-guava", version.ref = "kotlinxCoroutinesGuava" }
+listenablefuture = { module = "com.google.guava:listenablefuture", version.ref = "listenablefuture" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
+androidx-room-external-antlr = { group = "androidx.room", name = "room-external-antlr", version.ref = "roomExternalAntlr" }
+androidx-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata", version.ref = "runtimeLivedata" }
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraCore" }
+play-services-mlkit-barcode-scanning = { group = "com.google.android.gms", name = "play-services-mlkit-barcode-scanning", version.ref = "playServicesMlkitBarcodeScanning" }
+androidx-material3-android = { group = "androidx.compose.material3", name = "material3-android", version.ref = "material3Android" }
+androidx-foundation-android = { group = "androidx.compose.foundation", name = "foundation-android", version.ref = "foundationAndroid" }
+androidx-benchmark-traceprocessor-android = { group = "androidx.benchmark", name = "benchmark-traceprocessor-android", version.ref = "benchmarkTraceprocessorAndroid" }
+androidx-databinding-adapters = { group = "androidx.databinding", name = "databinding-adapters", version.ref = "databindingAdapters" }
+engage-core = { group = "com.google.android.engage", name = "engage-core", version.ref = "engageCore" }
+androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
+androidx-core = { group = "androidx.core", name = "core", version.ref = "coreVersion" }
+androidx-paging-common-android = { group = "androidx.paging", name = "paging-common-android", version.ref = "pagingCommonAndroid" }
+androidx-compose-material3 = { group = "androidx.wear.compose", name = "compose-material3", version.ref = "composeMaterial3" }
+androidx-storage = { group = "androidx.test.services", name = "storage", version.ref = "storage" }
+firebase-crashlytics-buildtools = { group = "com.google.firebase", name = "firebase-crashlytics-buildtools", version.ref = "firebaseCrashlyticsBuildtools" }
+junit-junit = { group = "junit", name = "junit", version.ref = "junitJunit" }
+androidx-viewbinding = { group = "androidx.databinding", name = "viewbinding", version.ref = "viewbinding" }
+
+[plugins]

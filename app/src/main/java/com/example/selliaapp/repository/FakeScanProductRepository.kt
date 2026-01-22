@@ -1,6 +1,5 @@
 package com.example.selliaapp.repository
 
-
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
@@ -9,6 +8,7 @@ import com.example.selliaapp.data.csv.ProductCsvImporter
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.model.Product
+import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -34,6 +34,7 @@ class FakeScanProductRepository(
         productsFlow.value = products.toList()
         return newId
     }
+
     override suspend fun update(entity: ProductEntity): Int {
         val idx = products.indexOfFirst { it.id == entity.id }
         if (idx >= 0) {
@@ -43,6 +44,7 @@ class FakeScanProductRepository(
         }
         return 0
     }
+
     override suspend fun deleteById(id: Int) {
         products.removeAll { it.id == id }
         productsFlow.value = products.toList()
@@ -61,8 +63,10 @@ class FakeScanProductRepository(
         return if (t.isEmpty()) productsFlow
         else flowOf(products.filter { (it.name ?: "").lowercase().contains(t) })
     }
+
     override fun distinctCategories(): Flow<List<String>> =
         flowOf(products.mapNotNull { it.category }.distinct())
+
     override fun distinctProviders(): Flow<List<String>> =
         flowOf(products.mapNotNull { it.providerName }.distinct())
 
@@ -72,6 +76,23 @@ class FakeScanProductRepository(
 
     override fun getProducts(): Flow<List<ProductEntity>> = productsFlow
 
+    override fun observeStockMovements(productId: Int, limit: Int): Flow<List<StockMovementWithProduct>> {
+        /* [ANTERIOR]
+        TODO("Not yet implemented")
+        */
+        // Fake orientado a flujo de escaneo: no trackeamos movimientos acá.
+        // Devolvemos vacío para no romper pantallas/tests que observen el stream.
+        return flowOf(emptyList())
+    }
+
+    override fun observeRecentStockMovements(limit: Int): Flow<List<StockMovementWithProduct>> {
+        /* [ANTERIOR]
+        TODO("Not yet implemented")
+        */
+        // Fake orientado a flujo de escaneo: no trackeamos movimientos acá.
+        return flowOf(emptyList())
+    }
+
     // ---------- Cache util ----------
     override suspend fun cachedOrEmpty(): List<ProductEntity> = products.toList()
 
@@ -79,6 +100,20 @@ class FakeScanProductRepository(
     override suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean {
         lastIncrease = barcode to delta
         val idx = products.indexOfFirst { it.barcode == barcode }
+        if (idx < 0) return false
+        val current = products[idx]
+        val q = (current.quantity ?: 0) + delta
+        val newQty = if (q < 0) 0 else q
+        products[idx] = current.copy(quantity = newQty)
+        productsFlow.value = products.toList()
+        return true
+    }
+
+    override suspend fun adjustStock(productId: Int, delta: Int, reason: String, note: String?): Boolean {
+        /* [ANTERIOR]
+        TODO("Not yet implemented")
+        */
+        val idx = products.indexOfFirst { it.id == productId }
         if (idx < 0) return false
         val current = products[idx]
         val q = (current.quantity ?: 0) + delta

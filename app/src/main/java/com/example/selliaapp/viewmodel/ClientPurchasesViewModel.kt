@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.repository.InvoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,7 @@ class ClientPurchasesViewModel @Inject constructor(
     private val query = MutableStateFlow("")
 
     // Cuando la query está vacía, usamos "__no_match__" para evitar traer todo.
+    @OptIn(ExperimentalCoroutinesApi::class)
     val results: StateFlow<List<InvoiceWithItems>> =
         query.flatMapLatest { q ->
             val safe = if (q.isBlank()) "__no_match__" else q

@@ -27,6 +27,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -227,7 +228,7 @@ fun SellScreen(
                             Text("Elegir cliente")
                         }
                     } else {
-                        Text(ui.selectedCustomerName, style = MaterialTheme.typography.bodyMedium)
+                        Text(ui.selectedCustomerName!!, style = MaterialTheme.typography.bodyMedium)
                         if (ui.customerDiscountPercent > 0) {
                             Text(
                                 text = "Descuento cliente: ${ui.customerDiscountPercent}%",
@@ -323,7 +324,7 @@ fun SellScreen(
                                     colorDescripcion = if (ui.surchargePercent == 0) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFB71C1C)
                                 )
                                 Spacer(Modifier.height(12.dp))
-                                Divider(Modifier.padding(vertical = 4.dp))
+                                HorizontalDivider(Modifier.padding(vertical = 4.dp))
                                 ResumenRow(
                                     etiqueta = "Total a cobrar",
                                     valor = currency.format(ui.total),

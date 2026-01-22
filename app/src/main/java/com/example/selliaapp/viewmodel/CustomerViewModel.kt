@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.local.entity.CustomerEntity
 import com.example.selliaapp.repository.CustomerRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,7 @@ class CustomersViewModel @Inject constructor(
 
     private val query = MutableStateFlow("")
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     val customers: StateFlow<List<CustomerEntity>> =
         query.flatMapLatest { q ->
             if (q.isBlank()) repo.observeAll() else repo.search(q)
