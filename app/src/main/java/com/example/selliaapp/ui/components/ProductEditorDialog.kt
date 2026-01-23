@@ -1,6 +1,10 @@
 package com.example.selliaapp.ui.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -10,7 +14,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.local.entity.ProductEntity
 
 @Composable
@@ -44,22 +50,29 @@ fun ProductEditorDialog(
     var description by remember { mutableStateOf(TextFieldValue(initial?.description ?: "")) }
 
 
+    val scrollState = rememberScrollState()
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Nuevo producto" else "Editar producto") },
         text = {
-            Column {
-                OutlinedTextField(name, { name = it }, label = { Text("Nombre") })
-                OutlinedTextField(barcode, { barcode = it }, label = { Text("Código") })
-                OutlinedTextField(price, { price = it }, label = { Text("Precio") })
-                OutlinedTextField(listPrice, { listPrice = it }, label = { Text("Precio lista") })
-                OutlinedTextField(cashPrice, { cashPrice = it }, label = { Text("Precio efectivo") })
-                OutlinedTextField(transferPrice, { transferPrice = it }, label = { Text("Precio transferencia") })
-                OutlinedTextField(mlPrice, { mlPrice = it }, label = { Text("Precio ML") })
-                OutlinedTextField(ml3cPrice, { ml3cPrice = it }, label = { Text("Precio ML 3C") })
-                OutlinedTextField(ml6cPrice, { ml6cPrice = it }, label = { Text("Precio ML 6C") })
-                OutlinedTextField(stock, { stock = it }, label = { Text("Stock") })
-                OutlinedTextField(description, { description = it }, label = { Text("Descripción") })
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(scrollState)
+            ) {
+                OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(barcode, { barcode = it }, label = { Text("Código") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(price, { price = it }, label = { Text("Precio") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(listPrice, { listPrice = it }, label = { Text("Precio lista") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(cashPrice, { cashPrice = it }, label = { Text("Precio efectivo") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(transferPrice, { transferPrice = it }, label = { Text("Precio transferencia") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(mlPrice, { mlPrice = it }, label = { Text("Precio ML") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(ml3cPrice, { ml3cPrice = it }, label = { Text("Precio ML 3C") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(ml6cPrice, { ml6cPrice = it }, label = { Text("Precio ML 6C") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(stock, { stock = it }, label = { Text("Stock") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(description, { description = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {

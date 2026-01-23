@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Group
@@ -43,6 +44,7 @@ fun ConfigScreen(
     onManageProducts: () -> Unit,
     onManageCustomers: () -> Unit,
     onPricingConfig: () -> Unit,
+    onMarketingConfig: () -> Unit,
     onSync: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -99,6 +101,11 @@ fun ConfigScreen(
                     icon = Icons.Filled.Inventory2,
                     title = "Pricing y costos",
                     onClick = onPricingConfig
+                )
+                SettingsItem(
+                    icon = Icons.Filled.Campaign,
+                    title = "Campañas de marketing",
+                    onClick = onMarketingConfig
                 )
                 SettingsItem(
                     icon = Icons.Filled.Group, // clientes

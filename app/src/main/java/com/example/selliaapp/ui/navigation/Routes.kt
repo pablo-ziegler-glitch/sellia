@@ -26,11 +26,13 @@ sealed class Routes(val route: String) {
 
     object Config : Routes("config")
     object PricingConfig : Routes("pricing_config")
+    object MarketingConfig : Routes("marketing_config")
     object Checkout : Routes("checkout")
     object Reports : Routes("reports")
 
     object AddUser : Routes("add_user")
     object ManageProducts : Routes("manage_products")
+    object ProductQr : Routes("product_qr")
     object ManageCustomers : Routes("manage_customers")
     object Sync : Routes("sync")
 
