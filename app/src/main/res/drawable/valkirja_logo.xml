@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@color/valkirja_warm_brown" />
+            <stroke
+                android:width="3dp"
+                android:color="@color/valkirja_slate" />
+        </shape>
+    </item>
+    <item
+        android:width="120dp"
+        android:height="120dp"
+        android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="@color/valkirja_sand" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/valkirja_slate" />
+        </shape>
+    </item>
+    <item
+        android:width="84dp"
+        android:height="84dp"
+        android:gravity="center">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/valkirja_teal" />
+            <corners android:radius="18dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/valkirja_slate" />
+        </shape>
+    </item>
+    <item
+        android:width="42dp"
+        android:height="20dp"
+        android:gravity="center">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/valkirja_gold" />
+            <corners android:radius="8dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/valkirja_slate" />
+        </shape>
+    </item>
+</layer-list>

@@ -2,13 +2,13 @@
     <!-- Base application theme. -->
     <style name="Theme.SelliaApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
         <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/purple_200</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
-        <item name="colorOnPrimary">@color/black</item>
+        <item name="colorPrimary">@color/valkirja_gold</item>
+        <item name="colorPrimaryVariant">@color/valkirja_warm_brown</item>
+        <item name="colorOnPrimary">@color/valkirja_ink</item>
         <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_200</item>
-        <item name="colorOnSecondary">@color/black</item>
+        <item name="colorSecondary">@color/valkirja_teal</item>
+        <item name="colorSecondaryVariant">@color/valkirja_warm_brown</item>
+        <item name="colorOnSecondary">@color/valkirja_cream</item>
         <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
         <!-- Customize your theme here. -->
