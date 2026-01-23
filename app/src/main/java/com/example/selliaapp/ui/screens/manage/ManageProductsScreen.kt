@@ -45,12 +45,14 @@ import java.time.LocalDate
 
 @Composable
 fun ManageProductsRoute(
-    vm: ManageProductsViewModel = hiltViewModel()
+    vm: ManageProductsViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
+    onShowQr: () -> Unit = {}
 ) {
     ManageProductsScreen(
         vm = vm,
-        onBack = TODO(),
-        onShowQr = TODO()
+        onBack = onBack,
+        onShowQr = onShowQr
     )
 }
 
