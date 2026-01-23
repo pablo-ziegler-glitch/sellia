@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.ui.navigation.SelliaApp
+import com.example.selliaapp.ui.theme.ValkirjaTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -31,12 +32,13 @@ class MainActivity : ComponentActivity() {
             // Crea el NavController de Compose
             val navController = rememberNavController()
 
-            // Opcional: Surface/Theme si usás uno propio; acá usamos MaterialTheme "puro"
-            Surface(color = MaterialTheme.colorScheme.background) {
-                SelliaApp(
-                    navController = navController,
-                    customerRepo = customerRepository
-                )
+            ValkirjaTheme {
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    SelliaApp(
+                        navController = navController,
+                        customerRepo = customerRepository
+                    )
+                }
             }
         }
     }
