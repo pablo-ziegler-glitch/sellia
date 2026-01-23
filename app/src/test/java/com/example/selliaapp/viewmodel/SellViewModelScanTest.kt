@@ -32,7 +32,7 @@ class SellViewModelScanTest {
                     barcode = "123",
                     name = "Manzana",
                     price = 100.0,
-                    finalPrice = 110.0,
+                    listPrice = 110.0,
                     quantity = 5
                 ),
                 ProductEntity(
@@ -40,7 +40,7 @@ class SellViewModelScanTest {
                     barcode = "999",
                     name = "Naranja",
                     price = 80.0,
-                    finalPrice = 88.0,
+                    listPrice = 88.0,
                     quantity = 0
                 )
             )

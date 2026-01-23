@@ -107,24 +107,6 @@ class ProductRepository(
         return if (id > 0) id.toInt() else providerDao.getByName(n)?.id
     }
 
-    // ---------- E4: Cálculo precio/impuesto ----------
-    data class PriceTriplet(val base: Double?, val tax: Double?, val final: Double?)
-    private fun computePrice(
-        basePrice: Double?, taxRate: Double?, finalPrice: Double?, legacyPrice: Double?
-    ): PriceTriplet {
-        // Reglas:
-        // - Si base y tax están → final = base * (1 + tax)
-        // - Si final y tax están → base = final / (1 + tax)
-        // - Si sólo legacy price llega → usar como final (y base = final/(1+tax) si hay tax)
-        val tax = taxRate?.takeIf { it >= 0 } ?: 0.0
-        return when {
-            basePrice != null -> PriceTriplet(basePrice, taxRate, basePrice * (1.0 + tax))
-            finalPrice != null -> PriceTriplet(finalPrice / (1.0 + tax), taxRate, finalPrice)
-            legacyPrice != null -> PriceTriplet(null, null, legacyPrice) // mantenemos legacy como final
-            else -> PriceTriplet(null, null, null)
-        }
-    }
-
     private suspend fun applyAutoPricing(
         incoming: ProductEntity,
         existing: ProductEntity? = null,
@@ -180,13 +162,6 @@ class ProductRepository(
         db.withTransaction {
             rows.forEach { r ->
                 val updated = r.updatedAt ?: LocalDate.now()
-                val priceTrip = computePrice(
-                    basePrice = null,
-                    taxRate = null,
-                    finalPrice = null,
-                    legacyPrice = r.price
-                )
-
                 val existing = when {
                     !r.barcode.isNullOrBlank() -> productDao.getByBarcodeOnce(r.barcode!!)
                     !r.name.isNullOrBlank() -> productDao.getByNameOnce(r.name)
@@ -197,9 +172,6 @@ class ProductRepository(
                     code = r.code,
                     barcode = r.barcode,
                     name = r.name,
-                    basePrice = priceTrip.base,
-                    taxRate = priceTrip.tax,
-                    finalPrice = priceTrip.final,
                     purchasePrice = r.purchasePrice,
                     price = r.price,
                     listPrice = r.listPrice,
@@ -309,8 +281,6 @@ class ProductRepository(
         db.withTransaction {
             rows.forEachIndexed { idx, r ->
                 try {
-                    val priceTrip = computePrice(basePrice = null, taxRate = null, finalPrice = null, legacyPrice = r.price)
-
                     val existing = when {
                         !r.barcode.isNullOrBlank() -> productDao.getByBarcodeOnce(r.barcode!!)
                         else                       -> productDao.getByNameOnce(r.name)
@@ -321,9 +291,6 @@ class ProductRepository(
                             code = r.code,
                             barcode = r.barcode,
                             name = r.name,
-                            basePrice = priceTrip.base,
-                            taxRate = priceTrip.tax,
-                            finalPrice = priceTrip.final,
                             purchasePrice = r.purchasePrice,
                             price = r.price, // legacy
                             listPrice = r.listPrice,
@@ -377,9 +344,6 @@ class ProductRepository(
                             code        = r.code ?: existing.code,
                             barcode     = r.barcode ?: existing.barcode,
                             name        = r.name.ifBlank { existing.name },
-                            basePrice   = priceTrip.base ?: existing.basePrice,
-                            taxRate     = priceTrip.tax  ?: existing.taxRate,
-                            finalPrice  = priceTrip.final?: existing.finalPrice,
                             purchasePrice = r.purchasePrice ?: existing.purchasePrice,
                             price       = r.price ?: existing.price,
                             listPrice   = r.listPrice ?: existing.listPrice,
