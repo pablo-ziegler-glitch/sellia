@@ -34,7 +34,7 @@ fun ProductEditorDialog(
         ml3cPrice: Double?,
         ml6cPrice: Double?,
         stock: Int,
-        minStock: Int?,
+        minStock: Int,
         description: String?
     ) -> Unit
 ) {
@@ -50,6 +50,7 @@ fun ProductEditorDialog(
     var stock by remember { mutableStateOf(TextFieldValue(initial?.quantity?.toString() ?: "")) }
     var minStock by remember { mutableStateOf(TextFieldValue(initial?.minStock?.toString() ?: "")) }
     var description by remember { mutableStateOf(TextFieldValue(initial?.description ?: "")) }
+    var minStockError by remember { mutableStateOf(false) }
 
 
     val scrollState = rememberScrollState()
@@ -76,9 +77,20 @@ fun ProductEditorDialog(
                 OutlinedTextField(stock, { stock = it }, label = { Text("Stock") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(
                     minStock,
-                    { minStock = it },
+                    {
+                        minStock = it
+                        if (minStockError) {
+                            minStockError = false
+                        }
+                    },
                     label = { Text("Stock mínimo") },
-                    modifier = Modifier.fillMaxWidth()
+                    isError = minStockError,
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = {
+                        if (minStockError) {
+                            Text("Ingresá un stock mínimo válido.")
+                        }
+                    }
                 )
                 OutlinedTextField(description, { description = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth())
             }
@@ -94,6 +106,10 @@ fun ProductEditorDialog(
                 val ml6c = ml6cPrice.text.toDoubleOrNull()
                 val s = stock.text.toIntOrNull() ?: 0
                 val minStockValue = minStock.text.toIntOrNull()
+                if (minStockValue == null) {
+                    minStockError = true
+                    return@TextButton
+                }
                 onSave(
                     name.text.trim(),
                     barcode.text.trim(),
