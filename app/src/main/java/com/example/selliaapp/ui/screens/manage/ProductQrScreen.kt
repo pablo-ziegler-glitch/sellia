@@ -1,5 +1,6 @@
 package com.example.selliaapp.ui.screens.manage
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfDocument
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.QrCode
@@ -40,11 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
+ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.roundToPx
-import androidx.hilt.navigation.compose.hiltViewModel
+ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.ui.components.BackTopAppBar
@@ -81,6 +81,7 @@ fun ProductQrScreen(
         return sizeCmInput.replace(',', '.').toFloatOrNull()?.coerceIn(1f, 20f) ?: 5f
     }
 
+    @SuppressLint("NewApi")
     fun exportQrPdf(items: List<ProductEntity>, fileName: String) {
         if (items.isEmpty()) {
             Toast.makeText(context, "No hay productos para exportar.", Toast.LENGTH_SHORT).show()

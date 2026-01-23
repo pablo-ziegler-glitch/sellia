@@ -3,6 +3,7 @@ package com.example.selliaapp.viewmodel
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.repository.FakeInvoiceRepository
 import com.example.selliaapp.repository.FakeScanProductRepository
+import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.testing.MainDispatcherRule
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,7 +50,8 @@ class SellViewModelScanTest {
         // [NUEVO] SellViewModel requiere repo + invoiceRepo
         vm = SellViewModel(
             repo = repo,
-            invoiceRepo = invoiceRepo
+            invoiceRepo = invoiceRepo,
+            marketingConfigRepository = MarketingConfigRepository()
         )
     }
 
