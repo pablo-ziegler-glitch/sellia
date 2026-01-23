@@ -73,11 +73,8 @@ class QuickReorderViewModel @Inject constructor(
                 if (missing > 0) missing.toString() else ""
             } ?: ""
             val price = product?.let { p ->
-                val final = p.finalPrice ?: p.price ?: p.basePrice?.let { base ->
-                    val tax = p.taxRate ?: 0.0
-                    base * (1 + tax)
-                }
-                final?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: ""
+                val resolved = p.listPrice ?: p.price
+                resolved?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: ""
             } ?: ""
             _state.update {
                 it.copy(
@@ -146,11 +143,9 @@ class QuickReorderViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, success = false, createdInvoiceId = null) }
             val now = System.currentTimeMillis()
-            val taxRate = product.taxRate ?: 0.0
-            val priceUnitFinal = unitPrice
-            val priceUnitNet = if (taxRate > 0) priceUnitFinal / (1 + taxRate) else priceUnitFinal
-            val vatAmount = priceUnitNet * taxRate * quantity
-            val lineTotal = priceUnitFinal * quantity
+            val priceUnitNet = unitPrice
+            val vatAmount = 0.0
+            val lineTotal = priceUnitNet * quantity
             val invoice = ProviderInvoice(
                 providerId = providerId,
                 number = "PO-$now",
@@ -163,7 +158,7 @@ class QuickReorderViewModel @Inject constructor(
                 name = product.name,
                 quantity = quantity,
                 priceUnit = priceUnitNet,
-                vatPercent = (taxRate * 100.0),
+                vatPercent = 0.0,
                 vatAmount = vatAmount,
                 total = lineTotal
             )

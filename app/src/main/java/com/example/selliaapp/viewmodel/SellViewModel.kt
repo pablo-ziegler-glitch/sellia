@@ -7,6 +7,7 @@ import com.example.selliaapp.data.model.sales.CartItem
 import com.example.selliaapp.data.model.sales.InvoiceDraft
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.InvoiceRepository
+import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.ui.state.CartItemUi
 import com.example.selliaapp.ui.state.CustomerSummaryUi
 import com.example.selliaapp.ui.state.OrderType
@@ -27,12 +28,29 @@ import javax.inject.Inject
 @HiltViewModel
 class SellViewModel @Inject constructor(
     private val repo: IProductRepository,
-    private val invoiceRepo: InvoiceRepository
+    private val invoiceRepo: InvoiceRepository,
+    private val marketingConfigRepository: MarketingConfigRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SellUiState())
     val state: StateFlow<SellUiState> = _state.asStateFlow()
     private var customerSummaryJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            marketingConfigRepository.settings.collect { settings ->
+                _state.update { ui ->
+                    recalc(
+                        ui.copy(
+                            promo3x2Enabled = settings.promo3x2Enabled,
+                            promo3x2MinQuantity = settings.promo3x2MinQuantity,
+                            promo3x2MinSubtotal = settings.promo3x2MinSubtotal
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     // ----- Escaneo: helper de resultado -----
     data class ScanResult(val foundId: Int?, val prefillBarcode: String)
@@ -81,7 +99,7 @@ class SellViewModel @Inject constructor(
     fun addToCart(product: ProductEntity, qty: Int = 1) {
         _state.update { ui ->
             val max = (product.quantity ?: 0).coerceAtLeast(0)
-            val listPrice = product.listPrice ?: product.finalPrice ?: product.price ?: 0.0
+            val listPrice = product.listPrice ?: product.price ?: 0.0
             val cashPrice = product.cashPrice ?: listPrice
             val transferPrice = product.transferPrice ?: listPrice
             val unit = resolveUnitPrice(ui.paymentMethod, listPrice, cashPrice, transferPrice)
@@ -164,9 +182,14 @@ class SellViewModel @Inject constructor(
     private fun recalc(base: SellUiState, nuevosItems: List<CartItemUi>? = null): SellUiState {
         val items = nuevosItems ?: base.items
         val subtotal = items.sumOf { it.unitPrice * it.qty }
-        val promoDiscount = items.sumOf { item ->
-            val eligible = item.qty / 3
-            eligible * item.unitPrice
+        val promoDiscount = if (base.promo3x2Enabled && subtotal >= base.promo3x2MinSubtotal) {
+            val minQty = base.promo3x2MinQuantity.coerceAtLeast(3)
+            items.sumOf { item ->
+                val eligible = if (item.qty >= minQty) item.qty / 3 else 0
+                eligible * item.unitPrice
+            }
+        } else {
+            0.0
         }
         val violations = items
             .filter { it.qty > it.maxStock }

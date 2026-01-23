@@ -70,9 +70,6 @@ class ProductCsvImporter(
                     code = r.code,
                     barcode = r.barcode,
                     name = r.name,
-                    basePrice = null,
-                    taxRate = null,
-                    finalPrice = null,
                     purchasePrice = r.purchasePrice,
                     price = r.price,
                     listPrice = r.listPrice,
@@ -124,16 +121,13 @@ class ProductCsvImporter(
                     val existing = productDao.getByBarcode(r.barcode!!)
                     if (existing == null) {
                         // Inserta
-                        val entity = ProductEntity(
-                            id = 0,
-                            code = r.code,
-                            barcode = r.barcode,
-                            name = r.name,
-                            basePrice = null,
-                            taxRate = null,
-                            finalPrice = null,
-                            purchasePrice = r.purchasePrice,
-                            price = r.price,
+                val entity = ProductEntity(
+                    id = 0,
+                    code = r.code,
+                    barcode = r.barcode,
+                    name = r.name,
+                    purchasePrice = r.purchasePrice,
+                    price = r.price,
                             listPrice = r.listPrice,
                             cashPrice = r.cashPrice,
                             transferPrice = r.transferPrice,
@@ -186,9 +180,6 @@ class ProductCsvImporter(
                         code = r.code,
                         barcode = r.barcode,
                         name = r.name,
-                        basePrice = null,
-                        taxRate = null,
-                        finalPrice = null,
                         purchasePrice = r.purchasePrice,
                         price = r.price,
                         listPrice = r.listPrice,

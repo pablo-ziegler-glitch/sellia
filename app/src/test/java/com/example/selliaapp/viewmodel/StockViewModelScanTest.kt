@@ -26,7 +26,7 @@ class StockViewModelScanTest {
     fun setup() {
         repo = FakeScanProductRepository(
             initial = listOf(
-                ProductEntity(id = 10, barcode = "ABC", name = "Pera", price = 50.0, finalPrice = 55.0, quantity = 1)
+                ProductEntity(id = 10, barcode = "ABC", name = "Pera", price = 50.0, listPrice = 55.0, quantity = 1)
             )
         )
         vm = StockViewModel(repo as IProductRepository)

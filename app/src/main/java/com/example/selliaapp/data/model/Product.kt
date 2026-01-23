@@ -20,9 +20,6 @@ data class Product(
     val barcode: String? = null,
     val name: String,
     // E4:
-    val basePrice: Double? = null,
-    val taxRate: Double? = null,     // 0..1
-    val finalPrice: Double? = null,
     val purchasePrice: Double? = null,
     // Legacy:
     val price: Double? = null,

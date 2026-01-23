@@ -159,6 +159,10 @@ fun SellScreen(
                 showCustomerPicker = false
                 sellVm.setCustomer(customer.id, customer.name)
             },
+            onQuickPick = { name ->
+                showCustomerPicker = false
+                sellVm.setCustomer(null, name)
+            },
             onDismiss = { showCustomerPicker = false }
         )
     }

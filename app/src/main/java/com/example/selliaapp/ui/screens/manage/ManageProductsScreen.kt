@@ -2,6 +2,7 @@ package com.example.selliaapp.ui.screens.manage
 
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,10 +10,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -46,7 +49,8 @@ fun ManageProductsRoute(
 ) {
     ManageProductsScreen(
         vm = vm,
-        onBack = TODO()
+        onBack = TODO(),
+        onShowQr = TODO()
     )
 }
 
@@ -59,7 +63,8 @@ fun ManageProductsRoute(
 @Composable
 fun ManageProductsScreen(
     vm: ManageProductsViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onShowQr: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val state by vm.state.collectAsState()
@@ -72,7 +77,17 @@ fun ManageProductsScreen(
     var q by remember { mutableStateOf(state.query) }
 
     Scaffold(
-        topBar = { BackTopAppBar(title = "Productos", onBack = onBack) },
+        topBar = {
+            BackTopAppBar(
+                title = "Productos",
+                onBack = onBack,
+                actions = {
+                    IconButton(onClick = onShowQr) {
+                        Icon(Icons.Default.QrCode, contentDescription = "Ver QR")
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 editing = null
@@ -88,10 +103,7 @@ fun ManageProductsScreen(
                 .padding(padding)
         ) {
             // ====== Filtros ======
-            Row(
-                Modifier.padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Column(Modifier.padding(12.dp)) {
                 OutlinedTextField(
                     value = q,
                     onValueChange = {
@@ -99,23 +111,30 @@ fun ManageProductsScreen(
                         vm.setQuery(it)
                     },
                     label = { Text("Buscar") },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 )
-                FilterChip(
-                    selected = state.onlyLowStock,
-                    onClick = { vm.toggleLowStock() },
-                    label = { Text("Bajo stock") }
-                )
-                FilterChip(
-                    selected = state.onlyNoImage,
-                    onClick = { vm.toggleNoImage() },
-                    label = { Text("Sin imagen") }
-                )
-                FilterChip(
-                    selected = state.onlyNoBarcode,
-                    onClick = { vm.toggleNoBarcode() },
-                    label = { Text("Sin código") }
-                )
+                Row(
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = state.onlyLowStock,
+                        onClick = { vm.toggleLowStock() },
+                        label = { Text("Bajo stock") }
+                    )
+                    FilterChip(
+                        selected = state.onlyNoImage,
+                        onClick = { vm.toggleNoImage() },
+                        label = { Text("Sin imagen") }
+                    )
+                    FilterChip(
+                        selected = state.onlyNoBarcode,
+                        onClick = { vm.toggleNoBarcode() },
+                        label = { Text("Sin código") }
+                    )
+                }
             }
 
             // ====== Lista paginada ======

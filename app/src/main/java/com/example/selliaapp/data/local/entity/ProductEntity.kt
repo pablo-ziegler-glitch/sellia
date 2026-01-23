@@ -32,11 +32,8 @@ data class ProductEntity(
     // Descriptivo
     val name: String,
 
-    // E4: precio/impuesto (normalizado)
-    val basePrice: Double? = null,   // precio neto (sin impuesto)
-    val taxRate: Double? = null,     // 0..1 (ej. 0.21 para 21%)
-    val finalPrice: Double? = null,  // base * (1 + tax)
-    val purchasePrice: Double? = null, // costo de adquisición al proveedor
+    // Costo de adquisición al proveedor (para auto cálculo de precios)
+    val purchasePrice: Double? = null,
 
     // Legacy: mantenemos por compatibilidad con flows antiguos
     val price: Double? = null,

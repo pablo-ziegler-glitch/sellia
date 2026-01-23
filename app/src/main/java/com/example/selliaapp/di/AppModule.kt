@@ -35,6 +35,7 @@ import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ExpenseRepository
+import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
@@ -175,6 +176,7 @@ object AppModule {
 
     @Provides @Singleton fun provideProviderRepository(dao: ProviderDao): ProviderRepository = ProviderRepository(dao)
     @Provides @Singleton fun provideProviderInvoiceRepository(dao: ProviderInvoiceDao): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
+    @Provides @Singleton fun provideMarketingConfigRepository(): MarketingConfigRepository = MarketingConfigRepository()
 
     @Provides
     @Singleton

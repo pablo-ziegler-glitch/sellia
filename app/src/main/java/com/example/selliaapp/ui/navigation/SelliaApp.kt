@@ -36,6 +36,7 @@ import com.example.selliaapp.ui.screens.clients.ClientPurchasesScreen
 import com.example.selliaapp.ui.screens.clients.ClientsHubScreen
 import com.example.selliaapp.ui.screens.config.AddUserScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
+import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseTemplatesScreen
@@ -43,6 +44,7 @@ import com.example.selliaapp.ui.screens.expenses.ExpensesCashflowScreen
 import com.example.selliaapp.ui.screens.expenses.ExpensesHubScreen
 import com.example.selliaapp.ui.screens.manage.ManageCustomersScreen
 import com.example.selliaapp.ui.screens.manage.ManageProductsScreen
+import com.example.selliaapp.ui.screens.manage.ProductQrScreen
 import com.example.selliaapp.ui.screens.manage.SyncScreen
 import com.example.selliaapp.ui.screens.providers.ManageProvidersScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
@@ -64,6 +66,7 @@ import com.example.selliaapp.viewmodel.ClientMetricsViewModel
 import com.example.selliaapp.viewmodel.ClientPurchasesViewModel
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
+import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.QuickReorderViewModel
 import com.example.selliaapp.viewmodel.QuickStockAdjustViewModel
@@ -76,7 +79,6 @@ import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
 
 
- private const val SELL_FLOW_ROUTE = "sell_flow"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SelliaApp(
@@ -166,11 +168,12 @@ fun SelliaApp(
             // -------------------- FLUJO VENTA (scope compartido) -------
             navigation(
                 startDestination = Routes.Sell.route,
-                route = SELL_FLOW_ROUTE
+                route = Routes.SellRoutes.SELL_FLOW_ROUTE
             ) {
                 // VENDER
                 composable(Routes.Sell.route) {
-                    val sellVm: SellViewModel = hiltViewModel()
+                    val parentEntry = remember { navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) }
+                    val sellVm: SellViewModel = hiltViewModel(parentEntry)
                     val productVm: ProductViewModel = hiltViewModel()
 
                     val currentEntry = navController.currentBackStackEntry
@@ -206,7 +209,7 @@ fun SelliaApp(
                 composable(Routes.Checkout.route) {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val parentEntry = remember(navBackStackEntry) {
-                        navController.getBackStackEntry(SELL_FLOW_ROUTE) // ej.: "sell_flow"
+                        navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) // ej.: "sell_flow"
                     }
                     CompositionLocalProvider(LocalViewModelStoreOwner provides parentEntry) {
                         CheckoutScreen(
@@ -405,6 +408,7 @@ fun SelliaApp(
                     onManageProducts = { navController.navigate(Routes.ManageProducts.route) },
                     onManageCustomers = { navController.navigate(Routes.ManageCustomers.route) },
                     onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
+                    onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
                     onBack = { navController.popBackStack() }
                 )
@@ -412,6 +416,14 @@ fun SelliaApp(
 
             composable(Routes.PricingConfig.route) {
                 PricingConfigScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.MarketingConfig.route) {
+                val vm: MarketingConfigViewModel = hiltViewModel()
+                MarketingConfigScreen(
+                    vm = vm,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -475,7 +487,14 @@ fun SelliaApp(
                 val vm: ManageProductsViewModel = hiltViewModel()
                 ManageProductsScreen(
                      vm = vm,
-                     onBack = { navController.popBackStack() }
+                     onBack = { navController.popBackStack() },
+                     onShowQr = { navController.navigate(Routes.ProductQr.route) }
+                )
+            }
+
+            composable(Routes.ProductQr.route) {
+                ProductQrScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
 

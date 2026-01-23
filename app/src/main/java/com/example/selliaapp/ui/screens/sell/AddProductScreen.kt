@@ -73,9 +73,6 @@ fun AddProductScreen(
 
     // Precios y stock (tu bloque E4, intacto)
     var priceText by remember { mutableStateOf("") }          // legacy
-    var basePriceText by remember { mutableStateOf("") }
-    var taxRateText by remember { mutableStateOf("") }
-    var finalPriceText by remember { mutableStateOf("") }
     var purchasePriceText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
     var cashPriceText by remember { mutableStateOf("") }
@@ -157,16 +154,6 @@ fun AddProductScreen(
                 if (barcode.isBlank()) barcode = d.barcode
             }
             else -> Unit
-        }
-    }
-
-    // --- helpers de precio (E4) ---
-    fun recalcFinalIfNeeded() {
-        val base = basePriceText.replace(',', '.').toDoubleOrNull()
-        val tax = taxRateText.replace(',', '.').toDoubleOrNull()?.let { it / 100.0 }
-        if (base != null && tax != null) {
-            val calc = base * (1.0 + tax)
-            finalPriceText = String.format("%.2f", calc)
         }
     }
 
@@ -262,45 +249,14 @@ fun AddProductScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = basePriceText,
-                onValueChange = {
-                    basePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                    recalcFinalIfNeeded()
-                },
-                label = { Text("Precio base (sin imp.)") },
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextField(
-                value = taxRateText,
-                onValueChange = {
-                    taxRateText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                    recalcFinalIfNeeded()
-                },
-                label = { Text("% Impuesto") },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = finalPriceText,
-                onValueChange = {
-                    finalPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio final (con imp.)") },
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextField(
-                value = priceText,
-                onValueChange = {
-                    priceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio (legacy)") },
-                modifier = Modifier.weight(1f)
-            )
-        }
+        OutlinedTextField(
+            value = priceText,
+            onValueChange = {
+                priceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+            },
+            label = { Text("Precio (legacy)") },
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
@@ -463,9 +419,6 @@ fun AddProductScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = {
                     // Parseo robusto (E4)
-                    val base = basePriceText.replace(',', '.').toDoubleOrNull()
-                    val tax = taxRateText.replace(',', '.').toDoubleOrNull()?.let { it / 100.0 }
-                    val final = finalPriceText.replace(',', '.').toDoubleOrNull()
                     val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
                     val legacy = priceText.replace(',', '.').toDoubleOrNull()
                     val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
@@ -482,9 +435,6 @@ fun AddProductScreen(
                         viewModel.addProduct(
                             name = name,
                             barcode = barcode.ifBlank { null },
-                            basePrice = base,
-                            taxRate = tax,
-                            finalPrice = final,
                             purchasePrice = purchase,
                             legacyPrice = legacy,
                             listPrice = listPrice,
@@ -508,9 +458,6 @@ fun AddProductScreen(
                             id = editId,
                             name = name,
                             barcode = barcode.ifBlank { null },
-                            basePrice = base,
-                            taxRate = tax,
-                            finalPrice = final,
                             purchasePrice = purchase,
                             legacyPrice = legacy,
                             listPrice = listPrice,
