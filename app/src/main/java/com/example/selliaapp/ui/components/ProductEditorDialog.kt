@@ -34,6 +34,7 @@ fun ProductEditorDialog(
         ml3cPrice: Double?,
         ml6cPrice: Double?,
         stock: Int,
+        minStock: Int?,
         description: String?
     ) -> Unit
 ) {
@@ -47,6 +48,7 @@ fun ProductEditorDialog(
     var ml3cPrice by remember { mutableStateOf(TextFieldValue(initial?.ml3cPrice?.toString() ?: "")) }
     var ml6cPrice by remember { mutableStateOf(TextFieldValue(initial?.ml6cPrice?.toString() ?: "")) }
     var stock by remember { mutableStateOf(TextFieldValue(initial?.quantity?.toString() ?: "")) }
+    var minStock by remember { mutableStateOf(TextFieldValue(initial?.minStock?.toString() ?: "")) }
     var description by remember { mutableStateOf(TextFieldValue(initial?.description ?: "")) }
 
 
@@ -72,6 +74,12 @@ fun ProductEditorDialog(
                 OutlinedTextField(ml3cPrice, { ml3cPrice = it }, label = { Text("Precio ML 3C") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(ml6cPrice, { ml6cPrice = it }, label = { Text("Precio ML 6C") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(stock, { stock = it }, label = { Text("Stock") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    minStock,
+                    { minStock = it },
+                    label = { Text("Stock mínimo") },
+                    modifier = Modifier.fillMaxWidth()
+                )
                 OutlinedTextField(description, { description = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth())
             }
         },
@@ -85,6 +93,7 @@ fun ProductEditorDialog(
                 val ml3c = ml3cPrice.text.toDoubleOrNull()
                 val ml6c = ml6cPrice.text.toDoubleOrNull()
                 val s = stock.text.toIntOrNull() ?: 0
+                val minStockValue = minStock.text.toIntOrNull()
                 onSave(
                     name.text.trim(),
                     barcode.text.trim(),
@@ -96,6 +105,7 @@ fun ProductEditorDialog(
                     ml3c,
                     ml6c,
                     s,
+                    minStockValue,
                     description.text.trim().ifBlank { null }
                 )
             }) { Text("Guardar") }
