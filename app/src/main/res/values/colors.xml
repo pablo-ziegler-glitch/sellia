@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <color name="valkirja_cream">#F7EEE2</color>
+    <color name="valkirja_sand">#E5D2B8</color>
+    <color name="valkirja_warm_brown">#9C6A4C</color>
+    <color name="valkirja_gold">#D9A35B</color>
+    <color name="valkirja_teal">#5B7A7C</color>
+    <color name="valkirja_slate">#3E4046</color>
+    <color name="valkirja_ink">#2E2A27</color>
+    <color name="valkirja_dark_background">#2B2622</color>
+    <color name="valkirja_dark_surface">#3A332E</color>
+    <color name="valkirja_dark_outline">#6E5E4F</color>
 </resources>
