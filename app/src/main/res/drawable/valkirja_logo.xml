@@ -1,46 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="@color/valkirja_warm_brown" />
-            <stroke
-                android:width="3dp"
-                android:color="@color/valkirja_slate" />
-        </shape>
-    </item>
-    <item
-        android:width="120dp"
-        android:height="120dp"
-        android:gravity="center">
-        <shape android:shape="oval">
-            <solid android:color="@color/valkirja_sand" />
-            <stroke
-                android:width="2dp"
-                android:color="@color/valkirja_slate" />
-        </shape>
-    </item>
-    <item
-        android:width="84dp"
-        android:height="84dp"
-        android:gravity="center">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/valkirja_teal" />
-            <corners android:radius="18dp" />
-            <stroke
-                android:width="2dp"
-                android:color="@color/valkirja_slate" />
-        </shape>
-    </item>
-    <item
-        android:width="42dp"
-        android:height="20dp"
-        android:gravity="center">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/valkirja_gold" />
-            <corners android:radius="8dp" />
-            <stroke
-                android:width="2dp"
-                android:color="@color/valkirja_slate" />
-        </shape>
-    </item>
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    <path
+        android:fillColor="@color/valkirja_warm_brown"
+        android:pathData="M100,10 A90,90 0 1,1 99.9,10 Z" />
+    <path
+        android:fillColor="@color/valkirja_sand"
+        android:pathData="M100,28 A72,72 0 1,1 99.9,28 Z" />
+    <path
+        android:fillColor="@color/valkirja_slate"
+        android:pathData="M36,92 L18,82 L22,104 L10,116 L32,118 Z" />
+    <path
+        android:fillColor="@color/valkirja_slate"
+        android:pathData="M164,92 L182,82 L178,104 L190,116 L168,118 Z" />
+    <path
+        android:fillColor="@color/valkirja_teal"
+        android:pathData="M62,64 h76 a20,20 0 0 1 20,20 v54 a20,20 0 0 1 -20,20 h-76 a20,20 0 0 1 -20,-20 v-54 a20,20 0 0 1 20,-20 z" />
+    <path
+        android:fillColor="@color/valkirja_slate"
+        android:pathData="M100,58 L112,76 L88,76 Z" />
+    <path
+        android:fillColor="@color/valkirja_gold"
+        android:pathData="M80,98 h40 a10,10 0 0 1 10,10 v14 a10,10 0 0 1 -10,10 h-40 a10,10 0 0 1 -10,-10 v-14 a10,10 0 0 1 10,-10 z" />
+    <path
+        android:fillColor="@color/valkirja_slate"
+        android:fillType="evenOdd"
+        android:pathData="M100,20 A80,80 0 1,1 99.9,20 Z M100,40 A60,60 0 1,0 99.9,40 Z" />
+</vector>

@@ -52,7 +52,7 @@ import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.HomeKpi
 import java.text.NumberFormat
 import java.util.Locale
-
+import androidx.compose.ui.layout.ContentScale
 /**
  * Pantalla principal con búsqueda, accesos rápidos y listado de ventas recientes.
  */
@@ -95,9 +95,10 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.valkirja_logo),
+                    painter = painterResource(id = R.drawable.valkirja_log),
                     contentDescription = "Logo Valkirja",
-                    modifier = Modifier.size(72.dp)
+                    modifier = Modifier.size(96.dp),
+                    contentScale = ContentScale.Fit
                 )
                 Column {
                     Text(
