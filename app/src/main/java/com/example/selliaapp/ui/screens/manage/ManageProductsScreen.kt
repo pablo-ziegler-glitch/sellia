@@ -52,9 +52,9 @@ fun ManageProductsRoute(
 ) {
     ManageProductsScreen(
         vm = vm,
-        onBack = TODO(),
-        onShowQr = TODO(),
-        onBulkImport = TODO()
+        onBack = {},
+        onShowQr = {},
+        onBulkImport = {}
     )
 }
 
