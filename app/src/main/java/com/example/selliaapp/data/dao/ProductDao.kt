@@ -154,6 +154,8 @@ interface ProductDao {
                 autoPricing = incoming.autoPricing,
                 quantity    = if (incoming.quantity != 0) incoming.quantity else existing.quantity,
                 description = incoming.description ?: existing.description,
+                imageUrl    = incoming.imageUrl    ?: existing.imageUrl,
+                imageUrls   = if (incoming.imageUrls.isNotEmpty()) incoming.imageUrls else existing.imageUrls,
                 categoryId  = incoming.categoryId  ?: existing.categoryId,
                 providerId  = incoming.providerId  ?: existing.providerId,
                 providerName= incoming.providerName?: existing.providerName,

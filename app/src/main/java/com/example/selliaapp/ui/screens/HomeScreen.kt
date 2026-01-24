@@ -203,6 +203,12 @@ fun HomeScreen(
                     Text("Vender")
                 }
             }
+            if (state.overdueProviderInvoices > 0) {
+                Text(
+                    "Facturas vencidas: ${state.overdueProviderInvoices}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
 
         Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
