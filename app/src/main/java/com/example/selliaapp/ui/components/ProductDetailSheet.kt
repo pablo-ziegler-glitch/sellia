@@ -53,7 +53,7 @@ fun ProductDetailSheet(
     val safeMax = maxQty.coerceAtLeast(0)
     val startingQty = if (safeMax == 0) 0 else initialQty.coerceIn(1, safeMax)
     var qty by remember { mutableIntStateOf(startingQty) }
-    val images = remember(product) { listOfNotNull(product.imageUrl).ifEmpty { emptyList() } }
+    val images = remember(product) { product.imageUrls }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
