@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.AttachMoney
@@ -22,21 +23,19 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertChart
 import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.selliaapp.R
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.HomeKpi
@@ -67,6 +67,7 @@ fun HomeScreen(
     onReports: () -> Unit,
     onProviders: () -> Unit,          // NUEVO
     onExpenses: () -> Unit,
+    onPublicProductScan: () -> Unit,
     onSyncNow: () -> Unit = {},
     onViewStockMovements: () -> Unit = {},
     onAlertAdjustStock: (Int) -> Unit = {},
@@ -75,6 +76,51 @@ fun HomeScreen(
     val state by vm.state.collectAsState()
     val localeEsAr = Locale("es", "AR")
     val currency = NumberFormat.getCurrencyInstance(localeEsAr)
+    val primaryActions = listOf(
+        HomeAction(
+            label = "Vender",
+            icon = Icons.Default.PointOfSale,
+            onClick = onNewSale,
+            emphasized = true
+        ),
+        HomeAction(
+            label = "Stock",
+            icon = Icons.AutoMirrored.Filled.ViewList,
+            onClick = onStock
+        ),
+        HomeAction(
+            label = "Clientes",
+            icon = Icons.Default.Business,
+            onClick = onClientes
+        ),
+        HomeAction(
+            label = "Proveedores",
+            icon = Icons.Default.Business,
+            onClick = onProviders
+        )
+    )
+    val secondaryActions = listOf(
+        HomeAction(
+            label = "Reportes",
+            icon = Icons.Default.InsertChart,
+            onClick = onReports
+        ),
+        HomeAction(
+            label = "Configuración",
+            icon = Icons.Default.Settings,
+            onClick = onConfig
+        ),
+        HomeAction(
+            label = "Gastos",
+            icon = Icons.Default.AttachMoney,
+            onClick = onExpenses
+        ),
+        HomeAction(
+            label = "Historial de stock",
+            icon = Icons.Default.History,
+            onClick = onViewStockMovements
+        )
+    )
 
     Column(
         modifier = Modifier
@@ -131,6 +177,21 @@ fun HomeScreen(
                     )
                 }
             }
+
+            QuickActionsSection(
+                title = "Acciones rápidas",
+                actions = primaryActions
+            )
+
+            QuickActionsSection(
+                title = "Gestión diaria",
+                actions = secondaryActions
+            )
+
+            PendingTasksSection(
+                restockCount = state.lowStockAlerts.size,
+                overdueInvoices = state.overdueProviderInvoices
+            )
 
             KpiModuleContainer(
                 isLoading = state.isLoading,
@@ -191,6 +252,11 @@ fun HomeScreen(
                         Icon(Icons.Default.History, contentDescription = null)
                         Spacer(Modifier.width(8.dp)); Text("Historial de stock")
                     }
+                }
+                OutlinedButton(onClick = onPublicProductScan, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.QrCode, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Escanear QR (cliente)")
                 }
             }
 
@@ -370,6 +436,79 @@ private fun KpiCard(
                 text = value,
                 style = MaterialTheme.typography.titleLarge
             )
+        }
+    }
+}
+
+private data class HomeAction(
+    val label: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+    val emphasized: Boolean = false
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickActionsSection(
+    title: String,
+    actions: List<HomeAction>
+) {
+    Card(elevation = CardDefaults.cardElevation(2.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            actions.chunked(2).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    rowItems.forEach { action ->
+                        val cardColors = if (action.emphasized) {
+                            CardDefaults.outlinedCardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        } else {
+                            CardDefaults.outlinedCardColors()
+                        }
+                        OutlinedCard(
+                            onClick = action.onClick,
+                            colors = cardColors,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(action.icon, contentDescription = null)
+                                Text(
+                                    text = action.label,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                    if (rowItems.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
         }
     }
 }

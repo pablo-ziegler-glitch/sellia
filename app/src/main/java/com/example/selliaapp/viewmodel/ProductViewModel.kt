@@ -228,6 +228,20 @@ class ProductViewModel @Inject constructor(
     suspend fun getByBarcode(barcode: String): ProductEntity? =
         withContext(Dispatchers.IO) { repo.getByBarcodeOrNull(barcode) }
 
+    suspend fun getByQrValue(rawValue: String): ProductEntity? =
+        withContext(Dispatchers.IO) {
+            val value = rawValue.trim()
+            repo.getByBarcodeOrNull(value)
+                ?: repo.getByCodeOrNull(value)
+                ?: parseProductId(value)?.let { repo.getById(it) }
+        }
+
+    private fun parseProductId(value: String): Int? {
+        val normalized = value.trim()
+        if (!normalized.startsWith("PRODUCT-", ignoreCase = true)) return null
+        return normalized.removePrefix("PRODUCT-").toIntOrNull()
+    }
+
 
     fun importProductsFromFile(
         context: Context,

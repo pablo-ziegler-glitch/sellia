@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -45,12 +46,15 @@ import java.time.LocalDate
 
 @Composable
 fun ManageProductsRoute(
-    vm: ManageProductsViewModel = hiltViewModel()
+    vm: ManageProductsViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
+    onShowQr: () -> Unit = {}
 ) {
     ManageProductsScreen(
         vm = vm,
-        onBack = TODO(),
-        onShowQr = TODO()
+        onBack = {},
+        onShowQr = {},
+        onBulkImport = {}
     )
 }
 
@@ -64,7 +68,8 @@ fun ManageProductsRoute(
 fun ManageProductsScreen(
     vm: ManageProductsViewModel,
     onBack: () -> Unit,
-    onShowQr: () -> Unit
+    onShowQr: () -> Unit,
+    onBulkImport: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val state by vm.state.collectAsState()
@@ -82,6 +87,9 @@ fun ManageProductsScreen(
                 title = "Productos",
                 onBack = onBack,
                 actions = {
+                    IconButton(onClick = onBulkImport) {
+                        Icon(Icons.Default.UploadFile, contentDescription = "Carga masiva")
+                    }
                     IconButton(onClick = onShowQr) {
                         Icon(Icons.Default.QrCode, contentDescription = "Ver QR")
                     }
@@ -196,7 +204,7 @@ fun ManageProductsScreen(
         ProductEditorDialog(
             initial = editing, // ahora asumimos ProductEditorDialog<ProductEntity?>
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, description ->
+            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description ->
                 scope.launch {
                     val base: ProductEntity = editing ?: ProductEntity(
                         id = 0,
@@ -214,7 +222,7 @@ fun ManageProductsScreen(
                         description = description,
                         imageUrls = emptyList(),
                         category = null,
-                        minStock = null,
+                        minStock = minStock,
                         updatedAt = LocalDate.now()
                     )
 
@@ -230,6 +238,7 @@ fun ManageProductsScreen(
                         ml6cPrice = ml6cPrice,
                         quantity = stock,
                         description = description,
+                        minStock = minStock,
                         updatedAt = LocalDate.now()
                     )
 

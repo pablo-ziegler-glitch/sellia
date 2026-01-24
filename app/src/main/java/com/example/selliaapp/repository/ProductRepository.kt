@@ -558,6 +558,9 @@ class ProductRepository(
         product.copy(imageUrls = loadProductImages(product.id))
     }
 
+    /** Obtener producto por código interno. */
+    suspend fun getByCodeOrNull(code: String): ProductEntity? = productDao.getByCodeOnce(code)
+
     /** Obtener producto por id (alias semántico). */
     suspend fun getByIdOrNull(id: Int): ProductEntity? = getById(id)
 
