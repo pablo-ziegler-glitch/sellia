@@ -45,12 +45,14 @@ import java.time.LocalDate
 
 @Composable
 fun ManageProductsRoute(
-    vm: ManageProductsViewModel = hiltViewModel()
+    vm: ManageProductsViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
+    onShowQr: () -> Unit = {}
 ) {
     ManageProductsScreen(
         vm = vm,
-        onBack = TODO(),
-        onShowQr = TODO()
+        onBack = onBack,
+        onShowQr = onShowQr
     )
 }
 
@@ -196,7 +198,7 @@ fun ManageProductsScreen(
         ProductEditorDialog(
             initial = editing, // ahora asumimos ProductEditorDialog<ProductEntity?>
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, description ->
+            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description ->
                 scope.launch {
                     val base: ProductEntity = editing ?: ProductEntity(
                         id = 0,
@@ -214,7 +216,7 @@ fun ManageProductsScreen(
                         description = description,
                         imageUrl = null,
                         category = null,
-                        minStock = null,
+                        minStock = minStock,
                         updatedAt = LocalDate.now()
                     )
 
@@ -230,6 +232,7 @@ fun ManageProductsScreen(
                         ml6cPrice = ml6cPrice,
                         quantity = stock,
                         description = description,
+                        minStock = minStock,
                         updatedAt = LocalDate.now()
                     )
 
