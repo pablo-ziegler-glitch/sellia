@@ -34,6 +34,7 @@ data class Product(
     val quantity: Int = 0,
     val description: String? = null,
     val imageUrl: String? = null,
+    val imageUrls: List<String> = emptyList(),
     // E1:
     val category: String? = null,
     val providerName: String? = null,

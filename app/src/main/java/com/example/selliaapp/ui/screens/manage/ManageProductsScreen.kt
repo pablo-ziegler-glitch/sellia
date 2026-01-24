@@ -196,8 +196,9 @@ fun ManageProductsScreen(
         ProductEditorDialog(
             initial = editing, // ahora asumimos ProductEditorDialog<ProductEntity?>
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, description ->
+            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, description, imageUrls ->
                 scope.launch {
+                    val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
                     val base: ProductEntity = editing ?: ProductEntity(
                         id = 0,
                         code = null,
@@ -212,7 +213,8 @@ fun ManageProductsScreen(
                         ml6cPrice = ml6cPrice,
                         quantity = stock,
                         description = description,
-                        imageUrl = null,
+                        imageUrl = normalizedImages.firstOrNull(),
+                        imageUrls = normalizedImages,
                         category = null,
                         minStock = null,
                         updatedAt = LocalDate.now()
@@ -230,6 +232,8 @@ fun ManageProductsScreen(
                         ml6cPrice = ml6cPrice,
                         quantity = stock,
                         description = description,
+                        imageUrl = normalizedImages.firstOrNull(),
+                        imageUrls = normalizedImages,
                         updatedAt = LocalDate.now()
                     )
 

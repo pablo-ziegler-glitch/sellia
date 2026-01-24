@@ -52,6 +52,7 @@ data class ProductEntity(
     // Metadatos
     val description: String? = null,
     val imageUrl: String? = null,
+    val imageUrls: List<String> = emptyList(),
 
     // E1: normalización
     val categoryId: Int? = null,

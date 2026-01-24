@@ -28,15 +28,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
 import com.example.selliaapp.ui.components.BackTopAppBar
+import com.example.selliaapp.ui.components.ImageUrlListEditor
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel.UiState
 import com.example.selliaapp.viewmodel.PrefillData
@@ -66,7 +68,18 @@ fun AddProductScreen(
     var name by remember { mutableStateOf(prefill?.name ?: prefillName ?: "") }
     var code by remember { mutableStateOf("") } // SKU interno
     var brand by remember { mutableStateOf(prefill?.brand ?: "") }
-    var imageUrl by remember { mutableStateOf(viewModel.imageUrl ?: "") }
+    val imageUrls: SnapshotStateList<String> = remember {
+        mutableStateListOf<String>().apply {
+            val fromVm = viewModel.imageUrls?.filter { it.isNotBlank() }.orEmpty()
+            val legacyVm = viewModel.imageUrl?.takeIf { it.isNotBlank() }
+            val prefillUrl = prefill?.imageUrl?.takeIf { it.isNotBlank() }
+            when {
+                fromVm.isNotEmpty() -> addAll(fromVm)
+                legacyVm != null -> add(legacyVm)
+                prefillUrl != null -> add(prefillUrl)
+            }
+        }
+    }
 
     // Corregimos el bug: barcode debe ser VAR (mutable) y recordado
     var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode ?: "") }
@@ -117,7 +130,13 @@ fun AddProductScreen(
                 ml6cPriceText = p.ml6cPrice?.toString() ?: ""
                 stockText = p.quantity.toString()
                 description = p.description.orEmpty()
-                imageUrl = p.imageUrl.orEmpty()
+                val loadedImageUrls = if (p.imageUrls.isNotEmpty()) {
+                    p.imageUrls
+                } else {
+                    p.imageUrl?.let { listOf(it) }.orEmpty()
+                }
+                imageUrls.clear()
+                imageUrls.addAll(loadedImageUrls)
 
                 selectedCategoryName = p.category.orEmpty()
                 // Si tu modelo aún no tiene providerName, quedará vacío
@@ -147,8 +166,8 @@ fun AddProductScreen(
                 val d = s.data
                 if (name.isBlank()) name = d.name
                 if (brand.isBlank()) brand = d.brand
-                if (imageUrl.isBlank() && !d.imageUrl.isNullOrBlank()) {
-                    imageUrl = d.imageUrl
+                if (imageUrls.isEmpty() && !d.imageUrl.isNullOrBlank()) {
+                    imageUrls.add(d.imageUrl)
                 }
                 // Mantener barcode detectado
                 if (barcode.isBlank()) barcode = d.barcode
@@ -185,18 +204,6 @@ fun AddProductScreen(
                 InfoMessage(text = msg)
             }
             else -> Unit
-        }
-
-        // Imagen sugerida (si llegó de OFF o se pegó manualmente)
-        if (imageUrl.isNotBlank()) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = "Imagen del producto (sugerida)",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp)
-            )
-            Spacer(Modifier.height(8.dp))
         }
 
         // --- Campos principales ---
@@ -331,12 +338,7 @@ fun AddProductScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        OutlinedTextField(
-            value = imageUrl,
-            onValueChange = { imageUrl = it },
-            label = { Text("URL de imagen") },
-            modifier = Modifier.fillMaxWidth()
-        )
+        ImageUrlListEditor(imageUrls = imageUrls)
 
         // --- Categoría ---
         Column {
@@ -431,6 +433,8 @@ fun AddProductScreen(
                     val qty = stockText.toIntOrNull() ?: 0
                     val minStock = minStockText.toIntOrNull()
 
+                    val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+
                     if (editId == null) {
                         viewModel.addProduct(
                             name = name,
@@ -447,7 +451,7 @@ fun AddProductScreen(
                             stock = qty,
                             code = code.ifBlank { null },
                             description = description.ifBlank { null },
-                            imageUrl = imageUrl.ifBlank { null },
+                            imageUrls = normalizedImages,
                             categoryName = selectedCategoryName.ifBlank { null },
                             providerName = selectedProviderName.ifBlank { null },
                             providerSku = providerSku.ifBlank { null },
@@ -470,7 +474,7 @@ fun AddProductScreen(
                             stock = qty,
                             code = code.ifBlank { null },
                             description = description.ifBlank { null },
-                            imageUrl = imageUrl.ifBlank { null },
+                            imageUrls = normalizedImages,
                             categoryName = selectedCategoryName.ifBlank { null },
                             providerName = selectedProviderName.ifBlank { null },
                             providerSku = providerSku.ifBlank { null },
