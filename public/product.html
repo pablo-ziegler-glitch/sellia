@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Producto | Sellia</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <a class="link" href="/index.html">← Volver al catálogo</a>
+        <h1>Ficha del producto</h1>
+        <p class="subtitle">Información pública para clientes</p>
+      </header>
+
+      <section id="status" class="card">
+        <p>Cargando producto...</p>
+      </section>
+
+      <section id="productCard" class="card hidden">
+        <div class="carousel" id="carousel">
+          <img id="productImage" alt="Imagen del producto" />
+        </div>
+        <div class="product-info">
+          <h2 id="productName"></h2>
+          <p id="productDescription" class="muted"></p>
+          <div class="price-row">
+            <span>Precio lista</span>
+            <strong id="productListPrice">-</strong>
+          </div>
+          <div class="price-row">
+            <span>Precio efectivo</span>
+            <strong id="productCashPrice">-</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="contactCard" class="card hidden">
+        <h3>Contacto de la tienda</h3>
+        <ul id="contactList" class="contact-list"></ul>
+      </section>
+    </main>
+
+    <script src="/config.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

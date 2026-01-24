@@ -43,6 +43,21 @@ sealed class Routes(val route: String) {
 
     object ScannerForSell : Routes("scanner_for_sell")
     object ScannerForStock : Routes("scanner_for_stock") // [NUEVO] unificado al mismo patrón
+    object PublicProductScan : Routes("public_product_scan")
+    object PublicProductCard : Routes("public_product_card") {
+        const val ARG_QR = "qrValue"
+        fun withQr(value: String) = "$route?$ARG_QR=${encode(value)}"
+        val arguments = listOf(
+            navArgument(ARG_QR) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = ""
+            }
+        )
+
+        private fun encode(value: String): String =
+            URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+    }
 
     // ---------- NUEVO: Proveedores ----------
     object ProvidersHub : Routes("providers_hub")

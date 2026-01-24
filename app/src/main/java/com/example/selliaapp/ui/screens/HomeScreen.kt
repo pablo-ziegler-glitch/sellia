@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertChart
 import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
@@ -66,6 +67,7 @@ fun HomeScreen(
     onReports: () -> Unit,
     onProviders: () -> Unit,          // NUEVO
     onExpenses: () -> Unit,
+    onPublicProductScan: () -> Unit,
     onSyncNow: () -> Unit = {},
     onViewStockMovements: () -> Unit = {},
     onAlertAdjustStock: (Int) -> Unit = {},
@@ -201,17 +203,62 @@ fun HomeScreen(
                 currency = currency
             )
 
-            // Acceso a sincronización manual comentado: revisar si se mantiene como acción rápida.
-            // QuickActionsSection(
-            //     title = "Sincronización",
-            //     actions = listOf(
-            //         HomeAction(
-            //             label = "Sincronizar ahora",
-            //             icon = Icons.Default.Sync,
-            //             onClick = onSyncNow
-            //         )
-            //     )
-            // )
+            PendingTasksSection(
+                restockCount = state.lowStockAlerts.size,
+                overdueInvoices = state.overdueProviderInvoices
+            )
+
+            // Botonera superior (puedes ajustar layout si querés 3 por fila)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onStock, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Stock")
+                    }
+                    OutlinedButton(onClick = onClientes, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Business, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Clientes")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onConfig, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Settings, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Configuración")
+                    }
+                    OutlinedButton(onClick = onReports, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.InsertChart, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Reportes")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onProviders, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Business, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Proveedores")
+                    }
+                    OutlinedButton(onClick = onExpenses, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.AttachMoney, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Administración Gastos")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onSyncNow, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Sync, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Sincronizar Ahora!")
+                    }
+                    OutlinedButton(onClick = onViewStockMovements, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.History, contentDescription = null)
+                        Spacer(Modifier.width(8.dp)); Text("Historial de stock")
+                    }
+                }
+                OutlinedButton(onClick = onPublicProductScan, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.QrCode, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Escanear QR (cliente)")
+                }
+            }
 
             Card(elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(
