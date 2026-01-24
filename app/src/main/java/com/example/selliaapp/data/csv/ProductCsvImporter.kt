@@ -3,6 +3,8 @@ package com.example.selliaapp.data.csv
 import android.content.ContentResolver
 import android.net.Uri
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductImageDao
+import com.example.selliaapp.data.local.entity.ProductImageEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import java.io.InputStream
@@ -19,7 +21,8 @@ import java.time.LocalDate
  *  - Exponemos `parseCsv(input)` en un companion object (API estática).
  */
 class ProductCsvImporter(
-    private val productDao: ProductDao
+    private val productDao: ProductDao,
+    private val productImageDao: ProductImageDao? = null
 ) {
 
     /**
@@ -41,7 +44,7 @@ class ProductCsvImporter(
         val ml3cPrice: Double?,
         val ml6cPrice: Double?,
         val description: String?,
-        val imageUrl: String?,
+        val imageUrls: List<String>,
         val category: String?,
         val providerName: String?,
         val providerSku: String?,
@@ -82,14 +85,15 @@ class ProductCsvImporter(
                     autoPricing = false,
                     quantity = r.quantity,
                     description = r.description,
-                    imageUrl = r.imageUrl,
+                    imageUrls = r.imageUrls,
                     category = r.category,
                     providerName = r.providerName,
                     providerSku = r.providerSku,
                     minStock = r.minStock,
                     updatedAt = r.updatedAt ?: LocalDate.now()
                 )
-                productDao.upsert(entity)
+                val id = productDao.upsert(entity)
+                replaceImagesIfNeeded(id, r.imageUrls)
                 inserted++
             } catch (t: Throwable) {
                 errors += "L${idx + 2}: ${t.message ?: t::class.java.simpleName}"
@@ -138,14 +142,15 @@ class ProductCsvImporter(
                             autoPricing = false,
                             quantity = r.quantity,
                             description = r.description,
-                            imageUrl = r.imageUrl,
+                            imageUrls = r.imageUrls,
                             category = r.category,
                             providerName = r.providerName,
                             providerSku = r.providerSku,
                             minStock = r.minStock,
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
-                        productDao.upsert(entity)
+                        val id = productDao.upsert(entity)
+                        replaceImagesIfNeeded(id, r.imageUrls)
                         inserted++
                     } else {
                         // Merge simple
@@ -163,7 +168,6 @@ class ProductCsvImporter(
                             autoPricing = existing.autoPricing,
                             quantity    = (existing.quantity) + (r.quantity),
                             description = r.description ?: existing.description,
-                            imageUrl    = r.imageUrl ?: existing.imageUrl,
                             category    = r.category ?: existing.category,
                             providerName = r.providerName ?: existing.providerName,
                             providerSku  = r.providerSku ?: existing.providerSku,
@@ -171,6 +175,7 @@ class ProductCsvImporter(
                             updatedAt   = r.updatedAt ?: existing.updatedAt
                         )
                         productDao.upsert(merged)
+                        replaceImagesIfNeeded(existing.id, r.imageUrls)
                         updated++
                     }
                 } else {
@@ -192,14 +197,15 @@ class ProductCsvImporter(
                         autoPricing = false,
                         quantity = r.quantity,
                         description = r.description,
-                        imageUrl = r.imageUrl,
+                        imageUrls = r.imageUrls,
                         category = r.category,
                         providerName = r.providerName,
                         providerSku = r.providerSku,
                         minStock = r.minStock,
                         updatedAt = r.updatedAt ?: LocalDate.now()
                     )
-                    productDao.upsert(entity)
+                    val id = productDao.upsert(entity)
+                    replaceImagesIfNeeded(id, r.imageUrls)
                     inserted++
                 }
             } catch (t: Throwable) {
@@ -290,11 +296,19 @@ class ProductCsvImporter(
                     ?.toIntOrNull() ?: 0
 
                 val description = idx.get(row, "description", aliases = listOf("descripcion", "desc"))?.ifBlank { null }
-                val imageUrl = idx.get(
+                val imageUrl = idx.get(row, "imageUrl", aliases = listOf("imagen", "url"))?.ifBlank { null }
+                val rawImageUrls = idx.get(
                     row,
-                    "imageUrl",
-                    aliases = listOf("imagen", "url", "image_url", "image")
-                )?.ifBlank { null }
+                    "image_urls",
+                    aliases = listOf("imagenes", "urls", "imagenes_urls", "imageUrls")
+                )
+                val imageUrls = rawImageUrls
+                    ?.split("|")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotBlank() }
+                    ?.distinct()
+                    ?: emptyList()
+                val combinedImages = (listOfNotNull(imageUrl) + imageUrls).distinct()
                 val category = idx.get(row, "category", aliases = listOf("categoria"))?.ifBlank { null }
                 val providerName = idx.get(row, "provider", aliases = listOf("proveedor", "provider_name", "supplier"))
                     ?.ifBlank { null }
@@ -324,7 +338,7 @@ class ProductCsvImporter(
                     ml3cPrice = ml3cPrice,
                     ml6cPrice = ml6cPrice,
                     description = description,
-                    imageUrl = imageUrl,
+                    imageUrls = combinedImages,
                     category = category,
                     providerName = providerName,
                     providerSku = providerSku,
@@ -334,5 +348,21 @@ class ProductCsvImporter(
             }
             return rows
         }
+    }
+
+    private suspend fun replaceImagesIfNeeded(productId: Int, urls: List<String>) {
+        if (urls.isEmpty()) return
+        val dao = productImageDao ?: return
+        val normalized = urls.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (normalized.isEmpty()) return
+        dao.deleteByProductId(productId)
+        val entities = normalized.mapIndexed { index, url ->
+            ProductImageEntity(
+                productId = productId,
+                url = url,
+                position = index
+            )
+        }
+        dao.insertAll(entities)
     }
 }

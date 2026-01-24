@@ -145,7 +145,7 @@ class ProductViewModel @Inject constructor(
                 quantity = stock,
                 // extras:
                 description = description,
-                imageUrl = imageUrl,
+                imageUrls = imageUrl?.let { listOf(it) } ?: emptyList(),
                 // E1:
                 category = categoryName,
                 providerName = providerName,
@@ -199,7 +199,7 @@ class ProductViewModel @Inject constructor(
                 autoPricing = false,
                 quantity = stock,
                 description = description,
-                imageUrl = imageUrl,
+                imageUrls = imageUrl?.let { listOf(it) } ?: emptyList(),
                 category = categoryName,
                 providerName = providerName,
                 providerSku = providerSku,

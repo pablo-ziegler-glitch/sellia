@@ -5,6 +5,7 @@ import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
@@ -23,6 +24,7 @@ import javax.inject.Singleton
 class SyncRepositoryImpl @Inject constructor(
     private val db: AppDatabase,
     private val productDao: ProductDao,
+    private val productImageDao: ProductImageDao,
     private val invoiceDao: InvoiceDao,
     private val invoiceItemDao: InvoiceItemDao,
     private val syncOutboxDao: SyncOutboxDao,
@@ -81,11 +83,15 @@ class SyncRepositoryImpl @Inject constructor(
         }
         if (entities.isEmpty()) return
 
+        val imageUrlsByProductId = productImageDao.getByProductIds(ids)
+            .groupBy { it.productId }
+            .mapValues { (_, items) -> items.sortedBy { it.position }.map { it.url } }
         val batch = firestore.batch()
         entities.forEach { product ->
             if (product.id == 0) return@forEach
             val doc = productsCollection.document(product.id.toString())
-            batch.set(doc, ProductFirestoreMappers.toMap(product), SetOptions.merge())
+            val imageUrls = imageUrlsByProductId[product.id].orEmpty()
+            batch.set(doc, ProductFirestoreMappers.toMap(product, imageUrls), SetOptions.merge())
         }
 
         try {
