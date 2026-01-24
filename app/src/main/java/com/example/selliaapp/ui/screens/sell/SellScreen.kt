@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.ui.components.CustomerPickerSheet
+import com.example.selliaapp.ui.components.ProductDetailSheet
 import com.example.selliaapp.ui.components.ProductPickerSheet
 import com.example.selliaapp.ui.components.QuantityInputDialog
 import com.example.selliaapp.ui.navigation.Routes
@@ -107,12 +109,34 @@ fun SellScreen(
     var showPicker by remember { mutableStateOf(false) }
     var showAddOptions by remember { mutableStateOf(false) }
     var askFor by remember { mutableStateOf<ProductEntity?>(null) }
+    var detailFor by remember { mutableStateOf<ProductEntity?>(null) }
     var showCustomerPicker by remember { mutableStateOf(false) }
+
+    val currentEntry = navController.currentBackStackEntry
+    val pendingProductId by currentEntry
+        ?.savedStateHandle
+        ?.getStateFlow<Int?>("pending_product_id", null)
+        ?.collectAsState(initial = null)
+        ?: remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(pendingProductId, allProducts) {
+        val targetId = pendingProductId
+        if (targetId != null) {
+            val product = allProducts.firstOrNull { it.id == targetId }
+            if (product != null) {
+                detailFor = product
+                currentEntry?.savedStateHandle?.set("pending_product_id", null)
+            }
+        }
+    }
 
     if (showPicker) {
         ProductPickerSheet(
             products = allProducts.filter { (remainingById[it.id] ?: 0) > 0 },
-            onPick = { p -> showPicker = false; askFor = p },
+            onPick = { p ->
+                showPicker = false
+                detailFor = p
+            },
             onDismiss = { showPicker = false }
         )
     }
@@ -164,6 +188,34 @@ fun SellScreen(
                 sellVm.setCustomer(null, name)
             },
             onDismiss = { showCustomerPicker = false }
+        )
+    }
+
+    detailFor?.let { product ->
+        val remaining = remainingById[product.id] ?: product.quantity
+        val maxQty = remaining.coerceAtLeast(0)
+        ProductDetailSheet(
+            product = product,
+            initialQty = 1,
+            maxQty = maxQty,
+            currency = currency,
+            onAddToCart = { qty ->
+                if (!product.barcode.isNullOrBlank()) {
+                    sellVm.addToCartByScan(
+                        barcode = product.barcode!!,
+                        qty = qty,
+                        onNotFound = {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("No se encontró el producto escaneado.")
+                            }
+                        }
+                    )
+                } else {
+                    sellVm.addToCart(product, qty)
+                }
+                detailFor = null
+            },
+            onDismiss = { detailFor = null }
         )
     }
 

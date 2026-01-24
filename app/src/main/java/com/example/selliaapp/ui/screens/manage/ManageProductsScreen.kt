@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -49,8 +50,9 @@ fun ManageProductsRoute(
 ) {
     ManageProductsScreen(
         vm = vm,
-        onBack = TODO(),
-        onShowQr = TODO()
+        onBack = {},
+        onShowQr = {},
+        onBulkImport = {}
     )
 }
 
@@ -64,7 +66,8 @@ fun ManageProductsRoute(
 fun ManageProductsScreen(
     vm: ManageProductsViewModel,
     onBack: () -> Unit,
-    onShowQr: () -> Unit
+    onShowQr: () -> Unit,
+    onBulkImport: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val state by vm.state.collectAsState()
@@ -82,6 +85,9 @@ fun ManageProductsScreen(
                 title = "Productos",
                 onBack = onBack,
                 actions = {
+                    IconButton(onClick = onBulkImport) {
+                        Icon(Icons.Default.UploadFile, contentDescription = "Carga masiva")
+                    }
                     IconButton(onClick = onShowQr) {
                         Icon(Icons.Default.QrCode, contentDescription = "Ver QR")
                     }

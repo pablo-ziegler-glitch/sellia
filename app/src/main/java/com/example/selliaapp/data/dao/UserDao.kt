@@ -15,6 +15,9 @@ interface UserDao {
     @Query("SELECT * FROM users ORDER BY name")
     fun observeAll(): Flow<List<User>>
 
+    @Query("SELECT * FROM users WHERE email = :email LIMIT 1")
+    suspend fun getByEmail(email: String): User?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(user: User): Long
 

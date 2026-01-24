@@ -13,13 +13,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,12 +38,10 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigScreen(
-    onAddUser: () -> Unit,
-    onManageProducts: () -> Unit,
-    onManageCustomers: () -> Unit,
     onPricingConfig: () -> Unit,
     onMarketingConfig: () -> Unit,
     onSync: () -> Unit,
+    onBulkData: () -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -88,34 +84,24 @@ fun ConfigScreen(
 
                 // Menú
                 SettingsItem(
-                    icon = Icons.Filled.AccountCircle,
-                    title = "Usuarios",
-                    onClick = onAddUser
-                )
-                SettingsItem(
-                    icon = Icons.Filled.Inventory2, // inventario/productos
-                    title = "Productos",
-                    onClick = onManageProducts
-                )
-                SettingsItem(
-                    icon = Icons.Filled.Inventory2,
-                    title = "Pricing y costos",
-                    onClick = onPricingConfig
-                )
-                SettingsItem(
                     icon = Icons.Filled.Campaign,
                     title = "Campañas de marketing",
                     onClick = onMarketingConfig
                 )
                 SettingsItem(
-                    icon = Icons.Filled.Group, // clientes
-                    title = "Clientes",
-                    onClick = onManageCustomers
+                    icon = Icons.Filled.UploadFile,
+                    title = "Cargas masivas y ABMs",
+                    onClick = onBulkData
                 )
                 SettingsItem(
                     icon = Icons.Filled.CloudSync,
                     title = "Sincronización",
                     onClick = onSync
+                )
+                SettingsItem(
+                    icon = Icons.Filled.ChevronRight,
+                    title = "Pricing y costos",
+                    onClick = onPricingConfig
                 )
             }
         }
