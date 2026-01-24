@@ -3,6 +3,8 @@ package com.example.selliaapp.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.ExpenseBudgetDao
@@ -11,6 +13,7 @@ import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.PricingAuditDao
@@ -28,6 +31,7 @@ import com.example.selliaapp.data.local.converters.ReportConverters
 import com.example.selliaapp.data.local.entity.CategoryEntity
 import com.example.selliaapp.data.local.entity.CustomerEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.data.local.entity.ProductImageEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
 import com.example.selliaapp.data.local.entity.PricingAuditEntity
 import com.example.selliaapp.data.local.entity.PricingFixedCostEntity
@@ -55,6 +59,7 @@ import com.example.selliaapp.data.model.User
     entities = [
         // Persistencia principal
         ProductEntity::class,
+        ProductImageEntity::class,
         CustomerEntity::class,
         ProviderEntity::class,
         ReportDataEntity::class,
@@ -78,13 +83,14 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 31,
+    version = 33,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
 @TypeConverters(Converters::class, ReportConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
+    abstract fun productImageDao(): ProductImageDao
     abstract fun userDao(): UserDao
     abstract fun customerDao(): CustomerDao
     abstract fun invoiceDao(): InvoiceDao
@@ -104,4 +110,129 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pricingAuditDao(): PricingAuditDao
     abstract fun pricingMlFixedCostTierDao(): PricingMlFixedCostTierDao
     abstract fun pricingMlShippingTierDao(): PricingMlShippingTierDao
+
+    companion object {
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `product_images` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productId` INTEGER NOT NULL,
+                        `url` TEXT NOT NULL,
+                        `position` INTEGER NOT NULL,
+                        FOREIGN KEY(`productId`) REFERENCES `products`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_images_productId` ON `product_images` (`productId`)")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_product_images_productId_position` ON `product_images` (`productId`, `position`)"
+                )
+            }
+        }
+
+        val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    INSERT INTO product_images(productId, url, position)
+                    SELECT id, imageUrl, 0
+                    FROM products
+                    WHERE imageUrl IS NOT NULL AND TRIM(imageUrl) <> ''
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `products_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `code` TEXT,
+                        `barcode` TEXT,
+                        `name` TEXT NOT NULL,
+                        `purchasePrice` REAL,
+                        `price` REAL,
+                        `listPrice` REAL,
+                        `cashPrice` REAL,
+                        `transferPrice` REAL,
+                        `transferNetPrice` REAL,
+                        `mlPrice` REAL,
+                        `ml3cPrice` REAL,
+                        `ml6cPrice` REAL,
+                        `autoPricing` INTEGER NOT NULL,
+                        `quantity` INTEGER NOT NULL,
+                        `description` TEXT,
+                        `categoryId` INTEGER,
+                        `providerId` INTEGER,
+                        `providerName` TEXT,
+                        `providerSku` TEXT,
+                        `category` TEXT,
+                        `minStock` INTEGER,
+                        `updatedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `products_new` (
+                        `id`,
+                        `code`,
+                        `barcode`,
+                        `name`,
+                        `purchasePrice`,
+                        `price`,
+                        `listPrice`,
+                        `cashPrice`,
+                        `transferPrice`,
+                        `transferNetPrice`,
+                        `mlPrice`,
+                        `ml3cPrice`,
+                        `ml6cPrice`,
+                        `autoPricing`,
+                        `quantity`,
+                        `description`,
+                        `categoryId`,
+                        `providerId`,
+                        `providerName`,
+                        `providerSku`,
+                        `category`,
+                        `minStock`,
+                        `updatedAt`
+                    )
+                    SELECT
+                        `id`,
+                        `code`,
+                        `barcode`,
+                        `name`,
+                        `purchasePrice`,
+                        `price`,
+                        `listPrice`,
+                        `cashPrice`,
+                        `transferPrice`,
+                        `transferNetPrice`,
+                        `mlPrice`,
+                        `ml3cPrice`,
+                        `ml6cPrice`,
+                        `autoPricing`,
+                        `quantity`,
+                        `description`,
+                        `categoryId`,
+                        `providerId`,
+                        `providerName`,
+                        `providerSku`,
+                        `category`,
+                        `minStock`,
+                        `updatedAt`
+                    FROM `products`
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE `products`")
+                db.execSQL("ALTER TABLE `products_new` RENAME TO `products`")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_products_barcode` ON `products` (`barcode`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_products_code` ON `products` (`code`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_name` ON `products` (`name`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_categoryId` ON `products` (`categoryId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_providerId` ON `products` (`providerId`)")
+            }
+        }
+    }
 }

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -45,12 +46,15 @@ import java.time.LocalDate
 
 @Composable
 fun ManageProductsRoute(
-    vm: ManageProductsViewModel = hiltViewModel()
+    vm: ManageProductsViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
+    onShowQr: () -> Unit = {}
 ) {
     ManageProductsScreen(
         vm = vm,
-        onBack = TODO(),
-        onShowQr = TODO()
+        onBack = {},
+        onShowQr = {},
+        onBulkImport = {}
     )
 }
 
@@ -64,7 +68,8 @@ fun ManageProductsRoute(
 fun ManageProductsScreen(
     vm: ManageProductsViewModel,
     onBack: () -> Unit,
-    onShowQr: () -> Unit
+    onShowQr: () -> Unit,
+    onBulkImport: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val state by vm.state.collectAsState()
@@ -82,6 +87,9 @@ fun ManageProductsScreen(
                 title = "Productos",
                 onBack = onBack,
                 actions = {
+                    IconButton(onClick = onBulkImport) {
+                        Icon(Icons.Default.UploadFile, contentDescription = "Carga masiva")
+                    }
                     IconButton(onClick = onShowQr) {
                         Icon(Icons.Default.QrCode, contentDescription = "Ver QR")
                     }
@@ -152,7 +160,7 @@ fun ManageProductsScreen(
 
                     // Aplica filtros simples del estado (client-side)
                     val passLow = !state.onlyLowStock || ((p.minStock ?: 0) > 0 && p.quantity < (p.minStock ?: 0))
-                    val passNoImage = !state.onlyNoImage || p.imageUrl.isNullOrBlank()
+                    val passNoImage = !state.onlyNoImage || p.imageUrls.isEmpty()
                     val passNoBarcode = !state.onlyNoBarcode || p.barcode.isNullOrBlank()
                     if (!passLow || !passNoImage || !passNoBarcode) return@items
 
@@ -216,7 +224,7 @@ fun ManageProductsScreen(
                         imageUrl = normalizedImages.firstOrNull(),
                         imageUrls = normalizedImages,
                         category = null,
-                        minStock = null,
+                        minStock = minStock,
                         updatedAt = LocalDate.now()
                     )
 

@@ -22,6 +22,7 @@ import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.PricingAuditDao
@@ -79,6 +80,7 @@ object AppModule {
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // WAL
             // [NUEVO] Room no admite booleano acá. Si no hay Migration, esto evita que el build/runtime se rompa.
             .fallbackToDestructiveMigration(dropAllTables = true)
+            .addMigrations(AppDatabase.MIGRATION_31_32, AppDatabase.MIGRATION_32_33)
             .addCallback(object : RoomDatabase.Callback() {
                 /**
                  * Nota: RoomDatabase.Callback no tiene onConfigure(...).
@@ -95,6 +97,7 @@ object AppModule {
     // DAOs
     // -----------------------------
     @Provides @Singleton fun provideProductDao(db: AppDatabase): ProductDao = db.productDao()
+    @Provides @Singleton fun provideProductImageDao(db: AppDatabase): ProductImageDao = db.productImageDao()
     @Provides @Singleton fun provideCategoryDao(db: AppDatabase): CategoryDao = db.categoryDao()
     @Provides @Singleton fun provideVariantDao(db: AppDatabase): VariantDao = db.variantDao()
     @Provides @Singleton fun provideCustomerDao(db: AppDatabase): CustomerDao = db.customerDao()
@@ -130,6 +133,7 @@ object AppModule {
     fun provideProductRepository(
         db: AppDatabase,
         productDao: ProductDao,
+        productImageDao: ProductImageDao,
         categoryDao: CategoryDao,
         providerDao: ProviderDao,
         pricingConfigRepository: PricingConfigRepository,
@@ -139,6 +143,7 @@ object AppModule {
     ): ProductRepository = ProductRepository(
         db = db,
         productDao = productDao,
+        productImageDao = productImageDao,
         categoryDao = categoryDao,
         providerDao = providerDao,
         pricingConfigRepository = pricingConfigRepository,

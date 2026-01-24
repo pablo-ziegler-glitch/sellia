@@ -1,0 +1,50 @@
+[
+  {
+    "id": "p1",
+    "name": "Conjunto Nieve",
+    "desc": "Abrigo suave para días fríos.",
+    "longDesc": "Tejido cálido, liviano y pensado para movimiento real.",
+    "image": "/assets/placeholder.svg",
+    "tag": "Nuevo"
+  },
+  {
+    "id": "p2",
+    "name": "Campera Aurora",
+    "desc": "Protección ligera para media estación.",
+    "longDesc": "Corte relajado, fácil de usar y de combinar.",
+    "image": "/assets/placeholder.svg",
+    "tag": "Destacado"
+  },
+  {
+    "id": "p3",
+    "name": "Body Norte",
+    "desc": "Algodón suave para uso diario.",
+    "longDesc": "Costuras cuidadas para piel sensible.",
+    "image": "/assets/placeholder.svg",
+    "tag": "Esencial"
+  },
+  {
+    "id": "p4",
+    "name": "Pijama Horizonte",
+    "desc": "Comodidad nocturna sin exagerar.",
+    "longDesc": "Textura respirable, ideal para noches largas.",
+    "image": "/assets/placeholder.svg",
+    "tag": "Clásico"
+  },
+  {
+    "id": "p5",
+    "name": "Buzo Raíz",
+    "desc": "Capucha suave para aventuras reales.",
+    "longDesc": "Tejido resistente y flexible, pensado para juego.",
+    "image": "/assets/placeholder.svg",
+    "tag": "Edición"
+  },
+  {
+    "id": "p6",
+    "name": "Set Travesía",
+    "desc": "Pack cómodo para rotación diaria.",
+    "longDesc": "Conjunto versátil, pensado para sumar capas.",
+    "image": "/assets/placeholder.svg",
+    "tag": "Pack"
+  }
+]

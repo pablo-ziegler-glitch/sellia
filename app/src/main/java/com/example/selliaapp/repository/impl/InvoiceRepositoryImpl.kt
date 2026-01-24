@@ -6,6 +6,7 @@ import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.model.stock.StockMovementReasons
@@ -41,6 +42,7 @@ class InvoiceRepositoryImpl @Inject constructor(
     private val db: AppDatabase,
     private val invoiceDao: InvoiceDao,
     private val productDao: ProductDao,
+    private val productImageDao: ProductImageDao,
     private val customerDao: CustomerDao,
     private val firestore: FirebaseFirestore,
     @IoDispatcher private val io: CoroutineDispatcher
@@ -384,11 +386,15 @@ class InvoiceRepositoryImpl @Inject constructor(
 
         if (products.isEmpty()) return
 
+        val imageUrlsByProductId = productImageDao.getByProductIds(products.map { it.id })
+            .groupBy { it.productId }
+            .mapValues { (_, items) -> items.sortedBy { it.position }.map { it.url } }
         val batch = firestore.batch()
         products.forEach { product ->
             if (product.id == 0) return@forEach
             val doc = productsCollection.document(product.id.toString())
-            batch.set(doc, ProductFirestoreMappers.toMap(product), SetOptions.merge())
+            val imageUrls = imageUrlsByProductId[product.id].orEmpty()
+            batch.set(doc, ProductFirestoreMappers.toMap(product, imageUrls), SetOptions.merge())
         }
         batch.commit().await()
     }

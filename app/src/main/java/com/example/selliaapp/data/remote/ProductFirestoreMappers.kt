@@ -12,7 +12,14 @@ import java.time.format.DateTimeFormatter
 object ProductFirestoreMappers {
     private val ISO_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 
-    fun toMap(p: ProductEntity): Map<String, Any?> = mapOf(
+    data class RemoteProduct(
+        val entity: ProductEntity,
+        val imageUrls: List<String>
+    )
+
+    fun toMap(p: ProductEntity, imageUrls: List<String> = emptyList()): Map<String, Any?> {
+        val normalizedUrls = imageUrls.ifEmpty { p.imageUrls }
+        return mapOf(
         "id"           to p.id,               // también guardamos id para depuración (docId será el id string)
         "code"         to p.code,
         "barcode"      to p.barcode,
@@ -38,9 +45,10 @@ object ProductFirestoreMappers {
         "category"     to p.category,
         "minStock"     to p.minStock,
         "updatedAt"    to p.updatedAt.format(ISO_DATE)
-    )
+        )
+    }
 
-    fun fromMap(docId: String, data: Map<String, Any?>): ProductEntity {
+    fun fromMap(docId: String, data: Map<String, Any?>): RemoteProduct {
         val updatedAtStr = data["updatedAt"] as? String
         val updatedAt = updatedAtStr?.let { LocalDate.parse(it, ISO_DATE) } ?: LocalDate.now()
         val imageUrls = (data["imageUrls"] as? List<*>)?.mapNotNull { it as? String }
@@ -70,7 +78,10 @@ object ProductFirestoreMappers {
             providerSku  = data["providerSku"] as? String,
             category     = data["category"] as? String,
             minStock     = (data["minStock"] as? Number)?.toInt(),
-            updatedAt    = updatedAt
+            updatedAt    = updatedAt,
+            imageUrls    = imageUrls
         )
+        val combinedUrls = (imageUrls + listOfNotNull(legacyImage)).distinct()
+        return RemoteProduct(entity = entity.copy(imageUrls = combinedUrls), imageUrls = combinedUrls)
     }
 }

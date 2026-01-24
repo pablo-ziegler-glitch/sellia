@@ -2,6 +2,7 @@ package com.example.selliaapp.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.Index
+import androidx.room.Ignore
 import androidx.room.PrimaryKey
 import java.time.LocalDate
 
@@ -66,5 +67,6 @@ data class ProductEntity(
     val minStock: Int? = null,
 
     // Auditoría simple
-    val updatedAt: LocalDate = LocalDate.now()
+    val updatedAt: LocalDate = LocalDate.now(),
+    @Ignore val imageUrls: List<String> = emptyList()
 )
