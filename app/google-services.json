@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "218630438552",
+    "project_id": "sellia1993",
+    "storage_bucket": "sellia1993.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:218630438552:android:5fefcca962d10acb1d9aed",
+        "android_client_info": {
+          "package_name": "com.example.selliaapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCS2ElZGlgoRqZiLjmquN90eXUWUwxs-Cg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
