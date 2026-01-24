@@ -35,11 +35,11 @@ Instalar en un dispositivo conectado (opcional):
  sellia/
  ├── app/                 # Módulo Android principal
  ├── public/              # Sitio estático para catálogo (Firebase Hosting)
- │   ├── index.html       # Landing del catálogo
- │   ├── product.html     # Ficha del producto
- │   ├── styles.css       # Estilos globales
- │   ├── app.js           # Lógica de interacción del catálogo
- │   └── config.js        # Variables configurables (Firebase + contacto)
+│   ├── index.html       # Landing pública de Valkirja
+│   ├── styles.css       # Estilos globales (mobile-first)
+│   ├── main.js          # Lógica de interacción de la landing
+│   ├── data/            # JSON de productos
+│   └── assets/          # Imágenes placeholder
  ├── gradle/              # Gradle wrapper
  ├── build.gradle.kts     # Configuración raíz de Gradle
  ├── settings.gradle.kts  # Definición de módulos
@@ -52,11 +52,14 @@ Instalar en un dispositivo conectado (opcional):
 ```
 
 ## ⚙️ Variables configurables
-Las configuraciones del catálogo público viven en `public/config.js`:
-- `window.firebaseConfig`: credenciales del proyecto Firebase (API Key, Auth Domain, Project ID, etc.).
-- `window.storeContact`: datos de contacto de la tienda (nombre, teléfono, WhatsApp, email).
+Las configuraciones de la landing pública viven en `public/main.js` al inicio del archivo:
+- `BRAND_NAME`
+- `YOUTUBE_VIDEO_ID`
+- `WHATSAPP_URL`
+- `INSTAGRAM_URL`
+- `MAPS_URL`
 
-Reemplazá los valores `REEMPLAZAR_*` con los datos reales antes de desplegar o probar el sitio estático.
+Reemplazá los valores `REEMPLAZAR` con los datos reales antes de desplegar o probar el sitio estático.
 
 ## 👀 Previsualización local del catálogo
 El catálogo web es un sitio estático dentro de `public/`. Para previsualizarlo en local:
@@ -78,9 +81,8 @@ Para publicar el catálogo estático en Firebase Hosting:
    ```
 
 ## 🖼️ Reemplazo de assets
-- Para reemplazar imágenes, agregalas dentro de `public/` (por ejemplo `public/assets/`).
-- Actualizá las rutas en `public/index.html`, `public/product.html` o en `public/app.js` según corresponda.
-- Si querés cambiar la imagen placeholder del producto, reemplazá el valor en `public/app.js` donde se define `image.src` para casos sin imagen.
+- Para reemplazar imágenes, agregalas dentro de `public/assets/` en formato `.webp`.
+- Actualizá las rutas en `public/index.html` o `public/data/products.json` según corresponda.
 
 ## 🧪 Testing
 Ejecutar los tests del módulo app:

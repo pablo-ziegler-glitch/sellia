@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Imagen placeholder">
+  <rect width="800" height="600" fill="#efefec" />
+  <rect x="40" y="40" width="720" height="520" fill="none" stroke="#c7c7c2" stroke-width="2" />
+  <text x="400" y="300" text-anchor="middle" font-size="28" fill="#6b6b67" font-family="Inter, system-ui, sans-serif">
+    Imagen placeholder
+  </text>
+</svg>
