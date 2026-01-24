@@ -34,6 +34,12 @@ Instalar en un dispositivo conectado (opcional):
 ```
  sellia/
  ├── app/                 # Módulo Android principal
+ ├── public/              # Sitio estático para catálogo (Firebase Hosting)
+ │   ├── index.html       # Landing del catálogo
+ │   ├── product.html     # Ficha del producto
+ │   ├── styles.css       # Estilos globales
+ │   ├── app.js           # Lógica de interacción del catálogo
+ │   └── config.js        # Variables configurables (Firebase + contacto)
  ├── gradle/              # Gradle wrapper
  ├── build.gradle.kts     # Configuración raíz de Gradle
  ├── settings.gradle.kts  # Definición de módulos
@@ -41,8 +47,40 @@ Instalar en un dispositivo conectado (opcional):
  ├── gradlew              # Wrapper (Unix)
  ├── gradlew.bat          # Wrapper (Windows)
  ├── docs/                # Documentación adicional
+ ├── firebase.json        # Configuración de Firebase Hosting
  └── README.md            # Overview del proyecto
 ```
+
+## ⚙️ Variables configurables
+Las configuraciones del catálogo público viven en `public/config.js`:
+- `window.firebaseConfig`: credenciales del proyecto Firebase (API Key, Auth Domain, Project ID, etc.).
+- `window.storeContact`: datos de contacto de la tienda (nombre, teléfono, WhatsApp, email).
+
+Reemplazá los valores `REEMPLAZAR_*` con los datos reales antes de desplegar o probar el sitio estático.
+
+## 👀 Previsualización local del catálogo
+El catálogo web es un sitio estático dentro de `public/`. Para previsualizarlo en local:
+```bash
+python3 -m http.server 8080 --directory public
+```
+Luego abrí `http://localhost:8080` en el navegador.
+
+## 🌐 Firebase Hosting
+Para publicar el catálogo estático en Firebase Hosting:
+1. Inicializar Firebase (si aún no está configurado en tu equipo):
+   ```bash
+   firebase init
+   ```
+   Elegí **Hosting**, vinculá el proyecto y confirmá que el directorio público es `public`.
+2. Desplegar:
+   ```bash
+   firebase deploy
+   ```
+
+## 🖼️ Reemplazo de assets
+- Para reemplazar imágenes, agregalas dentro de `public/` (por ejemplo `public/assets/`).
+- Actualizá las rutas en `public/index.html`, `public/product.html` o en `public/app.js` según corresponda.
+- Si querés cambiar la imagen placeholder del producto, reemplazá el valor en `public/app.js` donde se define `image.src` para casos sin imagen.
 
 ## 🧪 Testing
 Ejecutar los tests del módulo app:
