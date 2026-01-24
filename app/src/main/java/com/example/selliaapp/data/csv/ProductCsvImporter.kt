@@ -290,7 +290,11 @@ class ProductCsvImporter(
                     ?.toIntOrNull() ?: 0
 
                 val description = idx.get(row, "description", aliases = listOf("descripcion", "desc"))?.ifBlank { null }
-                val imageUrl = idx.get(row, "imageUrl", aliases = listOf("imagen", "url"))?.ifBlank { null }
+                val imageUrl = idx.get(
+                    row,
+                    "imageUrl",
+                    aliases = listOf("imagen", "url", "image_url", "image")
+                )?.ifBlank { null }
                 val category = idx.get(row, "category", aliases = listOf("categoria"))?.ifBlank { null }
                 val providerName = idx.get(row, "provider", aliases = listOf("proveedor", "provider_name", "supplier"))
                     ?.ifBlank { null }
