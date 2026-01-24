@@ -194,7 +194,7 @@ class ProductRepository(
                     quantity = max(0, r.quantity),
                     description = r.description,
                     imageUrl = r.imageUrl,
-                    imageUrls = r.imageUrl?.let { listOf(it) }.orEmpty(),
+                    imageUrls = r.imageUrls,
                     categoryId = existing?.categoryId,
                     providerId = existing?.providerId,
                     providerName = existing?.providerName,
@@ -322,7 +322,7 @@ class ProductRepository(
                             quantity = max(0, r.quantity),
                             description = r.description,
                             imageUrl = r.imageUrl,
-                            imageUrls = r.imageUrl?.let { listOf(it) }.orEmpty(),
+                            imageUrls = r.imageUrls,
                             categoryId = null,                      // si querés, usar ensureCategoryId(r.category)
                             providerId = null,                      // si en el futuro sumamos CSV con proveedor
                             providerName = r.providerName,
@@ -379,7 +379,7 @@ class ProductRepository(
                             quantity    = newQty,
                             description = r.description ?: existing.description,
                             imageUrl    = r.imageUrl ?: existing.imageUrl,
-                            imageUrls   = if (r.imageUrl.isNullOrBlank()) existing.imageUrls else listOf(r.imageUrl),
+                            imageUrls   = if (r.imageUrls.isEmpty()) existing.imageUrls else r.imageUrls,
                             category    = r.category ?: existing.category,
                             providerName = r.providerName ?: existing.providerName,
                             providerSku  = r.providerSku ?: existing.providerSku,

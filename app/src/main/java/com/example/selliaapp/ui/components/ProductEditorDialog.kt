@@ -37,6 +37,7 @@ fun ProductEditorDialog(
         ml3cPrice: Double?,
         ml6cPrice: Double?,
         stock: Int,
+        minStock: Int?,
         description: String?,
         imageUrls: List<String>
     ) -> Unit
@@ -53,6 +54,7 @@ fun ProductEditorDialog(
     var stock by remember { mutableStateOf(TextFieldValue(initial?.quantity?.toString() ?: "")) }
     var minStock by remember { mutableStateOf(TextFieldValue(initial?.minStock?.toString() ?: "")) }
     var description by remember { mutableStateOf(TextFieldValue(initial?.description ?: "")) }
+    var minStockError by remember { mutableStateOf(false) }
     val imageUrls: SnapshotStateList<String> = remember {
         mutableStateListOf<String>().apply {
             val initialUrls = if (initial?.imageUrls?.isNotEmpty() == true) {
@@ -118,6 +120,11 @@ fun ProductEditorDialog(
                 val ml3c = ml3cPrice.text.toDoubleOrNull()
                 val ml6c = ml6cPrice.text.toDoubleOrNull()
                 val s = stock.text.toIntOrNull() ?: 0
+                val minStockValue = minStock.text.toIntOrNull()
+                if (minStock.text.isNotBlank() && minStockValue == null) {
+                    minStockError = true
+                    return@TextButton
+                }
                 val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
                 onSave(
                     name.text.trim(),
@@ -130,6 +137,7 @@ fun ProductEditorDialog(
                     ml3c,
                     ml6c,
                     s,
+                    minStockValue,
                     description.text.trim().ifBlank { null },
                     normalizedImages
                 )

@@ -20,40 +20,41 @@ object ProductFirestoreMappers {
     fun toMap(p: ProductEntity, imageUrls: List<String> = emptyList()): Map<String, Any?> {
         val normalizedUrls = imageUrls.ifEmpty { p.imageUrls }
         return mapOf(
-        "id"           to p.id,               // también guardamos id para depuración (docId será el id string)
-        "code"         to p.code,
-        "barcode"      to p.barcode,
-        "name"         to p.name,
-        "purchasePrice" to p.purchasePrice,
-        "price"        to p.price,
-        "listPrice"    to p.listPrice,
-        "cashPrice"    to p.cashPrice,
-        "transferPrice" to p.transferPrice,
-        "transferNetPrice" to p.transferNetPrice,
-        "mlPrice"      to p.mlPrice,
-        "ml3cPrice"    to p.ml3cPrice,
-        "ml6cPrice"    to p.ml6cPrice,
-        "autoPricing"  to p.autoPricing,
-        "quantity"     to p.quantity,
-        "description"  to p.description,
-        "imageUrl"     to (p.imageUrl ?: p.imageUrls.firstOrNull()),
-        "imageUrls"    to p.imageUrls,
-        "categoryId"   to p.categoryId,
-        "providerId"   to p.providerId,
-        "providerName" to p.providerName,
-        "providerSku"  to p.providerSku,
-        "category"     to p.category,
-        "minStock"     to p.minStock,
-        "updatedAt"    to p.updatedAt.format(ISO_DATE)
+            "id"           to p.id,               // también guardamos id para depuración (docId será el id string)
+            "code"         to p.code,
+            "barcode"      to p.barcode,
+            "name"         to p.name,
+            "purchasePrice" to p.purchasePrice,
+            "price"        to p.price,
+            "listPrice"    to p.listPrice,
+            "cashPrice"    to p.cashPrice,
+            "transferPrice" to p.transferPrice,
+            "transferNetPrice" to p.transferNetPrice,
+            "mlPrice"      to p.mlPrice,
+            "ml3cPrice"    to p.ml3cPrice,
+            "ml6cPrice"    to p.ml6cPrice,
+            "autoPricing"  to p.autoPricing,
+            "quantity"     to p.quantity,
+            "description"  to p.description,
+            "imageUrl"     to (p.imageUrl ?: normalizedUrls.firstOrNull()),
+            "imageUrls"    to normalizedUrls,
+            "categoryId"   to p.categoryId,
+            "providerId"   to p.providerId,
+            "providerName" to p.providerName,
+            "providerSku"  to p.providerSku,
+            "category"     to p.category,
+            "minStock"     to p.minStock,
+            "updatedAt"    to p.updatedAt.format(ISO_DATE)
         )
     }
 
     fun fromMap(docId: String, data: Map<String, Any?>): RemoteProduct {
         val updatedAtStr = data["updatedAt"] as? String
         val updatedAt = updatedAtStr?.let { LocalDate.parse(it, ISO_DATE) } ?: LocalDate.now()
-        val imageUrls = (data["imageUrls"] as? List<*>)?.mapNotNull { it as? String }
-            ?: (data["imageUrl"] as? String)?.let { listOf(it) }.orEmpty()
-        return ProductEntity(
+        val legacyImage = data["imageUrl"] as? String
+        val imageUrls = (data["imageUrls"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
+        val combinedUrls = (listOfNotNull(legacyImage) + imageUrls).distinct()
+        val entity = ProductEntity(
             id           = docId.toIntOrNull() ?: 0, // si docId es numérico, lo usamos; si no, 0 para insert local
             code         = data["code"] as? String,
             barcode      = data["barcode"] as? String,
@@ -70,18 +71,16 @@ object ProductFirestoreMappers {
             autoPricing  = (data["autoPricing"] as? Boolean) ?: false,
             quantity     = (data["quantity"] as? Number)?.toInt() ?: 0,
             description  = data["description"] as? String,
-            imageUrl     = (data["imageUrl"] as? String) ?: imageUrls.firstOrNull(),
-            imageUrls    = imageUrls,
+            imageUrl     = legacyImage ?: combinedUrls.firstOrNull(),
+            imageUrls    = combinedUrls,
             categoryId   = (data["categoryId"] as? Number)?.toInt(),
             providerId   = (data["providerId"] as? Number)?.toInt(),
             providerName = data["providerName"] as? String,
             providerSku  = data["providerSku"] as? String,
             category     = data["category"] as? String,
             minStock     = (data["minStock"] as? Number)?.toInt(),
-            updatedAt    = updatedAt,
-            imageUrls    = imageUrls
+            updatedAt    = updatedAt
         )
-        val combinedUrls = (imageUrls + listOfNotNull(legacyImage)).distinct()
-        return RemoteProduct(entity = entity.copy(imageUrls = combinedUrls), imageUrls = combinedUrls)
+        return RemoteProduct(entity = entity, imageUrls = combinedUrls)
     }
 }
