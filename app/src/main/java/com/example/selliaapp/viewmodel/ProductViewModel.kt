@@ -41,6 +41,7 @@ class ProductViewModel @Inject constructor(
     var name: String? = null
     var brand: String? = null
     var imageUrl: String? = null
+    var imageUrls: List<String>? = null
 
     // Si tus pantallas “Manage” u otras necesitan listas:
     val allProducts: Flow<List<ProductEntity>> = repo.observeAll()
@@ -72,6 +73,9 @@ class ProductViewModel @Inject constructor(
                     name = name ?: r.name // sólo completa si está vacío
                     brand = brand ?: r.brand
                     imageUrl = imageUrl ?: r.imageUrl
+                    if (imageUrls.isNullOrEmpty() && !r.imageUrl.isNullOrBlank()) {
+                        imageUrls = listOf(r.imageUrl)
+                    }
                     _autoFillState.value = AutoFillUiState(
                         loading = false,
                         message = if (r.name.isNullOrBlank() && r.brand.isNullOrBlank())
@@ -117,13 +121,14 @@ class ProductViewModel @Inject constructor(
         stock: Int,
         code: String?,
         description: String?,
-        imageUrl: String?,
+        imageUrls: List<String>,
         categoryName: String?,
         providerName: String?,
         providerSku: String?,
         minStock: Int?
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
             val entity = ProductEntity(
                 id = 0, // autogen
                 code = code,
@@ -145,7 +150,8 @@ class ProductViewModel @Inject constructor(
                 quantity = stock,
                 // extras:
                 description = description,
-                imageUrls = imageUrl?.let { listOf(it) } ?: emptyList(),
+                imageUrl = normalizedImages.firstOrNull(),
+                imageUrls = normalizedImages,
                 // E1:
                 category = categoryName,
                 providerName = providerName,
@@ -175,13 +181,14 @@ class ProductViewModel @Inject constructor(
         stock: Int,
         code: String?,
         description: String?,
-        imageUrl: String?,
+        imageUrls: List<String>,
         categoryName: String?,
         providerName: String?,
         providerSku: String?,
         minStock: Int?
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
             val entity = ProductEntity(
                 id = id,
                 code = code,
@@ -199,7 +206,8 @@ class ProductViewModel @Inject constructor(
                 autoPricing = false,
                 quantity = stock,
                 description = description,
-                imageUrls = imageUrl?.let { listOf(it) } ?: emptyList(),
+                imageUrl = normalizedImages.firstOrNull(),
+                imageUrls = normalizedImages,
                 category = categoryName,
                 providerName = providerName,
                 providerSku = providerSku,

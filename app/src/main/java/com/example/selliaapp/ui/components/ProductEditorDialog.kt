@@ -12,12 +12,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.ui.components.ImageUrlListEditor
 
 @Composable
 fun ProductEditorDialog(
@@ -34,8 +37,8 @@ fun ProductEditorDialog(
         ml3cPrice: Double?,
         ml6cPrice: Double?,
         stock: Int,
-        minStock: Int,
-        description: String?
+        description: String?,
+        imageUrls: List<String>
     ) -> Unit
 ) {
     var name by remember { mutableStateOf(TextFieldValue(initial?.name.orEmpty())) }
@@ -50,7 +53,16 @@ fun ProductEditorDialog(
     var stock by remember { mutableStateOf(TextFieldValue(initial?.quantity?.toString() ?: "")) }
     var minStock by remember { mutableStateOf(TextFieldValue(initial?.minStock?.toString() ?: "")) }
     var description by remember { mutableStateOf(TextFieldValue(initial?.description ?: "")) }
-    var minStockError by remember { mutableStateOf(false) }
+    val imageUrls: SnapshotStateList<String> = remember {
+        mutableStateListOf<String>().apply {
+            val initialUrls = if (initial?.imageUrls?.isNotEmpty() == true) {
+                initial.imageUrls
+            } else {
+                initial?.imageUrl?.let { listOf(it) }.orEmpty()
+            }
+            addAll(initialUrls)
+        }
+    }
 
 
     val scrollState = rememberScrollState()
@@ -93,6 +105,7 @@ fun ProductEditorDialog(
                     }
                 )
                 OutlinedTextField(description, { description = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth())
+                ImageUrlListEditor(imageUrls = imageUrls)
             }
         },
         confirmButton = {
@@ -105,11 +118,7 @@ fun ProductEditorDialog(
                 val ml3c = ml3cPrice.text.toDoubleOrNull()
                 val ml6c = ml6cPrice.text.toDoubleOrNull()
                 val s = stock.text.toIntOrNull() ?: 0
-                val minStockValue = minStock.text.toIntOrNull()
-                if (minStockValue == null) {
-                    minStockError = true
-                    return@TextButton
-                }
+                val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
                 onSave(
                     name.text.trim(),
                     barcode.text.trim(),
@@ -121,8 +130,8 @@ fun ProductEditorDialog(
                     ml3c,
                     ml6c,
                     s,
-                    minStockValue,
-                    description.text.trim().ifBlank { null }
+                    description.text.trim().ifBlank { null },
+                    normalizedImages
                 )
             }) { Text("Guardar") }
         },

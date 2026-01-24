@@ -36,7 +36,8 @@ object ProductFirestoreMappers {
         "autoPricing"  to p.autoPricing,
         "quantity"     to p.quantity,
         "description"  to p.description,
-        "imageUrls"    to normalizedUrls.takeIf { it.isNotEmpty() },
+        "imageUrl"     to (p.imageUrl ?: p.imageUrls.firstOrNull()),
+        "imageUrls"    to p.imageUrls,
         "categoryId"   to p.categoryId,
         "providerId"   to p.providerId,
         "providerName" to p.providerName,
@@ -51,11 +52,8 @@ object ProductFirestoreMappers {
         val updatedAtStr = data["updatedAt"] as? String
         val updatedAt = updatedAtStr?.let { LocalDate.parse(it, ISO_DATE) } ?: LocalDate.now()
         val imageUrls = (data["imageUrls"] as? List<*>)?.mapNotNull { it as? String }
-            ?.filter { it.isNotBlank() }
-            ?.distinct()
-            ?: emptyList()
-        val legacyImage = (data["imageUrl"] as? String)?.takeIf { it.isNotBlank() }
-        val entity = ProductEntity(
+            ?: (data["imageUrl"] as? String)?.let { listOf(it) }.orEmpty()
+        return ProductEntity(
             id           = docId.toIntOrNull() ?: 0, // si docId es numérico, lo usamos; si no, 0 para insert local
             code         = data["code"] as? String,
             barcode      = data["barcode"] as? String,
@@ -72,6 +70,8 @@ object ProductFirestoreMappers {
             autoPricing  = (data["autoPricing"] as? Boolean) ?: false,
             quantity     = (data["quantity"] as? Number)?.toInt() ?: 0,
             description  = data["description"] as? String,
+            imageUrl     = (data["imageUrl"] as? String) ?: imageUrls.firstOrNull(),
+            imageUrls    = imageUrls,
             categoryId   = (data["categoryId"] as? Number)?.toInt(),
             providerId   = (data["providerId"] as? Number)?.toInt(),
             providerName = data["providerName"] as? String,
