@@ -3,48 +3,373 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sellia - Catálogo público</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <title>Valkirja - Landing</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f5f2;
+        --text: #1f1f1f;
+        --muted: #5b5b5b;
+        --accent: #2b3c53;
+        --accent-soft: #e7ebf0;
+        --card: #ffffff;
+        --border: #dedad4;
+        --radius: 16px;
+        --shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+        line-height: 1.6;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .skip-link {
+        position: absolute;
+        left: -999px;
+        top: 0.5rem;
+        background: var(--accent);
+        color: #fff;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        text-decoration: none;
+        z-index: 10;
+      }
+
+      .skip-link:focus {
+        left: 1rem;
+      }
+
+      header {
+        padding: 1.5rem 1.5rem 2rem;
+      }
+
+      main {
+        display: flex;
+        flex-direction: column;
+        gap: 2.5rem;
+        padding: 0 1.5rem 3rem;
+      }
+
+      .hero {
+        background: var(--card);
+        border-radius: var(--radius);
+        padding: 2rem;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+      }
+
+      .hero h1 {
+        font-size: clamp(2.2rem, 5vw, 3.5rem);
+        margin: 0 0 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+
+      .hero p {
+        margin: 0 0 1.5rem;
+        color: var(--muted);
+        max-width: 40rem;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.85rem 1.6rem;
+        border-radius: 999px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+        text-decoration: none;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .button.secondary {
+        background: transparent;
+        color: var(--accent);
+      }
+
+      .button:focus-visible {
+        outline: 3px solid #94b0d6;
+        outline-offset: 2px;
+      }
+
+      section {
+        background: var(--card);
+        border-radius: var(--radius);
+        padding: 1.75rem;
+        border: 1px solid var(--border);
+      }
+
+      section h2 {
+        margin-top: 0;
+        font-size: clamp(1.4rem, 4vw, 2rem);
+      }
+
+      .section-intro {
+        color: var(--muted);
+        margin-bottom: 1.5rem;
+      }
+
+      .video-wrapper {
+        display: grid;
+        gap: 1rem;
+      }
+
+      video {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #111;
+      }
+
+      .columns {
+        display: grid;
+        gap: 1.5rem;
+      }
+
+      .card-list {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .card-list article {
+        padding: 1.2rem;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: var(--accent-soft);
+      }
+
+      .card-list h3 {
+        margin: 0 0 0.5rem;
+      }
+
+      .contact-grid {
+        display: grid;
+        gap: 1.25rem;
+      }
+
+      form {
+        display: grid;
+        gap: 1rem;
+      }
+
+      label {
+        display: grid;
+        gap: 0.4rem;
+        font-weight: 600;
+      }
+
+      input,
+      textarea {
+        padding: 0.8rem 1rem;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      footer {
+        padding: 2rem 1.5rem 3rem;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      @media (min-width: 768px) {
+        header {
+          padding: 2rem 3rem 1rem;
+        }
+
+        main {
+          padding: 0 3rem 4rem;
+        }
+
+        .hero {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 2rem;
+          align-items: center;
+        }
+
+        .hero-actions {
+          flex-direction: row;
+        }
+
+        .columns {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .card-list {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .contact-grid {
+          grid-template-columns: 1.2fr 0.8fr;
+          align-items: start;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main class="container">
-      <header class="header">
-        <h1>Sellia</h1>
-        <p class="subtitle">Catálogo público para clientes</p>
-      </header>
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-      <section class="card">
-        <h2>Buscar producto</h2>
-        <form id="searchForm" class="search-form">
-          <input
-            id="searchInput"
-            type="text"
-            placeholder="Ingresá código o barcode"
-            required
-          />
-          <button type="submit">Buscar</button>
-        </form>
-        <p class="helper">
-          Escaneá un QR y vas directo a la ficha del producto.
-        </p>
+    <header>
+      <nav aria-label="Secciones">
+        <strong>Valkirja</strong>
+      </nav>
+    </header>
+
+    <main id="contenido">
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <p class="section-intro">Catálogo vivo para marcas que quieren vender con calma y claridad.</p>
+          <h1 id="hero-title">Valkirja</h1>
+          <p>
+            Diseñamos vitrinas digitales y experiencias de compra que priorizan lo humano: una
+            narrativa cuidadosa, productos honestos y decisiones conscientes.
+          </p>
+          <div class="hero-actions">
+            <a class="button" href="#contacto">Hablemos</a>
+            <a class="button secondary" href="#productos">Ver productos</a>
+          </div>
+        </div>
+        <div>
+          <p class="section-intro">Un manifiesto breve sobre por qué existe Valkirja.</p>
+          <ul>
+            <li>Curaduría enfocada en lo esencial.</li>
+            <li>Experiencias accesibles y cercanas.</li>
+            <li>Procesos simples, resultados memorables.</li>
+          </ul>
+        </div>
       </section>
 
-      <section class="card">
-        <h2>Atajos rápidos</h2>
-        <div class="actions">
-          <a class="button secondary" href="/product.html">Ver ficha demo</a>
+      <section aria-labelledby="video-title">
+        <h2 id="video-title">Video</h2>
+        <p class="section-intro">
+          Un vistazo a nuestra forma de trabajar: pausada, colaborativa y orientada a la
+          autenticidad.
+        </p>
+        <div class="video-wrapper">
+          <video controls preload="none" aria-label="Video institucional de Valkirja">
+            <source src="media/valkirja.mp4" type="video/mp4" />
+            Tu navegador no soporta video HTML5.
+          </video>
+          <small>Duración aproximada: 1:20 min.</small>
+        </div>
+      </section>
+
+      <section aria-labelledby="origen-title">
+        <h2 id="origen-title">Cómo empezó</h2>
+        <div class="columns">
+          <p>
+            Valkirja nació como un taller pequeño que escuchaba a emprendedores buscando claridad.
+            A partir de ese diálogo, entendimos que un catálogo debía ser más que un listado: debía
+            contar una historia con respeto y calidez.
+          </p>
+          <p>
+            Hoy acompañamos marcas con productos esenciales, alineando diseño, narrativa y tecnología
+            mínima para que cada pieza tenga sentido y pueda sostener su propio ritmo.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="somos-title">
+        <h2 id="somos-title">Lo que somos</h2>
+        <p class="section-intro">
+          Un equipo pequeño, cercano y comprometido con la accesibilidad desde el primer clic.
+        </p>
+        <div class="card-list">
+          <article>
+            <h3>Dirección creativa</h3>
+            <p>Diseño editorial y digital para presentar colecciones con belleza funcional.</p>
+          </article>
+          <article>
+            <h3>Investigación humana</h3>
+            <p>Escucha activa, entrevistas y pruebas livianas para construir experiencias claras.</p>
+          </article>
+          <article>
+            <h3>Implementación simple</h3>
+            <p>Tecnología vanilla que prioriza rendimiento, independencia y mantenimiento fácil.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="productos" aria-labelledby="productos-title">
+        <h2 id="productos-title">Productos</h2>
+        <p class="section-intro">Colecciones pensadas para diferentes ritmos de crecimiento.</p>
+        <div class="card-list">
+          <article>
+            <h3>Set Origen</h3>
+            <p>Landing esencial con guía narrativa y kit de voz para comunicar lo justo.</p>
+          </article>
+          <article>
+            <h3>Set Ruta</h3>
+            <p>Catálogo modular con fichas cuidadas, filtros simples y soporte para lanzamientos.</p>
+          </article>
+          <article>
+            <h3>Set Habitar</h3>
+            <p>Experiencia completa con soporte continuo, análisis y evolución colaborativa.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="contacto" aria-labelledby="contacto-title">
+        <h2 id="contacto-title">Contacto</h2>
+        <div class="contact-grid">
+          <form aria-describedby="contacto-ayuda">
+            <label>
+              Nombre
+              <input type="text" name="nombre" autocomplete="name" required />
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" autocomplete="email" required />
+            </label>
+            <label>
+              Mensaje
+              <textarea name="mensaje" required></textarea>
+            </label>
+            <button class="button" type="submit">Enviar</button>
+          </form>
+          <div>
+            <p id="contacto-ayuda" class="section-intro">
+              Te respondemos en 48 horas hábiles con una propuesta personalizada.
+            </p>
+            <p>
+              Email directo: <a href="mailto:hola@valkirja.com">hola@valkirja.com</a>
+            </p>
+            <p>Horario: lunes a viernes, 9:00 - 18:00 (GMT-3).</p>
+            <p>Buenos Aires · Trabajo remoto en LATAM.</p>
+          </div>
         </div>
       </section>
     </main>
 
-    <script>
-      const form = document.getElementById("searchForm");
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const value = document.getElementById("searchInput").value.trim();
-        if (!value) return;
-        window.location.href = `/product.html?q=${encodeURIComponent(value)}`;
-      });
-    </script>
+    <footer>
+      <p>Valkirja © 2024. Catálogos conscientes y accesibles.</p>
+    </footer>
   </body>
 </html>
