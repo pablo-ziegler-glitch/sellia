@@ -49,22 +49,27 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.ProductViewModel
+import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.launch
 import java.io.OutputStream
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.nio.charset.StandardCharsets
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductQrScreen(
     onBack: () -> Unit,
-    vm: ProductViewModel = hiltViewModel()
+    vm: ProductViewModel = hiltViewModel(),
+    marketingVm: MarketingConfigViewModel = hiltViewModel()
 ) {
     val products by vm.products.collectAsStateWithLifecycle(initialValue = emptyList())
+    val marketingSettings by marketingVm.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(setOf<Int>()) }
@@ -72,6 +77,15 @@ fun ProductQrScreen(
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
     fun resolveQrValue(product: ProductEntity): String {
+        val baseUrl = marketingSettings.publicStoreUrl.trim()
+        if (baseUrl.isNotBlank()) {
+            val queryValue = product.code?.takeIf { it.isNotBlank() }
+                ?: product.barcode?.takeIf { it.isNotBlank() }
+                ?: "PRODUCT-${product.id}"
+            val encoded = URLEncoder.encode(queryValue, StandardCharsets.UTF_8.name())
+            val separator = if (baseUrl.contains("?")) "&" else "?"
+            return "${baseUrl.trimEnd('/')}$separator" + "q=$encoded"
+        }
         return product.code?.takeIf { it.isNotBlank() }
             ?: product.barcode?.takeIf { it.isNotBlank() }
             ?: "PRODUCT-${product.id}"

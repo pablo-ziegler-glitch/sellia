@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertChart
 import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
@@ -67,6 +68,7 @@ fun HomeScreen(
     onReports: () -> Unit,
     onProviders: () -> Unit,          // NUEVO
     onExpenses: () -> Unit,
+    onPublicProductScan: () -> Unit,
     onSyncNow: () -> Unit = {},
     onViewStockMovements: () -> Unit = {},
     onAlertAdjustStock: (Int) -> Unit = {},
@@ -191,6 +193,11 @@ fun HomeScreen(
                         Icon(Icons.Default.History, contentDescription = null)
                         Spacer(Modifier.width(8.dp)); Text("Historial de stock")
                     }
+                }
+                OutlinedButton(onClick = onPublicProductScan, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.QrCode, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Escanear QR (cliente)")
                 }
             }
 

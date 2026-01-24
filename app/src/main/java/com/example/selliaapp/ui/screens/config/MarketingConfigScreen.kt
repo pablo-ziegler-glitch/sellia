@@ -42,11 +42,21 @@ fun MarketingConfigScreen(
     var promoEnabled by remember { mutableStateOf(settings.promo3x2Enabled) }
     var minQty by remember { mutableStateOf(settings.promo3x2MinQuantity.toString()) }
     var minSubtotal by remember { mutableStateOf(settings.promo3x2MinSubtotal.toString()) }
+    var publicStoreUrl by remember { mutableStateOf(settings.publicStoreUrl) }
+    var storeName by remember { mutableStateOf(settings.storeName) }
+    var storePhone by remember { mutableStateOf(settings.storePhone) }
+    var storeWhatsapp by remember { mutableStateOf(settings.storeWhatsapp) }
+    var storeEmail by remember { mutableStateOf(settings.storeEmail) }
 
     LaunchedEffect(settings) {
         promoEnabled = settings.promo3x2Enabled
         minQty = settings.promo3x2MinQuantity.toString()
         minSubtotal = settings.promo3x2MinSubtotal.toString()
+        publicStoreUrl = settings.publicStoreUrl
+        storeName = settings.storeName
+        storePhone = settings.storePhone
+        storeWhatsapp = settings.storeWhatsapp
+        storeEmail = settings.storeEmail
     }
 
     Scaffold(
@@ -87,6 +97,48 @@ fun MarketingConfigScreen(
             }
 
             Spacer(Modifier.height(8.dp))
+            Text("Sitio público")
+            OutlinedTextField(
+                value = publicStoreUrl,
+                onValueChange = { publicStoreUrl = it },
+                label = { Text("URL pública (para QR)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("Contacto público de la tienda")
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = storeName,
+                    onValueChange = { storeName = it },
+                    label = { Text("Nombre de la tienda") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = storePhone,
+                    onValueChange = { storePhone = it },
+                    label = { Text("Teléfono") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = storeWhatsapp,
+                    onValueChange = { storeWhatsapp = it },
+                    label = { Text("WhatsApp") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = storeEmail,
+                    onValueChange = { storeEmail = it },
+                    label = { Text("Email") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             Button(
                 onClick = {
@@ -97,7 +149,12 @@ fun MarketingConfigScreen(
                         MarketingSettings(
                             promo3x2Enabled = promoEnabled,
                             promo3x2MinQuantity = parsedQty,
-                            promo3x2MinSubtotal = parsedSubtotal
+                            promo3x2MinSubtotal = parsedSubtotal,
+                            publicStoreUrl = publicStoreUrl.trim(),
+                            storeName = storeName.ifBlank { settings.storeName },
+                            storePhone = storePhone.trim(),
+                            storeWhatsapp = storeWhatsapp.trim(),
+                            storeEmail = storeEmail.trim()
                         )
                     )
                 },

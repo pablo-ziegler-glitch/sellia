@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sellia - Catálogo público</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <h1>Sellia</h1>
+        <p class="subtitle">Catálogo público para clientes</p>
+      </header>
+
+      <section class="card">
+        <h2>Buscar producto</h2>
+        <form id="searchForm" class="search-form">
+          <input
+            id="searchInput"
+            type="text"
+            placeholder="Ingresá código o barcode"
+            required
+          />
+          <button type="submit">Buscar</button>
+        </form>
+        <p class="helper">
+          Escaneá un QR y vas directo a la ficha del producto.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Atajos rápidos</h2>
+        <div class="actions">
+          <a class="button secondary" href="/product.html">Ver ficha demo</a>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("searchForm");
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = document.getElementById("searchInput").value.trim();
+        if (!value) return;
+        window.location.href = `/product.html?q=${encodeURIComponent(value)}`;
+      });
+    </script>
+  </body>
+</html>
