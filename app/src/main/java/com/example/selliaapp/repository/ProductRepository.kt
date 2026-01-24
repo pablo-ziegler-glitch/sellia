@@ -524,6 +524,9 @@ class ProductRepository(
     /** Obtener producto por código de barras. */
     suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? = productDao.getByBarcodeOnce(barcode)
 
+    /** Obtener producto por código interno. */
+    suspend fun getByCodeOrNull(code: String): ProductEntity? = productDao.getByCodeOnce(code)
+
     /** Obtener producto por id (alias semántico). */
     suspend fun getByIdOrNull(id: Int): ProductEntity? = productDao.getById(id)
 

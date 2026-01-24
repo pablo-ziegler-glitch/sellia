@@ -32,6 +32,7 @@ interface IProductRepository {
     suspend fun getById(id: Int): ProductEntity?
     suspend fun getByIdModel(id: Int): Product?
     suspend fun getByBarcodeOrNull(barcode: String): ProductEntity?
+    suspend fun getByCodeOrNull(code: String): ProductEntity?
 
     // ---------- Búsquedas / listados ----------
     fun search(q: String?): Flow<List<ProductEntity>>

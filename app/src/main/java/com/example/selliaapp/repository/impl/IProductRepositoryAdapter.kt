@@ -36,6 +36,8 @@ class IProductRepositoryAdapter @Inject constructor(
     override suspend fun getByIdModel(id: Int): Product? = legacy.getByIdModel(id)
     override suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? =
         legacy.getByBarcodeOrNull(barcode)
+    override suspend fun getByCodeOrNull(code: String): ProductEntity? =
+        legacy.getByCodeOrNull(code)
 
     // ---------- Búsquedas / listados ----------
     override fun search(q: String?): Flow<List<ProductEntity>> = legacy.search(q)
