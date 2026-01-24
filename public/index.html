@@ -1,375 +1,201 @@
 <!doctype html>
-<html lang="es">
+<html lang="es-AR">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Valkirja - Landing</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --bg: #f7f5f2;
-        --text: #1f1f1f;
-        --muted: #5b5b5b;
-        --accent: #2b3c53;
-        --accent-soft: #e7ebf0;
-        --card: #ffffff;
-        --border: #dedad4;
-        --radius: 16px;
-        --shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-        color: var(--text);
-        background: var(--bg);
-        line-height: 1.6;
-      }
-
-      a {
-        color: inherit;
-      }
-
-      .skip-link {
-        position: absolute;
-        left: -999px;
-        top: 0.5rem;
-        background: var(--accent);
-        color: #fff;
-        padding: 0.5rem 1rem;
-        border-radius: 999px;
-        text-decoration: none;
-        z-index: 10;
-      }
-
-      .skip-link:focus {
-        left: 1rem;
-      }
-
-      header {
-        padding: 1.5rem 1.5rem 2rem;
-      }
-
-      main {
-        display: flex;
-        flex-direction: column;
-        gap: 2.5rem;
-        padding: 0 1.5rem 3rem;
-      }
-
-      .hero {
-        background: var(--card);
-        border-radius: var(--radius);
-        padding: 2rem;
-        box-shadow: var(--shadow);
-        border: 1px solid var(--border);
-      }
-
-      .hero h1 {
-        font-size: clamp(2.2rem, 5vw, 3.5rem);
-        margin: 0 0 0.75rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        font-weight: 600;
-      }
-
-      .hero p {
-        margin: 0 0 1.5rem;
-        color: var(--muted);
-        max-width: 40rem;
-      }
-
-      .hero-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-      }
-
-      .button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.85rem 1.6rem;
-        border-radius: 999px;
-        border: 1px solid var(--accent);
-        background: var(--accent);
-        color: #fff;
-        font-weight: 600;
-        text-decoration: none;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-      }
-
-      .button.secondary {
-        background: transparent;
-        color: var(--accent);
-      }
-
-      .button:focus-visible {
-        outline: 3px solid #94b0d6;
-        outline-offset: 2px;
-      }
-
-      section {
-        background: var(--card);
-        border-radius: var(--radius);
-        padding: 1.75rem;
-        border: 1px solid var(--border);
-      }
-
-      section h2 {
-        margin-top: 0;
-        font-size: clamp(1.4rem, 4vw, 2rem);
-      }
-
-      .section-intro {
-        color: var(--muted);
-        margin-bottom: 1.5rem;
-      }
-
-      .video-wrapper {
-        display: grid;
-        gap: 1rem;
-      }
-
-      video {
-        width: 100%;
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        background: #111;
-      }
-
-      .columns {
-        display: grid;
-        gap: 1.5rem;
-      }
-
-      .card-list {
-        display: grid;
-        gap: 1rem;
-      }
-
-      .card-list article {
-        padding: 1.2rem;
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        background: var(--accent-soft);
-      }
-
-      .card-list h3 {
-        margin: 0 0 0.5rem;
-      }
-
-      .contact-grid {
-        display: grid;
-        gap: 1.25rem;
-      }
-
-      form {
-        display: grid;
-        gap: 1rem;
-      }
-
-      label {
-        display: grid;
-        gap: 0.4rem;
-        font-weight: 600;
-      }
-
-      input,
-      textarea {
-        padding: 0.8rem 1rem;
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        font: inherit;
-      }
-
-      textarea {
-        min-height: 120px;
-        resize: vertical;
-      }
-
-      footer {
-        padding: 2rem 1.5rem 3rem;
-        color: var(--muted);
-        text-align: center;
-      }
-
-      @media (min-width: 768px) {
-        header {
-          padding: 2rem 3rem 1rem;
-        }
-
-        main {
-          padding: 0 3rem 4rem;
-        }
-
-        .hero {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 2rem;
-          align-items: center;
-        }
-
-        .hero-actions {
-          flex-direction: row;
-        }
-
-        .columns {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .card-list {
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-
-        .contact-grid {
-          grid-template-columns: 1.2fr 0.8fr;
-          align-items: start;
-        }
-      }
-    </style>
+    <title>Historia real de Valkirja | Valkirja</title>
+    <meta
+      name="description"
+      content="La historia real de una marca que nació desde cero. Una landing editorial, minimalista y humana de Valkirja."
+    />
+    <link rel="canonical" href="https://example.com/" />
+    <meta property="og:title" content="Historia real de Valkirja" />
+    <meta
+      property="og:description"
+      content="Esto no es una campaña. Es la historia real de una marca que se construyó con errores, parates, aprendizajes y ganas de seguir."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://example.com/" />
+    <meta property="og:image" content="/assets/og-image.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#111111" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-    <header>
-      <nav aria-label="Secciones">
-        <strong>Valkirja</strong>
+    <header class="site-header">
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-link" href="#historia">Historia</a>
+        <a class="nav-link" href="#productos">Colección</a>
+        <a class="nav-link" href="#contacto">Contacto</a>
       </nav>
     </header>
 
     <main id="contenido">
       <section class="hero" aria-labelledby="hero-title">
-        <div>
-          <p class="section-intro">Catálogo vivo para marcas que quieren vender con calma y claridad.</p>
-          <h1 id="hero-title">Valkirja</h1>
-          <p>
-            Diseñamos vitrinas digitales y experiencias de compra que priorizan lo humano: una
-            narrativa cuidadosa, productos honestos y decisiones conscientes.
+        <div class="hero-content">
+          <span class="eyebrow" data-brand>Valkirja</span>
+          <h1 id="hero-title">
+            NO NACIMOS GRANDES.<br />
+            NACIMOS DESDE CERO.
+          </h1>
+          <p class="hero-subtitle">
+            Esto no es una campaña. Es la historia real de una marca que se construyó con errores,
+            parates, aprendizajes y ganas de seguir.
           </p>
           <div class="hero-actions">
-            <a class="button" href="#contacto">Hablemos</a>
-            <a class="button secondary" href="#productos">Ver productos</a>
+            <a class="button primary" href="#historia" aria-label="Ver la historia">
+              VER LA HISTORIA
+            </a>
+            <a class="button ghost" href="#productos" aria-label="Ver la colección">
+              VER LA COLECCIÓN
+            </a>
+          </div>
+          <p class="hero-brand" data-brand>Valkirja</p>
+        </div>
+      </section>
+
+      <section id="historia" class="section" aria-labelledby="historia-title">
+        <div class="section-header">
+          <h2 id="historia-title">La historia en 55 segundos</h2>
+          <p>
+            Una mirada corta y honesta a lo que nos trajo hasta acá. Sin épica artificial, con verdad.
+          </p>
+        </div>
+        <div class="video" data-reveal>
+          <div class="video-placeholder" id="videoPlaceholder">
+            <img
+              id="videoPoster"
+              src="/assets/og-image.svg"
+              alt="Poster del video de la historia"
+              loading="lazy"
+            />
+            <button class="video-play" type="button" aria-label="Reproducir video">
+              ▶
+            </button>
           </div>
         </div>
-        <div>
-          <p class="section-intro">Un manifiesto breve sobre por qué existe Valkirja.</p>
-          <ul>
-            <li>Curaduría enfocada en lo esencial.</li>
-            <li>Experiencias accesibles y cercanas.</li>
-            <li>Procesos simples, resultados memorables.</li>
-          </ul>
-        </div>
-      </section>
-
-      <section aria-labelledby="video-title">
-        <h2 id="video-title">Video</h2>
-        <p class="section-intro">
-          Un vistazo a nuestra forma de trabajar: pausada, colaborativa y orientada a la
-          autenticidad.
+        <p class="section-footnote">
+          Paramos por internaciones de Catalina, nuestra Valkirja en persona: guerrera nórdica. Hubo
+          miedo, pero nunca rendición.
         </p>
-        <div class="video-wrapper">
-          <video controls preload="none" aria-label="Video institucional de Valkirja">
-            <source src="media/valkirja.mp4" type="video/mp4" />
-            Tu navegador no soporta video HTML5.
-          </video>
-          <small>Duración aproximada: 1:20 min.</small>
-        </div>
       </section>
 
-      <section aria-labelledby="origen-title">
-        <h2 id="origen-title">Cómo empezó</h2>
+      <section id="como-empezo" class="section" aria-labelledby="empezo-title">
+        <div class="section-header">
+          <h2 id="empezo-title">Cómo empezó</h2>
+        </div>
         <div class="columns">
-          <p>
-            Valkirja nació como un taller pequeño que escuchaba a emprendedores buscando claridad.
-            A partir de ese diálogo, entendimos que un catálogo debía ser más que un listado: debía
-            contar una historia con respeto y calidez.
-          </p>
-          <p>
-            Hoy acompañamos marcas con productos esenciales, alineando diseño, narrativa y tecnología
-            mínima para que cada pieza tenga sentido y pueda sostener su propio ritmo.
-          </p>
-        </div>
-      </section>
-
-      <section aria-labelledby="somos-title">
-        <h2 id="somos-title">Lo que somos</h2>
-        <p class="section-intro">
-          Un equipo pequeño, cercano y comprometido con la accesibilidad desde el primer clic.
-        </p>
-        <div class="card-list">
-          <article>
-            <h3>Dirección creativa</h3>
-            <p>Diseño editorial y digital para presentar colecciones con belleza funcional.</p>
-          </article>
-          <article>
-            <h3>Investigación humana</h3>
-            <p>Escucha activa, entrevistas y pruebas livianas para construir experiencias claras.</p>
-          </article>
-          <article>
-            <h3>Implementación simple</h3>
-            <p>Tecnología vanilla que prioriza rendimiento, independencia y mantenimiento fácil.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="productos" aria-labelledby="productos-title">
-        <h2 id="productos-title">Productos</h2>
-        <p class="section-intro">Colecciones pensadas para diferentes ritmos de crecimiento.</p>
-        <div class="card-list">
-          <article>
-            <h3>Set Origen</h3>
-            <p>Landing esencial con guía narrativa y kit de voz para comunicar lo justo.</p>
-          </article>
-          <article>
-            <h3>Set Ruta</h3>
-            <p>Catálogo modular con fichas cuidadas, filtros simples y soporte para lanzamientos.</p>
-          </article>
-          <article>
-            <h3>Set Habitar</h3>
-            <p>Experiencia completa con soporte continuo, análisis y evolución colaborativa.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="contacto" aria-labelledby="contacto-title">
-        <h2 id="contacto-title">Contacto</h2>
-        <div class="contact-grid">
-          <form aria-describedby="contacto-ayuda">
-            <label>
-              Nombre
-              <input type="text" name="nombre" autocomplete="name" required />
-            </label>
-            <label>
-              Email
-              <input type="email" name="email" autocomplete="email" required />
-            </label>
-            <label>
-              Mensaje
-              <textarea name="mensaje" required></textarea>
-            </label>
-            <button class="button" type="submit">Enviar</button>
-          </form>
           <div>
-            <p id="contacto-ayuda" class="section-intro">
-              Te respondemos en 48 horas hábiles con una propuesta personalizada.
-            </p>
             <p>
-              Email directo: <a href="mailto:hola@valkirja.com">hola@valkirja.com</a>
+              Empezamos con un local destruido. Sin presupuesto. Aprendiendo todo desde cero.
             </p>
-            <p>Horario: lunes a viernes, 9:00 - 18:00 (GMT-3).</p>
-            <p>Buenos Aires · Trabajo remoto en LATAM.</p>
+            <ul class="list">
+              <li>Remover pisos y empezar de nuevo</li>
+              <li>Fajas, carpeta y nivelación</li>
+              <li>Cerámica: equivocarnos y rehacer</li>
+              <li>Electricidad, plomería y pintura</li>
+            </ul>
+          </div>
+          <div class="media-grid" aria-label="Fotos del proceso">
+            <img src="/assets/placeholder.svg" alt="Proceso 1" loading="lazy" />
+            <img src="/assets/placeholder.svg" alt="Proceso 2" loading="lazy" />
+            <img src="/assets/placeholder.svg" alt="Proceso 3" loading="lazy" />
+          </div>
+        </div>
+      </section>
+
+      <section id="somos" class="section" aria-labelledby="somos-title">
+        <div class="section-header">
+          <h2 id="somos-title">No buscamos ser enormes. Buscamos ser reales.</h2>
+        </div>
+        <ul class="pillars">
+          <li>Hecho a pulmón</li>
+          <li>Pensado para niños reales</li>
+          <li>Calidad antes que cantidad</li>
+        </ul>
+      </section>
+
+      <section id="productos" class="section" aria-labelledby="productos-title">
+        <div class="section-header">
+          <h2 id="productos-title">Una parte de lo que hacemos hoy</h2>
+          <p>Vitrina simple para recorrer con calma. Sin presión, sin carrito.</p>
+        </div>
+        <div class="product-grid" id="productGrid" aria-live="polite"></div>
+      </section>
+
+      <section id="contacto" class="section" aria-labelledby="contacto-title">
+        <div class="section-header">
+          <h2 id="contacto-title">Gracias por escanear. Gracias por quedarte.</h2>
+          <p>Si querés conocer más o consultar por productos, escribinos.</p>
+        </div>
+        <div class="contact-card">
+          <div class="contact-actions">
+            <a class="button primary" data-contact="whatsapp" data-utm-link href="#" aria-label="Abrir WhatsApp">
+              WhatsApp
+            </a>
+            <a class="button ghost" data-contact="instagram" data-utm-link href="#" aria-label="Abrir Instagram">
+              Instagram
+            </a>
+            <a class="button ghost" data-contact="maps" data-utm-link href="#" aria-label="Abrir ubicación">
+              Ubicación
+            </a>
+          </div>
+          <div class="contact-info">
+            <p><strong>Horarios:</strong> Lunes a sábado, 10 a 19 hs.</p>
+            <p><strong>Zona:</strong> CABA · Envíos a todo el país.</p>
+            <p class="muted">Datos editables en el archivo <code>main.js</code>.</p>
           </div>
         </div>
       </section>
     </main>
 
-    <footer>
-      <p>Valkirja © 2024. Catálogos conscientes y accesibles.</p>
+    <footer class="site-footer">
+      <div>
+        <p class="footer-brand" data-brand>Valkirja — Hecho con pasión.</p>
+        <div class="footer-links">
+          <a href="#contacto">Contacto</a>
+          <a href="#privacy">Privacidad</a>
+        </div>
+      </div>
+      <p class="muted">© <span id="year"></span></p>
     </footer>
+
+    <section id="privacy" class="section privacy" aria-labelledby="privacy-title">
+      <div class="section-header">
+        <h2 id="privacy-title">Privacidad</h2>
+      </div>
+      <p>
+        No recopilamos datos personales en este sitio. Los enlaces externos pueden aplicar sus propias
+        políticas de privacidad.
+      </p>
+    </section>
+
+    <div class="modal" id="productModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-overlay" data-close></div>
+      <div class="modal-content" role="document">
+        <button class="modal-close" type="button" data-close aria-label="Cerrar detalle">×</button>
+        <div class="modal-body">
+          <img id="modalImage" src="" alt="" loading="lazy" />
+          <div>
+            <span class="tag" id="modalTag"></span>
+            <h3 id="modalTitle"></h3>
+            <p id="modalDescription"></p>
+            <p class="muted">Precio: consultar.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/main.js" defer></script>
   </body>
 </html>
