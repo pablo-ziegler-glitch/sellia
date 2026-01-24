@@ -4,8 +4,6 @@ package com.example.selliaapp.ui.navigation
 import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,7 +26,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navigation
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.ui.components.AppScaffold
 import com.example.selliaapp.ui.screens.HomeScreen
+import com.example.selliaapp.ui.screens.MoreScreen
 import com.example.selliaapp.ui.screens.barcode.BarcodeScannerScreen
 import com.example.selliaapp.ui.screens.checkout.CheckoutScreen
 import com.example.selliaapp.ui.screens.clients.ClientMetricsScreen
@@ -43,6 +43,11 @@ import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseTemplatesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpensesCashflowScreen
 import com.example.selliaapp.ui.screens.expenses.ExpensesHubScreen
+import com.example.selliaapp.ui.screens.cash.CashAuditScreen
+import com.example.selliaapp.ui.screens.cash.CashCloseScreen
+import com.example.selliaapp.ui.screens.cash.CashMovementsScreen
+import com.example.selliaapp.ui.screens.cash.CashOpenScreen
+import com.example.selliaapp.ui.screens.cash.CashScreen
 import com.example.selliaapp.ui.screens.manage.ManageCustomersScreen
 import com.example.selliaapp.ui.screens.manage.ManageProductsScreen
 import com.example.selliaapp.ui.screens.manage.ProductQrScreen
@@ -59,6 +64,7 @@ import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
+import com.example.selliaapp.ui.screens.pos.PosSuccessScreen
 import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
 import com.example.selliaapp.ui.screens.stock.StockImportScreen
@@ -77,6 +83,7 @@ import com.example.selliaapp.viewmodel.SellViewModel
 import com.example.selliaapp.viewmodel.StockImportViewModel
 import com.example.selliaapp.viewmodel.UserViewModel
 import com.example.selliaapp.viewmodel.StockMovementsViewModel
+import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
 
@@ -95,24 +102,31 @@ fun SelliaApp(
     val userViewModel: UserViewModel = hiltViewModel()
 
 
-    // CAMBIO: Envolvemos el NavHost en un Scaffold con SnackbarHost (Opción A)
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { paddingValues ->
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
 
-        // CAMBIO: Usamos el navController recibido por parámetro (no crear otro).
+    AppScaffold(
+        currentDestination = currentDestination,
+        onNavigate = { route ->
+            navController.navigate(route) {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo(Routes.Home.route) { saveState = true }
+            }
+        },
+        snackbarHostState = snackbarHostState
+    ) { paddingValues ->
         NavHost(
             navController = navController,
             startDestination = Routes.Home.route,
             modifier = Modifier.padding(paddingValues)
-
         ) {
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {
                 val homeVm: HomeViewModel = hiltViewModel()
 
                 HomeScreen(
-                    onNewSale = { navController.navigate(Routes.Sell.route) },
+                    onNewSale = { navController.navigate(Routes.Pos.route) },
                     onStock = { navController.navigate(Routes.Stock.route) },
                     onClientes = { navController.navigate(Routes.ClientsHub.route) },
                     onConfig = { navController.navigate(Routes.Config.route) },
@@ -128,8 +142,73 @@ fun SelliaApp(
                         navController.navigate(Routes.QuickReorder.withProduct(productId))
                     },
                     onViewStockMovements = { navController.navigate(Routes.StockMovements.route) },
-                    vm = homeVm,
+                    onCashOpen = { navController.navigate(Routes.CashOpen.route) },
+                    onCashHub = { navController.navigate(Routes.Cash.route) },
+                    vm = homeVm
+                )
+            }
 
+            composable(Routes.Cash.route) {
+                val cashVm: CashViewModel = hiltViewModel()
+                CashScreen(
+                    vm = cashVm,
+                    onOpen = { navController.navigate(Routes.CashOpen.route) },
+                    onAudit = { navController.navigate(Routes.CashAudit.route) },
+                    onMovements = { navController.navigate(Routes.CashMovements.route) },
+                    onClose = { navController.navigate(Routes.CashClose.route) }
+                )
+            }
+
+            composable(Routes.CashOpen.route) {
+                val cashVm: CashViewModel = hiltViewModel()
+                CashOpenScreen(vm = cashVm, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.CashAudit.route) {
+                val cashVm: CashViewModel = hiltViewModel()
+                CashAuditScreen(vm = cashVm, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.CashMovements.route) {
+                val cashVm: CashViewModel = hiltViewModel()
+                CashMovementsScreen(vm = cashVm, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.CashClose.route) {
+                val cashVm: CashViewModel = hiltViewModel()
+                CashCloseScreen(vm = cashVm, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.More.route) {
+                MoreScreen(
+                    onStock = { navController.navigate(Routes.Stock.route) },
+                    onStockHistory = { navController.navigate(Routes.StockMovements.route) },
+                    onCustomers = { navController.navigate(Routes.ClientsHub.route) },
+                    onProviders = { navController.navigate(Routes.ProvidersHub.route) },
+                    onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
+                    onReports = { navController.navigate(Routes.Reports.route) },
+                    onSettings = { navController.navigate(Routes.Config.route) },
+                    onSync = { SyncScheduler.enqueueNow(context) }
+                )
+            }
+
+            composable(
+                route = Routes.PosSuccess.route,
+                arguments = listOf(
+                    navArgument(Routes.PosSuccess.ARG_ID) { type = NavType.LongType },
+                    navArgument(Routes.PosSuccess.ARG_TOTAL) { type = NavType.FloatType },
+                    navArgument(Routes.PosSuccess.ARG_METHOD) { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val invoiceId = backStackEntry.arguments?.getLong(Routes.PosSuccess.ARG_ID) ?: 0L
+                val total = backStackEntry.arguments?.getFloat(Routes.PosSuccess.ARG_TOTAL)?.toDouble() ?: 0.0
+                val method = backStackEntry.arguments?.getString(Routes.PosSuccess.ARG_METHOD).orEmpty()
+                PosSuccessScreen(
+                    invoiceId = invoiceId,
+                    total = total,
+                    method = method,
+                    onNewSale = { navController.navigate(Routes.Pos.route) },
+                    onViewSale = { navController.navigate(Routes.SalesInvoiceDetail.withId(invoiceId)) }
                 )
             }
 
@@ -170,11 +249,11 @@ fun SelliaApp(
 
             // -------------------- FLUJO VENTA (scope compartido) -------
             navigation(
-                startDestination = Routes.Sell.route,
+                startDestination = Routes.Pos.route,
                 route = Routes.SellRoutes.SELL_FLOW_ROUTE
             ) {
                 // VENDER
-                composable(Routes.Sell.route) {
+                composable(Routes.Pos.route) {
                     val parentEntry = remember { navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) }
                     val sellVm: SellViewModel = hiltViewModel(parentEntry)
                     val productVm: ProductViewModel = hiltViewModel()
@@ -209,7 +288,7 @@ fun SelliaApp(
 
 
                 // CHECKOUT (usa el MISMO VM del flujo con CompositionLocalProvider)
-                composable(Routes.Checkout.route) {
+                composable(Routes.PosPayment.route) {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val parentEntry = remember(navBackStackEntry) {
                         navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) // ej.: "sell_flow"
@@ -488,6 +567,15 @@ fun SelliaApp(
 
             }
 
+            composable(Routes.Sales.route) {
+                val vm: SalesInvoicesViewModel = hiltViewModel()
+                SalesInvoicesScreen(
+                    vm = vm,
+                    onOpenDetail = { id -> navController.navigate(Routes.SaleDetail.withId(id)) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
 
             // -------------------- (NUEVO) LISTA FACTURAS VENTA ---------
             composable(Routes.SalesInvoices.route) { // [NUEVO]
@@ -506,6 +594,19 @@ fun SelliaApp(
                     navArgument(Routes.SalesInvoiceDetail.ARG_ID) { type = NavType.LongType }
                 )
             ) { backStackEntry ->
+                val vm: SalesInvoiceDetailViewModel = hiltViewModel()
+                SalesInvoiceDetailScreen(
+                    vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Routes.SaleDetail.route,
+                arguments = listOf<NamedNavArgument>(
+                    navArgument(Routes.SaleDetail.ARG_ID) { type = NavType.LongType }
+                )
+            ) {
                 val vm: SalesInvoiceDetailViewModel = hiltViewModel()
                 SalesInvoiceDetailScreen(
                     vm = vm,

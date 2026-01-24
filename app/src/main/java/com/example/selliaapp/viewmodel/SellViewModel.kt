@@ -2,9 +2,12 @@ package com.example.selliaapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.sales.CartItem
 import com.example.selliaapp.data.model.sales.InvoiceDraft
+import com.example.selliaapp.data.local.entity.CashMovementType
+import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.InvoiceRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
@@ -29,7 +32,8 @@ import javax.inject.Inject
 class SellViewModel @Inject constructor(
     private val repo: IProductRepository,
     private val invoiceRepo: InvoiceRepository,
-    private val marketingConfigRepository: MarketingConfigRepository
+    private val marketingConfigRepository: MarketingConfigRepository,
+    private val cashRepository: CashRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SellUiState())
@@ -315,6 +319,17 @@ class SellViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                val requiresCashSession = BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS &&
+                    current.paymentMethod == PaymentMethod.EFECTIVO
+                val openSession = if (requiresCashSession) {
+                    cashRepository.getOpenSession()
+                } else {
+                    null
+                }
+                if (requiresCashSession && openSession == null) {
+                    onError(IllegalStateException("Necesitás abrir la caja para cobrar en efectivo."))
+                    return@launch
+                }
                 val resolvedCustomerId = customerId ?: current.selectedCustomerId?.toLong()
                 val resolvedCustomerName = customerName ?: current.selectedCustomerName
                 val draft = InvoiceDraft(
@@ -340,6 +355,15 @@ class SellViewModel @Inject constructor(
                 )
 
                 val result = invoiceRepo.confirmInvoice(draft)
+                if (current.paymentMethod == PaymentMethod.EFECTIVO && openSession != null) {
+                    cashRepository.registerMovement(
+                        sessionId = openSession.id,
+                        type = CashMovementType.SALE_CASH,
+                        amount = current.total,
+                        note = current.paymentNotes.takeIf { it.isNotBlank() },
+                        referenceId = result.invoiceId.toString()
+                    )
+                }
                 val checkoutResult = CheckoutResult(
                     invoiceId = result.invoiceId,
                     invoiceNumber = result.invoiceNumber,
