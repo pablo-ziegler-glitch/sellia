@@ -1,6 +1,5 @@
 package com.example.selliaapp.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,54 +7,48 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.InsertChart
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
-import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Store
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.vector.ImageVector
-import com.example.selliaapp.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.viewmodel.HomeViewModel
-import com.example.selliaapp.viewmodel.HomeKpi
+import com.example.selliaapp.viewmodel.hasOpenCashSession
 import java.text.NumberFormat
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import androidx.compose.ui.layout.ContentScale
-/**
- * Pantalla principal con búsqueda, accesos rápidos y listado de ventas recientes.
- */
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -65,518 +58,249 @@ fun HomeScreen(
     onClientes: () -> Unit,
     onConfig: () -> Unit,
     onReports: () -> Unit,
-    onProviders: () -> Unit,          // NUEVO
+    onProviders: () -> Unit,
     onExpenses: () -> Unit,
     onPublicProductScan: () -> Unit,
     onSyncNow: () -> Unit = {},
     onViewStockMovements: () -> Unit = {},
     onAlertAdjustStock: (Int) -> Unit = {},
-    onAlertCreatePurchase: (Int) -> Unit = {}
-    ) {
-    val state by vm.state.collectAsState()
-    val localeEsAr = Locale("es", "AR")
-    val currency = NumberFormat.getCurrencyInstance(localeEsAr)
-    val primaryActions = listOf(
-        HomeAction(
-            label = "Vender",
-            icon = Icons.Default.PointOfSale,
-            onClick = onNewSale,
-            emphasized = true
-        ),
-        HomeAction(
-            label = "Stock",
-            icon = Icons.AutoMirrored.Filled.ViewList,
-            onClick = onStock
-        ),
-        HomeAction(
-            label = "Clientes",
-            icon = Icons.Default.Business,
-            onClick = onClientes
-        ),
-        HomeAction(
-            label = "Proveedores",
-            icon = Icons.Default.Business,
-            onClick = onProviders
+    onAlertCreatePurchase: (Int) -> Unit = {},
+    onCashOpen: () -> Unit,
+    onCashHub: () -> Unit
+) {
+    val state by vm.state.collectAsStateWithLifecycle()
+    val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
+    var showCashRequired by remember { mutableStateOf(false) }
+
+    if (showCashRequired) {
+        AlertDialog(
+            onDismissRequest = { showCashRequired = false },
+            title = { Text("Abrir caja") },
+            text = {
+                Text(
+                    "Para cobrar en efectivo necesitás abrir la caja. " +
+                        "Podés continuar con transferencia o tarjeta si querés."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCashRequired = false
+                        onCashOpen()
+                    }
+                ) {
+                    Text("Abrir caja")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCashRequired = false }) {
+                    Text("Seguir vendiendo")
+                }
+            }
         )
-    )
-    val secondaryActions = listOf(
-        HomeAction(
-            label = "Reportes",
-            icon = Icons.Default.InsertChart,
-            onClick = onReports
-        ),
-        HomeAction(
-            label = "Configuración",
-            icon = Icons.Default.Settings,
-            onClick = onConfig
-        ),
-        HomeAction(
-            label = "Gastos",
-            icon = Icons.Default.AttachMoney,
-            onClick = onExpenses
-        ),
-        HomeAction(
-            label = "Historial de stock",
-            icon = Icons.Default.History,
-            onClick = onViewStockMovements
-        )
-    )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
             .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Text(
+            text = "Inicio",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.valkirja_log),
-                    contentDescription = "Logo Valkirja",
-                    modifier = Modifier.size(96.dp),
-                    contentScale = ContentScale.Fit
-                )
-                Column {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                    Text("Estado de caja", style = MaterialTheme.typography.titleMedium)
+                }
+                if (!state.hasOpenCashSession) {
                     Text(
-                        text = "Valkirja",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        "Caja cerrada",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Indumentaria y accesorios para chicos",
+                        "Necesaria para vender con efectivo.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-            }
-
-            state.errorMessage?.let { mensaje ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                ) {
+                    Button(onClick = onCashOpen, modifier = Modifier.fillMaxWidth()) {
+                        Text("Abrir caja")
+                    }
+                } else {
+                    val session = state.cashSummary?.session
+                    val openedAt = session?.openedAt?.atZone(ZoneId.systemDefault())
+                    val openedTime = openedAt?.format(dateFormatter) ?: "-"
                     Text(
-                        text = mensaje,
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        "Abierta ${openedTime} · ${session?.openedBy ?: "Operador"}",
                         style = MaterialTheme.typography.bodyMedium
                     )
+                    Text(
+                        "Saldo teórico: ${currency.format(state.cashSummary?.expectedAmount ?: 0.0)}",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
+                            Text("Arqueo")
+                        }
+                        FilledTonalButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
+                            Text("Cerrar caja")
+                        }
+                    }
                 }
             }
+        }
 
-            QuickActionsSection(
-                title = "Acciones rápidas",
-                actions = primaryActions
-            )
-
-            QuickActionsSection(
-                title = "Gestión diaria",
-                actions = secondaryActions
-            )
-
-            PendingTasksSection(
-                restockCount = state.lowStockAlerts.size,
-                overdueInvoices = state.overdueProviderInvoices
-            )
-
-            KpiModuleContainer(
-                isLoading = state.isLoading,
-                selectedKpis = state.selectedKpis,
-                dailySales = state.dailySales,
-                dailyMargin = state.dailyMargin,
-                averageTicket = state.averageTicket,
-                monthTotal = state.monthTotal,
-                currency = currency
-            )
-
-            PendingTasksSection(
-                restockCount = state.lowStockAlerts.size,
-                overdueInvoices = state.overdueProviderInvoices
-            )
-
-            // Botonera superior (puedes ajustar layout si querés 3 por fila)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onStock, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Stock")
-                    }
-                    OutlinedButton(onClick = onClientes, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Business, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Clientes")
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onConfig, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Settings, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Configuración")
-                    }
-                    OutlinedButton(onClick = onReports, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.InsertChart, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Reportes")
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onProviders, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Business, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Proveedores")
-                    }
-                    OutlinedButton(onClick = onExpenses, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.AttachMoney, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Administración Gastos")
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onSyncNow, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Sync, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Sincronizar Ahora!")
-                    }
-                    OutlinedButton(onClick = onViewStockMovements, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.History, contentDescription = null)
-                        Spacer(Modifier.width(8.dp)); Text("Historial de stock")
-                    }
-                }
-                OutlinedButton(onClick = onPublicProductScan, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.QrCode, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Escanear QR (cliente)")
-                }
-            }
-
-            Card(elevation = CardDefaults.cardElevation(2.dp)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "Alertas de stock",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-
-                    if (state.lowStockAlerts.isEmpty()) {
-                        Text(
-                            text = "Sin alertas: el stock está dentro de los mínimos.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        state.lowStockAlerts.forEachIndexed { index, alert ->
-                            if (index > 0) {
-                                HorizontalDivider()
-                            }
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = alert.name,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "Stock ${alert.quantity} / mínimo ${alert.minStock}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(
-                                        text = "Faltan ${alert.deficit}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    TextButton(onClick = { onAlertAdjustStock(alert.id) }) {
-                                        Text("Ajustar stock")
-                                    }
-                                    TextButton(onClick = { onAlertCreatePurchase(alert.id) }) {
-                                        Text("Crear orden")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Button(
-            onClick = onNewSale,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(Icons.Default.PointOfSale, contentDescription = null, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(12.dp))
                 Text(
-                    "VENDER",
-                    style = MaterialTheme.typography.headlineMedium
+                    "Acción principal",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun KpiModuleContainer(
-    isLoading: Boolean,
-    selectedKpis: List<HomeKpi>,
-    dailySales: Double,
-    dailyMargin: Double,
-    averageTicket: Double,
-    monthTotal: Double,
-    currency: NumberFormat
-) {
-    Card(elevation = CardDefaults.cardElevation(2.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "KPIs",
-                    style = MaterialTheme.typography.titleMedium
+                    "Vender",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-            }
-            Text(
-                text = "Total vendido (mes): ${if (isLoading) "Cargando…" else currency.format(monthTotal)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            selectedKpis.chunked(2).forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    rowItems.forEach { kpi ->
-                        KpiCard(
-                            modifier = Modifier.weight(1f),
-                            title = kpi.label,
-                            value = if (isLoading) {
-                                "Cargando…"
-                            } else {
-                                currency.format(kpiValue(kpi, dailySales, dailyMargin, averageTicket))
-                            }
-                        )
-                    }
-                    if (rowItems.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun KpiCard(
-    modifier: Modifier,
-    title: String,
-    value: String
-) {
-    ElevatedCard(
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleLarge
-            )
-        }
-    }
-}
-
-private data class HomeAction(
-    val label: String,
-    val icon: ImageVector,
-    val onClick: () -> Unit,
-    val emphasized: Boolean = false
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun QuickActionsSection(
-    title: String,
-    actions: List<HomeAction>
-) {
-    Card(elevation = CardDefaults.cardElevation(2.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null
-                )
-                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium
+                    "Abrí un nuevo ticket y cobrá rápido.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-            }
-            actions.chunked(2).forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    rowItems.forEach { action ->
-                        val cardColors = if (action.emphasized) {
-                            CardDefaults.outlinedCardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
+                Button(
+                    onClick = {
+                        if (!state.hasOpenCashSession && BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS) {
+                            showCashRequired = true
                         } else {
-                            CardDefaults.outlinedCardColors()
+                            onNewSale()
                         }
-                        OutlinedCard(
-                            onClick = action.onClick,
-                            colors = cardColors,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(action.icon, contentDescription = null)
-                                Text(
-                                    text = action.label,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.PointOfSale, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Vender")
+                }
+            }
+        }
+
+        Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            KpiCard(
+                title = "Ventas hoy",
+                value = currency.format(state.dailySales),
+                modifier = Modifier.weight(1f)
+            )
+            KpiCard(
+                title = "Tickets",
+                value = state.cashSummary?.movements
+                    ?.count { it.type == "SALE_CASH" }
+                    ?.toString() ?: "0",
+                modifier = Modifier.weight(1f)
+            )
+            KpiCard(
+                title = "Ticket promedio",
+                value = currency.format(state.averageTicket),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Warning, contentDescription = null)
+                    Text("Alertas operativas", style = MaterialTheme.typography.titleMedium)
+                }
+                if (state.lowStockAlerts.isEmpty() && state.overdueProviderInvoices == 0) {
+                    Text(
+                        "Sin alertas por ahora.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    if (state.lowStockAlerts.isNotEmpty()) {
+                        Text(
+                            "Stock bajo (${state.lowStockAlerts.size})",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        state.lowStockAlerts.take(3).forEach { alert ->
+                            Text(
+                                "• ${alert.name} (${alert.stock} u.)",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
-                    if (rowItems.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
+                    if (state.overdueProviderInvoices > 0) {
+                        Text(
+                            "Facturas vencidas: ${state.overdueProviderInvoices}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
             }
         }
+
+        Text("Atajos", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ShortcutButton("Ventas", Icons.Default.QueryStats, onReports, Modifier.weight(1f))
+            ShortcutButton("Stock", Icons.Default.Inventory2, onStock, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ShortcutButton("Clientes", Icons.Default.People, onClientes, Modifier.weight(1f))
+            ShortcutButton("Reportes", Icons.Default.QueryStats, onReports, Modifier.weight(1f))
+        }
     }
 }
 
-private fun kpiValue(
-    kpi: HomeKpi,
-    dailySales: Double,
-    dailyMargin: Double,
-    averageTicket: Double
-): Double =
-    when (kpi) {
-        HomeKpi.DAILY_SALES -> dailySales
-        HomeKpi.MARGIN -> dailyMargin
-        HomeKpi.AVG_TICKET -> averageTicket
+@Composable
+private fun KpiCard(title: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.bodySmall)
+            Text(value, style = MaterialTheme.typography.titleMedium)
+        }
     }
+}
 
 @Composable
-private fun PendingTasksSection(
-    restockCount: Int,
-    overdueInvoices: Int
+private fun ShortcutButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Card(elevation = CardDefaults.cardElevation(2.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ViewList,
-                    contentDescription = null
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Tareas pendientes",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Reposición",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = restockCount.toString(),
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-            HorizontalDivider()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Facturas vencidas",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = overdueInvoices.toString(),
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-        }
+    OutlinedButton(onClick = onClick, modifier = modifier) {
+        Icon(icon, contentDescription = null)
+        Spacer(Modifier.width(6.dp))
+        Text(label)
     }
 }

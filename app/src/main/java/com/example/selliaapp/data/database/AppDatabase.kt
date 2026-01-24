@@ -6,6 +6,9 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.selliaapp.data.dao.CategoryDao
+import com.example.selliaapp.data.dao.CashAuditDao
+import com.example.selliaapp.data.dao.CashMovementDao
+import com.example.selliaapp.data.dao.CashSessionDao
 import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
@@ -29,6 +32,9 @@ import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.data.local.converters.Converters
 import com.example.selliaapp.data.local.converters.ReportConverters
 import com.example.selliaapp.data.local.entity.CategoryEntity
+import com.example.selliaapp.data.local.entity.CashAuditEntity
+import com.example.selliaapp.data.local.entity.CashMovementEntity
+import com.example.selliaapp.data.local.entity.CashSessionEntity
 import com.example.selliaapp.data.local.entity.CustomerEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
@@ -72,6 +78,9 @@ import com.example.selliaapp.data.model.User
         PricingAuditEntity::class,
         PricingMlFixedCostTierEntity::class,
         PricingMlShippingTierEntity::class,
+        CashSessionEntity::class,
+        CashMovementEntity::class,
+        CashAuditEntity::class,
 
         // Tablas de negocio basadas en modelos (ya tienen @Entity)
         Invoice::class,
@@ -83,7 +92,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 33,
+    version = 34,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -110,6 +119,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pricingAuditDao(): PricingAuditDao
     abstract fun pricingMlFixedCostTierDao(): PricingMlFixedCostTierDao
     abstract fun pricingMlShippingTierDao(): PricingMlShippingTierDao
+    abstract fun cashSessionDao(): CashSessionDao
+    abstract fun cashMovementDao(): CashMovementDao
+    abstract fun cashAuditDao(): CashAuditDao
 
     companion object {
         val MIGRATION_31_32 = object : Migration(31, 32) {
@@ -232,6 +244,63 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_name` ON `products` (`name`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_categoryId` ON `products` (`categoryId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_providerId` ON `products` (`providerId`)")
+            }
+        }
+
+        val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `cash_sessions` (
+                        `id` TEXT NOT NULL,
+                        `openedAt` INTEGER NOT NULL,
+                        `closedAt` INTEGER,
+                        `openingAmount` REAL NOT NULL,
+                        `expectedAmount` REAL,
+                        `status` TEXT NOT NULL,
+                        `openedBy` TEXT,
+                        `note` TEXT,
+                        `closingAmount` REAL,
+                        `closingNote` TEXT,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_sessions_status` ON `cash_sessions` (`status`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_sessions_openedAt` ON `cash_sessions` (`openedAt`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `cash_movements` (
+                        `id` TEXT NOT NULL,
+                        `sessionId` TEXT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `amount` REAL NOT NULL,
+                        `note` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `referenceId` TEXT,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `cash_sessions`(`id`) ON UPDATE CASCADE ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_movements_sessionId` ON `cash_movements` (`sessionId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_movements_createdAt` ON `cash_movements` (`createdAt`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `cash_audits` (
+                        `id` TEXT NOT NULL,
+                        `sessionId` TEXT NOT NULL,
+                        `countedAmount` REAL NOT NULL,
+                        `difference` REAL NOT NULL,
+                        `note` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `cash_sessions`(`id`) ON UPDATE CASCADE ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_audits_sessionId` ON `cash_audits` (`sessionId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_audits_createdAt` ON `cash_audits` (`createdAt`)")
             }
         }
     }

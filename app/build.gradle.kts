@@ -22,6 +22,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        buildConfigField(
+            "boolean",
+            "REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS",
+            "true"
+        )
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
