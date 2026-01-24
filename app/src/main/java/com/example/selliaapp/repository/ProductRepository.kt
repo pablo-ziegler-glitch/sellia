@@ -15,8 +15,10 @@ import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.csv.ProductCsvImporter
 import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.data.local.entity.ProductImageEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
@@ -50,6 +52,7 @@ import kotlin.math.max
 class ProductRepository(
     private val db: AppDatabase,
     private val productDao: ProductDao,
+    private val productImageDao: ProductImageDao,
     private val categoryDao: CategoryDao,
     private val providerDao: ProviderDao,
     private val pricingConfigRepository: PricingConfigRepository,
@@ -74,7 +77,13 @@ class ProductRepository(
     // -------- Lecturas --------
 
     /** Devuelve el producto mapeado a modelo de dominio (para la pantalla de edición). */
-    suspend fun getByIdModel(id: Int): Product? = productDao.getById(id)?.toModel()
+    suspend fun getByIdModel(id: Int): Product? = withContext(io) {
+        val entity = productDao.getById(id) ?: return@withContext null
+        val images = loadProductImages(id)
+        entity.toModel().copy(
+            imageUrls = images
+        )
+    }
 
     /** Nombres de categorías para dropdown (si no tenés CategoryDao, podemos derivarlo desde products). */
     fun observeAllCategoryNames(): Flow<List<String>> =
@@ -88,7 +97,7 @@ class ProductRepository(
 
 
     suspend fun cachedOrEmpty(): List<ProductEntity> =
-        if (lastCache.isNotEmpty()) lastCache else productDao.getAllOnce()
+        if (lastCache.isNotEmpty()) lastCache else attachImages(productDao.getAllOnce())
 
     // ---------- E1: Normalización de ids por nombre ----------
     suspend fun ensureCategoryId(name: String?): Int? {
@@ -184,7 +193,7 @@ class ProductRepository(
                     autoPricing = false,
                     quantity = max(0, r.quantity),
                     description = r.description,
-                    imageUrl = r.imageUrl,
+                    imageUrls = r.imageUrls,
                     categoryId = existing?.categoryId,
                     providerId = existing?.providerId,
                     providerName = existing?.providerName,
@@ -198,6 +207,9 @@ class ProductRepository(
                 val prepared = if (existing == null) ensureAutoCodes(priced) else priced
                 val id = productDao.upsertByKeys(prepared)
                 touchedIds += id
+                if (r.imageUrls.isNotEmpty()) {
+                    replaceProductImages(id, r.imageUrls)
+                }
                 val current = productDao.getById(id) ?: return@forEach
                 val delta = current.quantity - beforeQty
                 if (delta != 0) {
@@ -227,9 +239,14 @@ class ProductRepository(
 
     // ---------- Flujo/consultas básicas ----------
     fun observeAll(): Flow<List<ProductEntity>> = productDao.observeAll()
+        .map { products -> attachImages(products) }
 
 
-    suspend fun getById(id: Int): ProductEntity? = productDao.getById(id)
+    suspend fun getById(id: Int): ProductEntity? = withContext(io) {
+        val product = productDao.getById(id) ?: return@withContext null
+        val images = loadProductImages(product.id)
+        product.copy(imageUrls = images)
+    }
 
     fun pagingSearch(query: String): Flow<PagingData<ProductEntity>> =
         Pager(PagingConfig(pageSize = 30)) { productDao.pagingSearch(query) }.flow
@@ -303,7 +320,7 @@ class ProductRepository(
                             autoPricing = false,
                             quantity = max(0, r.quantity),
                             description = r.description,
-                            imageUrl = r.imageUrl,
+                            imageUrls = r.imageUrls,
                             categoryId = null,                      // si querés, usar ensureCategoryId(r.category)
                             providerId = null,                      // si en el futuro sumamos CSV con proveedor
                             providerName = r.providerName,
@@ -316,6 +333,9 @@ class ProductRepository(
                         val prepared = ensureAutoCodes(priced)
                         val id = productDao.insert(prepared).toInt()
                         touchedIds += id
+                        if (r.imageUrls.isNotEmpty()) {
+                            replaceProductImages(id, r.imageUrls)
+                        }
                         if (prepared.quantity != 0) {
                             stockMovementDao.insert(
                                 StockMovementEntity(
@@ -356,7 +376,7 @@ class ProductRepository(
                             autoPricing = existing.autoPricing,
                             quantity    = newQty,
                             description = r.description ?: existing.description,
-                            imageUrl    = r.imageUrl ?: existing.imageUrl,
+                            imageUrls   = if (r.imageUrls.isNotEmpty()) r.imageUrls else existing.imageUrls,
                             category    = r.category ?: existing.category,
                             providerName = r.providerName ?: existing.providerName,
                             providerSku  = r.providerSku ?: existing.providerSku,
@@ -366,6 +386,9 @@ class ProductRepository(
                         val priced = applyAutoPricing(merged, existing)
                         productDao.update(priced)
                         touchedIds += existing.id
+                        if (r.imageUrls.isNotEmpty()) {
+                            replaceProductImages(existing.id, r.imageUrls)
+                        }
                         val delta = newQty - existing.quantity
                         if (delta != 0) {
                             stockMovementDao.insert(
@@ -406,7 +429,7 @@ class ProductRepository(
         uri: Uri,
         strategy: ImportStrategy
     ): ImportResult {
-        val importer = ProductCsvImporter(productDao)
+        val importer = ProductCsvImporter(productDao, productImageDao)
         return when (strategy) {
             ImportStrategy.Append -> importer.importAppend(resolver, uri)
             // Si realmente querés "UpsertByBarcode", agregalo al enum:
@@ -474,7 +497,9 @@ class ProductRepository(
         var applied = 0
         db.withTransaction {
             val localAll = productDao.getAllOnce().associateBy { it.id to (it.barcode ?: "") }
-            for (r in remoteList) {
+            for (remoteProduct in remoteList) {
+                val r = remoteProduct.entity
+                val remoteImages = remoteProduct.imageUrls
                 val local = when {
                     r.id != 0 -> localAll[r.id to (r.barcode ?: "")]
                     !r.barcode.isNullOrBlank() -> localAll.entries.firstOrNull { it.key.second == r.barcode }?.value
@@ -483,17 +508,23 @@ class ProductRepository(
                 if (local == null) {
                     // insertar
                     val newId = productDao.upsert(r.copy(id = 0))
+                    if (remoteImages.isNotEmpty()) {
+                        replaceProductImages(newId, remoteImages)
+                    }
                     applied++
                     // si el docId no coincide, subimos de vuelta con el id real para alinear
-                    if (r.id != newId) remote.upsert(r.copy(id = newId))
+                    if (r.id != newId) remote.upsert(r.copy(id = newId), remoteImages)
                 } else {
                     // resolver por updatedAt
                     if (r.updatedAt >= local.updatedAt) {
                         productDao.update(r.copy(id = local.id))
+                        if (remoteImages.isNotEmpty()) {
+                            replaceProductImages(local.id, remoteImages)
+                        }
                         applied++
                     } else {
                         // Local es más nuevo → subir local para ganar en remoto
-                        remote.upsert(local)
+                        remote.upsert(local, loadProductImages(local.id))
                     }
                 }
             }
@@ -522,19 +553,25 @@ class ProductRepository(
     suspend fun updateProduct(p: ProductEntity): Int = update(p)
 
     /** Obtener producto por código de barras. */
-    suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? = productDao.getByBarcodeOnce(barcode)
+    suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? = withContext(io) {
+        val product = productDao.getByBarcodeOnce(barcode) ?: return@withContext null
+        product.copy(imageUrls = loadProductImages(product.id))
+    }
 
     /** Obtener producto por id (alias semántico). */
-    suspend fun getByIdOrNull(id: Int): ProductEntity? = productDao.getById(id)
+    suspend fun getByIdOrNull(id: Int): ProductEntity? = getById(id)
 
     /** (Opcional) Obtener por nombre, por compatibilidad con flujos antiguos. */
-    suspend fun getByNameOrNull(name: String): ProductEntity? = productDao.getByNameOnce(name)
+    suspend fun getByNameOrNull(name: String): ProductEntity? = withContext(io) {
+        val product = productDao.getByNameOnce(name) ?: return@withContext null
+        product.copy(imageUrls = loadProductImages(product.id))
+    }
 
     // ---------- Paging (expuesto para pantallas que lo necesiten) ----------
     fun pagingSearchFlow(query: String): Flow<PagingData<ProductEntity>> = pagingSearch(query)
 
     fun getProducts(): Flow<List<ProductEntity>> =
-        productDao.observeAll()
+        observeAll()
             .map { list ->
                 lastCache = list
                 list
@@ -607,6 +644,7 @@ class ProductRepository(
             val priced = applyAutoPricing(normalized)
             val prepared = ensureAutoCodes(priced)
             newId = productDao.upsert(prepared)
+            replaceProductImages(newId, prepared.imageUrls)
             if (prepared.quantity != 0) {
                 stockMovementDao.insert(
                     StockMovementEntity(
@@ -665,6 +703,7 @@ class ProductRepository(
             }
             rows = productDao.update(priced)
             if (rows > 0) {
+                replaceProductImages(current.id, priced.imageUrls)
                 val delta = priced.quantity - current.quantity
                 if (delta != 0) {
                     stockMovementDao.insert(
@@ -709,6 +748,9 @@ class ProductRepository(
                 product.copy(quantity = newQty, updatedAt = LocalDate.now())
             )
             if (affected == 0) return@withTransaction
+            if (product.imageUrls.isNotEmpty()) {
+                replaceProductImages(productId, product.imageUrls)
+            }
             stockMovementDao.insert(
                 StockMovementEntity(
                     productId = productId,
@@ -740,7 +782,8 @@ class ProductRepository(
         val entities = productDao.getByIds(uniqueIds)
         if (entities.isEmpty()) return
         try {
-            remote.upsertAll(entities)
+            val imageUrlsByProductId = loadProductImagesByProductId(uniqueIds)
+            remote.upsertAll(entities, imageUrlsByProductId)
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.PRODUCT.storageKey,
                 uniqueIds.map(Int::toLong)
@@ -761,5 +804,40 @@ class ProductRepository(
         }
     }
 
+    private suspend fun loadProductImages(productId: Int): List<String> {
+        val images = productImageDao.getByProductId(productId)
+            .sortedBy { it.position }
+            .map { it.url }
+        return images
+    }
+
+    private suspend fun loadProductImagesByProductId(productIds: List<Int>): Map<Int, List<String>> {
+        if (productIds.isEmpty()) return emptyMap()
+        val images = productImageDao.getByProductIds(productIds)
+        return images.groupBy { it.productId }
+            .mapValues { (_, items) -> items.sortedBy { it.position }.map { it.url } }
+    }
+
+    private suspend fun replaceProductImages(productId: Int, urls: List<String>) {
+        val normalized = urls.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        productImageDao.deleteByProductId(productId)
+        if (normalized.isEmpty()) return
+        val entities = normalized.mapIndexed { index, url ->
+            ProductImageEntity(
+                productId = productId,
+                url = url,
+                position = index
+            )
+        }
+        productImageDao.insertAll(entities)
+    }
+
+    private suspend fun attachImages(products: List<ProductEntity>): List<ProductEntity> {
+        if (products.isEmpty()) return products
+        val imagesById = loadProductImagesByProductId(products.map { it.id })
+        return products.map { product ->
+            product.copy(imageUrls = imagesById[product.id].orEmpty())
+        }
+    }
 
 }

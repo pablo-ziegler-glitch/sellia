@@ -152,7 +152,7 @@ fun ManageProductsScreen(
 
                     // Aplica filtros simples del estado (client-side)
                     val passLow = !state.onlyLowStock || ((p.minStock ?: 0) > 0 && p.quantity < (p.minStock ?: 0))
-                    val passNoImage = !state.onlyNoImage || p.imageUrl.isNullOrBlank()
+                    val passNoImage = !state.onlyNoImage || p.imageUrls.isEmpty()
                     val passNoBarcode = !state.onlyNoBarcode || p.barcode.isNullOrBlank()
                     if (!passLow || !passNoImage || !passNoBarcode) return@items
 
@@ -212,7 +212,7 @@ fun ManageProductsScreen(
                         ml6cPrice = ml6cPrice,
                         quantity = stock,
                         description = description,
-                        imageUrl = null,
+                        imageUrls = emptyList(),
                         category = null,
                         minStock = null,
                         updatedAt = LocalDate.now()

@@ -10,20 +10,24 @@ class ProductRemoteDataSource(
 ) {
     private val col = firestore.collection("products")
 
-    suspend fun upsert(product: ProductEntity) {
+    suspend fun upsert(product: ProductEntity, imageUrls: List<String> = emptyList()) {
         val docRef = if (product.id != 0) col.document(product.id.toString()) else col.document()
-        val map = ProductFirestoreMappers.toMap(product).toMutableMap()
+        val map = ProductFirestoreMappers.toMap(product, imageUrls).toMutableMap()
         map["id"] = docRef.id.toIntOrNull() ?: product.id
         docRef.set(map).await()
     }
 
-    suspend fun upsertAll(products: List<ProductEntity>) {
+    suspend fun upsertAll(
+        products: List<ProductEntity>,
+        imageUrlsByProductId: Map<Int, List<String>> = emptyMap()
+    ) {
         if (products.isEmpty()) return
         val batch = firestore.batch()
         products.forEach { product ->
             if (product.id == 0) return@forEach
             val doc = col.document(product.id.toString())
-            batch.set(doc, ProductFirestoreMappers.toMap(product), SetOptions.merge())
+            val imageUrls = imageUrlsByProductId[product.id].orEmpty()
+            batch.set(doc, ProductFirestoreMappers.toMap(product, imageUrls), SetOptions.merge())
         }
         batch.commit().await()
     }
@@ -33,7 +37,7 @@ class ProductRemoteDataSource(
         col.document(id.toString()).delete().await()
     }
 
-    suspend fun listAll(): List<ProductEntity> {
+    suspend fun listAll(): List<ProductFirestoreMappers.RemoteProduct> {
         val snap = col.get().await()
         return snap.documents.mapNotNull { doc ->
             @Suppress("UNCHECKED_CAST")

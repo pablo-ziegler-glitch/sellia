@@ -117,7 +117,7 @@ fun AddProductScreen(
                 ml6cPriceText = p.ml6cPrice?.toString() ?: ""
                 stockText = p.quantity.toString()
                 description = p.description.orEmpty()
-                imageUrl = p.imageUrl.orEmpty()
+                imageUrl = p.imageUrls.firstOrNull().orEmpty()
 
                 selectedCategoryName = p.category.orEmpty()
                 // Si tu modelo aún no tiene providerName, quedará vacío
