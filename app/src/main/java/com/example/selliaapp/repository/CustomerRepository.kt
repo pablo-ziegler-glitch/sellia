@@ -1,8 +1,14 @@
 package com.example.selliaapp.repository
 
+import android.content.Context
+import android.net.Uri
+import com.example.selliaapp.data.csv.CustomerCsvImporter
 import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.local.entity.CustomerEntity
+import com.example.selliaapp.data.model.ImportResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -26,6 +32,61 @@ class CustomerRepository @Inject constructor(
 
     /** Búsqueda por nombre/email/teléfono/apodo. */
     fun search(q: String): Flow<List<CustomerEntity>> = customerDao.search(q)
+
+    suspend fun importCustomersFromFile(context: Context, uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+        val rows = CustomerCsvImporter.parseFile(context.contentResolver, uri)
+        if (rows.isEmpty()) {
+            return@withContext ImportResult(0, 0, listOf("El archivo no contiene filas válidas."))
+        }
+
+        var inserted = 0
+        var updated = 0
+        val errors = mutableListOf<String>()
+
+        rows.forEachIndexed { idx, row ->
+            val name = row.name.trim()
+            if (name.isBlank()) {
+                errors += "L${idx + 2}: nombre requerido."
+                return@forEachIndexed
+            }
+
+            try {
+                val existing = customerDao.getByName(name)
+                if (existing == null) {
+                    customerDao.insert(
+                        CustomerEntity(
+                            name = name,
+                            phone = row.phone,
+                            email = row.email,
+                            address = row.address,
+                            nickname = row.nickname,
+                            rubrosCsv = row.rubrosCsv,
+                            paymentTerm = row.paymentTerm,
+                            paymentMethod = row.paymentMethod,
+                            createdAt = LocalDateTime.now()
+                        )
+                    )
+                    inserted++
+                } else {
+                    val merged = existing.copy(
+                        phone = row.phone ?: existing.phone,
+                        email = row.email ?: existing.email,
+                        address = row.address ?: existing.address,
+                        nickname = row.nickname ?: existing.nickname,
+                        rubrosCsv = row.rubrosCsv ?: existing.rubrosCsv,
+                        paymentTerm = row.paymentTerm ?: existing.paymentTerm,
+                        paymentMethod = row.paymentMethod ?: existing.paymentMethod
+                    )
+                    customerDao.update(merged)
+                    updated++
+                }
+            } catch (t: Throwable) {
+                errors += "L${idx + 2}: ${t.message ?: t::class.java.simpleName}"
+            }
+        }
+
+        ImportResult(inserted, updated, errors)
+    }
 
     /** Borrado de cliente. */
     suspend fun delete(c: CustomerEntity) = customerDao.delete(c)

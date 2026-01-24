@@ -35,6 +35,7 @@ import com.example.selliaapp.ui.screens.clients.ClientMetricsScreen
 import com.example.selliaapp.ui.screens.clients.ClientPurchasesScreen
 import com.example.selliaapp.ui.screens.clients.ClientsHubScreen
 import com.example.selliaapp.ui.screens.config.AddUserScreen
+import com.example.selliaapp.ui.screens.config.BulkDataScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
@@ -187,7 +188,7 @@ fun SelliaApp(
                         scannedCode?.let { code ->
                             val product = productVm.getByBarcode(code)
                             if (product != null) {
-                                sellVm.addToCart(product, 1)
+                                currentEntry?.savedStateHandle?.set("pending_product_id", product.id)
                             } else {
                                 navController.navigate(Routes.AddProduct.build(prefillBarcode = code))
                             }
@@ -404,13 +405,20 @@ fun SelliaApp(
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
                 ConfigScreen(
-                    onAddUser = { navController.navigate(Routes.AddUser.route) },
-                    onManageProducts = { navController.navigate(Routes.ManageProducts.route) },
-                    onManageCustomers = { navController.navigate(Routes.ManageCustomers.route) },
                     onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
                     onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
+                    onBulkData = { navController.navigate(Routes.BulkData.route) },
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.BulkData.route) {
+                BulkDataScreen(
+                    onBack = { navController.popBackStack() },
+                    onManageProducts = { navController.navigate(Routes.ManageProducts.route) },
+                    onManageCustomers = { navController.navigate(Routes.ManageCustomers.route) },
+                    onManageUsers = { navController.navigate(Routes.AddUser.route) }
                 )
             }
 
@@ -488,7 +496,8 @@ fun SelliaApp(
                 ManageProductsScreen(
                      vm = vm,
                      onBack = { navController.popBackStack() },
-                     onShowQr = { navController.navigate(Routes.ProductQr.route) }
+                     onShowQr = { navController.navigate(Routes.ProductQr.route) },
+                     onBulkImport = { navController.navigate(Routes.BulkData.route) }
                 )
             }
 
