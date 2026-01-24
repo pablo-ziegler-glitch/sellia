@@ -34,6 +34,12 @@ Instalar en un dispositivo conectado (opcional):
 ```
  sellia/
  ├── app/                 # Módulo Android principal
+ ├── public/              # Sitio estático para catálogo (Firebase Hosting)
+│   ├── index.html       # Landing pública de Valkirja
+│   ├── styles.css       # Estilos globales (mobile-first)
+│   ├── main.js          # Lógica de interacción de la landing
+│   ├── data/            # JSON de productos
+│   └── assets/          # Imágenes placeholder
  ├── gradle/              # Gradle wrapper
  ├── build.gradle.kts     # Configuración raíz de Gradle
  ├── settings.gradle.kts  # Definición de módulos
@@ -41,8 +47,42 @@ Instalar en un dispositivo conectado (opcional):
  ├── gradlew              # Wrapper (Unix)
  ├── gradlew.bat          # Wrapper (Windows)
  ├── docs/                # Documentación adicional
+ ├── firebase.json        # Configuración de Firebase Hosting
  └── README.md            # Overview del proyecto
 ```
+
+## ⚙️ Variables configurables
+Las configuraciones de la landing pública viven en `public/main.js` al inicio del archivo:
+- `BRAND_NAME`
+- `YOUTUBE_VIDEO_ID`
+- `WHATSAPP_URL`
+- `INSTAGRAM_URL`
+- `MAPS_URL`
+
+Reemplazá los valores `REEMPLAZAR` con los datos reales antes de desplegar o probar el sitio estático.
+
+## 👀 Previsualización local del catálogo
+El catálogo web es un sitio estático dentro de `public/`. Para previsualizarlo en local:
+```bash
+python3 -m http.server 8080 --directory public
+```
+Luego abrí `http://localhost:8080` en el navegador.
+
+## 🌐 Firebase Hosting
+Para publicar el catálogo estático en Firebase Hosting:
+1. Inicializar Firebase (si aún no está configurado en tu equipo):
+   ```bash
+   firebase init
+   ```
+   Elegí **Hosting**, vinculá el proyecto y confirmá que el directorio público es `public`.
+2. Desplegar:
+   ```bash
+   firebase deploy
+   ```
+
+## 🖼️ Reemplazo de assets
+- Para reemplazar imágenes, agregalas dentro de `public/assets/` en formato `.webp`.
+- Actualizá las rutas en `public/index.html` o `public/data/products.json` según corresponda.
 
 ## 🧪 Testing
 Ejecutar los tests del módulo app:

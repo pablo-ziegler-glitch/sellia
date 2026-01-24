@@ -8,7 +8,12 @@ import kotlinx.coroutines.flow.asStateFlow
 data class MarketingSettings(
     val promo3x2Enabled: Boolean = true,
     val promo3x2MinQuantity: Int = 3,
-    val promo3x2MinSubtotal: Double = 0.0
+    val promo3x2MinSubtotal: Double = 0.0,
+    val publicStoreUrl: String = "",
+    val storeName: String = "Tu tienda",
+    val storePhone: String = "",
+    val storeWhatsapp: String = "",
+    val storeEmail: String = ""
 )
 
 class MarketingConfigRepository {
