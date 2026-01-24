@@ -51,6 +51,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.selliaapp.ui.navigation.Routes
 import com.example.selliaapp.ui.navigation.Routes.SellRoutes.SELL_FLOW_ROUTE
 import com.example.selliaapp.ui.state.CustomerSummaryUi
 import com.example.selliaapp.ui.state.OrderType
@@ -281,7 +282,15 @@ fun CheckoutScreen(
                                         snackbarHostState.showSnackbar(
                                             message = "Venta #${resultado.invoiceNumber}: ${moneda.format(resultado.total)} (${resultado.paymentMethod.nombreLegible()})"
                                         )
-                                        onCancel()
+                                    }
+                                    navController.navigate(
+                                        Routes.PosSuccess.build(
+                                            invoiceId = resultado.invoiceId,
+                                            total = resultado.total,
+                                            method = resultado.paymentMethod.nombreLegible()
+                                        )
+                                    ) {
+                                        popUpTo(Routes.Pos.route) { inclusive = false }
                                     }
                                 },
                                 onError = { error ->

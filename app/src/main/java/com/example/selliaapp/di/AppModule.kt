@@ -15,6 +15,9 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.CategoryDao
+import com.example.selliaapp.data.dao.CashAuditDao
+import com.example.selliaapp.data.dao.CashMovementDao
+import com.example.selliaapp.data.dao.CashSessionDao
 import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
@@ -35,6 +38,7 @@ import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.repository.PricingConfigRepository
@@ -43,6 +47,7 @@ import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.UserRepository
+import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
 import dagger.Module
 import dagger.Provides
@@ -80,7 +85,11 @@ object AppModule {
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // WAL
             // [NUEVO] Room no admite booleano acá. Si no hay Migration, esto evita que el build/runtime se rompa.
             .fallbackToDestructiveMigration(dropAllTables = true)
-            .addMigrations(AppDatabase.MIGRATION_31_32, AppDatabase.MIGRATION_32_33)
+            .addMigrations(
+                AppDatabase.MIGRATION_31_32,
+                AppDatabase.MIGRATION_32_33,
+                AppDatabase.MIGRATION_33_34
+            )
             .addCallback(object : RoomDatabase.Callback() {
                 /**
                  * Nota: RoomDatabase.Callback no tiene onConfigure(...).
@@ -120,6 +129,9 @@ object AppModule {
     @Provides @Singleton fun providePricingAuditDao(db: AppDatabase): PricingAuditDao = db.pricingAuditDao()
     @Provides @Singleton fun providePricingMlFixedCostTierDao(db: AppDatabase): PricingMlFixedCostTierDao = db.pricingMlFixedCostTierDao()
     @Provides @Singleton fun providePricingMlShippingTierDao(db: AppDatabase): PricingMlShippingTierDao = db.pricingMlShippingTierDao()
+    @Provides @Singleton fun provideCashSessionDao(db: AppDatabase): CashSessionDao = db.cashSessionDao()
+    @Provides @Singleton fun provideCashMovementDao(db: AppDatabase): CashMovementDao = db.cashMovementDao()
+    @Provides @Singleton fun provideCashAuditDao(db: AppDatabase): CashAuditDao = db.cashAuditDao()
 
     // -----------------------------
     // REPOSITORIES
@@ -182,6 +194,18 @@ object AppModule {
     @Provides @Singleton fun provideProviderRepository(dao: ProviderDao): ProviderRepository = ProviderRepository(dao)
     @Provides @Singleton fun provideProviderInvoiceRepository(dao: ProviderInvoiceDao): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
     @Provides @Singleton fun provideMarketingConfigRepository(): MarketingConfigRepository = MarketingConfigRepository()
+
+    @Provides
+    @Singleton
+    fun provideCashRepository(
+        cashSessionDao: CashSessionDao,
+        cashMovementDao: CashMovementDao,
+        cashAuditDao: CashAuditDao
+    ): CashRepository = CashRepositoryImpl(
+        cashSessionDao = cashSessionDao,
+        cashMovementDao = cashMovementDao,
+        cashAuditDao = cashAuditDao
+    )
 
     @Provides
     @Singleton

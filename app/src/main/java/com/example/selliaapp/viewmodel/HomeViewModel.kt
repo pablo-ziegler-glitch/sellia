@@ -7,6 +7,8 @@ import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.dashboard.LowStockProduct
 import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.repository.CashRepository
+import com.example.selliaapp.repository.CashSessionSummary
 import com.example.selliaapp.repository.InvoiceRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
@@ -44,15 +46,20 @@ data class HomeUiState(
     val dailySales: Double = 0.0,
     val dailyMargin: Double = 0.0,
     val averageTicket: Double = 0.0,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val cashSummary: CashSessionSummary? = null
 )
+
+val HomeUiState.hasOpenCashSession: Boolean
+    get() = cashSummary != null
 
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val invoiceRepo: InvoiceRepository,
     private val productRepo: ProductRepository,
-    private val providerInvoiceRepo: ProviderInvoiceRepository
+    private val providerInvoiceRepo: ProviderInvoiceRepository,
+    private val cashRepository: CashRepository
 ) : ViewModel() {
 
     companion object {
@@ -68,6 +75,7 @@ class HomeViewModel @Inject constructor(
         observeLowStock()
         observePendingProviderInvoices()
         observeKpiMetrics()
+        observeCashSession()
         refresh()
     }
 
@@ -153,6 +161,20 @@ class HomeViewModel @Inject constructor(
                             averageTicket = snapshot.averageTicket
                         )
                     }
+                }
+        }
+    }
+
+    private fun observeCashSession() {
+        viewModelScope.launch {
+            cashRepository.observeOpenSessionSummary()
+                .catch { error ->
+                    _state.update {
+                        it.copy(errorMessage = error.localizedMessage ?: "No fue posible cargar la caja")
+                    }
+                }
+                .collectLatest { summary ->
+                    _state.update { it.copy(cashSummary = summary) }
                 }
         }
     }

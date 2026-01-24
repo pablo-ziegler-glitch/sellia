@@ -9,7 +9,22 @@ import java.nio.charset.StandardCharsets
 
 sealed class Routes(val route: String) {
     object Home : Routes("home_root")
+    object Pos : Routes("sell")
+    object Cash : Routes("cash")
+    object More : Routes("more")
     object Sell : Routes("sell")
+    object PosCheckout : Routes("pos_checkout")
+    object PosPayment : Routes("pos_checkout")
+    object PosSuccess : Routes("pos_success?invoiceId={invoiceId}&total={total}&method={method}") {
+        const val ARG_ID = "invoiceId"
+        const val ARG_TOTAL = "total"
+        const val ARG_METHOD = "method"
+        fun build(invoiceId: Long, total: Double, method: String): String =
+            "pos_success?invoiceId=$invoiceId&total=$total&method=${encode(method)}"
+
+        private fun encode(value: String): String =
+            URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+    }
     object Stock : Routes("stock")
     object Stock_import : Routes("stock_import")
     object QuickAdjustStock : Routes("stock/adjust/{productId}") {
@@ -30,6 +45,20 @@ sealed class Routes(val route: String) {
     object BulkData : Routes("bulk_data")
     object Checkout : Routes("checkout")
     object Reports : Routes("reports")
+    object Sales : Routes("sales")
+    object SaleDetail : Routes("sale_detail/{invoiceId}") {
+        const val ARG_ID = "invoiceId"
+        fun withId(id: Long) = "sale_detail/$id"
+    }
+    object StockHistory : Routes("stock_history")
+    object Customers : Routes("customers")
+    object Providers : Routes("providers")
+    object Expenses : Routes("expenses")
+    object Settings : Routes("settings")
+    object CashOpen : Routes("cash_open")
+    object CashAudit : Routes("cash_audit")
+    object CashClose : Routes("cash_close")
+    object CashMovements : Routes("cash_movements")
 
     object AddUser : Routes("add_user")
     object ManageProducts : Routes("manage_products")
