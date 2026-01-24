@@ -122,11 +122,8 @@ private fun ProductCard(
     storeWhatsapp: String,
     storeEmail: String
 ) {
-    val images: List<Any> = if (!product.imageUrl.isNullOrBlank()) {
-        listOf(product.imageUrl!!, product.imageUrl!!, product.imageUrl!!)
-    } else {
-        listOf(R.drawable.ic_sell, R.drawable.ic_sell, R.drawable.ic_sell)
-    }
+    val images: List<Any> = product.imageUrls.takeIf { it.isNotEmpty() }
+        ?: listOf(R.drawable.ic_sell)
     val pagerState = rememberPagerState { images.size }
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
 

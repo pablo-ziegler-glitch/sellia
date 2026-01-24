@@ -23,6 +23,7 @@ fun exportTemplateToDownloads(
     val success = runCatching {
         resolver.openOutputStream(uri)?.use { stream ->
             stream.write(content.toByteArray())
+            true
         } ?: false
     }.getOrDefault(false)
 
