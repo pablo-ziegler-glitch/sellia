@@ -36,7 +36,8 @@ import java.util.Locale
 @Composable
 fun CashCloseScreen(
     vm: CashViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onCloseSuccess: () -> Unit
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
@@ -87,7 +88,7 @@ fun CashCloseScreen(
                 onClick = {
                     val amount = counted.toDoubleOrNull()
                     vm.closeCash(amount, note.takeIf { it.isNotBlank() })
-                    onBack()
+                    onCloseSuccess()
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
