@@ -110,8 +110,8 @@ fun SelliaApp(
         onNavigate = { route ->
             navController.navigate(route) {
                 launchSingleTop = true
-                restoreState = true
-                popUpTo(Routes.Home.route) { saveState = true }
+                restoreState = false
+                popUpTo(navController.graph.startDestinationId) { inclusive = false }
             }
         },
         snackbarHostState = snackbarHostState
@@ -176,7 +176,16 @@ fun SelliaApp(
 
             composable(Routes.CashClose.route) {
                 val cashVm: CashViewModel = hiltViewModel()
-                CashCloseScreen(vm = cashVm, onBack = { navController.popBackStack() })
+                CashCloseScreen(
+                    vm = cashVm,
+                    onBack = { navController.popBackStack() },
+                    onCloseSuccess = {
+                        navController.navigate(Routes.Cash.route) {
+                            launchSingleTop = true
+                            popUpTo(Routes.Cash.route) { inclusive = true }
+                        }
+                    }
+                )
             }
 
             composable(Routes.More.route) {

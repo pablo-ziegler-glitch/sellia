@@ -44,7 +44,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /**
- * Pantalla de reportes centrada en las ventas de los últimos 7 días.
+ * Pantalla de reportes centrada en las ventas del día.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +58,7 @@ fun ReportsScreen(
     val currency = NumberFormat.getCurrencyInstance(localeEsAr)
 
     LaunchedEffect(Unit) {
-        vm.onFilterChange(ReportsFilter.WEEK)
+        vm.onFilterChange(ReportsFilter.DAY)
     }
 
     Scaffold(
@@ -102,7 +102,7 @@ fun ReportsScreen(
 
                     state.points.isEmpty() -> {
                         Text(
-                            text = "Sin ventas registradas en los últimos 7 días.",
+                            text = "Sin ventas registradas hoy.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.Center)
@@ -116,7 +116,7 @@ fun ReportsScreen(
                             verticalArrangement = Arrangement.Top
                         ) {
                             Text(
-                                text = "Ventas de los últimos 7 días",
+                                text = "Ventas de hoy",
                                 style = MaterialTheme.typography.titleMedium
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -161,7 +161,7 @@ fun ReportsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Total semanal",
+                                    text = "Total diario",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
