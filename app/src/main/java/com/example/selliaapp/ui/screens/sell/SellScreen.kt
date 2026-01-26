@@ -347,14 +347,6 @@ fun SellScreen(
                                     etiqueta = "Subtotal",
                                     valor = currency.format(ui.subtotal)
                                 )
-                                if (ui.promoDiscountAmount > 0) {
-                                    Spacer(Modifier.height(8.dp))
-                                    ResumenRow(
-                                        etiqueta = "Promo 3x2",
-                                        valor = "-${currency.format(ui.promoDiscountAmount)}",
-                                        color = Color(0xFF2E7D32)
-                                    )
-                                }
                                 if (ui.customerDiscountPercent > 0) {
                                     Spacer(Modifier.height(8.dp))
                                     ResumenRow(
@@ -363,14 +355,6 @@ fun SellScreen(
                                         color = Color(0xFF2E7D32)
                                     )
                                 }
-                                Spacer(Modifier.height(12.dp))
-                                PorcentajeControl(
-                                    titulo = "Descuento manual",
-                                    valor = ui.discountPercent,
-                                    onValorChange = { sellVm.setDiscountPercent(it) },
-                                    descripcion = if (ui.discountPercent == 0) "Sin descuento" else "-" + currency.format(ui.manualDiscountAmount),
-                                    colorDescripcion = if (ui.discountPercent == 0) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF2E7D32)
-                                )
                                 Spacer(Modifier.height(12.dp))
                                 PorcentajeControl(
                                     titulo = "Recargo",

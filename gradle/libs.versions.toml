@@ -33,6 +33,7 @@ databindingAdapters = "8.12.2"
 engageCore = "1.5.9"
 tvMaterial = "1.0.1"
 coreVersion = "1.13.0"
+datastorePreferences = "1.1.2"
 pagingCommonAndroid = "3.3.6"
 composeMaterial3 = "1.5.1"
 storage = "1.5.0"
@@ -82,6 +83,7 @@ androidx-databinding-adapters = { group = "androidx.databinding", name = "databi
 engage-core = { group = "com.google.android.engage", name = "engage-core", version.ref = "engageCore" }
 androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
 androidx-core = { group = "androidx.core", name = "core", version.ref = "coreVersion" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 androidx-paging-common-android = { group = "androidx.paging", name = "paging-common-android", version.ref = "pagingCommonAndroid" }
 androidx-compose-material3 = { group = "androidx.wear.compose", name = "compose-material3", version.ref = "composeMaterial3" }
 androidx-storage = { group = "androidx.test.services", name = "storage", version.ref = "storage" }

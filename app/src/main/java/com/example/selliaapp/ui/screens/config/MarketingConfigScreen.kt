@@ -14,7 +14,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,10 +37,7 @@ fun MarketingConfigScreen(
     vm: MarketingConfigViewModel,
     onBack: () -> Unit
 ) {
-    val settings by vm.settings.collectAsState()
-    var promoEnabled by remember { mutableStateOf(settings.promo3x2Enabled) }
-    var minQty by remember { mutableStateOf(settings.promo3x2MinQuantity.toString()) }
-    var minSubtotal by remember { mutableStateOf(settings.promo3x2MinSubtotal.toString()) }
+    val settings by vm.settings.collectAsState(initial = MarketingSettings())
     var publicStoreUrl by remember { mutableStateOf(settings.publicStoreUrl) }
     var storeName by remember { mutableStateOf(settings.storeName) }
     var storePhone by remember { mutableStateOf(settings.storePhone) }
@@ -49,9 +45,6 @@ fun MarketingConfigScreen(
     var storeEmail by remember { mutableStateOf(settings.storeEmail) }
 
     LaunchedEffect(settings) {
-        promoEnabled = settings.promo3x2Enabled
-        minQty = settings.promo3x2MinQuantity.toString()
-        minSubtotal = settings.promo3x2MinSubtotal.toString()
         publicStoreUrl = settings.publicStoreUrl
         storeName = settings.storeName
         storePhone = settings.storePhone
@@ -70,33 +63,6 @@ fun MarketingConfigScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Promoción 3x2")
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                RowSwitch(
-                    label = "Activar promo",
-                    checked = promoEnabled,
-                    onCheckedChange = { promoEnabled = it }
-                )
-                OutlinedTextField(
-                    value = minQty,
-                    onValueChange = { minQty = it },
-                    label = { Text("Cantidad mínima para aplicar") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = minSubtotal,
-                    onValueChange = { minSubtotal = it },
-                    label = { Text("Subtotal mínimo para aplicar") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
             Text("Sitio público")
             OutlinedTextField(
                 value = publicStoreUrl,
@@ -142,14 +108,8 @@ fun MarketingConfigScreen(
 
             Button(
                 onClick = {
-                    val parsedQty = minQty.toIntOrNull()?.coerceAtLeast(1) ?: settings.promo3x2MinQuantity
-                    val parsedSubtotal = minSubtotal.replace(',', '.').toDoubleOrNull()?.coerceAtLeast(0.0)
-                        ?: settings.promo3x2MinSubtotal
                     vm.updateSettings(
                         MarketingSettings(
-                            promo3x2Enabled = promoEnabled,
-                            promo3x2MinQuantity = parsedQty,
-                            promo3x2MinSubtotal = parsedSubtotal,
                             publicStoreUrl = publicStoreUrl.trim(),
                             storeName = storeName.ifBlank { settings.storeName },
                             storePhone = storePhone.trim(),
@@ -166,17 +126,5 @@ fun MarketingConfigScreen(
                 Text("Volver")
             }
         }
-    }
-}
-
-@Composable
-private fun RowSwitch(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(label)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

@@ -1,14 +1,14 @@
 package com.example.selliaapp.repository
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import javax.inject.Inject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 data class MarketingSettings(
-    val promo3x2Enabled: Boolean = true,
-    val promo3x2MinQuantity: Int = 3,
-    val promo3x2MinSubtotal: Double = 0.0,
     val publicStoreUrl: String = "",
     val storeName: String = "Tu tienda",
     val storePhone: String = "",
@@ -16,11 +16,34 @@ data class MarketingSettings(
     val storeEmail: String = ""
 )
 
-class MarketingConfigRepository {
-    private val _settings = MutableStateFlow(MarketingSettings())
-    val settings: StateFlow<MarketingSettings> = _settings.asStateFlow()
+class MarketingConfigRepository @Inject constructor(
+    private val dataStore: DataStore<Preferences>
+) {
+    private object Keys {
+        val publicStoreUrl = stringPreferencesKey("public_store_url")
+        val storeName = stringPreferencesKey("store_name")
+        val storePhone = stringPreferencesKey("store_phone")
+        val storeWhatsapp = stringPreferencesKey("store_whatsapp")
+        val storeEmail = stringPreferencesKey("store_email")
+    }
 
-    fun updateSettings(updated: MarketingSettings) {
-        _settings.value = updated
+    val settings: Flow<MarketingSettings> = dataStore.data.map { prefs ->
+        MarketingSettings(
+            publicStoreUrl = prefs[Keys.publicStoreUrl] ?: "",
+            storeName = prefs[Keys.storeName] ?: "Tu tienda",
+            storePhone = prefs[Keys.storePhone] ?: "",
+            storeWhatsapp = prefs[Keys.storeWhatsapp] ?: "",
+            storeEmail = prefs[Keys.storeEmail] ?: ""
+        )
+    }
+
+    suspend fun updateSettings(updated: MarketingSettings) {
+        dataStore.edit { prefs ->
+            prefs[Keys.publicStoreUrl] = updated.publicStoreUrl
+            prefs[Keys.storeName] = updated.storeName
+            prefs[Keys.storePhone] = updated.storePhone
+            prefs[Keys.storeWhatsapp] = updated.storeWhatsapp
+            prefs[Keys.storeEmail] = updated.storeEmail
+        }
     }
 }
