@@ -8,6 +8,7 @@ import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.SyncEntityType
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
 import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier real del ZIP está dentro de AppModule
@@ -30,15 +31,13 @@ class SyncRepositoryImpl @Inject constructor(
     private val syncOutboxDao: SyncOutboxDao,
     private val productRepository: ProductRepository,
     private val firestore: FirebaseFirestore,
+    private val tenantProvider: TenantProvider,
     /* [ANTERIOR]
     import com.example.selliaapp.di.IoDispatcher
     @IoDispatcher private val io: CoroutineDispatcher
     */
     @IoDispatcher private val io: CoroutineDispatcher
 ) : SyncRepository {
-
-    private val productsCollection = firestore.collection("products")
-    private val invoicesCollection = firestore.collection("invoices")
 
     override suspend fun pushPending() = withContext(io) {
         val now = System.currentTimeMillis()
@@ -49,6 +48,9 @@ class SyncRepositoryImpl @Inject constructor(
     override suspend fun pullRemote() = withContext(io) {
         productRepository.syncDown()
 
+        val invoicesCollection = firestore.collection("tenants")
+            .document(tenantProvider.requireTenantId())
+            .collection("invoices")
         val snapshot = invoicesCollection.get().await()
         if (snapshot.isEmpty) return@withContext
 
@@ -86,12 +88,20 @@ class SyncRepositoryImpl @Inject constructor(
         val imageUrlsByProductId = productImageDao.getByProductIds(ids)
             .groupBy { it.productId }
             .mapValues { (_, items) -> items.sortedBy { it.position }.map { it.url } }
+        val tenantId = tenantProvider.requireTenantId()
+        val productsCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("products")
         val batch = firestore.batch()
         entities.forEach { product ->
             if (product.id == 0) return@forEach
             val doc = productsCollection.document(product.id.toString())
             val imageUrls = imageUrlsByProductId[product.id].orEmpty()
-            batch.set(doc, ProductFirestoreMappers.toMap(product, imageUrls), SetOptions.merge())
+            batch.set(
+                doc,
+                ProductFirestoreMappers.toMap(product, imageUrls, tenantId),
+                SetOptions.merge()
+            )
         }
 
         try {
@@ -125,22 +135,23 @@ class SyncRepositoryImpl @Inject constructor(
         }
         if (relations.isEmpty()) return
 
+        val tenantId = tenantProvider.requireTenantId()
+        val invoicesCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("invoices")
         val batch = firestore.batch()
         relations.forEach { relation ->
             val invoice = relation.invoice
             val doc = invoicesCollection.document(invoice.id.toString())
 
-            /* [ANTERIOR]
-            batch.set(doc, InvoiceFirestoreMappers.toMap(invoice, relation.items), SetOptions.merge())
-            */
-
-            // [NUEVO] toMap requiere (invoice, number:String, items:List<InvoiceItem>)
+            // [NUEVO] toMap requiere (invoice, number:String, items:List<InvoiceItem>, tenantId:String)
             batch.set(
                 doc,
                 InvoiceFirestoreMappers.toMap(
                     invoice = invoice,
                     number = formatInvoiceNumber(invoice.id),
-                    items = relation.items
+                    items = relation.items,
+                    tenantId = tenantId
                 ),
                 SetOptions.merge()
             )
