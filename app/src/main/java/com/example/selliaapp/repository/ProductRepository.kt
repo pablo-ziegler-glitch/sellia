@@ -99,6 +99,10 @@ class ProductRepository(
     suspend fun cachedOrEmpty(): List<ProductEntity> =
         if (lastCache.isNotEmpty()) lastCache else attachImages(productDao.getAllOnce())
 
+    suspend fun getAllForExport(): List<ProductEntity> = withContext(io) {
+        productDao.getAllOnce()
+    }
+
     // ---------- E1: Normalización de ids por nombre ----------
     suspend fun ensureCategoryId(name: String?): Int? {
         val n = name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -289,7 +293,21 @@ class ProductRepository(
         strategy: ImportStrategy
     ): ImportResult = withContext(io) {
         val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
+        importProducts(rows, strategy)
+    }
 
+    suspend fun importProductsFromTable(
+        table: List<List<String>>,
+        strategy: ImportStrategy
+    ): ImportResult = withContext(io) {
+        val rows = ProductCsvImporter.parseTable(table)
+        importProducts(rows, strategy)
+    }
+
+    private suspend fun importProducts(
+        rows: List<ProductCsvImporter.Row>,
+        strategy: ImportStrategy
+    ): ImportResult {
         var inserted = 0
         var updated = 0
         val errors = mutableListOf<String>()
@@ -420,7 +438,7 @@ class ProductRepository(
             lastCache = productDao.getAllOnce()
         }
         trySyncProductsNow(touchedIds, now)
-        ImportResult(inserted, updated, errors)
+        return ImportResult(inserted, updated, errors)
     }
 
     /**
