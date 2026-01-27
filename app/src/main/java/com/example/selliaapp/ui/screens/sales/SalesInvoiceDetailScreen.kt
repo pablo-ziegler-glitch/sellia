@@ -84,17 +84,11 @@ fun SalesInvoiceDetailScreen(
             }
             item { HorizontalDivider() }
             item {
-                Row(Modifier.fillMaxWidth()) {
-                    Text("Total:", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Text(currency.format(d.total), style = MaterialTheme.typography.titleMedium)
-                }
+                BreakdownSection(detail = d, currency = currency)
             }
-            d.notes?.takeIf { it.isNotBlank() }?.let { notes ->
-                item {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Observaciones:", style = MaterialTheme.typography.titleSmall)
-                    Text(notes, style = MaterialTheme.typography.bodyMedium)
-                }
+            item { HorizontalDivider() }
+            item {
+                PaymentSection(detail = d)
             }
         }
     }
@@ -125,5 +119,51 @@ private fun ItemRow(item: InvoiceItemRow, currency: NumberFormat) {
             Text(currency.format(item.unitPrice), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             Text(currency.format(item.lineTotal), style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+@Composable
+private fun BreakdownSection(detail: InvoiceDetail, currency: NumberFormat) {
+    val discountLabel =
+        if (detail.discountPercent > 0) "Descuento (${detail.discountPercent}%)" else "Descuento"
+    val surchargeLabel =
+        if (detail.surchargePercent > 0) "Recargo (${detail.surchargePercent}%)" else "Recargo"
+
+    Column(Modifier.fillMaxWidth()) {
+        Text("Desglose", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(8.dp))
+        DetailRow(label = "Subtotal", value = currency.format(detail.subtotal))
+        DetailRow(label = "Impuestos", value = currency.format(detail.taxes))
+        DetailRow(label = discountLabel, value = "-${currency.format(detail.discountAmount)}")
+        DetailRow(label = surchargeLabel, value = currency.format(detail.surchargeAmount))
+        Spacer(Modifier.height(4.dp))
+        DetailRow(
+            label = "Total",
+            value = currency.format(detail.total),
+            valueStyle = MaterialTheme.typography.titleMedium
+        )
+    }
+}
+
+@Composable
+private fun PaymentSection(detail: InvoiceDetail) {
+    val notes = detail.paymentNotes?.takeIf { it.isNotBlank() } ?: "Sin notas"
+    Column(Modifier.fillMaxWidth()) {
+        Text("Pago", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(8.dp))
+        DetailRow(label = "Método", value = detail.paymentMethod)
+        DetailRow(label = "Notas", value = notes)
+    }
+}
+
+@Composable
+private fun DetailRow(
+    label: String,
+    value: String,
+    valueStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium
+) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(value, style = valueStyle)
     }
 }
