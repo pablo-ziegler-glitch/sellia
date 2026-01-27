@@ -2,14 +2,21 @@ package com.example.selliaapp.data.remote
 
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
+import com.example.selliaapp.data.model.InvoiceStatus
 import com.google.firebase.firestore.DocumentSnapshot
 
 /**
  * Mappers para representar facturas en Firestore.
  */
 object InvoiceFirestoreMappers {
-    fun toMap(invoice: Invoice, number: String, items: List<InvoiceItem>): Map<String, Any?> = mapOf(
+    fun toMap(
+        invoice: Invoice,
+        number: String,
+        items: List<InvoiceItem>,
+        tenantId: String
+    ): Map<String, Any?> = mapOf(
         "id" to invoice.id,
+        "tenantId" to tenantId,
         "number" to number,
         "dateMillis" to invoice.dateMillis,
         "customerId" to invoice.customerId,
@@ -23,6 +30,9 @@ object InvoiceFirestoreMappers {
         "total" to invoice.total,
         "paymentMethod" to invoice.paymentMethod,
         "paymentNotes" to invoice.paymentNotes,
+        "status" to invoice.status.name,
+        "canceledAt" to invoice.canceledAt,
+        "canceledReason" to invoice.canceledReason,
         "items" to items.map { item ->
             mapOf(
                 "id" to item.id,
@@ -45,6 +55,9 @@ object InvoiceFirestoreMappers {
 
         val dateMillis = (data["dateMillis"] as? Number)?.toLong() ?: return null
 
+        val statusRaw = data["status"] as? String
+        val status = statusRaw?.let { runCatching { InvoiceStatus.valueOf(it) }.getOrNull() }
+            ?: InvoiceStatus.EMITIDA
         val invoice = Invoice(
             id = invoiceId,
             dateMillis = dateMillis,
@@ -58,7 +71,10 @@ object InvoiceFirestoreMappers {
             surchargeAmount = (data["surchargeAmount"] as? Number)?.toDouble() ?: 0.0,
             total = (data["total"] as? Number)?.toDouble() ?: 0.0,
             paymentMethod = (data["paymentMethod"] as? String).orEmpty(),
-            paymentNotes = data["paymentNotes"] as? String
+            paymentNotes = data["paymentNotes"] as? String,
+            status = status,
+            canceledAt = (data["canceledAt"] as? Number)?.toLong(),
+            canceledReason = data["canceledReason"] as? String
         )
 
         val itemsRaw = data["items"] as? List<*>

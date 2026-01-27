@@ -41,6 +41,9 @@ interface ExpenseRecordDao {
         status: ExpenseStatus?
     ): Flow<List<ExpenseRecord>>
 
+    @Query("SELECT * FROM expense_records ORDER BY year DESC, month DESC, id DESC")
+    suspend fun getAllOnce(): List<ExpenseRecord>
+
     @Query("""
         SELECT categorySnapshot AS category,
                SUM(amount) AS total

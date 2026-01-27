@@ -32,6 +32,10 @@ class FakeInvoiceRepository : InvoiceRepository {
 
     override suspend fun addInvoiceAndAdjustStock(invoice: Invoice, items: List<InvoiceItem>) = Unit
 
+    override suspend fun cancelInvoice(id: Long, reason: String) {
+        error("FakeInvoiceRepository.cancelInvoice no implementado para este test")
+    }
+
     override suspend fun sumThisMonth(): Double = 0.0
 
     override suspend fun salesLastDays(dias: Int): List<DailySalesPoint> = emptyList()

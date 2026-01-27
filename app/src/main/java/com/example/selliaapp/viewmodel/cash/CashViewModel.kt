@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.local.entity.CashMovementEntity
 import com.example.selliaapp.data.local.entity.CashMovementType
+import com.example.selliaapp.domain.security.Permission
+import com.example.selliaapp.domain.security.UserAccessState
+import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.CashSessionSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +19,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CashViewModel @Inject constructor(
-    private val cashRepository: CashRepository
+    private val cashRepository: CashRepository,
+    private val accessControlRepository: AccessControlRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CashUiState())
@@ -24,12 +28,21 @@ class CashViewModel @Inject constructor(
 
     init {
         observeCashSession()
+        observeAccessControl()
     }
 
     private fun observeCashSession() {
         viewModelScope.launch {
             cashRepository.observeOpenSessionSummary().collect { summary ->
                 _state.update { it.copy(summary = summary) }
+            }
+        }
+    }
+
+    private fun observeAccessControl() {
+        viewModelScope.launch {
+            accessControlRepository.observeAccessState().collect { access ->
+                _state.update { it.copy(accessState = access) }
             }
         }
     }
@@ -89,11 +102,30 @@ class CashViewModel @Inject constructor(
 }
 
 data class CashUiState(
-    val summary: CashSessionSummary? = null
+    val summary: CashSessionSummary? = null,
+    val accessState: UserAccessState = UserAccessState.guest()
 ) {
     val hasOpenSession: Boolean
         get() = summary != null
 
     val movements: List<CashMovementEntity>
         get() = summary?.movements.orEmpty()
+
+    val permissions: Set<Permission>
+        get() = accessState.permissions
+
+    val canOpenCash: Boolean
+        get() = permissions.contains(Permission.CASH_OPEN)
+
+    val canAuditCash: Boolean
+        get() = permissions.contains(Permission.CASH_AUDIT)
+
+    val canRegisterMovement: Boolean
+        get() = permissions.contains(Permission.CASH_MOVEMENT)
+
+    val canCloseCash: Boolean
+        get() = permissions.contains(Permission.CASH_CLOSE)
+
+    val canViewCashReport: Boolean
+        get() = permissions.contains(Permission.VIEW_CASH_REPORT)
 }

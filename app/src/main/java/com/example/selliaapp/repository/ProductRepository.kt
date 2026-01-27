@@ -29,6 +29,7 @@ import com.example.selliaapp.data.model.dashboard.LowStockProduct
 import com.example.selliaapp.data.model.stock.StockAdjustmentReason
 import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.data.model.stock.StockMovementWithProduct
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.ProductRemoteDataSource
 import com.example.selliaapp.di.IoDispatcher
 import com.example.selliaapp.pricing.PricingCalculator
@@ -57,6 +58,7 @@ class ProductRepository(
     private val providerDao: ProviderDao,
     private val pricingConfigRepository: PricingConfigRepository,
     private val firestore: FirebaseFirestore,
+    private val tenantProvider: TenantProvider,
     @IoDispatcher private val io: CoroutineDispatcher   // <-- igual que en el VM
 ) {
 
@@ -65,7 +67,7 @@ class ProductRepository(
 
     private val stockMovementDao = db.stockMovementDao()
     private val syncOutboxDao = db.syncOutboxDao()
-    private val remote = ProductRemoteDataSource(firestore)
+    private val remote = ProductRemoteDataSource(firestore, tenantProvider)
 
     suspend fun insert(entity: ProductEntity): Int = withContext(io) {
         persistProduct(entity.copy(id = 0), StockMovementReasons.PRODUCT_CREATE)
@@ -98,6 +100,10 @@ class ProductRepository(
 
     suspend fun cachedOrEmpty(): List<ProductEntity> =
         if (lastCache.isNotEmpty()) lastCache else attachImages(productDao.getAllOnce())
+
+    suspend fun getAllForExport(): List<ProductEntity> = withContext(io) {
+        productDao.getAllOnce()
+    }
 
     // ---------- E1: Normalización de ids por nombre ----------
     suspend fun ensureCategoryId(name: String?): Int? {
@@ -289,7 +295,21 @@ class ProductRepository(
         strategy: ImportStrategy
     ): ImportResult = withContext(io) {
         val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
+        importProducts(rows, strategy)
+    }
 
+    suspend fun importProductsFromTable(
+        table: List<List<String>>,
+        strategy: ImportStrategy
+    ): ImportResult = withContext(io) {
+        val rows = ProductCsvImporter.parseTable(table)
+        importProducts(rows, strategy)
+    }
+
+    private suspend fun importProducts(
+        rows: List<ProductCsvImporter.Row>,
+        strategy: ImportStrategy
+    ): ImportResult {
         var inserted = 0
         var updated = 0
         val errors = mutableListOf<String>()
@@ -420,7 +440,7 @@ class ProductRepository(
             lastCache = productDao.getAllOnce()
         }
         trySyncProductsNow(touchedIds, now)
-        ImportResult(inserted, updated, errors)
+        return ImportResult(inserted, updated, errors)
     }
 
     /**

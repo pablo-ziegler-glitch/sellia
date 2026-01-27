@@ -24,6 +24,8 @@ class CustomerRepository @Inject constructor(
 ) {
     fun observeAll(): Flow<List<CustomerEntity>> = customerDao.observeAll()
 
+    suspend fun getAllOnce(): List<CustomerEntity> = customerDao.getAllOnce()
+
     suspend fun upsert(c: CustomerEntity): Int {
         // Si es alta nueva (id=0), el createdAt ya viene con LocalDateTime.now() por default.
         // Si fuese un update, respetamos el createdAt existente.
@@ -35,8 +37,18 @@ class CustomerRepository @Inject constructor(
 
     suspend fun importCustomersFromFile(context: Context, uri: Uri): ImportResult = withContext(Dispatchers.IO) {
         val rows = CustomerCsvImporter.parseFile(context.contentResolver, uri)
+        importCustomers(rows)
+    }
+
+    suspend fun importCustomersFromTable(table: List<List<String>>): ImportResult =
+        withContext(Dispatchers.IO) {
+            val rows = CustomerCsvImporter.parseTable(table)
+            importCustomers(rows)
+        }
+
+    private suspend fun importCustomers(rows: List<CustomerCsvImporter.Row>): ImportResult {
         if (rows.isEmpty()) {
-            return@withContext ImportResult(0, 0, listOf("El archivo no contiene filas válidas."))
+            return ImportResult(0, 0, listOf("El archivo no contiene filas válidas."))
         }
 
         var inserted = 0
@@ -85,7 +97,7 @@ class CustomerRepository @Inject constructor(
             }
         }
 
-        ImportResult(inserted, updated, errors)
+        return ImportResult(inserted, updated, errors)
     }
 
     /** Borrado de cliente. */

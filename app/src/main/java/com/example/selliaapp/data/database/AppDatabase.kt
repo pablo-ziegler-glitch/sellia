@@ -92,7 +92,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 34,
+    version = 35,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -301,6 +301,14 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_audits_sessionId` ON `cash_audits` (`sessionId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_audits_createdAt` ON `cash_audits` (`createdAt`)")
+            }
+        }
+
+        val MIGRATION_34_35 = object : Migration(34, 35) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `status` TEXT NOT NULL DEFAULT 'EMITIDA'")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `canceledAt` INTEGER")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `canceledReason` TEXT")
             }
         }
     }

@@ -7,6 +7,7 @@ import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.model.stock.StockMovementReasons
@@ -14,6 +15,7 @@ import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
+import com.example.selliaapp.data.model.InvoiceStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.InvoiceDraft
@@ -47,11 +49,10 @@ class InvoiceRepositoryImpl @Inject constructor(
     private val productImageDao: ProductImageDao,
     private val customerDao: CustomerDao,
     private val firestore: FirebaseFirestore,
+    private val tenantProvider: TenantProvider,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : InvoiceRepository {
 
-    private val invoicesCollection = firestore.collection("invoices")
-    private val productsCollection = firestore.collection("products")
     private val syncOutboxDao = db.syncOutboxDao()
 
      // ----------------------------
@@ -271,6 +272,120 @@ class InvoiceRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun cancelInvoice(id: Long, reason: String) = withContext(io) {
+        val cleanReason = reason.trim()
+        require(cleanReason.isNotBlank()) { "Motivo de anulación requerido" }
+        val now = System.currentTimeMillis()
+        val touchedProducts = mutableSetOf<Int>()
+        var updatedRelation: InvoiceWithItems? = null
+        var didUpdate = false
+
+        db.withTransaction {
+            val relation = invoiceDao.getInvoiceWithItemsById(id) ?: error("Factura no encontrada (id=$id)")
+            if (relation.invoice.status != InvoiceStatus.EMITIDA) {
+                updatedRelation = relation
+                return@withTransaction
+            }
+
+            val updatedRows = invoiceDao.updateStatus(
+                id = id,
+                status = InvoiceStatus.ANULADA,
+                canceledAt = now,
+                canceledReason = cleanReason
+            )
+            require(updatedRows == 1) { "No se pudo actualizar la factura (id=$id)" }
+
+            val movementDao = db.stockMovementDao()
+            relation.items.forEach { item ->
+                val affected = productDao.increaseStockIfExists(item.productId, item.quantity)
+                require(affected == 1) { "Producto inexistente (id=${item.productId})" }
+                movementDao.insert(
+                    StockMovementEntity(
+                        productId = item.productId,
+                        delta = item.quantity,
+                        reason = StockMovementReasons.SALE_CANCEL,
+                        ts = Instant.ofEpochMilli(now),
+                        user = null
+                    )
+                )
+                touchedProducts += item.productId
+            }
+
+            syncOutboxDao.upsert(
+                SyncOutboxEntity(
+                    entityType = SyncEntityType.INVOICE.storageKey,
+                    entityId = id,
+                    createdAt = now
+                )
+            )
+            if (touchedProducts.isNotEmpty()) {
+                val entries = touchedProducts.map { productId ->
+                    SyncOutboxEntity(
+                        entityType = SyncEntityType.PRODUCT.storageKey,
+                        entityId = productId.toLong(),
+                        createdAt = now
+                    )
+                }
+                syncOutboxDao.upsertAll(entries)
+            }
+
+            updatedRelation = relation.copy(
+                invoice = relation.invoice.copy(
+                    status = InvoiceStatus.ANULADA,
+                    canceledAt = now,
+                    canceledReason = cleanReason
+                )
+            )
+            didUpdate = true
+        }
+
+        if (!didUpdate) return@withContext
+        val relation = updatedRelation ?: return@withContext
+
+        val productsToSync: List<ProductEntity> = if (touchedProducts.isEmpty()) {
+            emptyList()
+        } else {
+            productDao.getByIds(touchedProducts.toList())
+        }
+        val productIdsForOutbox = touchedProducts.map(Int::toLong)
+        try {
+            syncInvoiceWithFirestore(
+                relation.invoice,
+                formatNumber(relation.invoice.id),
+                relation.items,
+                productsToSync
+            )
+            syncOutboxDao.deleteByTypeAndIds(
+                SyncEntityType.INVOICE.storageKey,
+                listOf(relation.invoice.id)
+            )
+            if (productIdsForOutbox.isNotEmpty()) {
+                syncOutboxDao.deleteByTypeAndIds(
+                    SyncEntityType.PRODUCT.storageKey,
+                    productIdsForOutbox
+                )
+            }
+        } catch (t: Throwable) {
+            val errorMsg = extractErrorMessage(t)
+            val timestamp = System.currentTimeMillis()
+            syncOutboxDao.markAttempt(
+                SyncEntityType.INVOICE.storageKey,
+                listOf(relation.invoice.id),
+                timestamp,
+                errorMsg
+            )
+            if (productIdsForOutbox.isNotEmpty()) {
+                syncOutboxDao.markAttempt(
+                    SyncEntityType.PRODUCT.storageKey,
+                    productIdsForOutbox,
+                    timestamp,
+                    errorMsg
+                )
+            }
+            throw t
+        }
+    }
+
      // ----------------------------
      // Lecturas
      // ----------------------------
@@ -367,7 +482,15 @@ class InvoiceRepositoryImpl @Inject constructor(
             number = formatNumber(inv.id),
             customerName = inv.customerName ?: "Consumidor Final",
             date = ld,
+            subtotal = inv.subtotal,
+            taxes = inv.taxes,
+            discountPercent = inv.discountPercent,
+            discountAmount = inv.discountAmount,
+            surchargePercent = inv.surchargePercent,
+            surchargeAmount = inv.surchargeAmount,
             total = inv.total,
+            paymentMethod = inv.paymentMethod,
+            paymentNotes = inv.paymentNotes,
             items = itemsUi,
             notes = inv.paymentNotes,
             syncStatus = syncStatusFor(outbox)
@@ -386,9 +509,13 @@ class InvoiceRepositoryImpl @Inject constructor(
         items: List<InvoiceItem>,
         products: List<ProductEntity>
     ) {
+        val tenantId = tenantProvider.requireTenantId()
+        val invoicesCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("invoices")
         invoicesCollection
             .document(invoice.id.toString())
-            .set(InvoiceFirestoreMappers.toMap(invoice, number, items))
+            .set(InvoiceFirestoreMappers.toMap(invoice, number, items, tenantId))
             .await()
 
         if (products.isEmpty()) return
@@ -396,12 +523,19 @@ class InvoiceRepositoryImpl @Inject constructor(
         val imageUrlsByProductId = productImageDao.getByProductIds(products.map { it.id })
             .groupBy { it.productId }
             .mapValues { (_, items) -> items.sortedBy { it.position }.map { it.url } }
+        val productsCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("products")
         val batch = firestore.batch()
         products.forEach { product ->
             if (product.id == 0) return@forEach
             val doc = productsCollection.document(product.id.toString())
             val imageUrls = imageUrlsByProductId[product.id].orEmpty()
-            batch.set(doc, ProductFirestoreMappers.toMap(product, imageUrls), SetOptions.merge())
+            batch.set(
+                doc,
+                ProductFirestoreMappers.toMap(product, imageUrls, tenantId),
+                SetOptions.merge()
+            )
         }
         batch.commit().await()
     }

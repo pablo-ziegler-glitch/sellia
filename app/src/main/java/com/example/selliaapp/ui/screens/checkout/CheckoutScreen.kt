@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -82,6 +84,11 @@ fun CheckoutScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var isProcessing by remember { mutableStateOf(false) }
+    var customerDiscountInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(state.customerDiscountPercent) {
+        customerDiscountInput = if (state.customerDiscountPercent == 0) "" else state.customerDiscountPercent.toString()
+    }
 
     Scaffold(
         topBar = {
@@ -172,29 +179,46 @@ fun CheckoutScreen(
                         }
                     }
                     item {
+                        if (!state.selectedCustomerName.isNullOrBlank()) {
+                            Card(elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Text("Descuento por cliente", style = MaterialTheme.typography.titleMedium)
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = customerDiscountInput,
+                                        onValueChange = { value ->
+                                            val sanitized = value.filter { it.isDigit() }.take(3)
+                                            customerDiscountInput = sanitized
+                                            val percent = sanitized.toIntOrNull()?.coerceIn(0, 100) ?: 0
+                                            vm.setCustomerDiscountPercent(percent)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("Porcentaje de descuento") },
+                                        placeholder = { Text("Ej: 10") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = "Definí el descuento a discreción para este cliente.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+                    item {
                         Card(elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
                             Column(Modifier.padding(16.dp)) {
                                 Text("Detalle del cobro", style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(8.dp))
                                 ResumenCheckoutFila("Subtotal", moneda.format(state.subtotal))
-                                if (state.promoDiscountAmount > 0) {
-                                    ResumenCheckoutFila(
-                                        etiqueta = "Promo 3x2",
-                                        valor = "-${moneda.format(state.promoDiscountAmount)}",
-                                        colorValor = Color(0xFF2E7D32)
-                                    )
-                                }
                                 if (state.customerDiscountPercent > 0) {
                                     ResumenCheckoutFila(
                                         etiqueta = "Descuento cliente (${state.customerDiscountPercent}%)",
                                         valor = "-${moneda.format(state.customerDiscountAmount)}",
-                                        colorValor = Color(0xFF2E7D32)
-                                    )
-                                }
-                                if (state.discountPercent > 0) {
-                                    ResumenCheckoutFila(
-                                        etiqueta = "Descuento manual (${state.discountPercent}%)",
-                                        valor = "-${moneda.format(state.manualDiscountAmount)}",
                                         colorValor = Color(0xFF2E7D32)
                                     )
                                 }

@@ -2,6 +2,7 @@ package com.example.selliaapp.data.local.converters
 
 
 import androidx.room.TypeConverter
+import com.example.selliaapp.data.model.InvoiceStatus
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.time.Instant
@@ -56,4 +57,13 @@ object Converters {
         val type = object : TypeToken<List<String>>() {}.type
         return gson.fromJson(value, type)
     }
+
+    // ----- InvoiceStatus -----
+    @TypeConverter
+    fun invoiceStatusToString(status: InvoiceStatus?): String? =
+        status?.name
+
+    @TypeConverter
+    fun stringToInvoiceStatus(value: String?): InvoiceStatus =
+        value?.let { runCatching { InvoiceStatus.valueOf(it) }.getOrNull() } ?: InvoiceStatus.EMITIDA
 }

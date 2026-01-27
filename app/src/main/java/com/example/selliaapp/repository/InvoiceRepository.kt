@@ -44,6 +44,8 @@ interface InvoiceRepository {
     suspend fun sumThisMonth(): Double
 
     suspend fun salesLastDays(dias: Int): List<DailySalesPoint>
-}
 
+    // Cancelación de ventas
+    suspend fun cancelInvoice(id: Long, reason: String)
+}
 

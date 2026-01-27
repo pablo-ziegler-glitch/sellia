@@ -1,10 +1,12 @@
 package com.example.selliaapp.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.repository.MarketingSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class MarketingConfigViewModel @Inject constructor(
@@ -13,6 +15,8 @@ class MarketingConfigViewModel @Inject constructor(
     val settings = repository.settings
 
     fun updateSettings(updated: MarketingSettings) {
-        repository.updateSettings(updated)
+        viewModelScope.launch {
+            repository.updateSettings(updated)
+        }
     }
 }

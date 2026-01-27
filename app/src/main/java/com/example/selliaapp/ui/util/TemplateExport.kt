@@ -2,11 +2,12 @@ package com.example.selliaapp.ui.util
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 
-fun exportTemplateToDownloads(
+fun exportContentToDownloads(
     context: Context,
     fileName: String,
     mimeType: String,
@@ -33,4 +34,28 @@ fun exportTemplateToDownloads(
     }
 
     return uri
+}
+
+fun exportTemplateToDownloads(
+    context: Context,
+    fileName: String,
+    mimeType: String,
+    content: String
+): Uri? = exportContentToDownloads(context, fileName, mimeType, content)
+
+fun shareExportedFile(
+    context: Context,
+    uri: Uri,
+    mimeType: String,
+    title: String
+) {
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooser = Intent.createChooser(shareIntent, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching {
+        context.startActivity(chooser)
+    }
 }

@@ -10,6 +10,7 @@ import androidx.room.Transaction
 import com.example.selliaapp.data.local.projections.SumByBucket
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
+import com.example.selliaapp.data.model.InvoiceStatus
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -104,6 +105,20 @@ interface InvoiceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItems(items: List<InvoiceItem>)
 
+    @Transaction
+    suspend fun insertInvoiceWithItems(invoice: Invoice, items: List<InvoiceItem>) {
+        val invoiceId = if (invoice.id != 0L) {
+            insertInvoice(invoice)
+            invoice.id
+        } else {
+            insertInvoice(invoice)
+        }
+        if (items.isNotEmpty()) {
+            val normalized = items.map { it.copy(invoiceId = invoiceId) }
+            insertItems(normalized)
+        }
+    }
+
     // ----------------------------
     // Lecturas
     // ----------------------------
@@ -130,6 +145,20 @@ interface InvoiceDao {
         LIMIT 1
     """)
     suspend fun getInvoiceWithItemsById(id: Long): InvoiceWithItems?
+
+    @Query("""
+        UPDATE invoices
+        SET status = :status,
+            canceledAt = :canceledAt,
+            canceledReason = :canceledReason
+        WHERE id = :id
+    """)
+    suspend fun updateStatus(
+        id: Long,
+        status: InvoiceStatus,
+        canceledAt: Long?,
+        canceledReason: String?
+    ): Int
 
     // ----------------------------
     // Sumatorias
@@ -168,7 +197,6 @@ interface InvoiceDao {
 
 
 }
-
 
 
 
