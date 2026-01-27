@@ -45,7 +45,9 @@ import com.example.selliaapp.data.csv.CustomerCsvImporter
 import com.example.selliaapp.data.csv.ProductImportTemplate
 import com.example.selliaapp.data.csv.UserCsvImporter
 import com.example.selliaapp.repository.ProductRepository
+import com.example.selliaapp.ui.util.exportContentToDownloads
 import com.example.selliaapp.ui.util.exportTemplateToDownloads
+import com.example.selliaapp.ui.util.shareExportedFile
 import com.example.selliaapp.viewmodel.BulkDataViewModel
 import com.example.selliaapp.viewmodel.StockImportViewModel
 import kotlinx.coroutines.launch
@@ -56,7 +58,8 @@ fun BulkDataScreen(
     onBack: () -> Unit,
     onManageProducts: () -> Unit,
     onManageCustomers: () -> Unit,
-    onManageUsers: () -> Unit
+    onManageUsers: () -> Unit,
+    canManageUsers: Boolean
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -77,6 +80,36 @@ fun BulkDataScreen(
                 val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (idx != -1 && cursor.moveToFirst()) cursor.getString(idx) else null
             }
+    }
+
+    fun handleExport(
+        result: Result<BulkDataViewModel.ExportPayload>,
+        successLabel: String
+    ) {
+        result.fold(
+            onSuccess = { payload ->
+                val uri = exportContentToDownloads(
+                    context = context,
+                    fileName = payload.fileName,
+                    mimeType = payload.mimeType,
+                    content = payload.content
+                )
+                if (uri != null) {
+                    shareExportedFile(
+                        context = context,
+                        uri = uri,
+                        mimeType = payload.mimeType,
+                        title = "Compartir $successLabel"
+                    )
+                    showMessage("$successLabel exportados en Descargas.")
+                } else {
+                    showMessage("No se pudo exportar $successLabel.")
+                }
+            },
+            onFailure = {
+                showMessage("No se pudo exportar $successLabel.")
+            }
+        )
     }
 
     val productPicker = rememberImportLauncher(context) { uri ->
@@ -101,6 +134,22 @@ fun BulkDataScreen(
         val fileName = queryDisplayName(uri)
         bulkViewModel.importUsers(context, uri) { result ->
             showMessage(result.toUserMessage(fileName))
+        }
+    }
+
+    val totalPicker = rememberImportLauncher(context) { uri ->
+        bulkViewModel.importAll(context, uri) { result ->
+            result.fold(
+                onSuccess = { summary ->
+                    showMessage(summary.message)
+                    if (summary.errors.isNotEmpty()) {
+                        showMessage("Importación con errores: ${summary.errors.first()}")
+                    }
+                },
+                onFailure = {
+                    showMessage("No se pudo importar la exportación total.")
+                }
+            )
         }
     }
 
@@ -141,6 +190,11 @@ fun BulkDataScreen(
                         else "No se pudo guardar la plantilla."
                     )
                 },
+                onExport = {
+                    bulkViewModel.exportProducts { result ->
+                        handleExport(result, "productos")
+                    }
+                },
                 onImport = {
                     productPicker.launch(
                         arrayOf(
@@ -168,6 +222,11 @@ fun BulkDataScreen(
                         if (uri != null) "Plantilla guardada en Descargas."
                         else "No se pudo guardar la plantilla."
                     )
+                },
+                onExport = {
+                    bulkViewModel.exportCustomers { result ->
+                        handleExport(result, "clientes")
+                    }
                 },
                 onImport = {
                     customerPicker.launch(
@@ -206,6 +265,46 @@ fun BulkDataScreen(
                             "application/vnd.google-apps.spreadsheet"
                         )
                     )
+                },
+                enabled = canManageUsers,
+                disabledMessage = "Tu rol no tiene permiso para gestionar usuarios."
+            )
+
+            BulkSectionCard(
+                title = "Ventas",
+                description = "Exportá tus ventas con detalle de productos.",
+                onExport = {
+                    bulkViewModel.exportSales { result ->
+                        handleExport(result, "ventas")
+                    }
+                }
+            )
+
+            BulkSectionCard(
+                title = "Gastos",
+                description = "Exportá los gastos registrados para análisis externo.",
+                onExport = {
+                    bulkViewModel.exportExpenses { result ->
+                        handleExport(result, "gastos")
+                    }
+                }
+            )
+
+            BulkSectionCard(
+                title = "Exportación total",
+                description = "Generá un CSV único con productos, clientes, ventas y gastos.",
+                onExport = {
+                    bulkViewModel.exportAll { result ->
+                        handleExport(result, "exportación total")
+                    }
+                },
+                onImport = {
+                    totalPicker.launch(
+                        arrayOf(
+                            "text/*",
+                            "text/csv"
+                        )
+                    )
                 }
             )
         }
@@ -218,7 +317,9 @@ private fun BulkSectionCard(
     description: String,
     onManage: () -> Unit,
     onDownloadTemplate: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    enabled: Boolean = true,
+    disabledMessage: String? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -236,20 +337,27 @@ private fun BulkSectionCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDownloadTemplate) {
+                TextButton(onClick = onDownloadTemplate, enabled = enabled) {
                     Icon(Icons.Default.FileDownload, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Plantilla")
                 }
-                TextButton(onClick = onImport) {
+                TextButton(onClick = onImport, enabled = enabled) {
                     Icon(Icons.Default.UploadFile, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Importar")
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onManage) {
+                TextButton(onClick = onManage, enabled = enabled) {
                     Text("Gestionar")
                 }
+            }
+            if (!enabled) {
+                Text(
+                    disabledMessage.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

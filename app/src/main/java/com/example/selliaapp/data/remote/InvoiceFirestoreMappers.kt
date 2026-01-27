@@ -9,8 +9,14 @@ import com.google.firebase.firestore.DocumentSnapshot
  * Mappers para representar facturas en Firestore.
  */
 object InvoiceFirestoreMappers {
-    fun toMap(invoice: Invoice, number: String, items: List<InvoiceItem>): Map<String, Any?> = mapOf(
+    fun toMap(
+        invoice: Invoice,
+        number: String,
+        items: List<InvoiceItem>,
+        tenantId: String
+    ): Map<String, Any?> = mapOf(
         "id" to invoice.id,
+        "tenantId" to tenantId,
         "number" to number,
         "dateMillis" to invoice.dateMillis,
         "customerId" to invoice.customerId,

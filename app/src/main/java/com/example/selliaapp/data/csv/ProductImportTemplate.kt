@@ -11,5 +11,5 @@ object ProductImportTemplate {
 
     fun templateFileName(): String = "plantilla_productos.csv"
 
-    fun templateMimeType(): String = "application/vnd.ms-excel"
+    fun templateMimeType(): String = "text/csv"
 }

@@ -10,6 +10,10 @@ package com.example.selliaapp.di
 
 // Hilt
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -33,11 +37,13 @@ import com.example.selliaapp.data.dao.PricingFixedCostDao
 import com.example.selliaapp.data.dao.PricingMlFixedCostTierDao
 import com.example.selliaapp.data.dao.PricingMlShippingTierDao
 import com.example.selliaapp.data.dao.PricingSettingsDao
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
@@ -47,15 +53,19 @@ import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.UserRepository
+import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.auth.FirebaseAuth
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
@@ -151,6 +161,7 @@ object AppModule {
         providerDao: ProviderDao,
         pricingConfigRepository: PricingConfigRepository,
         firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
         // [NUEVO] Qualifier global (CoroutinesModule)
         @IoDispatcher io: CoroutineDispatcher
     ): ProductRepository = ProductRepository(
@@ -161,6 +172,7 @@ object AppModule {
         providerDao = providerDao,
         pricingConfigRepository = pricingConfigRepository,
         firestore = firestore,
+        tenantProvider = tenantProvider,
         io = io
     )
 
@@ -185,6 +197,18 @@ object AppModule {
     @Provides @Singleton fun provideCustomerRepository(dao: CustomerDao): CustomerRepository = CustomerRepository(dao)
     @Provides @Singleton fun provideUserRepository(dao: UserDao): UserRepository = UserRepository(dao)
 
+    @Provides
+    @Singleton
+    fun provideAccessControlRepository(
+        userDao: UserDao,
+        auth: FirebaseAuth,
+        @IoDispatcher io: CoroutineDispatcher
+    ): AccessControlRepository = AccessControlRepositoryImpl(
+        userDao = userDao,
+        auth = auth,
+        io = io
+    )
+
     /**
      * ⚠️ Baseline actual (04/09/2025): ReportsRepository SOLO con InvoiceDao.
      */
@@ -194,7 +218,22 @@ object AppModule {
 
     @Provides @Singleton fun provideProviderRepository(dao: ProviderDao): ProviderRepository = ProviderRepository(dao)
     @Provides @Singleton fun provideProviderInvoiceRepository(dao: ProviderInvoiceDao): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
-    @Provides @Singleton fun provideMarketingConfigRepository(): MarketingConfigRepository = MarketingConfigRepository()
+
+    @Provides
+    @Singleton
+    fun provideMarketingConfigDataStore(
+        @ApplicationContext context: Context,
+        @IoDispatcher ioDispatcher: CoroutineDispatcher
+    ): DataStore<Preferences> = PreferenceDataStoreFactory.create(
+        scope = CoroutineScope(SupervisorJob() + ioDispatcher),
+        produceFile = { context.preferencesDataStoreFile("marketing_config.preferences_pb") }
+    )
+
+    @Provides
+    @Singleton
+    fun provideMarketingConfigRepository(
+        dataStore: DataStore<Preferences>
+    ): MarketingConfigRepository = MarketingConfigRepository(dataStore)
 
     @Provides
     @Singleton
@@ -230,6 +269,10 @@ object AppModule {
     //@Provides
     //@Singleton
     //fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
+
+    @Provides
+    @Singleton
+    fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
     @Qualifier
     @Retention(AnnotationRetention.BINARY)

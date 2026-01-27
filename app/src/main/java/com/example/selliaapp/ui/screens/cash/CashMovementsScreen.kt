@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,6 +38,7 @@ fun CashMovementsScreen(
     vm: CashViewModel,
     onBack: () -> Unit
 ) {
+    val state by vm.state.collectAsStateWithLifecycle()
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf(MovementTypeUi.INCOME) }
@@ -66,7 +68,8 @@ fun CashMovementsScreen(
                     val selected = type == selectedType
                     OutlinedButton(
                         onClick = { selectedType = type },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        enabled = state.canRegisterMovement
                     ) {
                         Text(type.label)
                     }
@@ -77,13 +80,15 @@ fun CashMovementsScreen(
                 onValueChange = { amount = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Monto") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = state.canRegisterMovement
             )
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Nota (opcional)") }
+                label = { Text("Nota (opcional)") },
+                enabled = state.canRegisterMovement
             )
             Spacer(Modifier.height(8.dp))
             Button(
@@ -96,9 +101,17 @@ fun CashMovementsScreen(
                     }
                     onBack()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.canRegisterMovement
             ) {
                 Text("Guardar movimiento")
+            }
+            if (!state.canRegisterMovement) {
+                Text(
+                    "Tu perfil no tiene permiso para registrar movimientos.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

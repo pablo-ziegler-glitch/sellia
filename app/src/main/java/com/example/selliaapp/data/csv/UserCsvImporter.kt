@@ -41,5 +41,5 @@ object UserCsvImporter {
 
     fun templateFileName(): String = "plantilla_usuarios.csv"
 
-    fun templateMimeType(): String = "application/vnd.ms-excel"
+    fun templateMimeType(): String = "text/csv"
 }

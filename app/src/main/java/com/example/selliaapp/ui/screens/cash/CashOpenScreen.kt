@@ -19,13 +19,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,6 +35,7 @@ fun CashOpenScreen(
     vm: CashViewModel,
     onBack: () -> Unit
 ) {
+    val state by vm.state.collectAsStateWithLifecycle()
     var openingAmount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
 
@@ -62,13 +64,15 @@ fun CashOpenScreen(
                 onValueChange = { openingAmount = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("0") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = state.canOpenCash
             )
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Nota (opcional)") }
+                placeholder = { Text("Nota (opcional)") },
+                enabled = state.canOpenCash
             )
             Spacer(Modifier.height(8.dp))
             Button(
@@ -79,9 +83,17 @@ fun CashOpenScreen(
                         onBack()
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.canOpenCash
             ) {
                 Text("Confirmar apertura")
+            }
+            if (!state.canOpenCash) {
+                Text(
+                    "Tu perfil no tiene permiso para abrir caja.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

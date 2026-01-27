@@ -129,6 +129,7 @@ dependencies {
     implementation(libs.androidx.paging.common.android)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.storage)
+    implementation(libs.androidx.datastore.preferences)
     implementation(libs.firebase.crashlytics.buildtools)
     implementation(libs.junit.junit)
     implementation(libs.androidx.viewbinding)

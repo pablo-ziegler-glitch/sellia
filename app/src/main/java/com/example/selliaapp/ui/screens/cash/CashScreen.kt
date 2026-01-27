@@ -36,7 +36,8 @@ fun CashScreen(
     onOpen: () -> Unit,
     onAudit: () -> Unit,
     onMovements: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onReport: () -> Unit
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
@@ -62,8 +63,19 @@ fun CashScreen(
                         "Abrí la caja para registrar efectivo y movimientos.",
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = onOpen,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = state.canOpenCash
+                    ) {
                         Text("Abrir caja")
+                    }
+                    if (!state.canOpenCash) {
+                        Text(
+                            "Tu perfil no tiene permiso para abrir caja.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -92,16 +104,46 @@ fun CashScreen(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onAudit, modifier = Modifier.weight(1f)) {
-                Text("Arqueo")
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = onAudit,
+                    modifier = Modifier.weight(1f),
+                    enabled = state.canAuditCash
+                ) {
+                    Text("Arqueo")
+                }
+                OutlinedButton(
+                    onClick = onMovements,
+                    modifier = Modifier.weight(1f),
+                    enabled = state.canRegisterMovement
+                ) {
+                    Text("Movimiento")
+                }
             }
-            OutlinedButton(onClick = onMovements, modifier = Modifier.weight(1f)) {
-                Text("Movimiento")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = onReport,
+                    modifier = Modifier.weight(1f),
+                    enabled = state.canViewCashReport
+                ) {
+                    Text("Reporte")
+                }
+                Button(
+                    onClick = onClose,
+                    modifier = Modifier.weight(1f),
+                    enabled = state.canCloseCash
+                ) {
+                    Text("Cerrar caja")
+                }
             }
-            Button(onClick = onClose, modifier = Modifier.weight(1f)) {
-                Text("Cerrar caja")
-            }
+        }
+        if (!state.canAuditCash || !state.canRegisterMovement || !state.canViewCashReport || !state.canCloseCash) {
+            Text(
+                "Algunas acciones están restringidas por tu rol.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {

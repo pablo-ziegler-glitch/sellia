@@ -90,6 +90,21 @@ Ejecutar los tests del módulo app:
 ./gradlew test
 ```
 
+## 📤 Exportación CSV (productos, clientes, ventas y gastos)
+Desde la pantalla **Cargas masivas** podés generar archivos CSV con los datos actuales:
+1. Abrí **Configuración → Cargas masivas**.
+2. Elegí **Exportar** en la tarjeta de **Productos**, **Clientes**, **Ventas** o **Gastos**.
+3. El archivo se guarda en **Descargas** y se abre el panel para compartirlo.
+
+Los CSV exportados respetan los encabezados de las plantillas actuales para facilitar reimportaciones o análisis externos.
+
+### Exportación total e importación total
+También podés generar un CSV único con todas las entidades y reimportarlo:
+1. En **Cargas masivas**, usá **Exportar** en la tarjeta **Exportación total**.
+2. Para restaurar, usá **Importar** en esa misma tarjeta y seleccioná el CSV total.
+
+La importación total agrega registros de forma segura (no elimina datos existentes) y procesa productos, clientes, ventas y gastos.
+
 ## 🚀 Build de release
 Generar un APK de release (requiere configuración de signing):
 ```bash
