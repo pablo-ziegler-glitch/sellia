@@ -104,6 +104,20 @@ interface InvoiceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItems(items: List<InvoiceItem>)
 
+    @Transaction
+    suspend fun insertInvoiceWithItems(invoice: Invoice, items: List<InvoiceItem>) {
+        val invoiceId = if (invoice.id != 0L) {
+            insertInvoice(invoice)
+            invoice.id
+        } else {
+            insertInvoice(invoice)
+        }
+        if (items.isNotEmpty()) {
+            val normalized = items.map { it.copy(invoiceId = invoiceId) }
+            insertItems(normalized)
+        }
+    }
+
     // ----------------------------
     // Lecturas
     // ----------------------------
@@ -168,7 +182,6 @@ interface InvoiceDao {
 
 
 }
-
 
 
 
