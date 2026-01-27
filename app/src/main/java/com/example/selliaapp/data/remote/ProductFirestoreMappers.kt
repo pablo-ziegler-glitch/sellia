@@ -17,34 +17,39 @@ object ProductFirestoreMappers {
         val imageUrls: List<String>
     )
 
-    fun toMap(p: ProductEntity, imageUrls: List<String> = emptyList()): Map<String, Any?> {
-        val normalizedUrls = imageUrls.ifEmpty { p.imageUrls }
+    fun toMap(
+        product: ProductEntity,
+        imageUrls: List<String> = emptyList(),
+        tenantId: String
+    ): Map<String, Any?> {
+        val normalizedUrls = imageUrls.ifEmpty { product.imageUrls }
         return mapOf(
-            "id"           to p.id,               // también guardamos id para depuración (docId será el id string)
-            "code"         to p.code,
-            "barcode"      to p.barcode,
-            "name"         to p.name,
-            "purchasePrice" to p.purchasePrice,
-            "price"        to p.price,
-            "listPrice"    to p.listPrice,
-            "cashPrice"    to p.cashPrice,
-            "transferPrice" to p.transferPrice,
-            "transferNetPrice" to p.transferNetPrice,
-            "mlPrice"      to p.mlPrice,
-            "ml3cPrice"    to p.ml3cPrice,
-            "ml6cPrice"    to p.ml6cPrice,
-            "autoPricing"  to p.autoPricing,
-            "quantity"     to p.quantity,
-            "description"  to p.description,
-            "imageUrl"     to (p.imageUrl ?: normalizedUrls.firstOrNull()),
+            "id"           to product.id,               // también guardamos id para depuración (docId será el id string)
+            "tenantId"     to tenantId,
+            "code"         to product.code,
+            "barcode"      to product.barcode,
+            "name"         to product.name,
+            "purchasePrice" to product.purchasePrice,
+            "price"        to product.price,
+            "listPrice"    to product.listPrice,
+            "cashPrice"    to product.cashPrice,
+            "transferPrice" to product.transferPrice,
+            "transferNetPrice" to product.transferNetPrice,
+            "mlPrice"      to product.mlPrice,
+            "ml3cPrice"    to product.ml3cPrice,
+            "ml6cPrice"    to product.ml6cPrice,
+            "autoPricing"  to product.autoPricing,
+            "quantity"     to product.quantity,
+            "description"  to product.description,
+            "imageUrl"     to (product.imageUrl ?: normalizedUrls.firstOrNull()),
             "imageUrls"    to normalizedUrls,
-            "categoryId"   to p.categoryId,
-            "providerId"   to p.providerId,
-            "providerName" to p.providerName,
-            "providerSku"  to p.providerSku,
-            "category"     to p.category,
-            "minStock"     to p.minStock,
-            "updatedAt"    to p.updatedAt.format(ISO_DATE)
+            "categoryId"   to product.categoryId,
+            "providerId"   to product.providerId,
+            "providerName" to product.providerName,
+            "providerSku"  to product.providerSku,
+            "category"     to product.category,
+            "minStock"     to product.minStock,
+            "updatedAt"    to product.updatedAt.format(ISO_DATE)
         )
     }
 

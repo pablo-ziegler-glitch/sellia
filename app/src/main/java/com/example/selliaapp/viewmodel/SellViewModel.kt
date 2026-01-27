@@ -10,7 +10,6 @@ import com.example.selliaapp.data.local.entity.CashMovementType
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.InvoiceRepository
-import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.ui.state.CartItemUi
 import com.example.selliaapp.ui.state.CustomerSummaryUi
 import com.example.selliaapp.ui.state.OrderType
@@ -32,29 +31,12 @@ import javax.inject.Inject
 class SellViewModel @Inject constructor(
     private val repo: IProductRepository,
     private val invoiceRepo: InvoiceRepository,
-    private val marketingConfigRepository: MarketingConfigRepository,
     private val cashRepository: CashRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SellUiState())
     val state: StateFlow<SellUiState> = _state.asStateFlow()
     private var customerSummaryJob: Job? = null
-
-    init {
-        viewModelScope.launch {
-            marketingConfigRepository.settings.collect { settings ->
-                _state.update { ui ->
-                    recalc(
-                        ui.copy(
-                            promo3x2Enabled = settings.promo3x2Enabled,
-                            promo3x2MinQuantity = settings.promo3x2MinQuantity,
-                            promo3x2MinSubtotal = settings.promo3x2MinSubtotal
-                        )
-                    )
-                }
-            }
-        }
-    }
 
     // ----- Escaneo: helper de resultado -----
     data class ScanResult(val foundId: Int?, val prefillBarcode: String)
@@ -186,22 +168,13 @@ class SellViewModel @Inject constructor(
     private fun recalc(base: SellUiState, nuevosItems: List<CartItemUi>? = null): SellUiState {
         val items = nuevosItems ?: base.items
         val subtotal = items.sumOf { it.unitPrice * it.qty }
-        val promoDiscount = if (base.promo3x2Enabled && subtotal >= base.promo3x2MinSubtotal) {
-            val minQty = base.promo3x2MinQuantity.coerceAtLeast(3)
-            items.sumOf { item ->
-                val eligible = if (item.qty >= minQty) item.qty / 3 else 0
-                eligible * item.unitPrice
-            }
-        } else {
-            0.0
-        }
         val violations = items
             .filter { it.qty > it.maxStock }
             .associate { it.productId to it.maxStock }
-        val baseAfterPromo = (subtotal - promoDiscount).coerceAtLeast(0.0)
-        val customerDiscount = baseAfterPromo * base.customerDiscountPercent / 100.0
-        val manualDiscount = baseAfterPromo * base.discountPercent / 100.0
-        val totalDiscount = promoDiscount + customerDiscount + manualDiscount
+        val baseAfterDiscounts = subtotal.coerceAtLeast(0.0)
+        val customerDiscount = baseAfterDiscounts * base.customerDiscountPercent / 100.0
+        val manualDiscount = baseAfterDiscounts * base.discountPercent / 100.0
+        val totalDiscount = customerDiscount + manualDiscount
         val baseConDescuento = (subtotal - totalDiscount).coerceAtLeast(0.0)
         val recargo = baseConDescuento * base.surchargePercent / 100.0
         val total = baseConDescuento + recargo
@@ -212,7 +185,6 @@ class SellViewModel @Inject constructor(
             discountAmount = totalDiscount,
             manualDiscountAmount = manualDiscount,
             customerDiscountAmount = customerDiscount,
-            promoDiscountAmount = promoDiscount,
             surchargeAmount = recargo,
             total = total,
             stockViolations = violations
@@ -288,7 +260,6 @@ class SellViewModel @Inject constructor(
                     val totalSpent = invoices.sumOf { it.invoice.total }
                     val purchaseCount = invoices.size
                     val lastPurchaseMillis = invoices.maxOfOrNull { it.invoice.dateMillis }
-                    val discountPercent = calculateCustomerDiscountPercent(totalSpent, purchaseCount)
                     _state.update { ui ->
                         recalc(
                             ui.copy(
@@ -296,12 +267,18 @@ class SellViewModel @Inject constructor(
                                     totalSpent = totalSpent,
                                     purchaseCount = purchaseCount,
                                     lastPurchaseMillis = lastPurchaseMillis
-                                ),
-                                customerDiscountPercent = discountPercent
+                                )
                             )
                         )
                     }
                 }
+        }
+    }
+
+    fun setCustomerDiscountPercent(percent: Int) {
+        _state.update { ui ->
+            val sanitized = percent.coerceIn(0, 100)
+            recalc(ui.copy(customerDiscountPercent = sanitized))
         }
     }
 
@@ -391,12 +368,3 @@ data class CheckoutResult(
     val surchargePercent: Int,
     val notes: String
 )
-
-private fun calculateCustomerDiscountPercent(totalSpent: Double, purchaseCount: Int): Int {
-    return when {
-        totalSpent >= 150000 || purchaseCount >= 12 -> 10
-        totalSpent >= 80000 || purchaseCount >= 6 -> 5
-        totalSpent >= 40000 || purchaseCount >= 3 -> 3
-        else -> 0
-    }
-}

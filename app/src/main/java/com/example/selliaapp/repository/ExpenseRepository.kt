@@ -5,6 +5,7 @@ import com.example.selliaapp.data.dao.ExpenseRecordDao
 import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
+import com.example.selliaapp.data.csv.ExpenseCsvImporter
 import com.example.selliaapp.data.model.CashflowMonth
 import com.example.selliaapp.data.model.ExpenseCategoryBudget
 import com.example.selliaapp.data.model.ExpenseCategoryComparison
@@ -39,6 +40,27 @@ class ExpenseRepository @Inject constructor(
 
     suspend fun upsertRecord(r: ExpenseRecord) = rDao.upsert(r)
     suspend fun deleteRecord(r: ExpenseRecord) = rDao.delete(r)
+
+    suspend fun getAllRecordsOnce(): List<ExpenseRecord> = rDao.getAllOnce()
+
+    suspend fun importRecordsFromTable(table: List<List<String>>): com.example.selliaapp.data.model.ImportResult {
+        val rows = ExpenseCsvImporter.parseTable(table)
+        if (rows.isEmpty()) {
+            return com.example.selliaapp.data.model.ImportResult(0, 0, listOf("El archivo no contiene filas válidas."))
+        }
+        var inserted = 0
+        val errors = mutableListOf<String>()
+        val records = ExpenseCsvImporter.toRecords(rows)
+        records.forEachIndexed { idx, record ->
+            try {
+                rDao.upsert(record)
+                inserted++
+            } catch (t: Throwable) {
+                errors += "L${idx + 2}: ${t.message ?: t::class.java.simpleName}"
+            }
+        }
+        return com.example.selliaapp.data.model.ImportResult(inserted, 0, errors)
+    }
 
     // Presupuestos por categoría
     fun observeBudgets(month: Int, year: Int): Flow<List<ExpenseCategoryBudget>> =
