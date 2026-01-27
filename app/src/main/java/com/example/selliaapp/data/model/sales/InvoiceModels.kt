@@ -8,7 +8,8 @@ data class InvoiceSummary(
     val number: String,
     val customerName: String,
     val date: LocalDate,
-    val total: Double
+    val total: Double,
+    val syncStatus: SyncStatus = SyncStatus.SYNCED
 )
 
 // [NUEVO] Item del detalle
@@ -29,5 +30,12 @@ data class InvoiceDetail(
     val date: LocalDate,
     val total: Double,
     val items: List<InvoiceItemRow>,
-    val notes: String? = null
+    val notes: String? = null,
+    val syncStatus: SyncStatus = SyncStatus.SYNCED
 )
+
+enum class SyncStatus {
+    SYNCED,
+    PENDING,
+    ERROR
+}

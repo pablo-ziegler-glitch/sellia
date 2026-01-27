@@ -20,6 +20,7 @@ import com.example.selliaapp.data.model.sales.InvoiceDraft
 import com.example.selliaapp.data.model.sales.InvoiceItemRow
 import com.example.selliaapp.data.model.sales.InvoiceResult
 import com.example.selliaapp.data.model.sales.InvoiceSummary
+import com.example.selliaapp.data.model.sales.SyncStatus
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
 import com.example.selliaapp.di.IoDispatcher
@@ -29,6 +30,7 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -276,7 +278,10 @@ class InvoiceRepositoryImpl @Inject constructor(
          invoiceDao.observeInvoicesWithItems()
 
      override suspend fun getInvoiceDetail(id: Long): InvoiceDetail? = withContext(io) {
-         invoiceDao.getInvoiceWithItemsById(id)?.let { mapToDetail(it) }
+         invoiceDao.getInvoiceWithItemsById(id)?.let { relation ->
+             val outbox = syncOutboxDao.getByTypeAndId(SyncEntityType.INVOICE.storageKey, id)
+             mapToDetail(relation, outbox)
+         }
      }
 
      // ----------------------------
@@ -333,7 +338,7 @@ class InvoiceRepositoryImpl @Inject constructor(
      // ----------------------------
      // Mappers
      // ----------------------------
-     private fun mapToSummary(rel: InvoiceWithItems): InvoiceSummary {
+     private fun mapToSummary(rel: InvoiceWithItems, outbox: SyncOutboxEntity?): InvoiceSummary {
          val inv = rel.invoice
          val ld = Instant.ofEpochMilli(inv.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
          return InvoiceSummary(
@@ -341,11 +346,12 @@ class InvoiceRepositoryImpl @Inject constructor(
              number = formatNumber(inv.id),
              customerName = inv.customerName ?: "Consumidor Final",
              date = ld,
-             total = inv.total
+             total = inv.total,
+             syncStatus = syncStatusFor(outbox)
          )
      }
 
-    private fun mapToDetail(rel: InvoiceWithItems): InvoiceDetail {
+    private fun mapToDetail(rel: InvoiceWithItems, outbox: SyncOutboxEntity?): InvoiceDetail {
         val inv = rel.invoice
         val itemsUi = rel.items.map {
             InvoiceItemRow(
@@ -363,7 +369,8 @@ class InvoiceRepositoryImpl @Inject constructor(
             date = ld,
             total = inv.total,
             items = itemsUi,
-            notes = inv.paymentNotes
+            notes = inv.paymentNotes,
+            syncStatus = syncStatusFor(outbox)
         )
     }
 
@@ -401,11 +408,24 @@ class InvoiceRepositoryImpl @Inject constructor(
 
 
      override fun observeAll(): Flow<List<InvoiceSummary>> =
-         invoiceDao.observeInvoicesWithItems().map { list -> list.map { mapToSummary(it) } }
+         invoiceDao.observeInvoicesWithItems()
+             .map { list ->
+                 val outboxById = syncOutboxDao.getByType(SyncEntityType.INVOICE.storageKey)
+                     .associateBy { it.entityId }
+                 list.map { mapToSummary(it, outboxById[it.invoice.id]) }
+             }
+             .flowOn(io)
 
      // Búsqueda por cliente
      override fun observeInvoicesByCustomerQuery(q: String) =
          invoiceDao.observeInvoicesWithItemsByCustomerQuery(q)
+
+    private fun syncStatusFor(outbox: SyncOutboxEntity?): SyncStatus =
+        when {
+            outbox == null -> SyncStatus.SYNCED
+            outbox.lastError != null -> SyncStatus.ERROR
+            else -> SyncStatus.PENDING
+        }
 
 
 

@@ -21,6 +21,9 @@ interface SyncOutboxDao {
     @Query("SELECT * FROM sync_outbox WHERE entityType = :entityType ORDER BY createdAt ASC")
     suspend fun getByType(entityType: String): List<SyncOutboxEntity>
 
+    @Query("SELECT * FROM sync_outbox WHERE entityType = :entityType AND entityId = :entityId LIMIT 1")
+    suspend fun getByTypeAndId(entityType: String, entityId: Long): SyncOutboxEntity?
+
     @Query(
         "DELETE FROM sync_outbox WHERE entityType = :entityType AND entityId IN (:entityIds)"
     )
