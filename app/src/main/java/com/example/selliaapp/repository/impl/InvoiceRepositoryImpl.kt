@@ -14,6 +14,7 @@ import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
+import com.example.selliaapp.data.model.InvoiceStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.InvoiceDraft
@@ -269,6 +270,120 @@ class InvoiceRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun cancelInvoice(id: Long, reason: String) = withContext(io) {
+        val cleanReason = reason.trim()
+        require(cleanReason.isNotBlank()) { "Motivo de anulación requerido" }
+        val now = System.currentTimeMillis()
+        val touchedProducts = mutableSetOf<Int>()
+        var updatedRelation: InvoiceWithItems? = null
+        var didUpdate = false
+
+        db.withTransaction {
+            val relation = invoiceDao.getInvoiceWithItemsById(id) ?: error("Factura no encontrada (id=$id)")
+            if (relation.invoice.status != InvoiceStatus.EMITIDA) {
+                updatedRelation = relation
+                return@withTransaction
+            }
+
+            val updatedRows = invoiceDao.updateStatus(
+                id = id,
+                status = InvoiceStatus.ANULADA,
+                canceledAt = now,
+                canceledReason = cleanReason
+            )
+            require(updatedRows == 1) { "No se pudo actualizar la factura (id=$id)" }
+
+            val movementDao = db.stockMovementDao()
+            relation.items.forEach { item ->
+                val affected = productDao.increaseStockIfExists(item.productId, item.quantity)
+                require(affected == 1) { "Producto inexistente (id=${item.productId})" }
+                movementDao.insert(
+                    StockMovementEntity(
+                        productId = item.productId,
+                        delta = item.quantity,
+                        reason = StockMovementReasons.SALE_CANCEL,
+                        ts = Instant.ofEpochMilli(now),
+                        user = null
+                    )
+                )
+                touchedProducts += item.productId
+            }
+
+            syncOutboxDao.upsert(
+                SyncOutboxEntity(
+                    entityType = SyncEntityType.INVOICE.storageKey,
+                    entityId = id,
+                    createdAt = now
+                )
+            )
+            if (touchedProducts.isNotEmpty()) {
+                val entries = touchedProducts.map { productId ->
+                    SyncOutboxEntity(
+                        entityType = SyncEntityType.PRODUCT.storageKey,
+                        entityId = productId.toLong(),
+                        createdAt = now
+                    )
+                }
+                syncOutboxDao.upsertAll(entries)
+            }
+
+            updatedRelation = relation.copy(
+                invoice = relation.invoice.copy(
+                    status = InvoiceStatus.ANULADA,
+                    canceledAt = now,
+                    canceledReason = cleanReason
+                )
+            )
+            didUpdate = true
+        }
+
+        if (!didUpdate) return@withContext
+        val relation = updatedRelation ?: return@withContext
+
+        val productsToSync: List<ProductEntity> = if (touchedProducts.isEmpty()) {
+            emptyList()
+        } else {
+            productDao.getByIds(touchedProducts.toList())
+        }
+        val productIdsForOutbox = touchedProducts.map(Int::toLong)
+        try {
+            syncInvoiceWithFirestore(
+                relation.invoice,
+                formatNumber(relation.invoice.id),
+                relation.items,
+                productsToSync
+            )
+            syncOutboxDao.deleteByTypeAndIds(
+                SyncEntityType.INVOICE.storageKey,
+                listOf(relation.invoice.id)
+            )
+            if (productIdsForOutbox.isNotEmpty()) {
+                syncOutboxDao.deleteByTypeAndIds(
+                    SyncEntityType.PRODUCT.storageKey,
+                    productIdsForOutbox
+                )
+            }
+        } catch (t: Throwable) {
+            val errorMsg = extractErrorMessage(t)
+            val timestamp = System.currentTimeMillis()
+            syncOutboxDao.markAttempt(
+                SyncEntityType.INVOICE.storageKey,
+                listOf(relation.invoice.id),
+                timestamp,
+                errorMsg
+            )
+            if (productIdsForOutbox.isNotEmpty()) {
+                syncOutboxDao.markAttempt(
+                    SyncEntityType.PRODUCT.storageKey,
+                    productIdsForOutbox,
+                    timestamp,
+                    errorMsg
+                )
+            }
+            throw t
+        }
+    }
+
      // ----------------------------
      // Lecturas
      // ----------------------------
@@ -363,7 +478,10 @@ class InvoiceRepositoryImpl @Inject constructor(
             date = ld,
             total = inv.total,
             items = itemsUi,
-            notes = inv.paymentNotes
+            notes = inv.paymentNotes,
+            status = inv.status,
+            canceledAt = inv.canceledAt,
+            canceledReason = inv.canceledReason
         )
     }
 

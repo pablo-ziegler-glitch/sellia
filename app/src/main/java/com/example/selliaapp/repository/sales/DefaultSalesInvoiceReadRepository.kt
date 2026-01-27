@@ -59,7 +59,10 @@ class DefaultSalesInvoiceReadRepository @Inject constructor(
             date = millisToLocalDate(invoice.dateMillis),
             total = invoice.total,
             items = itemsUi,
-            notes = null
+            notes = invoice.paymentNotes,
+            status = invoice.status,
+            canceledAt = invoice.canceledAt,
+            canceledReason = invoice.canceledReason
         )
     }
 

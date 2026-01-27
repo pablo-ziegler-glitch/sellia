@@ -14,6 +14,7 @@ object StockMovementReasons {
     const val QUICK_ORDER_RECEIVED = "QUICK_ORDER_RECEIVED"
     const val SCAN_ADJUST = "SCAN_ADJUST"
     const val SALE = "SALE"
+    const val SALE_CANCEL = "SALE_CANCEL"
 
     /**
      * Devuelve una etiqueta legible para mostrar en la UI.
@@ -29,6 +30,7 @@ object StockMovementReasons {
         QUICK_ORDER_RECEIVED -> "Orden rápida recibida"
         SCAN_ADJUST -> "Ajuste por escaneo"
         SALE -> "Venta"
+        SALE_CANCEL -> "Anulación de venta"
         else -> code.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
     }
 }

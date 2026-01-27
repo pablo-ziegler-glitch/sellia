@@ -21,19 +21,30 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.InvoiceItemRow
+import com.example.selliaapp.data.model.InvoiceStatus
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
+import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailUiState
 import java.text.NumberFormat
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.ui.text.input.TextFieldValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,9 +52,12 @@ fun SalesInvoiceDetailScreen(
     vm: SalesInvoiceDetailViewModel,
     onBack: () -> Unit
 ) {
-    val detail by vm.state.collectAsState(initial = null)
+    val uiState by vm.state.collectAsState(initial = SalesInvoiceDetailUiState())
+    val detail = uiState.detail
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
     val dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+    var showCancelDialog by remember { mutableStateOf(false) }
+    var cancelReason by remember { mutableStateOf(TextFieldValue("")) }
 
     Scaffold(
         topBar = {
@@ -78,6 +92,23 @@ fun SalesInvoiceDetailScreen(
             item {
                 Header(d, currency, dateFmt)
             }
+            uiState.error?.let { error ->
+                item {
+                    Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            if (d.status == InvoiceStatus.EMITIDA) {
+                item {
+                    Button(
+                        onClick = { showCancelDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isCancelling
+                    ) {
+                        Text("Anular venta")
+                    }
+                }
+            }
             item { HorizontalDivider() }
             items(d.items) { item ->
                 ItemRow(item, currency)
@@ -98,6 +129,38 @@ fun SalesInvoiceDetailScreen(
             }
         }
     }
+
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelDialog = false },
+            title = { Text("Anular venta") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Esta acción revertirá el stock de los productos vendidos.")
+                    OutlinedTextField(
+                        value = cancelReason,
+                        onValueChange = { cancelReason = it },
+                        label = { Text("Motivo de anulación *") },
+                        singleLine = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCancelDialog = false
+                        vm.cancelInvoice(cancelReason.text)
+                        cancelReason = TextFieldValue("")
+                    },
+                    enabled = cancelReason.text.trim().isNotBlank() && !uiState.isCancelling
+                ) { Text("Confirmar anulación") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -111,7 +174,17 @@ private fun Header(
         Spacer(Modifier.height(4.dp))
         Text("Cliente: ${d.customerName}", style = MaterialTheme.typography.bodyLarge)
         Text("Fecha: ${d.date.format(dateFmt)}", style = MaterialTheme.typography.bodyMedium)
+        Text("Estado: ${d.status.label()}", style = MaterialTheme.typography.bodyMedium)
+        d.canceledReason?.takeIf { it.isNotBlank() }?.let { reason ->
+            Text("Motivo: $reason", style = MaterialTheme.typography.bodySmall)
+        }
     }
+}
+
+private fun InvoiceStatus.label(): String = when (this) {
+    InvoiceStatus.EMITIDA -> "Emitida"
+    InvoiceStatus.ANULADA -> "Anulada"
+    InvoiceStatus.DEVUELTA -> "Devuelta"
 }
 
 @Composable
