@@ -27,7 +27,14 @@ data class InvoiceDetail(
     val number: String,
     val customerName: String,
     val date: LocalDate,
+    val subtotal: Double,
+    val taxes: Double,
+    val discountPercent: Int,
+    val discountAmount: Double,
+    val surchargePercent: Int,
+    val surchargeAmount: Double,
     val total: Double,
+    val paymentMethod: String,
+    val paymentNotes: String?,
     val items: List<InvoiceItemRow>,
-    val notes: String? = null
 )

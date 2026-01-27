@@ -361,9 +361,16 @@ class InvoiceRepositoryImpl @Inject constructor(
             number = formatNumber(inv.id),
             customerName = inv.customerName ?: "Consumidor Final",
             date = ld,
+            subtotal = inv.subtotal,
+            taxes = inv.taxes,
+            discountPercent = inv.discountPercent,
+            discountAmount = inv.discountAmount,
+            surchargePercent = inv.surchargePercent,
+            surchargeAmount = inv.surchargeAmount,
             total = inv.total,
+            paymentMethod = inv.paymentMethod,
+            paymentNotes = inv.paymentNotes,
             items = itemsUi,
-            notes = inv.paymentNotes
         )
     }
 

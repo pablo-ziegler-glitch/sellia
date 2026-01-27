@@ -57,9 +57,16 @@ class DefaultSalesInvoiceReadRepository @Inject constructor(
             number = number,
             customerName = invoice.customerName ?: "Consumidor Final",
             date = millisToLocalDate(invoice.dateMillis),
+            subtotal = invoice.subtotal,
+            taxes = invoice.taxes,
+            discountPercent = invoice.discountPercent,
+            discountAmount = invoice.discountAmount,
+            surchargePercent = invoice.surchargePercent,
+            surchargeAmount = invoice.surchargeAmount,
             total = invoice.total,
-            items = itemsUi,
-            notes = null
+            paymentMethod = invoice.paymentMethod,
+            paymentNotes = invoice.paymentNotes,
+            items = itemsUi
         )
     }
 
