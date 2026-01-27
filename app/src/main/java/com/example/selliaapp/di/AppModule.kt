@@ -43,6 +43,7 @@ import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
@@ -52,8 +53,10 @@ import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.UserRepository
+import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.auth.FirebaseAuth
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -193,6 +196,18 @@ object AppModule {
     @Provides @Singleton fun provideCustomerRepository(dao: CustomerDao): CustomerRepository = CustomerRepository(dao)
     @Provides @Singleton fun provideUserRepository(dao: UserDao): UserRepository = UserRepository(dao)
 
+    @Provides
+    @Singleton
+    fun provideAccessControlRepository(
+        userDao: UserDao,
+        auth: FirebaseAuth,
+        @IoDispatcher io: CoroutineDispatcher
+    ): AccessControlRepository = AccessControlRepositoryImpl(
+        userDao = userDao,
+        auth = auth,
+        io = io
+    )
+
     /**
      * ⚠️ Baseline actual (04/09/2025): ReportsRepository SOLO con InvoiceDao.
      */
@@ -253,6 +268,10 @@ object AppModule {
     //@Provides
     //@Singleton
     //fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
+
+    @Provides
+    @Singleton
+    fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
     @Qualifier
     @Retention(AnnotationRetention.BINARY)

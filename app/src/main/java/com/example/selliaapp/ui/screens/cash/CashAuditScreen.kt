@@ -72,13 +72,15 @@ fun CashAuditScreen(
                 onValueChange = { counted = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Monto contado") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = state.canAuditCash
             )
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Nota (opcional)") }
+                label = { Text("Nota (opcional)") },
+                enabled = state.canAuditCash
             )
             Text(
                 "Diferencia: ${currency.format(difference)}",
@@ -90,9 +92,17 @@ fun CashAuditScreen(
                     vm.auditCash(countedValue, note.takeIf { it.isNotBlank() })
                     onBack()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.canAuditCash
             ) {
                 Text("Guardar arqueo")
+            }
+            if (!state.canAuditCash) {
+                Text(
+                    "Tu perfil no tiene permiso para registrar arqueos.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

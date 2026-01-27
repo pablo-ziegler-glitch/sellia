@@ -58,7 +58,8 @@ fun BulkDataScreen(
     onBack: () -> Unit,
     onManageProducts: () -> Unit,
     onManageCustomers: () -> Unit,
-    onManageUsers: () -> Unit
+    onManageUsers: () -> Unit,
+    canManageUsers: Boolean
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -264,7 +265,9 @@ fun BulkDataScreen(
                             "application/vnd.google-apps.spreadsheet"
                         )
                     )
-                }
+                },
+                enabled = canManageUsers,
+                disabledMessage = "Tu rol no tiene permiso para gestionar usuarios."
             )
 
             BulkSectionCard(
@@ -312,10 +315,11 @@ fun BulkDataScreen(
 private fun BulkSectionCard(
     title: String,
     description: String,
-    onManage: (() -> Unit)? = null,
-    onDownloadTemplate: (() -> Unit)? = null,
-    onExport: (() -> Unit)? = null,
-    onImport: (() -> Unit)? = null
+    onManage: () -> Unit,
+    onDownloadTemplate: () -> Unit,
+    onImport: () -> Unit,
+    enabled: Boolean = true,
+    disabledMessage: String? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -333,33 +337,27 @@ private fun BulkSectionCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (onDownloadTemplate != null) {
-                    TextButton(onClick = onDownloadTemplate) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Plantilla")
-                    }
+                TextButton(onClick = onDownloadTemplate, enabled = enabled) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Plantilla")
                 }
-                if (onExport != null) {
-                    TextButton(onClick = onExport) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Exportar")
-                    }
-                }
-                if (onImport != null) {
-                    TextButton(onClick = onImport) {
-                        Icon(Icons.Default.UploadFile, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Importar")
-                    }
+                TextButton(onClick = onImport, enabled = enabled) {
+                    Icon(Icons.Default.UploadFile, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Importar")
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                if (onManage != null) {
-                    TextButton(onClick = onManage) {
-                        Text("Gestionar")
-                    }
+                TextButton(onClick = onManage, enabled = enabled) {
+                    Text("Gestionar")
                 }
+            }
+            if (!enabled) {
+                Text(
+                    disabledMessage.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

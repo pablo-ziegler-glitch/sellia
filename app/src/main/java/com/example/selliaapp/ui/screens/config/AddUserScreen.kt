@@ -42,7 +42,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AddUserScreen(
     onSave: (name: String, email: String, role:String) -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    canManageUsers: Boolean
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -74,7 +75,8 @@ fun AddUserScreen(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Nombre completo") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = canManageUsers
                 )
 
                 Spacer(Modifier.height(16.dp))
@@ -83,7 +85,8 @@ fun AddUserScreen(
                     value = email,
                     onValueChange = { email = it },
                     label = { Text("Email") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = canManageUsers
                 )
 
                 Spacer(Modifier.height(16.dp))
@@ -92,7 +95,8 @@ fun AddUserScreen(
                     value = role,
                     onValueChange = { role = it },
                     label = { Text("Rol o perfil") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = canManageUsers
                 )
 
                 Spacer(Modifier.height(24.dp))
@@ -103,7 +107,17 @@ fun AddUserScreen(
                 ) {
                     TextButton(onClick = onCancel) { Text("Cancelar") }
                     Spacer(Modifier.width(8.dp))
-                    Button(onClick = { onSave(name, email, role) }) { Text("Guardar") }
+                    Button(onClick = { onSave(name, email, role) }, enabled = canManageUsers) {
+                        Text("Guardar")
+                    }
+                }
+                if (!canManageUsers) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Tu rol no tiene permiso para gestionar usuarios.",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
