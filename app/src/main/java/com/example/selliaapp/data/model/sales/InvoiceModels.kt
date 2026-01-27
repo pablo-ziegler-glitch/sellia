@@ -1,6 +1,7 @@
 package com.example.selliaapp.data.model.sales
 
 import java.time.LocalDate
+import com.example.selliaapp.data.model.InvoiceStatus
 
 // [NUEVO] Resumen para el listado
 data class InvoiceSummary(
@@ -37,4 +38,8 @@ data class InvoiceDetail(
     val paymentMethod: String,
     val paymentNotes: String?,
     val items: List<InvoiceItemRow>,
+    val notes: String? = null,
+    val status: InvoiceStatus = InvoiceStatus.EMITIDA,
+    val canceledAt: Long? = null,
+    val canceledReason: String? = null
 )

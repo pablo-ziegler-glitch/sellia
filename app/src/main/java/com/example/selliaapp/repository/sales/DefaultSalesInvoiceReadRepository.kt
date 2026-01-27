@@ -64,9 +64,11 @@ class DefaultSalesInvoiceReadRepository @Inject constructor(
             surchargePercent = invoice.surchargePercent,
             surchargeAmount = invoice.surchargeAmount,
             total = invoice.total,
-            paymentMethod = invoice.paymentMethod,
-            paymentNotes = invoice.paymentNotes,
-            items = itemsUi
+            items = itemsUi,
+            notes = invoice.paymentNotes,
+            status = invoice.status,
+            canceledAt = invoice.canceledAt,
+            canceledReason = invoice.canceledReason
         )
     }
 

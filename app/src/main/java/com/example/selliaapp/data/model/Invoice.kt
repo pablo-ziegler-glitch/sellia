@@ -33,5 +33,14 @@ data class Invoice(
     val surchargeAmount: Double,
     val total: Double,
     val paymentMethod: String,
-    val paymentNotes: String?
+    val paymentNotes: String?,
+    val status: InvoiceStatus = InvoiceStatus.EMITIDA,
+    val canceledAt: Long? = null,
+    val canceledReason: String? = null
 )
+
+enum class InvoiceStatus {
+    EMITIDA,
+    ANULADA,
+    DEVUELTA
+}
