@@ -75,13 +75,15 @@ fun CashCloseScreen(
                 onValueChange = { counted = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Monto final contado") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = state.canCloseCash
             )
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Nota (opcional)") }
+                label = { Text("Nota (opcional)") },
+                enabled = state.canCloseCash
             )
             Spacer(Modifier.height(8.dp))
             Button(
@@ -90,9 +92,17 @@ fun CashCloseScreen(
                     vm.closeCash(amount, note.takeIf { it.isNotBlank() })
                     onCloseSuccess()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.canCloseCash
             ) {
                 Text("Confirmar cierre")
+            }
+            if (!state.canCloseCash) {
+                Text(
+                    "Tu perfil no tiene permiso para cerrar caja.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Text(
                 "Exportar/Compartir resumen (próximamente)",

@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavHostController
@@ -47,6 +48,7 @@ import com.example.selliaapp.ui.screens.cash.CashAuditScreen
 import com.example.selliaapp.ui.screens.cash.CashCloseScreen
 import com.example.selliaapp.ui.screens.cash.CashMovementsScreen
 import com.example.selliaapp.ui.screens.cash.CashOpenScreen
+import com.example.selliaapp.ui.screens.cash.CashReportScreen
 import com.example.selliaapp.ui.screens.cash.CashScreen
 import com.example.selliaapp.ui.screens.manage.ManageCustomersScreen
 import com.example.selliaapp.ui.screens.manage.ManageProductsScreen
@@ -83,9 +85,11 @@ import com.example.selliaapp.viewmodel.SellViewModel
 import com.example.selliaapp.viewmodel.StockImportViewModel
 import com.example.selliaapp.viewmodel.UserViewModel
 import com.example.selliaapp.viewmodel.StockMovementsViewModel
+import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
+import com.example.selliaapp.domain.security.Permission
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -155,7 +159,8 @@ fun SelliaApp(
                     onOpen = { navController.navigate(Routes.CashOpen.route) },
                     onAudit = { navController.navigate(Routes.CashAudit.route) },
                     onMovements = { navController.navigate(Routes.CashMovements.route) },
-                    onClose = { navController.navigate(Routes.CashClose.route) }
+                    onClose = { navController.navigate(Routes.CashClose.route) },
+                    onReport = { navController.navigate(Routes.CashReport.route) }
                 )
             }
 
@@ -186,6 +191,11 @@ fun SelliaApp(
                         }
                     }
                 )
+            }
+
+            composable(Routes.CashReport.route) {
+                val cashVm: CashViewModel = hiltViewModel()
+                CashReportScreen(vm = cashVm, onBack = { navController.popBackStack() })
             }
 
             composable(Routes.More.route) {
@@ -527,11 +537,14 @@ fun SelliaApp(
             }
 
             composable(Routes.BulkData.route) {
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
                 BulkDataScreen(
                     onBack = { navController.popBackStack() },
                     onManageProducts = { navController.navigate(Routes.ManageProducts.route) },
                     onManageCustomers = { navController.navigate(Routes.ManageCustomers.route) },
-                    onManageUsers = { navController.navigate(Routes.AddUser.route) }
+                    onManageUsers = { navController.navigate(Routes.AddUser.route) },
+                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
                 )
             }
 
@@ -551,6 +564,8 @@ fun SelliaApp(
 
             // Alta de usuario desde Config
             composable(Routes.AddUser.route) {
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
                 AddUserScreen(
                     onSave = { name, email, role ->
                         if (name.isBlank() || email.isBlank()) {
@@ -560,7 +575,8 @@ fun SelliaApp(
                         userViewModel.addUser(name, email, role)
                         navController.popBackStack()
                     },
-                    onCancel = { navController.popBackStack() }
+                    onCancel = { navController.popBackStack() },
+                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
                 )
             }
 

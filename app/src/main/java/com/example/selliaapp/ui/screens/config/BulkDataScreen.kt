@@ -56,7 +56,8 @@ fun BulkDataScreen(
     onBack: () -> Unit,
     onManageProducts: () -> Unit,
     onManageCustomers: () -> Unit,
-    onManageUsers: () -> Unit
+    onManageUsers: () -> Unit,
+    canManageUsers: Boolean
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -206,7 +207,9 @@ fun BulkDataScreen(
                             "application/vnd.google-apps.spreadsheet"
                         )
                     )
-                }
+                },
+                enabled = canManageUsers,
+                disabledMessage = "Tu rol no tiene permiso para gestionar usuarios."
             )
         }
     }
@@ -218,7 +221,9 @@ private fun BulkSectionCard(
     description: String,
     onManage: () -> Unit,
     onDownloadTemplate: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    enabled: Boolean = true,
+    disabledMessage: String? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -236,20 +241,27 @@ private fun BulkSectionCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDownloadTemplate) {
+                TextButton(onClick = onDownloadTemplate, enabled = enabled) {
                     Icon(Icons.Default.FileDownload, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Plantilla")
                 }
-                TextButton(onClick = onImport) {
+                TextButton(onClick = onImport, enabled = enabled) {
                     Icon(Icons.Default.UploadFile, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Importar")
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onManage) {
+                TextButton(onClick = onManage, enabled = enabled) {
                     Text("Gestionar")
                 }
+            }
+            if (!enabled) {
+                Text(
+                    disabledMessage.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
