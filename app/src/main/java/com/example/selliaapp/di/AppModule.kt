@@ -33,6 +33,7 @@ import com.example.selliaapp.data.dao.PricingFixedCostDao
 import com.example.selliaapp.data.dao.PricingMlFixedCostTierDao
 import com.example.selliaapp.data.dao.PricingMlShippingTierDao
 import com.example.selliaapp.data.dao.PricingSettingsDao
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
@@ -150,6 +151,7 @@ object AppModule {
         providerDao: ProviderDao,
         pricingConfigRepository: PricingConfigRepository,
         firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
         // [NUEVO] Qualifier global (CoroutinesModule)
         @IoDispatcher io: CoroutineDispatcher
     ): ProductRepository = ProductRepository(
@@ -160,6 +162,7 @@ object AppModule {
         providerDao = providerDao,
         pricingConfigRepository = pricingConfigRepository,
         firestore = firestore,
+        tenantProvider = tenantProvider,
         io = io
     )
 

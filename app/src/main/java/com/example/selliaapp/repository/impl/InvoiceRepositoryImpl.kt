@@ -7,6 +7,7 @@ import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.model.stock.StockMovementReasons
@@ -45,11 +46,10 @@ class InvoiceRepositoryImpl @Inject constructor(
     private val productImageDao: ProductImageDao,
     private val customerDao: CustomerDao,
     private val firestore: FirebaseFirestore,
+    private val tenantProvider: TenantProvider,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : InvoiceRepository {
 
-    private val invoicesCollection = firestore.collection("invoices")
-    private val productsCollection = firestore.collection("products")
     private val syncOutboxDao = db.syncOutboxDao()
 
      // ----------------------------
@@ -379,9 +379,13 @@ class InvoiceRepositoryImpl @Inject constructor(
         items: List<InvoiceItem>,
         products: List<ProductEntity>
     ) {
+        val tenantId = tenantProvider.requireTenantId()
+        val invoicesCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("invoices")
         invoicesCollection
             .document(invoice.id.toString())
-            .set(InvoiceFirestoreMappers.toMap(invoice, number, items))
+            .set(InvoiceFirestoreMappers.toMap(invoice, number, items, tenantId))
             .await()
 
         if (products.isEmpty()) return
@@ -389,12 +393,19 @@ class InvoiceRepositoryImpl @Inject constructor(
         val imageUrlsByProductId = productImageDao.getByProductIds(products.map { it.id })
             .groupBy { it.productId }
             .mapValues { (_, items) -> items.sortedBy { it.position }.map { it.url } }
+        val productsCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("products")
         val batch = firestore.batch()
         products.forEach { product ->
             if (product.id == 0) return@forEach
             val doc = productsCollection.document(product.id.toString())
             val imageUrls = imageUrlsByProductId[product.id].orEmpty()
-            batch.set(doc, ProductFirestoreMappers.toMap(product, imageUrls), SetOptions.merge())
+            batch.set(
+                doc,
+                ProductFirestoreMappers.toMap(product, imageUrls, tenantId),
+                SetOptions.merge()
+            )
         }
         batch.commit().await()
     }

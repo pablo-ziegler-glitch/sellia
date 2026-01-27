@@ -2,6 +2,7 @@ package com.example.selliaapp.di
 
 import android.content.Context
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import dagger.Module
@@ -37,4 +38,9 @@ object FirebaseModule {
                 .build()
         }
     }
+
+    @Provides
+    @Singleton
+    fun provideFirebaseAuth(firebaseApp: FirebaseApp): FirebaseAuth =
+        FirebaseAuth.getInstance(firebaseApp)
 }

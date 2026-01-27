@@ -8,7 +8,7 @@ import androidx.compose.material3.Surface
 import androidx.navigation.compose.rememberNavController
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ProductRepository
-import com.example.selliaapp.ui.navigation.SelliaApp
+import com.example.selliaapp.ui.navigation.SelliaRoot
 import com.example.selliaapp.ui.theme.ValkirjaTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
 
             ValkirjaTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    SelliaApp(
+                    SelliaRoot(
                         navController = navController,
                         customerRepo = customerRepository
                     )
