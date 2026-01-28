@@ -44,6 +44,7 @@ import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.AccessControlRepository
+import com.example.selliaapp.repository.AuthOnboardingRepository
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
@@ -54,6 +55,7 @@ import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.UserRepository
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
+import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
@@ -206,6 +208,18 @@ object AppModule {
     ): AccessControlRepository = AccessControlRepositoryImpl(
         userDao = userDao,
         auth = auth,
+        io = io
+    )
+
+    @Provides
+    @Singleton
+    fun provideAuthOnboardingRepository(
+        auth: FirebaseAuth,
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): AuthOnboardingRepository = AuthOnboardingRepositoryImpl(
+        auth = auth,
+        firestore = firestore,
         io = io
     )
 
