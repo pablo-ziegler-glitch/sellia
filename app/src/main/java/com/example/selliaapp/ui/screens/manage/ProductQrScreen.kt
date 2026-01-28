@@ -42,11 +42,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
- import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
- import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
@@ -69,7 +70,9 @@ fun ProductQrScreen(
     marketingVm: MarketingConfigViewModel = hiltViewModel()
 ) {
     val products by vm.products.collectAsStateWithLifecycle(initialValue = emptyList())
-    val marketingSettings by marketingVm.settings.collectAsStateWithLifecycle()
+    val marketingSettings by marketingVm.settings.collectAsStateWithLifecycle(
+        initialValue = MarketingSettings()
+    )
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(setOf<Int>()) }

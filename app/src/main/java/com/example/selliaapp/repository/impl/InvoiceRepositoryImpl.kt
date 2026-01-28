@@ -491,6 +491,8 @@ class InvoiceRepositoryImpl @Inject constructor(
             total = inv.total,
             paymentMethod = inv.paymentMethod,
             paymentNotes = inv.paymentNotes,
+            status = inv.status,
+            canceledReason = inv.canceledReason,
             items = itemsUi,
             notes = inv.paymentNotes,
             syncStatus = syncStatusFor(outbox)
