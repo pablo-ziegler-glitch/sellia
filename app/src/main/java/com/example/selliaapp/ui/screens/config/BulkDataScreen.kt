@@ -315,9 +315,10 @@ fun BulkDataScreen(
 private fun BulkSectionCard(
     title: String,
     description: String,
-    onManage: () -> Unit,
-    onDownloadTemplate: () -> Unit,
-    onImport: () -> Unit,
+    onManage: (() -> Unit)? = null,
+    onDownloadTemplate: (() -> Unit)? = null,
+    onImport: (() -> Unit)? = null,
+    onExport: (() -> Unit)? = null,
     enabled: Boolean = true,
     disabledMessage: String? = null
 ) {
@@ -337,19 +338,30 @@ private fun BulkSectionCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDownloadTemplate, enabled = enabled) {
-                    Icon(Icons.Default.FileDownload, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Plantilla")
+                onDownloadTemplate?.let { action ->
+                    TextButton(onClick = action, enabled = enabled) {
+                        Icon(Icons.Default.FileDownload, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Plantilla")
+                    }
                 }
-                TextButton(onClick = onImport, enabled = enabled) {
-                    Icon(Icons.Default.UploadFile, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Importar")
+                onImport?.let { action ->
+                    TextButton(onClick = action, enabled = enabled) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Importar")
+                    }
                 }
-                Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onManage, enabled = enabled) {
-                    Text("Gestionar")
+                onExport?.let { action ->
+                    TextButton(onClick = action, enabled = enabled) {
+                        Text("Exportar")
+                    }
+                }
+                if (onManage != null) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(onClick = onManage, enabled = enabled) {
+                        Text("Gestionar")
+                    }
                 }
             }
             if (!enabled) {

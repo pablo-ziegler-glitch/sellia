@@ -37,6 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.selliaapp.R
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
@@ -51,7 +52,7 @@ fun PublicProductCardScreen(
     vm: ProductViewModel = hiltViewModel(),
     marketingVm: MarketingConfigViewModel = hiltViewModel()
 ) {
-    val settings by marketingVm.settings.collectAsState()
+    val settings by marketingVm.settings.collectAsState(initial = MarketingSettings())
     var product by remember { mutableStateOf<ProductEntity?>(null) }
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
