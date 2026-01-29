@@ -185,7 +185,26 @@
       <div class="modal-content" role="document">
         <button class="modal-close" type="button" data-close aria-label="Cerrar detalle">×</button>
         <div class="modal-body">
-          <img id="modalImage" src="" alt="" loading="lazy" />
+          <div class="modal-carousel" id="modalCarousel" aria-live="polite">
+            <div class="carousel-track" id="modalCarouselTrack"></div>
+            <button
+              class="carousel-control prev"
+              type="button"
+              data-carousel-prev
+              aria-label="Imagen anterior"
+            >
+              ‹
+            </button>
+            <button
+              class="carousel-control next"
+              type="button"
+              data-carousel-next
+              aria-label="Imagen siguiente"
+            >
+              ›
+            </button>
+            <div class="carousel-indicators" id="modalCarouselIndicators"></div>
+          </div>
           <div>
             <span class="tag" id="modalTag"></span>
             <h3 id="modalTitle"></h3>
