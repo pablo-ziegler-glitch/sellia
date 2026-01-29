@@ -75,6 +75,12 @@ sealed class Routes(val route: String) {
     object ScannerForSell : Routes("scanner_for_sell")
     object ScannerForStock : Routes("scanner_for_stock") // [NUEVO] unificado al mismo patrón
     object PublicProductScan : Routes("public_product_scan")
+    object PublicProductCatalog : Routes("public_product_catalog")
+    object PublicProductDetail : Routes("public_product_detail/{productId}") {
+        const val ARG_PRODUCT_ID = "productId"
+        fun withId(productId: Int) = "public_product_detail/$productId"
+        val arguments = listOf(navArgument(ARG_PRODUCT_ID) { type = NavType.IntType })
+    }
     object PublicProductCard : Routes("public_product_card") {
         const val ARG_QR = "qrValue"
         fun withQr(value: String) = "$route?$ARG_QR=${encode(value)}"

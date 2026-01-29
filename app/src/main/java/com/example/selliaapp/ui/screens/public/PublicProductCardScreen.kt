@@ -46,7 +46,8 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PublicProductCardScreen(
-    qrValue: String,
+    qrValue: String = "",
+    productId: Int? = null,
     onBack: () -> Unit,
     vm: ProductViewModel = hiltViewModel(),
     marketingVm: MarketingConfigViewModel = hiltViewModel()
@@ -56,12 +57,16 @@ fun PublicProductCardScreen(
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(qrValue) {
+    LaunchedEffect(qrValue, productId) {
         loading = true
         errorMessage = null
-        product = vm.getByQrValue(qrValue)
+        product = when {
+            productId != null -> vm.getProductById(productId)
+            qrValue.isNotBlank() -> vm.getByQrValue(qrValue)
+            else -> null
+        }
         if (product == null) {
-            errorMessage = "No encontramos el producto asociado a este QR."
+            errorMessage = "No encontramos el producto asociado."
         }
         loading = false
     }
