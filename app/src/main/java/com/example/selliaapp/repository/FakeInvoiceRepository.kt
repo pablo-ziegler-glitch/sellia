@@ -3,6 +3,7 @@ package com.example.selliaapp.repository
 import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
+import com.example.selliaapp.data.model.OrderStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.InvoiceDraft
@@ -39,4 +40,6 @@ class FakeInvoiceRepository : InvoiceRepository {
     override suspend fun sumThisMonth(): Double = 0.0
 
     override suspend fun salesLastDays(dias: Int): List<DailySalesPoint> = emptyList()
+
+    override suspend fun refreshOrderStatus(orderId: String): OrderStatus? = null
 }

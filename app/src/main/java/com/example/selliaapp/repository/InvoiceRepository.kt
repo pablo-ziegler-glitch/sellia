@@ -3,6 +3,7 @@ package com.example.selliaapp.repository
 import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
+import com.example.selliaapp.data.model.OrderStatus
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.sales.InvoiceDraft
@@ -47,5 +48,10 @@ interface InvoiceRepository {
 
     // Cancelación de ventas
     suspend fun cancelInvoice(id: Long, reason: String)
-}
 
+    /**
+     * [NUEVO] Refresco puntual del estado de una orden en Checkout Pro.
+     * IMPORTANTE: debe ser un get() único para minimizar costos en Firestore.
+     */
+    suspend fun refreshOrderStatus(orderId: String): OrderStatus?
+}
