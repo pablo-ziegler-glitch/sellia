@@ -2,14 +2,34 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isTenantUser(tenantId) {
+      return isAuthenticated()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+    }
+
+    function isBackend() {
+      return isAuthenticated() && request.auth.token.backend == true;
+    }
+
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    match /tenants/{tenantId}/orders/{orderId} {
+      allow read: if isTenantUser(tenantId);
+      allow write: if isBackend();
+    }
+
+    match /tenants/{tenantId}/payments/{paymentId} {
+      allow read, write: if isBackend();
+    }
+
     match /tenants/{tenantId}/{document=**} {
-      allow read, write: if request.auth != null
-        && request.auth.uid != null
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+      allow read, write: if isTenantUser(tenantId);
     }
   }
 }
