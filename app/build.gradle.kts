@@ -151,7 +151,10 @@ dependencies {
 // Firebase (opcional si vas a usar Firestore)
     implementation(libs.firebase.firestore.ktx)
     implementation(libs.firebase.auth.ktx)
+    implementation(libs.firebase.functions.ktx)
     implementation(platform(libs.firebase.bom))
+
+    implementation(libs.androidx.browser)
 
 
     implementation(libs.material.icons.extended) // SIN versión

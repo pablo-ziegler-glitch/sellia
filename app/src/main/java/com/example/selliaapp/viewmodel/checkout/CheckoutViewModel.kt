@@ -4,21 +4,29 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.model.sales.CartItem
 import com.example.selliaapp.data.model.sales.InvoiceDraft
+import com.example.selliaapp.data.payment.PaymentItem
+import com.example.selliaapp.domain.payment.CreatePaymentPreferenceUseCase
 import com.example.selliaapp.repository.CartRepository
 import com.example.selliaapp.repository.InvoiceRepository
+import com.example.selliaapp.ui.state.CartItemUi
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
 
 
 @HiltViewModel
 class CheckoutViewModel @Inject constructor(
     private val cartRepository: CartRepository,
-    private val invoiceRepository: InvoiceRepository
+    private val invoiceRepository: InvoiceRepository,
+    private val createPaymentPreferenceUseCase: CreatePaymentPreferenceUseCase
 ) : ViewModel() {
     // [NUEVO] Configuración de impuestos simple (si tu lógica real difiere, ajustá)
     private val TAX_RATE = 0.0 // 0% por defecto; cambiar si aplican impuestos
@@ -43,6 +51,9 @@ class CheckoutViewModel @Inject constructor(
                 initialValue = CheckoutUiState.EMPTY
             )
 
+    private val _paymentState = MutableStateFlow(PaymentUiState())
+    val paymentState: StateFlow<PaymentUiState> = _paymentState.asStateFlow()
+
     // -----------------------
     // Acciones del carrito
     // -----------------------
@@ -62,6 +73,77 @@ class CheckoutViewModel @Inject constructor(
         viewModelScope.launch {
             cartRepository.clear()
         }
+    }
+
+    // -----------------------
+    // Pagos Mercado Pago
+    // -----------------------
+    fun createPaymentPreference(
+        amount: Double,
+        items: List<CartItemUi>,
+        customerName: String?
+    ) {
+        if (_paymentState.value.isLoading) return
+        if (amount <= 0 || items.isEmpty()) {
+            _paymentState.update {
+                it.copy(errorMessage = "El total debe ser mayor a cero para generar el pago.")
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _paymentState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                val description = buildPaymentDescription(items)
+                val externalReference = "pos-${UUID.randomUUID()}"
+                val metadata = mutableMapOf<String, Any>(
+                    "source" to "pos_checkout",
+                    "items_count" to items.size
+                ).apply {
+                    customerName?.let { put("customer_name", it) }
+                }
+
+                val paymentItems = items.map { item ->
+                    PaymentItem(
+                        id = item.productId.toString(),
+                        title = item.name,
+                        quantity = item.qty,
+                        unitPrice = item.unitPrice
+                    )
+                }
+
+                val result = createPaymentPreferenceUseCase(
+                    amount = amount,
+                    description = description,
+                    externalReference = externalReference,
+                    items = paymentItems,
+                    metadata = metadata
+                )
+                _paymentState.update {
+                    it.copy(
+                        isLoading = false,
+                        initPoint = result.initPoint,
+                        preferenceId = result.preferenceId
+                    )
+                }
+            } catch (t: Throwable) {
+                _paymentState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = t.message?.takeIf { msg -> msg.isNotBlank() }
+                            ?: "No se pudo generar el link de pago."
+                    )
+                }
+            }
+        }
+    }
+
+    fun consumeInitPoint() {
+        _paymentState.update { it.copy(initPoint = null) }
+    }
+
+    fun clearPaymentError() {
+        _paymentState.update { it.copy(errorMessage = null) }
     }
 
 
@@ -111,6 +193,14 @@ class CheckoutViewModel @Inject constructor(
             onCanceled()
         }
     }
+
+    private fun buildPaymentDescription(items: List<CartItemUi>): String {
+        return when {
+            items.isEmpty() -> "Venta en Sellia"
+            items.size == 1 -> "Venta de ${items.first().name}"
+            else -> "Venta de ${items.size} productos"
+        }
+    }
 }
 
 
@@ -132,6 +222,13 @@ data class CheckoutUiState(
         )
     }
 }
+
+data class PaymentUiState(
+    val isLoading: Boolean = false,
+    val initPoint: String? = null,
+    val preferenceId: String? = null,
+    val errorMessage: String? = null
+)
 
 
 

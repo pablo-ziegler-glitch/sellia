@@ -1,6 +1,8 @@
 
 package com.example.selliaapp.di
 
+ import com.example.selliaapp.data.payment.PaymentRepository
+ import com.example.selliaapp.data.payment.PaymentRepositoryImpl
  import com.example.selliaapp.repository.CartRepository
  import com.example.selliaapp.repository.InvoiceRepository
  import com.example.selliaapp.repository.impl.CartRepositoryImpl
@@ -32,4 +34,10 @@ abstract class RepositoryModule {
     abstract fun bindCartRepository(
         impl: CartRepositoryImpl
     ): CartRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPaymentRepository(
+        impl: PaymentRepositoryImpl
+    ): PaymentRepository
 }

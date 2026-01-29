@@ -1,5 +1,7 @@
 package com.example.selliaapp.ui.screens.checkout
 
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,6 +62,7 @@ import com.example.selliaapp.ui.state.CustomerSummaryUi
 import com.example.selliaapp.ui.state.OrderType
 import com.example.selliaapp.ui.state.PaymentMethod
 import com.example.selliaapp.viewmodel.SellViewModel
+import com.example.selliaapp.viewmodel.checkout.CheckoutViewModel
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.time.Instant
@@ -78,16 +82,38 @@ fun CheckoutScreen(
     }
 
     val vm: SellViewModel = hiltViewModel(parentEntry)
+    val paymentVm: CheckoutViewModel = hiltViewModel()
     val state by vm.state.collectAsStateWithLifecycle()
+    val paymentState by paymentVm.paymentState.collectAsStateWithLifecycle()
     val moneda = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/uuuu") }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var isProcessing by remember { mutableStateOf(false) }
     var customerDiscountInput by remember { mutableStateOf("") }
 
     LaunchedEffect(state.customerDiscountPercent) {
         customerDiscountInput = if (state.customerDiscountPercent == 0) "" else state.customerDiscountPercent.toString()
+    }
+
+    LaunchedEffect(paymentState.initPoint) {
+        val initPoint = paymentState.initPoint
+        if (!initPoint.isNullOrBlank()) {
+            CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .build()
+                .launchUrl(context, Uri.parse(initPoint))
+            paymentVm.consumeInitPoint()
+        }
+    }
+
+    LaunchedEffect(paymentState.errorMessage) {
+        val message = paymentState.errorMessage
+        if (!message.isNullOrBlank()) {
+            snackbarHostState.showSnackbar(message)
+            paymentVm.clearPaymentError()
+        }
     }
 
     Scaffold(
@@ -277,6 +303,40 @@ fun CheckoutScreen(
                     keyboardOptions = KeyboardOptions.Default,
                     maxLines = 3
                 )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    if (!state.canCheckout) {
+                        scope.launch {
+                            snackbarHostState.showSnackbar("No podés cobrar hasta corregir el stock.")
+                        }
+                    } else {
+                        paymentVm.createPaymentPreference(
+                            amount = state.total,
+                            items = state.items,
+                            customerName = state.selectedCustomerName
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.canCheckout && !paymentState.isLoading && !isProcessing,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    disabledContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                )
+            ) {
+                if (paymentState.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSecondary
+                    )
+                } else {
+                    Text("Pagar con Mercado Pago")
+                }
             }
 
             Spacer(Modifier.height(24.dp))
