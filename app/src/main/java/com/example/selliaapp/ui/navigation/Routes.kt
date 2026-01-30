@@ -60,6 +60,7 @@ sealed class Routes(val route: String) {
     object CashClose : Routes("cash_close")
     object CashMovements : Routes("cash_movements")
     object CashReport : Routes("cash_report")
+    object UsageAlerts : Routes("usage_alerts")
 
     object AddUser : Routes("add_user")
     object ManageProducts : Routes("manage_products")

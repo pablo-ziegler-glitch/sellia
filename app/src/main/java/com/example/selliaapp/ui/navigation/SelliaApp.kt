@@ -30,6 +30,7 @@ import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.ui.components.AppScaffold
 import com.example.selliaapp.ui.screens.HomeScreen
 import com.example.selliaapp.ui.screens.MoreScreen
+import com.example.selliaapp.ui.screens.alerts.UsageAlertsScreen
 import com.example.selliaapp.ui.screens.barcode.BarcodeScannerScreen
 import com.example.selliaapp.ui.screens.checkout.CheckoutScreen
 import com.example.selliaapp.ui.screens.clients.ClientMetricsScreen
@@ -208,9 +209,14 @@ fun SelliaApp(
                     onProviders = { navController.navigate(Routes.ProvidersHub.route) },
                     onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                     onReports = { navController.navigate(Routes.Reports.route) },
+                    onAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSettings = { navController.navigate(Routes.Config.route) },
                     onSync = { SyncScheduler.enqueueNow(context) }
                 )
+            }
+
+            composable(Routes.UsageAlerts.route) {
+                UsageAlertsScreen(onBack = { navController.popBackStack() })
             }
 
             composable(

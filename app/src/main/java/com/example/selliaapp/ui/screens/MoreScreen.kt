@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
@@ -37,6 +37,7 @@ fun MoreScreen(
     onProviders: () -> Unit,
     onExpenses: () -> Unit,
     onReports: () -> Unit,
+    onAlerts: () -> Unit,
     onSettings: () -> Unit,
     onSync: () -> Unit
 ) {
@@ -120,6 +121,18 @@ fun MoreScreen(
                     .fillMaxWidth()
                     .clickable(onClick = onReports),
                 supportingContent = { Text("Ventas, márgenes y KPIs") },
+                trailingContent = null,
+                overlineContent = null,
+                shadowElevation = null,
+                tonalElevation = null
+            )
+            ListItem(
+                headlineContent = { Text("Alertas de uso") },
+                leadingContent = { Icon(Icons.Default.Notifications, contentDescription = null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onAlerts),
+                supportingContent = { Text("Límites y consumo del plan") },
                 trailingContent = null,
                 overlineContent = null,
                 shadowElevation = null,
