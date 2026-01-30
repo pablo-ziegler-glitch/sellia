@@ -1,12 +1,15 @@
 
 package com.example.selliaapp.di
 
- import com.example.selliaapp.data.payment.PaymentRepository
- import com.example.selliaapp.data.payment.PaymentRepositoryImpl
- import com.example.selliaapp.repository.CartRepository
- import com.example.selliaapp.repository.InvoiceRepository
- import com.example.selliaapp.repository.impl.CartRepositoryImpl
- import com.example.selliaapp.repository.impl.InvoiceRepositoryImpl
+import com.example.selliaapp.data.payment.PaymentRepository
+import com.example.selliaapp.data.payment.PaymentRepositoryImpl
+import com.example.selliaapp.data.remote.FirestoreUsageRepository
+import com.example.selliaapp.repository.CartRepository
+import com.example.selliaapp.repository.InvoiceRepository
+import com.example.selliaapp.repository.UsageLimitRepository
+import com.example.selliaapp.repository.UsageRepository
+import com.example.selliaapp.repository.impl.CartRepositoryImpl
+import com.example.selliaapp.repository.impl.InvoiceRepositoryImpl
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -40,4 +43,16 @@ abstract class RepositoryModule {
     abstract fun bindPaymentRepository(
         impl: PaymentRepositoryImpl
     ): PaymentRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUsageRepository(
+        impl: FirestoreUsageRepository
+    ): UsageRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUsageLimitRepository(
+        impl: FirestoreUsageRepository
+    ): UsageLimitRepository
 }
