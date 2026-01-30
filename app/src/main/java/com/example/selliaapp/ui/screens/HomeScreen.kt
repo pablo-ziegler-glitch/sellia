@@ -60,6 +60,7 @@ fun HomeScreen(
     onReports: () -> Unit,
     onProviders: () -> Unit,
     onExpenses: () -> Unit,
+    onPublicCatalog: () -> Unit,
     onPublicProductScan: () -> Unit,
     onSyncNow: () -> Unit = {},
     onViewStockMovements: () -> Unit = {},
@@ -208,6 +209,40 @@ fun HomeScreen(
                     "Facturas vencidas: ${state.overdueProviderInvoices}",
                     style = MaterialTheme.typography.bodyMedium
                 )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "Catálogo público",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    "Mostrá productos sin pedir autenticación.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(
+                        onClick = onPublicCatalog,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Ver catálogo")
+                    }
+                    OutlinedButton(
+                        onClick = onPublicProductScan,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Escanear QR")
+                    }
+                }
             }
         }
 

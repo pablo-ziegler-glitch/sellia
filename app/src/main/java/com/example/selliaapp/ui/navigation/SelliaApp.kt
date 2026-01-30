@@ -54,6 +54,7 @@ import com.example.selliaapp.ui.screens.manage.ManageCustomersScreen
 import com.example.selliaapp.ui.screens.manage.ManageProductsScreen
 import com.example.selliaapp.ui.screens.manage.ProductQrScreen
 import com.example.selliaapp.ui.screens.manage.SyncScreen
+import com.example.selliaapp.ui.screens.public.PublicProductCatalogScreen
 import com.example.selliaapp.ui.screens.public.PublicProductCardScreen
 import com.example.selliaapp.ui.screens.providers.ManageProvidersScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
@@ -137,6 +138,7 @@ fun SelliaApp(
                     onReports = { navController.navigate(Routes.Reports.route) },
                     onProviders = { navController.navigate(Routes.ProvidersHub.route) },   // NUEVO
                     onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
+                    onPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
                     onPublicProductScan = { navController.navigate(Routes.PublicProductScan.route) },
                     onSyncNow = { SyncScheduler.enqueueNow(context) },
                     onAlertAdjustStock = { productId ->
@@ -343,6 +345,17 @@ fun SelliaApp(
                 )
             }
 
+            composable(Routes.PublicProductCatalog.route) {
+                val productVm: ProductViewModel = hiltViewModel()
+                PublicProductCatalogScreen(
+                    onBack = { navController.popBackStack() },
+                    onProductSelected = { productId ->
+                        navController.navigate(Routes.PublicProductDetail.withId(productId))
+                    },
+                    vm = productVm
+                )
+            }
+
             composable(
                 route = Routes.PublicProductCard.route +
                     "?${Routes.PublicProductCard.ARG_QR}={${Routes.PublicProductCard.ARG_QR}}",
@@ -353,6 +366,18 @@ fun SelliaApp(
                     .orEmpty()
                 PublicProductCardScreen(
                     qrValue = qrValue,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Routes.PublicProductDetail.route,
+                arguments = Routes.PublicProductDetail.arguments
+            ) { backStackEntry ->
+                val productId = backStackEntry.arguments
+                    ?.getInt(Routes.PublicProductDetail.ARG_PRODUCT_ID)
+                PublicProductCardScreen(
+                    productId = productId,
                     onBack = { navController.popBackStack() }
                 )
             }
