@@ -58,9 +58,7 @@ fun MoreScreen(
                     .clickable(onClick = onStock),
                 supportingContent = { Text("Productos y ajustes") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
             ListItem(
                 headlineContent = { Text("Historial de stock") },
@@ -70,9 +68,7 @@ fun MoreScreen(
                     .clickable(onClick = onStockHistory),
                 supportingContent = { Text("Entradas y salidas") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
             ListItem(
                 headlineContent = { Text("Clientes") },
@@ -82,9 +78,7 @@ fun MoreScreen(
                     .clickable(onClick = onCustomers),
                 supportingContent = { Text("Ventas por cliente") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
             ListItem(
                 headlineContent = { Text("Proveedores") },
@@ -94,9 +88,7 @@ fun MoreScreen(
                     .clickable(onClick = onProviders),
                 supportingContent = { Text("Facturas y pagos") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
 
             Divider()
@@ -109,9 +101,7 @@ fun MoreScreen(
                     .clickable(onClick = onExpenses),
                 supportingContent = { Text("Ingresos y egresos") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
             ListItem(
                 headlineContent = { Text("Reportes") },
@@ -121,9 +111,7 @@ fun MoreScreen(
                     .clickable(onClick = onReports),
                 supportingContent = { Text("Ventas, márgenes y KPIs") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
 
             Divider()
@@ -136,9 +124,7 @@ fun MoreScreen(
                     .clickable(onClick = onSettings),
                 supportingContent = { Text("Usuarios, precios y marketing") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
             ListItem(
                 headlineContent = { Text("Sincronizar") },
@@ -148,9 +134,7 @@ fun MoreScreen(
                     .clickable(onClick = onSync),
                 supportingContent = { Text("Enviar cambios pendientes") },
                 trailingContent = null,
-                overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                overlineContent = null
             )
             Spacer(Modifier.height(8.dp))
         }

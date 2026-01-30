@@ -233,6 +233,16 @@ object AppModule {
     fun provideReportsRepository(invoiceDao: InvoiceDao): ReportsRepository =
         ReportsRepository(invoiceDao)
 
+    @Provides
+    @Singleton
+    fun provideUsageRepository(
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): UsageRepository = UsageRepositoryImpl(
+        firestore = firestore,
+        ioDispatcher = io
+    )
+
     @Provides @Singleton fun provideProviderRepository(dao: ProviderDao): ProviderRepository = ProviderRepository(dao)
     @Provides @Singleton fun provideProviderInvoiceRepository(dao: ProviderInvoiceDao): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
 
