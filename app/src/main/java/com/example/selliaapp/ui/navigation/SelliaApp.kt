@@ -68,6 +68,7 @@ import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
+import com.example.selliaapp.ui.screens.admin.UsageDashboardScreen
 import com.example.selliaapp.ui.screens.pos.PosSuccessScreen
 import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
@@ -91,6 +92,7 @@ import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
+import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
 import com.example.selliaapp.domain.security.Permission
 
 

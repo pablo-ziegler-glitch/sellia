@@ -6,13 +6,52 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid != null;
     }
 
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userData() {
+      return userDoc().data;
+    }
+
+    function userTenantId() {
+      return userData().tenantId;
+    }
+
     function isTenantUser(tenantId) {
       return isAuthenticated()
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        && userTenantId() == tenantId;
     }
 
     function isBackend() {
       return isAuthenticated() && request.auth.token.backend == true;
+    }
+
+    function hasAdminClaim() {
+      return request.auth.token.admin == true
+        || request.auth.token.super_admin == true
+        || request.auth.token.role in ['admin', 'super_admin'];
+    }
+
+    function hasAdminField() {
+      return userData().role in ['admin', 'super_admin']
+        || userData().isAdmin == true
+        || userData().isSuperAdmin == true;
+    }
+
+    function isAdminUser() {
+      return isAuthenticated() && (hasAdminClaim() || hasAdminField());
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated()
+        && (request.auth.token.super_admin == true
+          || userData().role == 'super_admin'
+          || userData().isSuperAdmin == true);
+    }
+
+    function isAdminForTenant(tenantId) {
+      return isAdminUser() && (isSuperAdmin() || userTenantId() == tenantId);
     }
 
     match /users/{userId} {
@@ -34,6 +73,21 @@ service cloud.firestore {
 
     match /tenants/{tenantId}/payments/{paymentId} {
       allow read, write: if isBackend();
+    }
+
+    match /usage/{usageId} {
+      allow read: if isAdminForTenant(resource.data.tenantId);
+      allow write: if isBackend();
+    }
+
+    match /limits/{limitId} {
+      allow read: if isTenantUser(resource.data.tenantId);
+      allow write: if isAdminForTenant(resource.data.tenantId) || isBackend();
+    }
+
+    match /alerts/{alertId} {
+      allow read: if isAdminForTenant(resource.data.tenantId);
+      allow write: if isBackend();
     }
 
     match /tenants/{tenantId}/{document=**} {

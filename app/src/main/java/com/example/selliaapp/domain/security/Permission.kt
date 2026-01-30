@@ -8,5 +8,6 @@ enum class Permission {
     CASH_AUDIT,
     CASH_MOVEMENT,
     CASH_CLOSE,
-    VIEW_CASH_REPORT
+    VIEW_CASH_REPORT,
+    VIEW_USAGE_DASHBOARD
 }

@@ -148,10 +148,11 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler.vroomversion)
 
-// Firebase (opcional si vas a usar Firestore)
+    // Firebase (opcional si vas a usar Firestore)
     implementation(libs.firebase.firestore.ktx)
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.functions.ktx)
+    implementation(libs.firebase.storage.ktx)
     implementation(platform(libs.firebase.bom))
 
     implementation(libs.androidx.browser)
