@@ -5,6 +5,11 @@
     "desc": "Abrigo suave para días fríos.",
     "longDesc": "Tejido cálido, liviano y pensado para movimiento real.",
     "image": "/assets/placeholder.svg",
+    "images": [
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg"
+    ],
     "tag": "Nuevo"
   },
   {
@@ -13,6 +18,10 @@
     "desc": "Protección ligera para media estación.",
     "longDesc": "Corte relajado, fácil de usar y de combinar.",
     "image": "/assets/placeholder.svg",
+    "images": [
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg"
+    ],
     "tag": "Destacado"
   },
   {
@@ -21,6 +30,11 @@
     "desc": "Algodón suave para uso diario.",
     "longDesc": "Costuras cuidadas para piel sensible.",
     "image": "/assets/placeholder.svg",
+    "images": [
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg"
+    ],
     "tag": "Esencial"
   },
   {
@@ -29,6 +43,10 @@
     "desc": "Comodidad nocturna sin exagerar.",
     "longDesc": "Textura respirable, ideal para noches largas.",
     "image": "/assets/placeholder.svg",
+    "images": [
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg"
+    ],
     "tag": "Clásico"
   },
   {
@@ -37,6 +55,11 @@
     "desc": "Capucha suave para aventuras reales.",
     "longDesc": "Tejido resistente y flexible, pensado para juego.",
     "image": "/assets/placeholder.svg",
+    "images": [
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg"
+    ],
     "tag": "Edición"
   },
   {
@@ -45,6 +68,10 @@
     "desc": "Pack cómodo para rotación diaria.",
     "longDesc": "Conjunto versátil, pensado para sumar capas.",
     "image": "/assets/placeholder.svg",
+    "images": [
+      "/assets/placeholder.svg",
+      "/assets/placeholder.svg"
+    ],
     "tag": "Pack"
   }
 ]

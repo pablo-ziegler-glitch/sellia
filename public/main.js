@@ -152,18 +152,114 @@ function renderProducts() {
 }
 
 const modal = document.getElementById("productModal");
-const modalImage = document.getElementById("modalImage");
+const modalCarousel = document.getElementById("modalCarousel");
+const modalCarouselTrack = document.getElementById("modalCarouselTrack");
+const modalCarouselIndicators = document.getElementById("modalCarouselIndicators");
+const modalCarouselPrev = modal?.querySelector("[data-carousel-prev]");
+const modalCarouselNext = modal?.querySelector("[data-carousel-next]");
 const modalTitle = document.getElementById("modalTitle");
 const modalDescription = document.getElementById("modalDescription");
 const modalTag = document.getElementById("modalTag");
+const carouselState = {
+  images: [],
+  index: 0,
+  productName: ""
+};
+
+function getProductImages(product) {
+  if (Array.isArray(product.images) && product.images.length > 0) {
+    return product.images;
+  }
+  if (product.image) {
+    return [product.image];
+  }
+  return [];
+}
+
+function updateCarousel() {
+  if (!modalCarouselTrack || !modalCarouselIndicators) return;
+
+  modalCarouselTrack.style.transform = `translateX(-${carouselState.index * 100}%)`;
+
+  modalCarouselIndicators.querySelectorAll("button").forEach((button, index) => {
+    const isActive = index === carouselState.index;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-current", isActive ? "true" : "false");
+  });
+}
+
+function goToSlide(index) {
+  if (carouselState.images.length === 0) return;
+  const maxIndex = carouselState.images.length - 1;
+  const nextIndex = Math.max(0, Math.min(index, maxIndex));
+  carouselState.index = nextIndex;
+  updateCarousel();
+}
+
+function stepCarousel(delta) {
+  if (carouselState.images.length <= 1) return;
+  const maxIndex = carouselState.images.length - 1;
+  const nextIndex = (carouselState.index + delta + carouselState.images.length) % carouselState.images.length;
+  carouselState.index = Math.max(0, Math.min(nextIndex, maxIndex));
+  updateCarousel();
+}
+
+function renderCarousel(product) {
+  if (!modalCarousel || !modalCarouselTrack || !modalCarouselIndicators) return;
+
+  const images = getProductImages(product);
+  carouselState.images = images;
+  carouselState.index = 0;
+  carouselState.productName = product.name;
+
+  modalCarouselTrack.innerHTML = images
+    .map(
+      (image, index) => `
+        <div class="carousel-slide">
+          <img src="${image}" alt="${product.name} - imagen ${index + 1}" loading="lazy" />
+        </div>
+      `
+    )
+    .join("");
+
+  modalCarouselIndicators.innerHTML = images
+    .map(
+      (_, index) => `
+        <button type="button" data-carousel-index="${index}" aria-label="Ver imagen ${
+          index + 1
+        } de ${images.length}"></button>
+      `
+    )
+    .join("");
+
+  const hasMultipleImages = images.length > 1;
+  modalCarousel.setAttribute("aria-live", hasMultipleImages ? "polite" : "off");
+
+  if (modalCarouselPrev) {
+    modalCarouselPrev.disabled = !hasMultipleImages;
+  }
+  if (modalCarouselNext) {
+    modalCarouselNext.disabled = !hasMultipleImages;
+  }
+
+  modalCarouselIndicators.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.carouselIndex);
+      if (!Number.isNaN(index)) {
+        goToSlide(index);
+      }
+    });
+  });
+
+  updateCarousel();
+}
 
 function openModal(id) {
   const product = state.products.find((item) => item.id === id);
   if (!product || !modal) return;
 
   lastFocusedElement = document.activeElement;
-  modalImage.src = product.image;
-  modalImage.alt = product.name;
+  renderCarousel(product);
   modalTitle.textContent = product.name;
   modalDescription.textContent = product.longDesc || product.desc;
   modalTag.textContent = product.tag || "Colección";
@@ -189,11 +285,51 @@ if (modal) {
     if (event.target.matches("[data-close]")) {
       closeModal();
     }
+    if (event.target.matches("[data-carousel-prev]")) {
+      stepCarousel(-1);
+    }
+    if (event.target.matches("[data-carousel-next]")) {
+      stepCarousel(1);
+    }
   });
+
+  let touchStartX = 0;
+  let touchEndX = 0;
+
+  if (modalCarousel) {
+    modalCarousel.addEventListener(
+      "touchstart",
+      (event) => {
+        if (event.touches.length === 0) return;
+        touchStartX = event.touches[0].clientX;
+      },
+      { passive: true }
+    );
+
+    modalCarousel.addEventListener(
+      "touchend",
+      (event) => {
+        touchEndX = event.changedTouches[0].clientX;
+        const delta = touchStartX - touchEndX;
+        if (Math.abs(delta) > 40) {
+          stepCarousel(delta > 0 ? 1 : -1);
+        }
+      },
+      { passive: true }
+    );
+  }
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && modal.getAttribute("aria-hidden") === "false") {
       closeModal();
+    }
+    if (modal.getAttribute("aria-hidden") === "false") {
+      if (event.key === "ArrowLeft") {
+        stepCarousel(-1);
+      }
+      if (event.key === "ArrowRight") {
+        stepCarousel(1);
+      }
     }
   });
 }
