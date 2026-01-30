@@ -38,6 +38,8 @@ data class InvoiceDetail(
     val total: Double,
     val paymentMethod: String,
     val paymentNotes: String?,
+    val status: InvoiceStatus,
+    val canceledReason: String?,
     val items: List<InvoiceItemRow>,
     val notes: String? = null,
     val syncStatus: SyncStatus = SyncStatus.SYNCED
