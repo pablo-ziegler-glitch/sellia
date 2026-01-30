@@ -1,8 +1,16 @@
 package com.example.selliaapp.repository
 
-import com.example.selliaapp.data.model.usage.UsageDashboardSnapshot
-import java.time.LocalDate
+import com.example.selliaapp.domain.usage.FirebaseServiceUsage
+import com.example.selliaapp.domain.usage.UsageScope
 
 interface UsageRepository {
-    suspend fun getUsageDashboard(from: LocalDate, to: LocalDate): UsageDashboardSnapshot
+    suspend fun getUsageSnapshot(
+        tenantId: String,
+        appId: String?,
+        serviceId: String,
+        periodId: String,
+        scope: UsageScope
+    ): FirebaseServiceUsage?
+
+    suspend fun upsertUsageSnapshot(usage: FirebaseServiceUsage)
 }
