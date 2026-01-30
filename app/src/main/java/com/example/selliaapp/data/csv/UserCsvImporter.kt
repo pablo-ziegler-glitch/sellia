@@ -35,7 +35,8 @@ object UserCsvImporter {
     fun templateCsv(): String {
         return buildString {
             appendLine("name,email,role")
-            appendLine("Usuario Demo,usuario@example.com,admin")
+            appendLine("Usuario Admin,admin@example.com,admin")
+            appendLine("Usuario Super Admin,superadmin@example.com,super_admin")
         }
     }
 

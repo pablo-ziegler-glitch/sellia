@@ -8,8 +8,10 @@ import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.remote.off.OffResult
 import com.example.selliaapp.data.remote.off.OpenFoodFactsRepository
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.ProductRepository
+import com.example.selliaapp.repository.StorageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -26,16 +28,25 @@ data class AutoFillUiState(
     val message: String? = null
 )
 
+data class ImageUploadUiState(
+    val uploading: Boolean = false,
+    val message: String? = null
+)
 
 @HiltViewModel
 class ProductViewModel @Inject constructor(
     private val repo: IProductRepository,
-    private val offRepo: OpenFoodFactsRepository
+    private val offRepo: OpenFoodFactsRepository,
+    private val storageRepository: StorageRepository,
+    private val tenantProvider: TenantProvider
 
 ) : ViewModel() {
 
     private val _autoFillState = MutableStateFlow(AutoFillUiState())
     val autoFillState = _autoFillState.asStateFlow()
+
+    private val _imageUploadState = MutableStateFlow(ImageUploadUiState())
+    val imageUploadState = _imageUploadState.asStateFlow()
 
     // Campos de tu formulario (simplificado)
     var name: String? = null
@@ -125,9 +136,12 @@ class ProductViewModel @Inject constructor(
         categoryName: String?,
         providerName: String?,
         providerSku: String?,
-        minStock: Int?
+        minStock: Int?,
+        pendingImageUris: List<Uri> = emptyList(),
+        onDone: (Result<Int>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            _imageUploadState.value = ImageUploadUiState(uploading = false, message = null)
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
             val entity = ProductEntity(
                 id = 0, // autogen
@@ -160,7 +174,33 @@ class ProductViewModel @Inject constructor(
                 // timestamps si los tenés, dejá null o setéalos en DAO/DB trigger
                 updatedAt = LocalDate.now()
             )
-            repo.insert(entity)
+            runCatching {
+                val newId = repo.insert(entity)
+                val uploadedUrls = uploadPendingImagesIfAny(newId, pendingImageUris)
+                if (uploadedUrls.isNotEmpty()) {
+                    val merged = (normalizedImages + uploadedUrls).distinct()
+                    repo.update(
+                        entity.copy(
+                            id = newId,
+                            imageUrls = merged,
+                            imageUrl = merged.firstOrNull()
+                        )
+                    )
+                }
+                newId
+            }.onSuccess { newId ->
+                withContext(Dispatchers.Main) {
+                    onDone(Result.success(newId))
+                }
+            }.onFailure { error ->
+                _imageUploadState.value = ImageUploadUiState(
+                    uploading = false,
+                    message = error.message ?: "No se pudo guardar el producto."
+                )
+                withContext(Dispatchers.Main) {
+                    onDone(Result.failure(error))
+                }
+            }
         }
     }
 
@@ -218,6 +258,49 @@ class ProductViewModel @Inject constructor(
         }
     }
 
+    fun uploadProductImage(
+        productId: Int,
+        localUri: Uri,
+        contentType: String?,
+        onDone: (Result<String>) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                _imageUploadState.value = ImageUploadUiState(uploading = true, message = null)
+                val tenantId = tenantProvider.requireTenantId()
+                val downloadUrl = storageRepository.uploadProductImage(
+                    tenantId = tenantId,
+                    productId = productId,
+                    localUri = localUri,
+                    contentType = contentType
+                )
+                val current = repo.getById(productId)
+                    ?: throw IllegalStateException("Producto no encontrado.")
+                val merged = (current.imageUrls + downloadUrl).distinct()
+                repo.update(
+                    current.copy(
+                        imageUrls = merged,
+                        imageUrl = merged.firstOrNull()
+                    )
+                )
+                downloadUrl
+            }.onSuccess { url ->
+                _imageUploadState.value = ImageUploadUiState(uploading = false, message = null)
+                withContext(Dispatchers.Main) {
+                    onDone(Result.success(url))
+                }
+            }.onFailure { error ->
+                _imageUploadState.value = ImageUploadUiState(
+                    uploading = false,
+                    message = error.message ?: "No se pudo subir la imagen."
+                )
+                withContext(Dispatchers.Main) {
+                    onDone(Result.failure(error))
+                }
+            }
+        }
+    }
+
 
     // --------- (Compat) Versión antigua aceptando Entity directo ---------
     /**
@@ -261,6 +344,35 @@ class ProductViewModel @Inject constructor(
             val result = repo.importProductsFromFile(context, fileUri, strategy)
             onResult(result)
         }
+    }
+
+    private suspend fun uploadPendingImagesIfAny(
+        productId: Int,
+        pendingImageUris: List<Uri>
+    ): List<String> {
+        if (pendingImageUris.isEmpty()) return emptyList()
+        _imageUploadState.value = ImageUploadUiState(uploading = true, message = null)
+        val tenantId = tenantProvider.requireTenantId()
+        val uploaded = mutableListOf<String>()
+        pendingImageUris.forEach { uri ->
+            runCatching {
+                storageRepository.uploadProductImage(
+                    tenantId = tenantId,
+                    productId = productId,
+                    localUri = uri,
+                    contentType = null
+                )
+            }.onSuccess { url ->
+                uploaded.add(url)
+            }.onFailure { error ->
+                _imageUploadState.value = ImageUploadUiState(
+                    uploading = false,
+                    message = error.message ?: "No se pudieron subir todas las imágenes."
+                )
+            }
+        }
+        _imageUploadState.value = ImageUploadUiState(uploading = false, message = _imageUploadState.value.message)
+        return uploaded
     }
 
 }

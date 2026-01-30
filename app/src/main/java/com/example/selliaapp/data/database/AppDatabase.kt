@@ -9,6 +9,8 @@ import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.CashAuditDao
 import com.example.selliaapp.data.dao.CashMovementDao
 import com.example.selliaapp.data.dao.CashSessionDao
+import com.example.selliaapp.data.dao.CloudServiceConfigDao
+import com.example.selliaapp.data.dao.CloudServiceConfigDao
 import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
@@ -36,6 +38,7 @@ import com.example.selliaapp.data.local.entity.CashAuditEntity
 import com.example.selliaapp.data.local.entity.CashMovementEntity
 import com.example.selliaapp.data.local.entity.CashSessionEntity
 import com.example.selliaapp.data.local.entity.CustomerEntity
+import com.example.selliaapp.data.local.entity.CloudServiceConfigEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
@@ -81,6 +84,7 @@ import com.example.selliaapp.data.model.User
         CashSessionEntity::class,
         CashMovementEntity::class,
         CashAuditEntity::class,
+        CloudServiceConfigEntity::class,
 
         // Tablas de negocio basadas en modelos (ya tienen @Entity)
         Invoice::class,
@@ -92,7 +96,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 35,
+    version = 36,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -122,6 +126,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cashSessionDao(): CashSessionDao
     abstract fun cashMovementDao(): CashMovementDao
     abstract fun cashAuditDao(): CashAuditDao
+    abstract fun cloudServiceConfigDao(): CloudServiceConfigDao
 
     companion object {
         val MIGRATION_31_32 = object : Migration(31, 32) {
@@ -309,6 +314,26 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `invoices` ADD COLUMN `status` TEXT NOT NULL DEFAULT 'EMITIDA'")
                 db.execSQL("ALTER TABLE `invoices` ADD COLUMN `canceledAt` INTEGER")
                 db.execSQL("ALTER TABLE `invoices` ADD COLUMN `canceledReason` TEXT")
+            }
+        }
+
+        val MIGRATION_35_36 = object : Migration(35, 36) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `cloud_service_configs` (
+                        `ownerEmail` TEXT NOT NULL,
+                        `cloudEnabled` INTEGER NOT NULL,
+                        `firestoreBackupEnabled` INTEGER NOT NULL,
+                        `authSyncEnabled` INTEGER NOT NULL,
+                        `storageBackupEnabled` INTEGER NOT NULL,
+                        `functionsEnabled` INTEGER NOT NULL,
+                        `hostingEnabled` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`ownerEmail`)
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }
