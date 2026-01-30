@@ -27,6 +27,8 @@ type PreferenceItemInput = {
   currencyId?: string;
 };
 
+type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
+
 const MERCADOPAGO_API = "https://api.mercadopago.com";
 
 const getMpConfig = (): MpConfig => {
@@ -86,12 +88,79 @@ const getDataId = (req: functions.https.Request): string => {
   return dataId ? String(dataId) : "";
 };
 
+const normalizeString = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).trim();
+};
+
+const mapPaymentStatus = (status: string | undefined | null): PaymentStatus => {
+  switch (String(status ?? "").toLowerCase()) {
+    case "approved":
+      return "APPROVED";
+    case "rejected":
+    case "cancelled":
+    case "canceled":
+      return "REJECTED";
+    case "in_process":
+    case "pending":
+      return "PENDING";
+    case "failed":
+      return "FAILED";
+    default:
+      return "PENDING";
+  }
+};
+
+const extractTenantId = (payment: any): string => {
+  const metadata = payment?.metadata ?? {};
+  return normalizeString(metadata.tenantId ?? metadata.tenant_id);
+};
+
+const resolveTenantId = async ({
+  tenantIdFromMetadata,
+  orderId,
+  paymentId,
+}: {
+  tenantIdFromMetadata: string;
+  orderId: string;
+  paymentId: string;
+}): Promise<string> => {
+  if (tenantIdFromMetadata) {
+    return tenantIdFromMetadata;
+  }
+
+  const candidates: string[] = [];
+
+  if (orderId) {
+    const orderSnapshot = await db.collection("orders").doc(orderId).get();
+    if (orderSnapshot.exists) {
+      const legacyTenantId = normalizeString(orderSnapshot.get("tenantId"));
+      if (legacyTenantId) {
+        candidates.push(legacyTenantId);
+      }
+    }
+  }
+
+  const paymentSnapshot = await db.collection("payments").doc(paymentId).get();
+  if (paymentSnapshot.exists) {
+    const legacyTenantId = normalizeString(paymentSnapshot.get("tenantId"));
+    if (legacyTenantId) {
+      candidates.push(legacyTenantId);
+    }
+  }
+
+  return candidates[0] ?? "";
+};
+
 export const createPreference = functions.https.onCall(async (data) => {
   const amount = Number(data?.amount);
   const items: PreferenceItemInput[] = Array.isArray(data?.items)
     ? data.items
     : [];
   const orderId = String(data?.orderId ?? "");
+  const tenantId = normalizeString(data?.tenantId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new functions.https.HttpsError(
@@ -104,6 +173,13 @@ export const createPreference = functions.https.onCall(async (data) => {
     throw new functions.https.HttpsError(
       "invalid-argument",
       "orderId is required."
+    );
+  }
+
+  if (!tenantId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId is required."
     );
   }
 
@@ -135,6 +211,7 @@ export const createPreference = functions.https.onCall(async (data) => {
       external_reference: orderId,
       metadata: {
         orderId,
+        tenantId,
       },
     },
     {
@@ -204,36 +281,82 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     );
 
     const payment = paymentResponse.data;
+    const metadataOrderId = normalizeString(payment?.metadata?.orderId);
     const orderId = payment?.external_reference
       ? String(payment.external_reference)
-      : "";
+      : metadataOrderId;
+    const tenantIdFromMetadata = extractTenantId(payment);
+    const tenantId = await resolveTenantId({
+      tenantIdFromMetadata,
+      orderId,
+      paymentId,
+    });
+
+    if (!tenantId) {
+      console.info("Mercado Pago webhook missing tenantId", {
+        paymentId,
+        orderId: orderId || "n/a",
+      });
+      res.status(200).send("ok");
+      return;
+    }
+
+    const paymentStatus = mapPaymentStatus(payment?.status);
+    const rawPayment = {
+      id: payment?.id ?? paymentId,
+      status: payment?.status ?? null,
+      statusDetail: payment?.status_detail ?? null,
+      transactionAmount: payment?.transaction_amount ?? null,
+      currencyId: payment?.currency_id ?? null,
+      installments: payment?.installments ?? null,
+      paymentMethodId: payment?.payment_method_id ?? null,
+      payerEmail: payment?.payer?.email ?? null,
+      approvedAt: payment?.date_approved ?? null,
+      createdAt: payment?.date_created ?? null,
+    };
+
+    const createdAtValue =
+      payment?.date_created && !Number.isNaN(Date.parse(payment.date_created))
+        ? admin.firestore.Timestamp.fromDate(new Date(payment.date_created))
+        : admin.firestore.FieldValue.serverTimestamp();
 
     const paymentUpdate = {
-      status: payment?.status ?? "unknown",
-      statusDetail: payment?.status_detail ?? "",
       orderId,
+      provider: "mercado_pago",
+      status: paymentStatus,
+      raw: rawPayment,
+      createdAt: createdAtValue,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await db.collection("payments").doc(paymentId).set(paymentUpdate, {
-      merge: true,
-    });
+    await db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("payments")
+      .doc(paymentId)
+      .set(paymentUpdate, {
+        merge: true,
+      });
 
     if (orderId) {
-      await db.collection("orders").doc(orderId).set(
-        {
-          paymentId,
-          paymentStatus: payment?.status ?? "unknown",
-          paymentStatusDetail: payment?.status_detail ?? "",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("orders")
+        .doc(orderId)
+        .set(
+          {
+            paymentId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
     }
 
     console.info("Mercado Pago webhook processed", {
       paymentId,
       orderId: orderId || "n/a",
+      tenantId,
     });
 
     res.status(200).send("ok");
