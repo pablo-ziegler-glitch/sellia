@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.AlertDialog
@@ -20,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -33,10 +36,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.ui.components.ImageUrlListEditor
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel
@@ -63,6 +71,8 @@ fun AddProductScreen(
 ) {
 
     val state by viewModel.autoFillState.collectAsState()
+    val imageUploadState by viewModel.imageUploadState.collectAsState()
+    val context = LocalContext.current
 
     // --- Estado de campos (con prefill si existe) ---
     var name by remember { mutableStateOf(prefill?.name ?: prefillName ?: "") }
@@ -80,6 +90,7 @@ fun AddProductScreen(
             }
         }
     }
+    val pendingImageUris = remember { mutableStateListOf<android.net.Uri>() }
 
     // Corregimos el bug: barcode debe ser VAR (mutable) y recordado
     var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode ?: "") }
@@ -137,6 +148,7 @@ fun AddProductScreen(
                 }
                 imageUrls.clear()
                 imageUrls.addAll(loadedImageUrls)
+                pendingImageUris.clear()
 
                 selectedCategoryName = p.category.orEmpty()
                 // Si tu modelo aún no tiene providerName, quedará vacío
@@ -144,6 +156,25 @@ fun AddProductScreen(
                 providerSku = p.providerSku.orEmpty()
 
                 minStockText = p.minStock?.toString() ?: ""
+            }
+        }
+    }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            if (editId != null) {
+                val contentType = context.contentResolver.getType(uri)
+                viewModel.uploadProductImage(
+                    productId = editId,
+                    localUri = uri,
+                    contentType = contentType
+                ) { result ->
+                    result.onSuccess { imageUrls.add(it) }
+                }
+            } else {
+                pendingImageUris.add(uri)
             }
         }
     }
@@ -338,6 +369,46 @@ fun AddProductScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(onClick = { imagePickerLauncher.launch("image/*") }) {
+                    Text("Subir imagen")
+                }
+                if (imageUploadState.uploading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    Text("Subiendo...")
+                }
+            }
+            if (!imageUploadState.message.isNullOrBlank()) {
+                Text("Error: ${imageUploadState.message}")
+            }
+            if (pendingImageUris.isNotEmpty()) {
+                Text("Imágenes pendientes (se suben al guardar)")
+                pendingImageUris.forEachIndexed { index, uri ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = "Imagen pendiente ${index + 1}",
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(120.dp)
+                        )
+                        IconButton(onClick = { pendingImageUris.removeAt(index) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Eliminar pendiente")
+                        }
+                    }
+                }
+            }
+        }
+
         ImageUrlListEditor(imageUrls = imageUrls)
 
         // --- Categoría ---
@@ -455,7 +526,12 @@ fun AddProductScreen(
                             categoryName = selectedCategoryName.ifBlank { null },
                             providerName = selectedProviderName.ifBlank { null },
                             providerSku = providerSku.ifBlank { null },
-                            minStock = minStock
+                            minStock = minStock,
+                            pendingImageUris = pendingImageUris.toList()
+                        ) { result ->
+                            if (result.isSuccess) {
+                                onSaved()
+                            }
                         )
                     } else {
                         viewModel.updateProduct(
@@ -480,9 +556,8 @@ fun AddProductScreen(
                             providerSku = providerSku.ifBlank { null },
                             minStock = minStock
                         )
+                        onSaved()
                     }
-
-                    onSaved()
                 }) {
                     Text(if (editId == null) "Guardar" else "Actualizar")
                 }
