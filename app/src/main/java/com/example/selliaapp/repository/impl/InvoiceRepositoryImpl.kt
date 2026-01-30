@@ -16,6 +16,7 @@ import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
 import com.example.selliaapp.data.model.InvoiceStatus
+import com.example.selliaapp.data.model.OrderStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.InvoiceDraft
@@ -384,6 +385,27 @@ class InvoiceRepositoryImpl @Inject constructor(
             }
             throw t
         }
+    }
+
+    override suspend fun refreshOrderStatus(orderId: String): OrderStatus? = withContext(io) {
+        val tenantId = tenantProvider.requireTenantId()
+        val snapshot = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("orders")
+            .document(orderId)
+            .get()
+            .await()
+
+        if (!snapshot.exists()) return@withContext null
+
+        OrderStatus(
+            orderId = snapshot.id,
+            status = snapshot.getString("status").orEmpty(),
+            paymentStatus = snapshot.getString("paymentStatus"),
+            statusDetail = snapshot.getString("statusDetail"),
+            updatedAtMillis = snapshot.getLong("updatedAtMillis")
+                ?: snapshot.getTimestamp("updatedAt")?.toDate()?.time
+        )
     }
 
      // ----------------------------
