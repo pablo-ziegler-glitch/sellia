@@ -36,6 +36,8 @@ object UserCsvImporter {
         return buildString {
             appendLine("name,email,role")
             appendLine("Usuario Demo,usuario@example.com,admin")
+            appendLine("Super Admin,sadmin@example.com,super_admin")
+            appendLine("Owner Demo,owner@example.com,owner")
         }
     }
 

@@ -43,8 +43,8 @@ fun ConfigScreen(
     onMarketingConfig: () -> Unit,
     onSync: () -> Unit,
     onBulkData: () -> Unit,
-    onUsageDashboard: () -> Unit,
-    canViewUsageDashboard: Boolean,
+    onCloudServicesAdmin: () -> Unit,
+    canManageCloudServices: Boolean,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -106,11 +106,11 @@ fun ConfigScreen(
                     title = "Pricing y costos",
                     onClick = onPricingConfig
                 )
-                if (canViewUsageDashboard) {
+                if (canManageCloudServices) {
                     SettingsItem(
-                        icon = Icons.Filled.Assessment,
-                        title = "Consumo por servicio/app",
-                        onClick = onUsageDashboard
+                        icon = Icons.Filled.CloudSync,
+                        title = "Servicios en la nube (Admin)",
+                        onClick = onCloudServicesAdmin
                     )
                 }
             }
