@@ -56,15 +56,10 @@ object PricingCalculator {
         val transferPrice = roundUpByTier(transferPriceRaw)
         val transferNetPrice = transferPrice * (1 - transferenciaRetencion)
         val costBase = purchasePrice + fixedCostImputed + (purchasePrice * operativosLocal)
-        val mlPricing = calculateMercadoLibrePrices(
+        val mlPricing = calculateMercadoPagoPrices(
             priceLowerBound = listPrice,
             costBase = costBase,
-            gainMinimum = settings.mlGainMinimum,
-            commissionPercent = settings.mlCommissionPercent,
-            cuotas3Percent = settings.mlCuotas3Percent,
-            cuotas6Percent = settings.mlCuotas6Percent,
-            shippingThreshold = settings.mlShippingThreshold,
-            weightKg = settings.mlDefaultWeightKg,
+            settings = settings,
             fixedCostTiers = mlFixedCostTiers,
             shippingTiers = mlShippingTiers
         )
@@ -104,6 +99,39 @@ object PricingCalculator {
         if (ml0 == ml3 || ml0 == ml6 || ml3 == ml6) return null
         return MlPricingResult(ml0 = ml0, ml3 = ml3, ml6 = ml6)
     }
+
+    /**
+     * Mercado Pago comparte la misma configuración de Mercado Libre en [PricingSettingsEntity].
+     *
+     * Campos utilizados:
+     * - [PricingSettingsEntity.mlCommissionPercent]
+     * - [PricingSettingsEntity.mlCuotas3Percent]
+     * - [PricingSettingsEntity.mlCuotas6Percent]
+     * - [PricingSettingsEntity.mlGainMinimum]
+     * - [PricingSettingsEntity.mlShippingThreshold]
+     * - [PricingSettingsEntity.mlDefaultWeightKg]
+     *
+     * Se reutiliza [calculateMercadoLibrePrices] para evitar duplicar lógica mientras la
+     * estrategia de comisiones y envíos siga siendo la misma.
+     */
+    fun calculateMercadoPagoPrices(
+        priceLowerBound: Double,
+        costBase: Double,
+        settings: PricingSettingsEntity,
+        fixedCostTiers: List<PricingMlFixedCostTierEntity>,
+        shippingTiers: List<PricingMlShippingTierEntity>
+    ): MlPricingResult? = calculateMercadoLibrePrices(
+        priceLowerBound = priceLowerBound,
+        costBase = costBase,
+        gainMinimum = settings.mlGainMinimum,
+        commissionPercent = settings.mlCommissionPercent,
+        cuotas3Percent = settings.mlCuotas3Percent,
+        cuotas6Percent = settings.mlCuotas6Percent,
+        shippingThreshold = settings.mlShippingThreshold,
+        weightKg = settings.mlDefaultWeightKg,
+        fixedCostTiers = fixedCostTiers,
+        shippingTiers = shippingTiers
+    )
 
     private fun coefficientFor(price: Double, settings: PricingSettingsEntity): Double = when {
         price <= 1500.0 -> settings.coefficient0To1500Percent
