@@ -22,6 +22,7 @@ import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.CashAuditDao
 import com.example.selliaapp.data.dao.CashMovementDao
 import com.example.selliaapp.data.dao.CashSessionDao
+import com.example.selliaapp.data.dao.CloudServiceConfigDao
 import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
@@ -42,6 +43,7 @@ import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
+import com.example.selliaapp.repository.CloudServiceConfigRepository
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.AuthOnboardingRepository
@@ -101,7 +103,8 @@ object AppModule {
                 AppDatabase.MIGRATION_31_32,
                 AppDatabase.MIGRATION_32_33,
                 AppDatabase.MIGRATION_33_34,
-                AppDatabase.MIGRATION_34_35
+                AppDatabase.MIGRATION_34_35,
+                AppDatabase.MIGRATION_35_36
             )
             .addCallback(object : RoomDatabase.Callback() {
                 /**
@@ -145,6 +148,8 @@ object AppModule {
     @Provides @Singleton fun provideCashSessionDao(db: AppDatabase): CashSessionDao = db.cashSessionDao()
     @Provides @Singleton fun provideCashMovementDao(db: AppDatabase): CashMovementDao = db.cashMovementDao()
     @Provides @Singleton fun provideCashAuditDao(db: AppDatabase): CashAuditDao = db.cashAuditDao()
+    @Provides @Singleton fun provideCloudServiceConfigDao(db: AppDatabase): CloudServiceConfigDao =
+        db.cloudServiceConfigDao()
 
     // -----------------------------
     // REPOSITORIES
@@ -198,6 +203,12 @@ object AppModule {
 
     @Provides @Singleton fun provideCustomerRepository(dao: CustomerDao): CustomerRepository = CustomerRepository(dao)
     @Provides @Singleton fun provideUserRepository(dao: UserDao): UserRepository = UserRepository(dao)
+    @Provides
+    @Singleton
+    fun provideCloudServiceConfigRepository(
+        dao: CloudServiceConfigDao,
+        @IoDispatcher io: CoroutineDispatcher
+    ): CloudServiceConfigRepository = CloudServiceConfigRepository(dao, io)
 
     @Provides
     @Singleton

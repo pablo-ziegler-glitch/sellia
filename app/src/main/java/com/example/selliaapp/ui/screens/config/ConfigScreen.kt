@@ -42,6 +42,8 @@ fun ConfigScreen(
     onMarketingConfig: () -> Unit,
     onSync: () -> Unit,
     onBulkData: () -> Unit,
+    onCloudServicesAdmin: () -> Unit,
+    canManageCloudServices: Boolean,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -103,6 +105,13 @@ fun ConfigScreen(
                     title = "Pricing y costos",
                     onClick = onPricingConfig
                 )
+                if (canManageCloudServices) {
+                    SettingsItem(
+                        icon = Icons.Filled.CloudSync,
+                        title = "Servicios en la nube (Admin)",
+                        onClick = onCloudServicesAdmin
+                    )
+                }
             }
         }
     )
