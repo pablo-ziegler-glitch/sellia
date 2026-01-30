@@ -37,6 +37,7 @@ import com.example.selliaapp.ui.screens.clients.ClientPurchasesScreen
 import com.example.selliaapp.ui.screens.clients.ClientsHubScreen
 import com.example.selliaapp.ui.screens.config.AddUserScreen
 import com.example.selliaapp.ui.screens.config.BulkDataScreen
+import com.example.selliaapp.ui.screens.config.CloudServicesAdminScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
@@ -67,6 +68,7 @@ import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
+import com.example.selliaapp.ui.screens.admin.UsageDashboardScreen
 import com.example.selliaapp.ui.screens.pos.PosSuccessScreen
 import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
@@ -90,6 +92,7 @@ import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
+import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
 import com.example.selliaapp.domain.security.Permission
 
 
@@ -552,11 +555,15 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
                 ConfigScreen(
                     onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
                     onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
                     onBulkData = { navController.navigate(Routes.BulkData.route) },
+                    onCloudServicesAdmin = { navController.navigate(Routes.CloudServicesAdmin.route) },
+                    canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -583,6 +590,12 @@ fun SelliaApp(
                 val vm: MarketingConfigViewModel = hiltViewModel()
                 MarketingConfigScreen(
                     vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.CloudServicesAdmin.route) {
+                CloudServicesAdminScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

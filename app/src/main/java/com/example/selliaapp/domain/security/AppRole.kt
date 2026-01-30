@@ -1,6 +1,8 @@
 package com.example.selliaapp.domain.security
 
 enum class AppRole(val raw: String, val label: String) {
+    SUPER_ADMIN("super_admin", "Super Admin"),
+    ADMIN("admin", "Admin"),
     OWNER("owner", "Dueño/a"),
     SUPER_ADMIN("super_admin", "Super administrador/a"),
     ADMIN("admin", "Administrador/a"),

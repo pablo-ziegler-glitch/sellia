@@ -34,10 +34,12 @@ class MercadoPagoApi @Inject constructor(
     }
 
     private fun buildPayload(request: PaymentPreferenceRequest): Map<String, Any> {
+        val description = request.description.trim()
+        val externalReference = request.externalReference.trim()
         val payload = mutableMapOf<String, Any>(
             "amount" to request.amount,
-            "description" to request.description,
-            "external_reference" to request.externalReference
+            "description" to description,
+            "external_reference" to externalReference
         )
 
         if (request.items.isNotEmpty()) {
