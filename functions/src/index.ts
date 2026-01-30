@@ -432,70 +432,234 @@ const getDataId = (req: functions.https.Request): string => {
   return dataId ? String(dataId) : "";
 };
 
-const normalizeString = (value: unknown): string => {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  return String(value).trim();
+type UsageSnapshot = {
+  metrics?: Record<string, number>;
+  usage?: Record<string, number>;
+  counts?: Record<string, number>;
+  periodKey?: string;
+  period?: string;
+  snapshotAt?: admin.firestore.Timestamp;
+  createdAt?: admin.firestore.Timestamp;
 };
 
-const mapPaymentStatus = (status: string | undefined | null): PaymentStatus => {
-  switch (String(status ?? "").toLowerCase()) {
-    case "approved":
-      return "APPROVED";
-    case "rejected":
-    case "cancelled":
-    case "canceled":
-      return "REJECTED";
-    case "in_process":
-    case "pending":
-      return "PENDING";
-    case "failed":
-      return "FAILED";
-    default:
-      return "PENDING";
-  }
+type FreeTierLimit = {
+  metrics?: Record<string, number>;
+  limits?: Record<string, number>;
+  freeTier?: Record<string, number>;
 };
 
-const extractTenantId = (payment: any): string => {
-  const metadata = payment?.metadata ?? {};
-  return normalizeString(metadata.tenantId ?? metadata.tenant_id);
+type UsageAlertPayload = {
+  tenantId: string;
+  alertId: string;
+  metric: string;
+  threshold: number;
+  percentage: number;
+  currentValue: number;
+  limitValue: number;
+  severity: string;
+  title: string;
+  message: string;
+  periodKey: string;
 };
 
-const resolveTenantId = async ({
-  tenantIdFromMetadata,
-  orderId,
-  paymentId,
-}: {
-  tenantIdFromMetadata: string;
-  orderId: string;
-  paymentId: string;
-}): Promise<string> => {
-  if (tenantIdFromMetadata) {
-    return tenantIdFromMetadata;
+const ALERT_THRESHOLDS = [70, 90, 100];
+const ADMIN_ROLES = new Set(["admin", "super_admin", "owner"]);
+
+const toNumberMap = (value: unknown): Record<string, number> => {
+  if (!value || typeof value !== "object") {
+    return {};
   }
+  const map: Record<string, number> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([key, raw]) => {
+    const numberValue = Number(raw);
+    if (Number.isFinite(numberValue)) {
+      map[key] = numberValue;
+    }
+  });
+  return map;
+};
 
-  const candidates: string[] = [];
-
-  if (orderId) {
-    const orderSnapshot = await db.collection("orders").doc(orderId).get();
-    if (orderSnapshot.exists) {
-      const legacyTenantId = normalizeString(orderSnapshot.get("tenantId"));
-      if (legacyTenantId) {
-        candidates.push(legacyTenantId);
-      }
+const firstNonEmptyMap = (
+  ...maps: Array<Record<string, number>>
+): Record<string, number> => {
+  for (const map of maps) {
+    if (Object.keys(map).length > 0) {
+      return map;
     }
   }
+  return {};
+};
 
-  const paymentSnapshot = await db.collection("payments").doc(paymentId).get();
-  if (paymentSnapshot.exists) {
-    const legacyTenantId = normalizeString(paymentSnapshot.get("tenantId"));
-    if (legacyTenantId) {
-      candidates.push(legacyTenantId);
+const resolveUsageMetrics = (snapshot: UsageSnapshot | null): Record<string, number> => {
+  if (!snapshot) return {};
+  return firstNonEmptyMap(
+    toNumberMap(snapshot.metrics),
+    toNumberMap(snapshot.usage),
+    toNumberMap(snapshot.counts),
+    toNumberMap(snapshot as Record<string, unknown>)
+  );
+};
+
+const resolveLimitMetrics = (limit: FreeTierLimit | null): Record<string, number> => {
+  if (!limit) return {};
+  return firstNonEmptyMap(
+    toNumberMap(limit.metrics),
+    toNumberMap(limit.limits),
+    toNumberMap(limit.freeTier),
+    toNumberMap(limit as Record<string, unknown>)
+  );
+};
+
+const resolvePeriodKey = (snapshot: UsageSnapshot | null): string => {
+  if (!snapshot) return "current";
+  const explicit = snapshot.periodKey ?? snapshot.period;
+  if (explicit) return String(explicit);
+  const date =
+    snapshot.snapshotAt?.toDate() ??
+    snapshot.createdAt?.toDate();
+  if (!date) return "current";
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+};
+
+const severityForThreshold = (threshold: number): string => {
+  if (threshold >= 100) return "critical";
+  if (threshold >= 90) return "high";
+  return "warning";
+};
+
+const formatAlertTitle = (metric: string, percentage: number): string =>
+  `Uso de ${metric} en ${percentage}%`;
+
+const formatAlertMessage = (
+  metric: string,
+  percentage: number,
+  currentValue: number,
+  limitValue: number
+): string =>
+  `El ${metric} alcanzó ${percentage}% del límite (${currentValue}/${limitValue}).`;
+
+const sanitizeAlertId = (value: string): string =>
+  value.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+const fetchUsageSnapshot = async (tenantId: string): Promise<UsageSnapshot | null> => {
+  const col = db.collection("tenants").document(tenantId).collection("usageSnapshots");
+  const currentDoc = await col.doc("current").get();
+  if (currentDoc.exists) {
+    return currentDoc.data() as UsageSnapshot;
+  }
+  const latest = await col.orderBy("snapshotAt", "desc").limit(1).get();
+  if (!latest.empty) {
+    return latest.docs[0].data() as UsageSnapshot;
+  }
+  return null;
+};
+
+const fetchFreeTierLimit = async (tenantId: string): Promise<FreeTierLimit | null> => {
+  const col = db.collection("tenants").document(tenantId).collection("freeTierLimits");
+  const currentDoc = await col.doc("current").get();
+  if (currentDoc.exists) {
+    return currentDoc.data() as FreeTierLimit;
+  }
+  const fallbackDoc = await col.doc("default").get();
+  if (fallbackDoc.exists) {
+    return fallbackDoc.data() as FreeTierLimit;
+  }
+  const tenantDoc = await db.collection("tenants").document(tenantId).get();
+  const fallback = tenantDoc.get("freeTierLimits");
+  return fallback ? (fallback as FreeTierLimit) : null;
+};
+
+const upsertUsageAlert = async (
+  payload: UsageAlertPayload
+): Promise<{ created: boolean }> => {
+  const alertRef = db
+    .collection("tenants")
+    .doc(payload.tenantId)
+    .collection("alerts")
+    .doc(payload.alertId);
+
+  const created = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(alertRef);
+    const data = {
+      tenantId: payload.tenantId,
+      metric: payload.metric,
+      threshold: payload.threshold,
+      percentage: payload.percentage,
+      currentValue: payload.currentValue,
+      limitValue: payload.limitValue,
+      severity: payload.severity,
+      title: payload.title,
+      message: payload.message,
+      periodKey: payload.periodKey,
+      status: "active",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (snap.exists) {
+      tx.update(alertRef, data);
+      return false;
     }
+    tx.set(alertRef, {
+      ...data,
+      readBy: [],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
+
+  return { created };
+};
+
+const fetchAdminNotificationTargets = async (tenantId: string): Promise<string[]> => {
+  const usersSnapshot = await db.collection("users").where("tenantId", "==", tenantId).get();
+  const tokens = new Set<string>();
+  usersSnapshot.docs.forEach((doc) => {
+    const data = doc.data() ?? {};
+    const role = String(data.role ?? "").trim().toLowerCase();
+    const isAdminFlag = data.isAdmin === true || data.isSuperAdmin === true;
+    if (!ADMIN_ROLES.has(role) && !isAdminFlag) {
+      return;
+    }
+    const rawTokens = data.fcmTokens ?? data.fcmToken ?? [];
+    const tokenList = Array.isArray(rawTokens) ? rawTokens : [rawTokens];
+    tokenList
+      .map((token) => String(token))
+      .filter(Boolean)
+      .forEach((token) => tokens.add(token));
+  });
+  return Array.from(tokens);
+};
+
+const notifyAdmins = async (
+  tenantId: string,
+  alertPayload: UsageAlertPayload
+): Promise<void> => {
+  const tokens = await fetchAdminNotificationTargets(tenantId);
+  if (tokens.length === 0) {
+    console.info("No admin tokens found for usage alert", {
+      tenantId,
+      alertId: alertPayload.alertId,
+    });
+    return;
   }
 
-  return candidates[0] ?? "";
+  await admin.messaging().sendEachForMulticast({
+    tokens,
+    notification: {
+      title: alertPayload.title,
+      body: alertPayload.message,
+    },
+    data: {
+      alertId: alertPayload.alertId,
+      tenantId: tenantId,
+      metric: alertPayload.metric,
+      threshold: String(alertPayload.threshold),
+      percentage: String(alertPayload.percentage),
+      severity: alertPayload.severity,
+    },
+  });
 };
 
 export const createPreference = functions.https.onCall(async (data) => {
@@ -750,3 +914,59 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     res.status(500).send("error");
   }
 });
+
+export const evaluateUsageAlerts = functions.pubsub
+  .schedule("every 1 hours")
+  .onRun(async () => {
+    const tenantsSnapshot = await db.collection("tenants").get();
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantId = tenantDoc.id;
+      const usageSnapshot = await fetchUsageSnapshot(tenantId);
+      const freeTierLimit = await fetchFreeTierLimit(tenantId);
+      const usageMetrics = resolveUsageMetrics(usageSnapshot);
+      const limitMetrics = resolveLimitMetrics(freeTierLimit);
+      const periodKey = resolvePeriodKey(usageSnapshot);
+
+      if (!usageSnapshot || Object.keys(usageMetrics).length === 0) {
+        console.info("No usage snapshot available for tenant", { tenantId });
+        continue;
+      }
+      if (!freeTierLimit || Object.keys(limitMetrics).length === 0) {
+        console.info("No free tier limits available for tenant", { tenantId });
+        continue;
+      }
+
+      for (const [metric, limitValue] of Object.entries(limitMetrics)) {
+        const currentValue = usageMetrics[metric] ?? 0;
+        if (!Number.isFinite(limitValue) || limitValue <= 0) {
+          continue;
+        }
+        const percentage = Math.floor((currentValue / limitValue) * 100);
+        for (const threshold of ALERT_THRESHOLDS) {
+          if (percentage < threshold) {
+            continue;
+          }
+          const severity = severityForThreshold(threshold);
+          const alertId = sanitizeAlertId(`${metric}_${threshold}_${periodKey}`);
+          const payload: UsageAlertPayload = {
+            tenantId,
+            alertId,
+            metric,
+            threshold,
+            percentage,
+            currentValue,
+            limitValue,
+            severity,
+            title: formatAlertTitle(metric, percentage),
+            message: formatAlertMessage(metric, percentage, currentValue, limitValue),
+            periodKey,
+          };
+          const result = await upsertUsageAlert(payload);
+          if (result.created) {
+            await notifyAdmins(tenantId, payload);
+          }
+        }
+      }
+    }
+    return null;
+  });
