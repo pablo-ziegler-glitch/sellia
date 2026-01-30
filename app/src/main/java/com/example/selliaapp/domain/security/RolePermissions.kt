@@ -3,6 +3,16 @@ package com.example.selliaapp.domain.security
 object RolePermissions {
     fun forRole(role: AppRole): Set<Permission> = when (role) {
         AppRole.OWNER -> Permission.entries.toSet()
+        AppRole.SUPER_ADMIN -> Permission.entries.toSet()
+        AppRole.ADMIN -> setOf(
+            Permission.CASH_OPEN,
+            Permission.CASH_AUDIT,
+            Permission.CASH_MOVEMENT,
+            Permission.CASH_CLOSE,
+            Permission.VIEW_CASH_REPORT,
+            Permission.MANAGE_USERS,
+            Permission.VIEW_USAGE_DASHBOARD
+        )
         AppRole.MANAGER -> setOf(
             Permission.CASH_OPEN,
             Permission.CASH_AUDIT,
