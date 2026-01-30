@@ -1,0 +1,18 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isTenantUser(tenantId) {
+      return isAuthenticated()
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+    }
+
+    match /tenants/{tenantId}/products/{productId}/{allPaths=**} {
+      allow read, write: if isTenantUser(tenantId);
+    }
+  }
+}
