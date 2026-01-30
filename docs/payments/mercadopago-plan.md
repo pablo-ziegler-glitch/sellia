@@ -16,6 +16,12 @@ La opción **base** será **Checkout Pro (redirect)**. Esta elección prioriza m
 - La **API de Mercado Pago no tiene costo** por uso.
 - **Existe un fee por transacción** aplicado por Mercado Pago sobre cada pago procesado.
 
+## QA manual de checkout (redirect)
+
+Checklist mínimo antes de pasar a producción:
+- Confirmar que la Cloud Function `createPaymentPreference` responde con `init_point` y la app puede abrir el link de pago sin errores.
+- Validar que `external_reference` viaja con el `orderId`/referencia interna y aparece en el detalle del pago en Mercado Pago.
+
 ## Bricks (mejora opcional)
 
 **Bricks** queda como **mejora opcional** para una segunda etapa. Permite embebido directo en el checkout propio, optimizando la continuidad visual del flujo.
