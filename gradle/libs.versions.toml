@@ -40,6 +40,7 @@ storage = "1.5.0"
 firebaseCrashlyticsBuildtools = "3.0.6"
 junitJunit = "4.12"
 viewbinding = "7.3.1"
+androidxBrowser = "1.8.0"
 
 
 [libraries]
@@ -63,6 +64,7 @@ core = { module = "com.google.zxing:core", version.ref = "core" }
 firebase-auth-ktx = { module = "com.google.firebase:firebase-auth-ktx", version.ref = "firebaseAuthKtx" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore-ktx = { module = "com.google.firebase:firebase-firestore-ktx", version.ref = "firebaseFirestoreKtx" }
+firebase-functions-ktx = { module = "com.google.firebase:firebase-functions-ktx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -90,5 +92,6 @@ androidx-storage = { group = "androidx.test.services", name = "storage", version
 firebase-crashlytics-buildtools = { group = "com.google.firebase", name = "firebase-crashlytics-buildtools", version.ref = "firebaseCrashlyticsBuildtools" }
 junit-junit = { group = "junit", name = "junit", version.ref = "junitJunit" }
 androidx-viewbinding = { group = "androidx.databinding", name = "viewbinding", version.ref = "viewbinding" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
 
 [plugins]
