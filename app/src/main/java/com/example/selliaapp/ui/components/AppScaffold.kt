@@ -35,7 +35,7 @@ fun AppScaffold(
     currentDestination: NavDestination?,
     onNavigate: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
-    content: @Composable (Modifier) -> Unit
+    content: @Composable (androidx.compose.foundation.layout.PaddingValues) -> Unit
 ) {
     val items = listOf(
         BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),

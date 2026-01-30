@@ -223,6 +223,59 @@ private fun ItemRow(item: InvoiceItemRow, currency: NumberFormat) {
 }
 
 @Composable
+private fun BreakdownSection(detail: InvoiceDetail, currency: NumberFormat) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Resumen", style = MaterialTheme.typography.titleMedium)
+        SummaryRow(label = "Subtotal", value = currency.format(detail.subtotal))
+        if (detail.taxes > 0) {
+            SummaryRow(label = "Impuestos", value = currency.format(detail.taxes))
+        }
+        if (detail.discountAmount > 0) {
+            val label = "Descuento ${detail.discountPercent}%"
+            SummaryRow(label = label, value = "-${currency.format(detail.discountAmount)}")
+        }
+        if (detail.surchargeAmount > 0) {
+            val label = "Recargo ${detail.surchargePercent}%"
+            SummaryRow(label = label, value = currency.format(detail.surchargeAmount))
+        }
+        HorizontalDivider()
+        SummaryRow(
+            label = "Total",
+            value = currency.format(detail.total),
+            labelStyle = MaterialTheme.typography.titleSmall,
+            valueStyle = MaterialTheme.typography.titleSmall
+        )
+        detail.notes?.takeIf { it.isNotBlank() }?.let { notes ->
+            Text("Notas: $notes", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun PaymentSection(detail: InvoiceDetail) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Cobro", style = MaterialTheme.typography.titleMedium)
+        SummaryRow(label = "Método", value = detail.paymentMethod)
+        detail.paymentNotes?.takeIf { it.isNotBlank() }?.let { notes ->
+            Text("Observaciones: $notes", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun SummaryRow(
+    label: String,
+    value: String,
+    labelStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
+    valueStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = labelStyle)
+        Text(value, style = valueStyle)
+    }
+}
+
+@Composable
 private fun SyncStatusBadge(status: SyncStatus) {
     val (label, color) = when (status) {
         SyncStatus.SYNCED -> "Sincronizado" to MaterialTheme.colorScheme.primary
