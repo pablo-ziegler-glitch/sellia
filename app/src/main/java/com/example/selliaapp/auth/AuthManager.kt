@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,6 +49,16 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Error(error.message ?: "No se pudo iniciar sesión")
     }
 
+    suspend fun refreshSession(): Result<AuthSession> = runCatching {
+        _state.value = AuthState.Loading
+        val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
+        val session = fetchSession(user)
+        _state.value = AuthState.Authenticated(session)
+        session
+    }.onFailure { error ->
+        _state.value = AuthState.Error(error.message ?: "No se pudo actualizar la sesión")
+    }
+
     fun signOut() {
         firebaseAuth.signOut()
         _state.value = AuthState.Unauthenticated
@@ -71,7 +82,7 @@ class AuthManager @Inject constructor(
     private fun loadSession(user: FirebaseUser) {
         _state.value = AuthState.Loading
         scope.launch {
-            runCatching { fetchSession(user) }
+            runCatching { fetchSessionWithRetry(user) }
                 .onSuccess { session ->
                     _state.value = AuthState.Authenticated(session)
                 }
@@ -81,6 +92,20 @@ class AuthManager @Inject constructor(
                     )
                 }
         }
+    }
+
+    private suspend fun fetchSessionWithRetry(user: FirebaseUser): AuthSession {
+        val maxAttempts = 3
+        var lastError: Throwable? = null
+        repeat(maxAttempts) { attempt ->
+            runCatching { fetchSession(user) }
+                .onSuccess { return it }
+                .onFailure { lastError = it }
+            if (attempt < maxAttempts - 1) {
+                delay(300)
+            }
+        }
+        throw lastError ?: IllegalStateException("El usuario no tiene tenantId/storeId asignado")
     }
 
     private suspend fun fetchSession(user: FirebaseUser): AuthSession {
