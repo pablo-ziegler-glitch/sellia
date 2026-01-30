@@ -86,12 +86,16 @@ const getDataId = (req: functions.https.Request): string => {
   return dataId ? String(dataId) : "";
 };
 
-export const createPreference = functions.https.onCall(async (data) => {
+export const createPaymentPreference = functions.https.onCall(async (data) => {
   const amount = Number(data?.amount);
   const items: PreferenceItemInput[] = Array.isArray(data?.items)
     ? data.items
     : [];
-  const orderId = String(data?.orderId ?? "");
+  const orderId = String(
+    data?.external_reference ?? data?.externalReference ?? data?.orderId ?? ""
+  );
+  const description =
+    typeof data?.description === "string" ? data.description.trim() : "";
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new functions.https.HttpsError(
@@ -103,7 +107,7 @@ export const createPreference = functions.https.onCall(async (data) => {
   if (!orderId) {
     throw new functions.https.HttpsError(
       "invalid-argument",
-      "orderId is required."
+      "external_reference is required."
     );
   }
 
@@ -135,6 +139,7 @@ export const createPreference = functions.https.onCall(async (data) => {
       external_reference: orderId,
       metadata: {
         orderId,
+        description: description || undefined,
       },
     },
     {
@@ -152,7 +157,11 @@ export const createPreference = functions.https.onCall(async (data) => {
     );
   }
 
-  return { init_point: initPoint };
+  return {
+    init_point: initPoint,
+    preference_id: response.data?.id,
+    sandbox_init_point: response.data?.sandbox_init_point,
+  };
 });
 
 export const mpWebhook = functions.https.onRequest(async (req, res) => {
