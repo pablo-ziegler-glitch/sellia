@@ -53,10 +53,12 @@ import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
+import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
+import com.example.selliaapp.repository.impl.UsageRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
 import dagger.Module
@@ -229,6 +231,16 @@ object AppModule {
     @Provides @Singleton
     fun provideReportsRepository(invoiceDao: InvoiceDao): ReportsRepository =
         ReportsRepository(invoiceDao)
+
+    @Provides
+    @Singleton
+    fun provideUsageRepository(
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): UsageRepository = UsageRepositoryImpl(
+        firestore = firestore,
+        ioDispatcher = io
+    )
 
     @Provides @Singleton fun provideProviderRepository(dao: ProviderDao): ProviderRepository = ProviderRepository(dao)
     @Provides @Singleton fun provideProviderInvoiceRepository(dao: ProviderInvoiceDao): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
