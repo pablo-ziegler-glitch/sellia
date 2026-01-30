@@ -67,6 +67,7 @@ import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
+import com.example.selliaapp.ui.screens.admin.UsageDashboardScreen
 import com.example.selliaapp.ui.screens.pos.PosSuccessScreen
 import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
@@ -90,6 +91,7 @@ import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
+import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
 import com.example.selliaapp.domain.security.Permission
 
 
@@ -552,11 +554,15 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
                 ConfigScreen(
                     onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
                     onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
                     onBulkData = { navController.navigate(Routes.BulkData.route) },
+                    onUsageDashboard = { navController.navigate(Routes.AdminUsageDashboard.route) },
+                    canViewUsageDashboard = accessState.permissions.contains(Permission.VIEW_USAGE_DASHBOARD),
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -582,6 +588,14 @@ fun SelliaApp(
             composable(Routes.MarketingConfig.route) {
                 val vm: MarketingConfigViewModel = hiltViewModel()
                 MarketingConfigScreen(
+                    vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.AdminUsageDashboard.route) {
+                val vm: UsageDashboardViewModel = hiltViewModel()
+                UsageDashboardScreen(
                     vm = vm,
                     onBack = { navController.popBackStack() }
                 )

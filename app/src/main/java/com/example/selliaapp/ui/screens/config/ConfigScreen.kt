@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,6 +43,8 @@ fun ConfigScreen(
     onMarketingConfig: () -> Unit,
     onSync: () -> Unit,
     onBulkData: () -> Unit,
+    onUsageDashboard: () -> Unit,
+    canViewUsageDashboard: Boolean,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -103,6 +106,13 @@ fun ConfigScreen(
                     title = "Pricing y costos",
                     onClick = onPricingConfig
                 )
+                if (canViewUsageDashboard) {
+                    SettingsItem(
+                        icon = Icons.Filled.Assessment,
+                        title = "Consumo por servicio/app",
+                        onClick = onUsageDashboard
+                    )
+                }
             }
         }
     )

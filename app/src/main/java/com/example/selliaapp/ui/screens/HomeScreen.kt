@@ -293,7 +293,7 @@ fun HomeScreen(
                         )
                         state.lowStockAlerts.take(3).forEach { alert ->
                             Text(
-                                "• ${alert.name} (${alert.stock} u.)",
+                                "• ${alert.name} (${alert.quantity} u.)",
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
