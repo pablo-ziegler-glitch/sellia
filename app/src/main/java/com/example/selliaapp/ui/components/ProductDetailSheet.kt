@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
@@ -29,14 +30,18 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.selliaapp.data.local.entity.ProductEntity
@@ -56,7 +61,15 @@ fun ProductDetailSheet(
     val safeMax = maxQty.coerceAtLeast(0)
     val startingQty = if (safeMax == 0) 0 else initialQty.coerceIn(1, safeMax)
     var qty by remember { mutableIntStateOf(startingQty) }
+    var qtyText by remember { mutableStateOf(startingQty.toString()) }
     val images = remember(product) { product.imageUrls }
+
+    LaunchedEffect(qtyText) {
+        val parsed = qtyText.toIntOrNull() ?: 0
+        qty = parsed.coerceAtLeast(0)
+    }
+
+    val tooHigh = safeMax > 0 && qty > safeMax
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -161,14 +174,31 @@ fun ProductDetailSheet(
                 Text("Cantidad", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = { qty = (qty - 1).coerceAtLeast(1) },
+                        onClick = {
+                            val newQty = (qty - 1).coerceAtLeast(1)
+                            qty = newQty
+                            qtyText = newQty.toString()
+                        },
                         enabled = safeMax > 0 && qty > 1
                     ) {
                         Icon(Icons.Default.Remove, contentDescription = "Quitar")
                     }
-                    Text("$qty", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = qtyText,
+                        onValueChange = { input -> qtyText = input.filter { it.isDigit() } },
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .width(96.dp),
+                        singleLine = true,
+                        isError = qty < 1 || tooHigh,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
                     IconButton(
-                        onClick = { qty = (qty + 1).coerceAtMost(safeMax.coerceAtLeast(1)) },
+                        onClick = {
+                            val newQty = if (safeMax > 0) (qty + 1).coerceAtMost(safeMax) else qty + 1
+                            qty = newQty
+                            qtyText = newQty.toString()
+                        },
                         enabled = safeMax > 0 && qty < safeMax
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Agregar")
@@ -176,9 +206,17 @@ fun ProductDetailSheet(
                 }
             }
 
+            if (tooHigh) {
+                Text(
+                    text = "Excede el stock disponible (máx: $safeMax).",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
             Button(
                 onClick = { onAddToCart(qty) },
-                enabled = safeMax > 0,
+                enabled = safeMax > 0 && qty >= 1 && !tooHigh,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Agregar al carrito")
