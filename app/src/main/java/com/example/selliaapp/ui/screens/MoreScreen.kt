@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.ReceiptLong
@@ -39,13 +42,17 @@ fun MoreScreen(
     onReports: () -> Unit,
     onAlerts: () -> Unit,
     onSettings: () -> Unit,
-    onSync: () -> Unit
+    onSync: () -> Unit,
+    onManageUsers: () -> Unit,
+    onSignOut: () -> Unit
 ) {
     Surface {
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .navigationBarsPadding()
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("Más", style = MaterialTheme.typography.headlineSmall)
@@ -140,12 +147,32 @@ fun MoreScreen(
                 overlineContent = null
             )
             ListItem(
+                headlineContent = { Text("Usuarios y roles") },
+                leadingContent = { Icon(Icons.Default.People, contentDescription = null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onManageUsers),
+                supportingContent = { Text("Altas, permisos y perfiles") },
+                trailingContent = null,
+                overlineContent = null
+            )
+            ListItem(
                 headlineContent = { Text("Sincronizar") },
                 leadingContent = { Icon(Icons.Default.Sync, contentDescription = null) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onSync),
                 supportingContent = { Text("Enviar cambios pendientes") },
+                trailingContent = null,
+                overlineContent = null
+            )
+            ListItem(
+                headlineContent = { Text("Cerrar sesión") },
+                leadingContent = { Icon(Icons.Default.Logout, contentDescription = null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onSignOut),
+                supportingContent = { Text("Salir para ingresar con otra cuenta") },
                 trailingContent = null,
                 overlineContent = null
             )
