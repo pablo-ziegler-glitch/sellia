@@ -96,7 +96,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 36,
+    version = 37,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -334,6 +334,12 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        val MIGRATION_36_37 = object : Migration(36, 37) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `users` ADD COLUMN `isActive` INTEGER NOT NULL DEFAULT 1")
             }
         }
     }

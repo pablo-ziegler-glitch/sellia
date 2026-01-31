@@ -9,5 +9,6 @@ data class User(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val email: String,
-    val role: String
+    val role: String,
+    val isActive: Boolean = true
 )

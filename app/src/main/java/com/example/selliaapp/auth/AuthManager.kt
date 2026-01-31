@@ -116,7 +116,9 @@ class AuthManager @Inject constructor(
         return AuthSession(
             uid = user.uid,
             tenantId = tenantId,
-            email = user.email
+            email = user.email,
+            displayName = user.displayName,
+            photoUrl = user.photoUrl?.toString()
         )
     }
 }

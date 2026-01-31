@@ -3,6 +3,7 @@ package com.example.selliaapp.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,8 +29,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.selliaapp.ui.components.AccountAvatarMenu
+import com.example.selliaapp.ui.components.AccountSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +48,9 @@ fun MoreScreen(
     onSettings: () -> Unit,
     onSync: () -> Unit,
     onManageUsers: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    accountSummary: AccountSummary,
+    canManageUsers: Boolean
 ) {
     Surface {
         val scrollState = rememberScrollState()
@@ -55,7 +61,17 @@ fun MoreScreen(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Más", style = MaterialTheme.typography.headlineSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Más",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                AccountAvatarMenu(accountSummary = accountSummary)
+            }
 
             SectionTitle("Operación")
             ListItem(
@@ -146,16 +162,18 @@ fun MoreScreen(
                 trailingContent = null,
                 overlineContent = null
             )
-            ListItem(
-                headlineContent = { Text("Usuarios y roles") },
-                leadingContent = { Icon(Icons.Default.People, contentDescription = null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onManageUsers),
-                supportingContent = { Text("Altas, permisos y perfiles") },
-                trailingContent = null,
-                overlineContent = null
-            )
+            if (canManageUsers) {
+                ListItem(
+                    headlineContent = { Text("Usuarios y roles") },
+                    leadingContent = { Icon(Icons.Default.People, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onManageUsers),
+                    supportingContent = { Text("Altas, permisos y perfiles") },
+                    trailingContent = null,
+                    overlineContent = null
+                )
+            }
             ListItem(
                 headlineContent = { Text("Sincronizar") },
                 leadingContent = { Icon(Icons.Default.Sync, contentDescription = null) },
