@@ -90,6 +90,7 @@ import com.example.selliaapp.viewmodel.StockImportViewModel
 import com.example.selliaapp.viewmodel.UserViewModel
 import com.example.selliaapp.viewmodel.StockMovementsViewModel
 import com.example.selliaapp.viewmodel.AccessControlViewModel
+import com.example.selliaapp.viewmodel.AuthViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
@@ -109,6 +110,7 @@ fun SelliaApp(
 
     // ViewModels inyectados por Hilt (scope de navegación)
     val userViewModel: UserViewModel = hiltViewModel()
+    val authViewModel: AuthViewModel = hiltViewModel()
 
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -214,7 +216,9 @@ fun SelliaApp(
                     onReports = { navController.navigate(Routes.Reports.route) },
                     onAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSettings = { navController.navigate(Routes.Config.route) },
-                    onSync = { SyncScheduler.enqueueNow(context) }
+                    onSync = { SyncScheduler.enqueueNow(context) },
+                    onManageUsers = { navController.navigate(Routes.AddUser.route) },
+                    onSignOut = { authViewModel.signOut() }
                 )
             }
 
