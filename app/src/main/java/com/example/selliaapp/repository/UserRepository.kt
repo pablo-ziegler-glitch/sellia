@@ -19,6 +19,8 @@ class UserRepository(private val userDao: UserDao) {
 
     suspend fun insert(user: User): Long = withContext(Dispatchers.IO) { userDao.insert(user) }
 
+    suspend fun countUsers(): Int = withContext(Dispatchers.IO) { userDao.countUsers() }
+
     suspend fun update(user: User): Int = withContext(Dispatchers.IO) { userDao.update(user) }
 
     suspend fun delete(user: User): Int = withContext(Dispatchers.IO) { userDao.delete(user) }

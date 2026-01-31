@@ -21,6 +21,9 @@ interface UserDao {
     @Query("SELECT * FROM users ORDER BY id LIMIT 1")
     suspend fun getFirst(): User?
 
+    @Query("SELECT COUNT(*) FROM users")
+    suspend fun countUsers(): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(user: User): Long
 
