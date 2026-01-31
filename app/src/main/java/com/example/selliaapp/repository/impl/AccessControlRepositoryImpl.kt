@@ -51,7 +51,12 @@ class AccessControlRepositoryImpl @Inject constructor(
             !email.isNullOrBlank() -> userDao.getByEmail(email)
             else -> userDao.getFirst()
         }
-        val role = AppRole.fromRaw(user?.role)
+        val totalUsers = userDao.countUsers()
+        val role = when {
+            user != null -> AppRole.fromRaw(user.role)
+            totalUsers == 0 && !email.isNullOrBlank() -> AppRole.SUPER_ADMIN
+            else -> AppRole.fromRaw(null)
+        }
         UserAccessState(
             email = user?.email ?: email,
             role = role,

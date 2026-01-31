@@ -3,6 +3,7 @@ package com.example.selliaapp.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.model.User
+import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,7 +28,14 @@ class UserViewModel  @Inject constructor(
 
     fun addUser(name: String,email : String, role : String) {
         viewModelScope.launch {
-            repository.insert(User(name = name, email = email, role = role))
+            val sanitizedRole = role.trim().ifBlank { AppRole.VIEWER.raw }
+            val totalUsers = repository.countUsers()
+            val effectiveRole = if (totalUsers == 0) {
+                AppRole.SUPER_ADMIN.raw
+            } else {
+                sanitizedRole
+            }
+            repository.insert(User(name = name.trim(), email = email.trim(), role = effectiveRole))
         }
     }
 
