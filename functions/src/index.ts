@@ -215,6 +215,16 @@ const timingSafeEqual = (a: string, b: string): boolean => {
   return crypto.timingSafeEqual(bufferA, bufferB);
 };
 
+const normalizeString = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return "";
+};
+
 const getMonthRange = (referenceDate: Date): { start: Date; end: Date } => {
   const start = new Date(
     Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1, 0, 0, 0)
@@ -662,32 +672,23 @@ const notifyAdmins = async (
   });
 };
 
-export const createPreference = functions.https.onCall(async (data) => {
-  const amount = Number(data?.amount);
-  const items: PreferenceItemInput[] = Array.isArray(data?.items)
-    ? data.items
+const createPreferenceHandler = async (data: unknown) => {
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const amount = Number(payload.amount);
+  const items: PreferenceItemInput[] = Array.isArray(payload.items)
+    ? (payload.items as PreferenceItemInput[])
     : [];
-  const orderId = String(data?.orderId ?? "");
-  const tenantId = normalizeString(data?.tenantId);
+  const orderId = normalizeString(
+    payload.orderId ?? payload.external_reference ?? payload.externalReference
+  );
+  const description = normalizeString(payload.description);
+  const tenantId = normalizeString(payload.tenantId);
+  const payerEmail = normalizeString(payload.payer_email ?? payload.payerEmail);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new functions.https.HttpsError(
       "invalid-argument",
       "amount must be a positive number."
-    );
-  }
-
-  if (!orderId) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "external_reference is required."
-    );
-  }
-
-  if (!tenantId) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "tenantId is required."
     );
   }
 
@@ -703,24 +704,34 @@ export const createPreference = functions.https.onCall(async (data) => {
   const preferenceItems = items.map((item) => {
     const quantity = Number(item.quantity ?? 1);
     const unitPrice = Number(item.unit_price ?? item.unitPrice ?? amount);
+    const title =
+      normalizeString(item.title ?? item.name) ||
+      description ||
+      "Item";
 
     return {
-      title: String(item.title ?? item.name ?? "Item"),
+      title,
       quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
       unit_price: Number.isFinite(unitPrice) ? unitPrice : amount,
       currency_id: String(item.currency_id ?? item.currencyId ?? "ARS"),
     };
   });
 
+  const metadata = {
+    orderId: orderId || undefined,
+    tenantId: tenantId || undefined,
+    ...(typeof payload.metadata === "object" && payload.metadata !== null
+      ? payload.metadata
+      : {}),
+  };
+
   const response = await axios.post(
     `${MERCADOPAGO_API}/checkout/preferences`,
     {
       items: preferenceItems,
-      external_reference: orderId,
-      metadata: {
-        orderId,
-        tenantId,
-      },
+      external_reference: orderId || undefined,
+      metadata,
+      payer: payerEmail ? { email: payerEmail } : undefined,
     },
     {
       headers: {
@@ -742,7 +753,11 @@ export const createPreference = functions.https.onCall(async (data) => {
     preference_id: response.data?.id,
     sandbox_init_point: response.data?.sandbox_init_point,
   };
-});
+};
+
+export const createPaymentPreference =
+  functions.https.onCall(createPreferenceHandler);
+export const createPreference = functions.https.onCall(createPreferenceHandler);
 
 export const collectUsageMetrics = functions.pubsub
   .schedule("every 24 hours")

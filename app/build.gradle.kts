@@ -154,6 +154,8 @@ dependencies {
     implementation(libs.firebase.functions.ktx)
     implementation(libs.firebase.storage.ktx)
     implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.appcheck.playintegrity)
+    debugImplementation(libs.firebase.appcheck.debug)
 
     implementation(libs.androidx.browser)
 
