@@ -47,7 +47,7 @@ class UserRepository(private val userDao: UserDao) {
             try {
                 val existing = userDao.getByEmail(email)
                 if (existing == null) {
-                    userDao.insert(User(name = name, email = email, role = role))
+                    userDao.insert(User(name = name, email = email, role = role, isActive = true))
                     inserted++
                 } else {
                     userDao.update(existing.copy(name = name, role = role))

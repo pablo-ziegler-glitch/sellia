@@ -53,7 +53,7 @@ class AccessControlRepositoryImpl @Inject constructor(
         }
         val totalUsers = userDao.countUsers()
         val role = when {
-            user != null -> AppRole.fromRaw(user.role)
+            user != null && user.isActive -> AppRole.fromRaw(user.role)
             totalUsers == 0 && !email.isNullOrBlank() -> AppRole.SUPER_ADMIN
             else -> AppRole.fromRaw(null)
         }

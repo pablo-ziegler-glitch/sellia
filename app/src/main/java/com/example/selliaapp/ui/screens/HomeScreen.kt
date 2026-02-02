@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.BuildConfig
+import com.example.selliaapp.ui.components.AccountAvatarMenu
+import com.example.selliaapp.ui.components.AccountSummary
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import java.text.NumberFormat
@@ -67,7 +69,8 @@ fun HomeScreen(
     onAlertAdjustStock: (Int) -> Unit = {},
     onAlertCreatePurchase: (Int) -> Unit = {},
     onCashOpen: () -> Unit,
-    onCashHub: () -> Unit
+    onCashHub: () -> Unit,
+    accountSummary: AccountSummary
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
@@ -110,11 +113,18 @@ fun HomeScreen(
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "Inicio",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Inicio",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            AccountAvatarMenu(accountSummary = accountSummary)
+        }
 
         Card(
             modifier = Modifier.fillMaxWidth(),

@@ -1,7 +1,6 @@
 package com.example.selliaapp.ui.navigation
 
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
@@ -36,10 +35,10 @@ import com.example.selliaapp.ui.screens.checkout.CheckoutScreen
 import com.example.selliaapp.ui.screens.clients.ClientMetricsScreen
 import com.example.selliaapp.ui.screens.clients.ClientPurchasesScreen
 import com.example.selliaapp.ui.screens.clients.ClientsHubScreen
-import com.example.selliaapp.ui.screens.config.AddUserScreen
 import com.example.selliaapp.ui.screens.config.BulkDataScreen
 import com.example.selliaapp.ui.screens.config.CloudServicesAdminScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
+import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
@@ -96,6 +95,7 @@ import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
 import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
 import com.example.selliaapp.domain.security.Permission
+import com.example.selliaapp.ui.components.buildAccountSummary
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -135,6 +135,12 @@ fun SelliaApp(
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {
                 val homeVm: HomeViewModel = hiltViewModel()
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
+                val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                val accountSummary = remember(authState, accessState) {
+                    buildAccountSummary(authState, accessState)
+                }
 
                 HomeScreen(
                     onNewSale = { navController.navigate(Routes.Pos.route) },
@@ -156,19 +162,27 @@ fun SelliaApp(
                     onViewStockMovements = { navController.navigate(Routes.StockMovements.route) },
                     onCashOpen = { navController.navigate(Routes.CashOpen.route) },
                     onCashHub = { navController.navigate(Routes.Cash.route) },
-                    vm = homeVm
+                    vm = homeVm,
+                    accountSummary = accountSummary
                 )
             }
 
             composable(Routes.Cash.route) {
                 val cashVm: CashViewModel = hiltViewModel()
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
+                val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                val accountSummary = remember(authState, accessState) {
+                    buildAccountSummary(authState, accessState)
+                }
                 CashScreen(
                     vm = cashVm,
                     onOpen = { navController.navigate(Routes.CashOpen.route) },
                     onAudit = { navController.navigate(Routes.CashAudit.route) },
                     onMovements = { navController.navigate(Routes.CashMovements.route) },
                     onClose = { navController.navigate(Routes.CashClose.route) },
-                    onReport = { navController.navigate(Routes.CashReport.route) }
+                    onReport = { navController.navigate(Routes.CashReport.route) },
+                    accountSummary = accountSummary
                 )
             }
 
@@ -207,6 +221,12 @@ fun SelliaApp(
             }
 
             composable(Routes.More.route) {
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
+                val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                val accountSummary = remember(authState, accessState) {
+                    buildAccountSummary(authState, accessState)
+                }
                 MoreScreen(
                     onStock = { navController.navigate(Routes.Stock.route) },
                     onStockHistory = { navController.navigate(Routes.StockMovements.route) },
@@ -218,7 +238,9 @@ fun SelliaApp(
                     onSettings = { navController.navigate(Routes.Config.route) },
                     onSync = { SyncScheduler.enqueueNow(context) },
                     onManageUsers = { navController.navigate(Routes.AddUser.route) },
-                    onSignOut = { authViewModel.signOut() }
+                    onSignOut = { authViewModel.signOut() },
+                    accountSummary = accountSummary,
+                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
                 )
             }
 
@@ -610,20 +632,13 @@ fun SelliaApp(
                 )
             }
 
-            // Alta de usuario desde Config
+            // Gestión de usuarios y roles
             composable(Routes.AddUser.route) {
                 val accessVm: AccessControlViewModel = hiltViewModel()
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
-                AddUserScreen(
-                    onSave = { name, email, role ->
-                        if (name.isBlank() || email.isBlank()) {
-                            Toast.makeText(context, "Completá nombre y email", Toast.LENGTH_SHORT).show()
-                            return@AddUserScreen
-                        }
-                        userViewModel.addUser(name, email, role)
-                        navController.popBackStack()
-                    },
-                    onCancel = { navController.popBackStack() },
+                ManageUsersScreen(
+                    vm = userViewModel,
+                    onBack = { navController.popBackStack() },
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
                 )
             }

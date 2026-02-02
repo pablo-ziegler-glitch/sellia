@@ -20,9 +20,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.selliaapp.ui.components.AccountAvatarMenu
+import com.example.selliaapp.ui.components.AccountSummary
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import java.text.NumberFormat
 import java.time.ZoneId
@@ -37,7 +40,8 @@ fun CashScreen(
     onAudit: () -> Unit,
     onMovements: () -> Unit,
     onClose: () -> Unit,
-    onReport: () -> Unit
+    onReport: () -> Unit,
+    accountSummary: AccountSummary
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
@@ -50,7 +54,17 @@ fun CashScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Caja", style = MaterialTheme.typography.headlineSmall)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Caja",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.weight(1f)
+            )
+            AccountAvatarMenu(accountSummary = accountSummary)
+        }
 
         if (!state.hasOpenSession) {
             Card(

@@ -26,7 +26,7 @@ class UserViewModel  @Inject constructor(
 
 
 
-    fun addUser(name: String,email : String, role : String) {
+    fun addUser(name: String, email: String, role: String, isActive: Boolean = true) {
         viewModelScope.launch {
             val sanitizedRole = role.trim().ifBlank { AppRole.VIEWER.raw }
             val totalUsers = repository.countUsers()
@@ -35,11 +35,22 @@ class UserViewModel  @Inject constructor(
             } else {
                 sanitizedRole
             }
-            repository.insert(User(name = name.trim(), email = email.trim(), role = effectiveRole))
+            repository.insert(
+                User(
+                    name = name.trim(),
+                    email = email.trim(),
+                    role = effectiveRole,
+                    isActive = isActive
+                )
+            )
         }
     }
 
     fun deleteUser(user: User) {
         viewModelScope.launch { repository.delete(user) }
+    }
+
+    fun updateUser(user: User) {
+        viewModelScope.launch { repository.update(user) }
     }
 }
