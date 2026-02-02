@@ -59,11 +59,13 @@ import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.SecurityConfigRepository
 import com.example.selliaapp.repository.StorageRepository
+import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.example.selliaapp.repository.impl.StorageRepositoryImpl
+import com.example.selliaapp.repository.impl.UsageRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
@@ -329,16 +331,6 @@ object AppModule {
             invoiceDao = invoiceDao,
             providerInvoiceDao = providerInvoiceDao
         )
-    // -----------------------------
-    // FIRESTORE
-    // -----------------------------
-    //@Provides
-    //@Singleton
-    //fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
-
-    @Provides
-    @Singleton
-    fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
     @Qualifier
     @Retention(AnnotationRetention.BINARY)

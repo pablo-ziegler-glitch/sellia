@@ -15,3 +15,6 @@ plugins {
     // google-services (esto da igual, pero tu versión "4.4.4" no es la típica; 4.4.2 es común)
     id("com.google.gms.google-services") version "4.4.2" apply false
 }
+tasks.register("clean", Delete::class) {
+    delete(rootProject.layout.buildDirectory)
+}

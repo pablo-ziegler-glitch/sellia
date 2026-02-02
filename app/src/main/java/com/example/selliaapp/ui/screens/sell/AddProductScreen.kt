@@ -1,5 +1,8 @@
 package com.example.selliaapp.ui.screens.sell
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,9 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -64,7 +68,7 @@ fun AddProductScreen(
     prefillBarcode: String? = null,     // barcode sugerido (viene de escaneo sin match local)
     prefill: PrefillData? = null,       // datos prellenados (si venís de OFF o de otra pantalla)
     editId: Int? = null,
-    prefillName: String? = null,     // barcode sugerido (viene de escaneo sin match local) // si no es null, estás editando
+    prefillName: String? = null,        // si no es null, estás editando / prellenando nombre
     onSaved: () -> Unit,
     navController: NavController,
     offVm: OffLookupViewModel = hiltViewModel() // VM para hablar con OFF
@@ -75,9 +79,10 @@ fun AddProductScreen(
     val context = LocalContext.current
 
     // --- Estado de campos (con prefill si existe) ---
-    var name by remember { mutableStateOf(prefill?.name ?: prefillName ?: "") }
+    var name by remember { mutableStateOf(prefill?.name ?: prefillName.orEmpty()) }
     var code by remember { mutableStateOf("") } // SKU interno
-    var brand by remember { mutableStateOf(prefill?.brand ?: "") }
+    var brand by remember { mutableStateOf(prefill?.brand.orEmpty()) }
+
     val imageUrls: SnapshotStateList<String> = remember {
         mutableStateListOf<String>().apply {
             val fromVm = viewModel.imageUrls?.filter { it.isNotBlank() }.orEmpty()
@@ -90,12 +95,14 @@ fun AddProductScreen(
             }
         }
     }
-    val pendingImageUris = remember { mutableStateListOf<android.net.Uri>() }
+
+    val pendingImageUris = remember { mutableStateListOf<Uri>() }
 
     // Corregimos el bug: barcode debe ser VAR (mutable) y recordado
-    var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode ?: "") }
+    var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode.orEmpty()) }
 
     // Precios y stock (tu bloque E4, intacto)
+    var priceText by remember { mutableStateOf("") }          // legacy
     var purchasePriceText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
     var cashPriceText by remember { mutableStateOf("") }
@@ -113,6 +120,9 @@ fun AddProductScreen(
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var minStockText by remember { mutableStateOf("") }
+
+    // Control del dialog de error/info
+    var infoMessage by remember { mutableStateOf<String?>(null) }
 
     // Listas
     val categories: List<String> =
@@ -170,6 +180,7 @@ fun AddProductScreen(
                     contentType = contentType
                 ) { result ->
                     result.onSuccess { imageUrls.add(it) }
+                    result.onFailure { infoMessage = it.message ?: "Error subiendo imagen" }
                 }
             } else {
                 pendingImageUris.add(uri)
@@ -182,7 +193,6 @@ fun AddProductScreen(
 
     LaunchedEffect(barcode) {
         val needsLookup = barcode.isNotBlank() && (name.isBlank() || brand.isBlank())
-        // No dispares si venís editando (ya tenés datos locales)
         if (needsLookup && editId == null) {
             offVm.fetch(barcode)
         }
@@ -201,8 +211,20 @@ fun AddProductScreen(
                 // Mantener barcode detectado
                 if (barcode.isBlank()) barcode = d.barcode
             }
+            is UiState.Error -> {
+                // NO mostramos dialog infinito; lo controlamos con estado
+                infoMessage = s.message
+            }
             else -> Unit
         }
+    }
+
+    // Dialog controlado
+    if (infoMessage != null) {
+        InfoMessage(
+            text = infoMessage.orEmpty(),
+            onDismiss = { infoMessage = null }
+        )
     }
 
     Scaffold(
@@ -218,268 +240,275 @@ fun AddProductScreen(
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(padding)
-                .padding(16.dp),
-         ) {
-        // --- Estado de OFF (loading/error/imagen) ---
-        when (offState) {
-            UiState.Loading -> {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CircularProgressIndicator()
-                    Text("Buscando datos en Open Food Facts…")
+                .padding(16.dp)
+        ) {
+            // --- Estado de OFF (loading) ---
+            when (offState) {
+                UiState.Loading -> {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator()
+                        Text("Buscando datos en Open Food Facts…")
+                    }
                 }
+                else -> Unit
             }
-            is UiState.Error -> {
-                val msg = (offState as UiState.Error).message
-                InfoMessage(text = msg)
-            }
-            else -> Unit
-        }
 
-        // --- Campos principales ---
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Nombre") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            // --- Campos principales ---
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Nombre") },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        OutlinedTextField(
-            value = code,
-            onValueChange = { code = it },
-            label = { Text("Código interno (SKU)") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            OutlinedTextField(
+                value = code,
+                onValueChange = { code = it },
+                label = { Text("Código interno (SKU)") },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        OutlinedTextField(
-            value = barcode,
-            onValueChange = { barcode = it }, // permito editar por si OFF trae otro formato
-            label = { Text("Código de barras") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            OutlinedTextField(
+                value = barcode,
+                onValueChange = { barcode = it },
+                label = { Text("Código de barras") },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        // Botón manual para reintentar OFF (opcional)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Botón manual para reintentar OFF (opcional)
             Button(
                 onClick = { viewModel.autocompleteFromOff(barcode) },
                 enabled = !state.loading,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (state.loading) "Consultando OFF..." else "Autocompletar con OFF") }
-            Spacer(Modifier.height(16.dp))
-
-        }
-
-
-        // Marca
-        OutlinedTextField(
-            value = brand,
-            onValueChange = { brand = it },
-            label = { Text("Marca") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // --- Precios (E4) ---
-        OutlinedTextField(
-            value = purchasePriceText,
-            onValueChange = { purchasePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-            label = { Text("Costo de adquisición") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = listPriceText,
-                onValueChange = {
-                    listPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio de lista") },
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextField(
-                value = cashPriceText,
-                onValueChange = {
-                    cashPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio en efectivo") },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = transferPriceText,
-                onValueChange = {
-                    transferPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio transferencia") },
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextField(
-                value = mlPriceText,
-                onValueChange = {
-                    mlPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio ML") },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = ml3cPriceText,
-                onValueChange = {
-                    ml3cPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio ML 3C") },
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextField(
-                value = ml6cPriceText,
-                onValueChange = {
-                    ml6cPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                },
-                label = { Text("Precio ML 6C") },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Stock
-        OutlinedTextField(
-            value = stockText,
-            onValueChange = { stockText = it.filter { ch -> ch.isDigit() } },
-            label = { Text("Stock") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Descripción / Imagen (manual)
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            label = { Text("Descripción") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(onClick = { imagePickerLauncher.launch("image/*") }) {
-                    Text("Subir imagen")
-                }
-                if (imageUploadState.uploading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    Text("Subiendo...")
-                }
+                Text(if (state.loading) "Consultando OFF..." else "Autocompletar con OFF")
             }
-            if (!imageUploadState.message.isNullOrBlank()) {
-                Text("Error: ${imageUploadState.message}")
+
+            // Marca
+            OutlinedTextField(
+                value = brand,
+                onValueChange = { brand = it },
+                label = { Text("Marca") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // --- Precios (E4) ---
+            OutlinedTextField(
+                value = purchasePriceText,
+                onValueChange = { purchasePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                label = { Text("Costo de adquisición") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = priceText,
+                onValueChange = { priceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                label = { Text("Precio (legacy)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = listPriceText,
+                    onValueChange = { listPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Precio de lista") },
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = cashPriceText,
+                    onValueChange = { cashPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Precio en efectivo") },
+                    modifier = Modifier.weight(1f)
+                )
             }
-            if (pendingImageUris.isNotEmpty()) {
-                Text("Imágenes pendientes (se suben al guardar)")
-                pendingImageUris.forEachIndexed { index, uri ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AsyncImage(
-                            model = uri,
-                            contentDescription = "Imagen pendiente ${index + 1}",
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(120.dp)
-                        )
-                        IconButton(onClick = { pendingImageUris.removeAt(index) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Eliminar pendiente")
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = transferPriceText,
+                    onValueChange = { transferPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Precio transferencia") },
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = mlPriceText,
+                    onValueChange = { mlPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Precio ML") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = ml3cPriceText,
+                    onValueChange = { ml3cPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Precio ML 3C") },
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = ml6cPriceText,
+                    onValueChange = { ml6cPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Precio ML 6C") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Stock
+            OutlinedTextField(
+                value = stockText,
+                onValueChange = { stockText = it.filter { ch -> ch.isDigit() } },
+                label = { Text("Stock") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Descripción / Imagen (manual)
+            OutlinedTextField(
+                value = description,
+                onValueChange = { description = it },
+                label = { Text("Descripción") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(onClick = { imagePickerLauncher.launch("image/*") }) {
+                        Text("Subir imagen")
+                    }
+                    if (imageUploadState.uploading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        Text("Subiendo...")
+                    }
+                }
+
+                if (!imageUploadState.message.isNullOrBlank()) {
+                    Text("Error: ${imageUploadState.message}")
+                }
+
+                if (pendingImageUris.isNotEmpty()) {
+                    Text("Imágenes pendientes (se suben al guardar)")
+                    pendingImageUris.forEachIndexed { index, uri ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = "Imagen pendiente ${index + 1}",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(120.dp)
+                            )
+                            IconButton(onClick = { pendingImageUris.removeAt(index) }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Eliminar pendiente")
+                            }
                         }
                     }
                 }
             }
-        }
 
-        ImageUrlListEditor(imageUrls = imageUrls)
+            ImageUrlListEditor(imageUrls = imageUrls)
 
-        // --- Categoría ---
-        Column {
-            OutlinedTextField(
-                value = selectedCategoryName,
-                onValueChange = { selectedCategoryName = it },
-                label = { Text("Categoría") },
-                trailingIcon = {
-                    Icon(
-                        Icons.Default.ArrowDropDown,
-                        contentDescription = null,
-                        modifier = Modifier.clickable { categoryMenuExpanded = !categoryMenuExpanded }
-                    )
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-            DropdownMenu(
-                expanded = categoryMenuExpanded,
-                onDismissRequest = { categoryMenuExpanded = false }
-            ) {
-                categories.forEach { cat ->
-                    DropdownMenuItem(
-                        text = { Text(cat) },
-                        onClick = {
-                            selectedCategoryName = cat
-                            categoryMenuExpanded = false
-                        }
-                    )
+            // --- Categoría ---
+            Column {
+                OutlinedTextField(
+                    value = selectedCategoryName,
+                    onValueChange = { selectedCategoryName = it },
+                    label = { Text("Categoría") },
+                    trailingIcon = {
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.clickable { categoryMenuExpanded = !categoryMenuExpanded }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                DropdownMenu(
+                    expanded = categoryMenuExpanded,
+                    onDismissRequest = { categoryMenuExpanded = false }
+                ) {
+                    categories.forEach { cat ->
+                        DropdownMenuItem(
+                            text = { Text(cat) },
+                            onClick = {
+                                selectedCategoryName = cat
+                                categoryMenuExpanded = false
+                            }
+                        )
+                    }
                 }
             }
-        }
 
-        // --- Proveedor ---
-        Column {
-            OutlinedTextField(
-                value = selectedProviderName,
-                onValueChange = { selectedProviderName = it },
-                label = { Text("Proveedor") },
-                trailingIcon = {
-                    Icon(
-                        Icons.Default.ArrowDropDown,
-                        contentDescription = null,
-                        modifier = Modifier.clickable { providerMenuExpanded = !providerMenuExpanded }
-                    )
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-            DropdownMenu(
-                expanded = providerMenuExpanded,
-                onDismissRequest = { providerMenuExpanded = false }
-            ) {
-                providers.forEach { prov ->
-                    DropdownMenuItem(
-                        text = { Text(prov) },
-                        onClick = {
-                            selectedProviderName = prov
-                            providerMenuExpanded = false
-                        }
-                    )
+            // --- Proveedor ---
+            Column {
+                OutlinedTextField(
+                    value = selectedProviderName,
+                    onValueChange = { selectedProviderName = it },
+                    label = { Text("Proveedor") },
+                    trailingIcon = {
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.clickable { providerMenuExpanded = !providerMenuExpanded }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                DropdownMenu(
+                    expanded = providerMenuExpanded,
+                    onDismissRequest = { providerMenuExpanded = false }
+                ) {
+                    providers.forEach { prov ->
+                        DropdownMenuItem(
+                            text = { Text(prov) },
+                            onClick = {
+                                selectedProviderName = prov
+                                providerMenuExpanded = false
+                            }
+                        )
+                    }
                 }
             }
-        }
 
-        OutlinedTextField(
-            value = providerSku,
-            onValueChange = { providerSku = it },
-            label = { Text("SKU proveedor") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            OutlinedTextField(
+                value = providerSku,
+                onValueChange = { providerSku = it },
+                label = { Text("SKU proveedor") },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        // Stock mínimo
-        OutlinedTextField(
-            value = minStockText,
-            onValueChange = { minStockText = it.filter { ch -> ch.isDigit() } },
-            label = { Text("Stock mínimo") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            // Stock mínimo
+            OutlinedTextField(
+                value = minStockText,
+                onValueChange = { minStockText = it.filter { ch -> ch.isDigit() } },
+                label = { Text("Stock mínimo") },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        // --- Acciones ---
+            // --- Acciones ---
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = {
+                        // Parseo robusto (E4)
+                        val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
+                        val legacy = priceText.replace(',', '.').toDoubleOrNull()
+                        val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
+                        val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
+                        val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
+                        val transferNetPrice = null
+                        val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
+                        val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
+                        val ml6cPrice = ml6cPriceText.replace(',', '.').toDoubleOrNull()
+                        val qty = stockText.toIntOrNull() ?: 0
+                        val minStock = minStockText.toIntOrNull()
                 Button(onClick = {
                     // Parseo robusto (E4)
                     val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
@@ -493,61 +522,64 @@ fun AddProductScreen(
                     val qty = stockText.toIntOrNull() ?: 0
                     val minStock = minStockText.toIntOrNull()
 
-                    val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+                        val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
 
-                    if (editId == null) {
-                        viewModel.addProduct(
-                            name = name,
-                            barcode = barcode.ifBlank { null },
-                            purchasePrice = purchase,
-                            legacyPrice = null,
-                            listPrice = listPrice,
-                            cashPrice = cashPrice,
-                            transferPrice = transferPrice,
-                            transferNetPrice = transferNetPrice,
-                            mlPrice = mlPrice,
-                            ml3cPrice = ml3cPrice,
-                            ml6cPrice = ml6cPrice,
-                            stock = qty,
-                            code = code.ifBlank { null },
-                            description = description.ifBlank { null },
-                            imageUrls = normalizedImages,
-                            categoryName = selectedCategoryName.ifBlank { null },
-                            providerName = selectedProviderName.ifBlank { null },
-                            providerSku = providerSku.ifBlank { null },
-                            minStock = minStock,
-                            pendingImageUris = pendingImageUris.toList()
-                        ) { result ->
-                            if (result.isSuccess) {
-                                onSaved()
+                        if (editId == null) {
+                            viewModel.addProduct(
+                                name = name,
+                                barcode = barcode.ifBlank { null },
+                                purchasePrice = purchase,
+                                legacyPrice = legacy,
+                                listPrice = listPrice,
+                                cashPrice = cashPrice,
+                                transferPrice = transferPrice,
+                                transferNetPrice = transferNetPrice,
+                                mlPrice = mlPrice,
+                                ml3cPrice = ml3cPrice,
+                                ml6cPrice = ml6cPrice,
+                                stock = qty,
+                                code = code.ifBlank { null },
+                                description = description.ifBlank { null },
+                                imageUrls = normalizedImages,
+                                categoryName = selectedCategoryName.ifBlank { null },
+                                providerName = selectedProviderName.ifBlank { null },
+                                providerSku = providerSku.ifBlank { null },
+                                minStock = minStock,
+                                pendingImageUris = pendingImageUris.toList()
+                            ) { result ->
+                                if (result.isSuccess) {
+                                    onSaved()
+                                } else {
+                                    infoMessage = result.exceptionOrNull()?.message ?: "Error guardando producto"
+                                }
                             }
-                        )
-                    } else {
-                        viewModel.updateProduct(
-                            id = editId,
-                            name = name,
-                            barcode = barcode.ifBlank { null },
-                            purchasePrice = purchase,
-                            legacyPrice = null,
-                            listPrice = listPrice,
-                            cashPrice = cashPrice,
-                            transferPrice = transferPrice,
-                            transferNetPrice = transferNetPrice,
-                            mlPrice = mlPrice,
-                            ml3cPrice = ml3cPrice,
-                            ml6cPrice = ml6cPrice,
-                            stock = qty,
-                            code = code.ifBlank { null },
-                            description = description.ifBlank { null },
-                            imageUrls = normalizedImages,
-                            categoryName = selectedCategoryName.ifBlank { null },
-                            providerName = selectedProviderName.ifBlank { null },
-                            providerSku = providerSku.ifBlank { null },
-                            minStock = minStock
-                        )
-                        onSaved()
+                        } else {
+                            viewModel.updateProduct(
+                                id = editId,
+                                name = name,
+                                barcode = barcode.ifBlank { null },
+                                purchasePrice = purchase,
+                                legacyPrice = legacy,
+                                listPrice = listPrice,
+                                cashPrice = cashPrice,
+                                transferPrice = transferPrice,
+                                transferNetPrice = transferNetPrice,
+                                mlPrice = mlPrice,
+                                ml3cPrice = ml3cPrice,
+                                ml6cPrice = ml6cPrice,
+                                stock = qty,
+                                code = code.ifBlank { null },
+                                description = description.ifBlank { null },
+                                imageUrls = normalizedImages,
+                                categoryName = selectedCategoryName.ifBlank { null },
+                                providerName = selectedProviderName.ifBlank { null },
+                                providerSku = providerSku.ifBlank { null },
+                                minStock = minStock
+                            )
+                            onSaved()
+                        }
                     }
-                }) {
+                ) {
                     Text(if (editId == null) "Guardar" else "Actualizar")
                 }
 
@@ -555,6 +587,8 @@ fun AddProductScreen(
                     Text("Cancelar")
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -563,11 +597,14 @@ fun AddProductScreen(
  * Mensaje simple para estados de info/error.
  */
 @Composable
-private fun InfoMessage(text: String) {
+private fun InfoMessage(
+    text: String,
+    onDismiss: () -> Unit
+) {
     AlertDialog(
-        onDismissRequest = { },
+        onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = { }) { Text("OK") }
+            TextButton(onClick = onDismiss) { Text("OK") }
         },
         title = { Text("Información") },
         text = { Text(text) }
