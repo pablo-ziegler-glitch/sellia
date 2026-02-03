@@ -40,6 +40,7 @@ fun MarketingConfigScreen(
     val settings by vm.settings.collectAsState(initial = MarketingSettings())
     var publicStoreUrl by remember { mutableStateOf(settings.publicStoreUrl) }
     var storeName by remember { mutableStateOf(settings.storeName) }
+    var storeLogoUrl by remember { mutableStateOf(settings.storeLogoUrl) }
     var storePhone by remember { mutableStateOf(settings.storePhone) }
     var storeWhatsapp by remember { mutableStateOf(settings.storeWhatsapp) }
     var storeEmail by remember { mutableStateOf(settings.storeEmail) }
@@ -47,6 +48,7 @@ fun MarketingConfigScreen(
     LaunchedEffect(settings) {
         publicStoreUrl = settings.publicStoreUrl
         storeName = settings.storeName
+        storeLogoUrl = settings.storeLogoUrl
         storePhone = settings.storePhone
         storeWhatsapp = settings.storeWhatsapp
         storeEmail = settings.storeEmail
@@ -84,6 +86,13 @@ fun MarketingConfigScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
+                    value = storeLogoUrl,
+                    onValueChange = { storeLogoUrl = it },
+                    label = { Text("Logo (URL pública)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
                     value = storePhone,
                     onValueChange = { storePhone = it },
                     label = { Text("Teléfono") },
@@ -112,6 +121,7 @@ fun MarketingConfigScreen(
                         MarketingSettings(
                             publicStoreUrl = publicStoreUrl.trim(),
                             storeName = storeName.ifBlank { settings.storeName },
+                            storeLogoUrl = storeLogoUrl.trim(),
                             storePhone = storePhone.trim(),
                             storeWhatsapp = storeWhatsapp.trim(),
                             storeEmail = storeEmail.trim()

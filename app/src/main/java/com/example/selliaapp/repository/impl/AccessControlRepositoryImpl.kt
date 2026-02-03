@@ -5,7 +5,9 @@ import com.example.selliaapp.di.AppModule.IoDispatcher
 import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.domain.security.RolePermissions
 import com.example.selliaapp.domain.security.UserAccessState
+import com.example.selliaapp.domain.security.SecurityHashing
 import com.example.selliaapp.repository.AccessControlRepository
+import com.example.selliaapp.repository.SecurityConfigRepository
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +25,7 @@ import javax.inject.Singleton
 class AccessControlRepositoryImpl @Inject constructor(
     private val userDao: UserDao,
     private val auth: FirebaseAuth,
+    private val securityConfigRepository: SecurityConfigRepository,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : AccessControlRepository {
 
@@ -47,12 +50,16 @@ class AccessControlRepositoryImpl @Inject constructor(
         resolveAccess(auth.currentUser?.email)
 
     private suspend fun resolveAccess(email: String?): UserAccessState = withContext(io) {
+        val adminHash = securityConfigRepository.getAdminEmailHash()
+        val isConfiguredAdmin = !email.isNullOrBlank() &&
+            SecurityHashing.hashEmail(email) == adminHash
         val user = when {
             !email.isNullOrBlank() -> userDao.getByEmail(email)
             else -> userDao.getFirst()
         }
         val totalUsers = userDao.countUsers()
         val role = when {
+            isConfiguredAdmin -> AppRole.SUPER_ADMIN
             user != null && user.isActive -> AppRole.fromRaw(user.role)
             totalUsers == 0 && !email.isNullOrBlank() -> AppRole.SUPER_ADMIN
             else -> AppRole.fromRaw(null)
