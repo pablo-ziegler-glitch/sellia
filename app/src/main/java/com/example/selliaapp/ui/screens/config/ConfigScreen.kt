@@ -45,6 +45,8 @@ fun ConfigScreen(
     onBulkData: () -> Unit,
     onCloudServicesAdmin: () -> Unit,
     canManageCloudServices: Boolean,
+    onDevelopmentOptions: () -> Unit,
+    showDevelopmentOptions: Boolean,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -111,6 +113,13 @@ fun ConfigScreen(
                         icon = Icons.Filled.CloudSync,
                         title = "Servicios en la nube (Admin)",
                         onClick = onCloudServicesAdmin
+                    )
+                }
+                if (showDevelopmentOptions) {
+                    SettingsItem(
+                        icon = Icons.Filled.Assessment,
+                        title = "Opciones Desarrollo",
+                        onClick = onDevelopmentOptions
                     )
                 }
             }

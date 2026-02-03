@@ -23,6 +23,7 @@ import com.example.selliaapp.data.dao.CashAuditDao
 import com.example.selliaapp.data.dao.CashMovementDao
 import com.example.selliaapp.data.dao.CashSessionDao
 import com.example.selliaapp.data.dao.CloudServiceConfigDao
+import com.example.selliaapp.data.dao.DevelopmentOptionsDao
 import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
@@ -48,6 +49,7 @@ import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.AuthOnboardingRepository
 import com.example.selliaapp.repository.CashRepository
+import com.example.selliaapp.repository.DevelopmentOptionsRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.repository.PricingConfigRepository
@@ -108,7 +110,8 @@ object AppModule {
                 AppDatabase.MIGRATION_33_34,
                 AppDatabase.MIGRATION_34_35,
                 AppDatabase.MIGRATION_35_36,
-                AppDatabase.MIGRATION_36_37
+                AppDatabase.MIGRATION_36_37,
+                AppDatabase.MIGRATION_37_38
             )
             .addCallback(object : RoomDatabase.Callback() {
                 /**
@@ -154,6 +157,8 @@ object AppModule {
     @Provides @Singleton fun provideCashAuditDao(db: AppDatabase): CashAuditDao = db.cashAuditDao()
     @Provides @Singleton fun provideCloudServiceConfigDao(db: AppDatabase): CloudServiceConfigDao =
         db.cloudServiceConfigDao()
+    @Provides @Singleton fun provideDevelopmentOptionsDao(db: AppDatabase): DevelopmentOptionsDao =
+        db.developmentOptionsDao()
 
     // -----------------------------
     // REPOSITORIES
@@ -213,6 +218,13 @@ object AppModule {
         dao: CloudServiceConfigDao,
         @IoDispatcher io: CoroutineDispatcher
     ): CloudServiceConfigRepository = CloudServiceConfigRepository(dao, io)
+
+    @Provides
+    @Singleton
+    fun provideDevelopmentOptionsRepository(
+        dao: DevelopmentOptionsDao,
+        @IoDispatcher io: CoroutineDispatcher
+    ): DevelopmentOptionsRepository = DevelopmentOptionsRepository(dao, io)
 
     @Provides
     @Singleton
