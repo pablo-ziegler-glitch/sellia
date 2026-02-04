@@ -57,6 +57,7 @@ import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
+import com.example.selliaapp.repository.SecurityConfigRepository
 import com.example.selliaapp.repository.StorageRepository
 import com.example.selliaapp.repository.UserRepository
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
@@ -231,10 +232,12 @@ object AppModule {
     fun provideAccessControlRepository(
         userDao: UserDao,
         auth: FirebaseAuth,
+        securityConfigRepository: SecurityConfigRepository,
         @IoDispatcher io: CoroutineDispatcher
     ): AccessControlRepository = AccessControlRepositoryImpl(
         userDao = userDao,
         auth = auth,
+        securityConfigRepository = securityConfigRepository,
         io = io
     )
 
@@ -285,6 +288,12 @@ object AppModule {
     fun provideMarketingConfigRepository(
         dataStore: DataStore<Preferences>
     ): MarketingConfigRepository = MarketingConfigRepository(dataStore)
+
+    @Provides
+    @Singleton
+    fun provideSecurityConfigRepository(
+        dataStore: DataStore<Preferences>
+    ): SecurityConfigRepository = SecurityConfigRepository(dataStore)
 
     @Provides
     @Singleton

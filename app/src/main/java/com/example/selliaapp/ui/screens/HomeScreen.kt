@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -28,6 +29,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +53,8 @@ import java.text.NumberFormat
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,7 +75,9 @@ fun HomeScreen(
     onAlertCreatePurchase: (Int) -> Unit = {},
     onCashOpen: () -> Unit,
     onCashHub: () -> Unit,
-    accountSummary: AccountSummary
+    accountSummary: AccountSummary,
+    storeName: String,
+    storeLogoUrl: String
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
@@ -117,12 +124,20 @@ fun HomeScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Inicio",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                StoreLogo(logoUrl = storeLogoUrl, contentDescription = storeName)
+                Text(
+                    text = storeName.ifBlank { "Tu tienda" },
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             AccountAvatarMenu(accountSummary = accountSummary)
         }
 
@@ -328,6 +343,39 @@ fun HomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             ShortcutButton("Clientes", Icons.Default.People, onClientes, Modifier.weight(1f))
             ShortcutButton("Reportes", Icons.Default.QueryStats, onReports, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun StoreLogo(
+    logoUrl: String,
+    contentDescription: String
+) {
+    val size = 36.dp
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .size(size)
+            .clip(MaterialTheme.shapes.extraLarge)
+    ) {
+        if (logoUrl.isNotBlank()) {
+            AsyncImage(
+                model = logoUrl,
+                contentDescription = "Logo de $contentDescription",
+                modifier = Modifier.size(size),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.Store,
+                contentDescription = "Logo de $contentDescription",
+                modifier = Modifier
+                    .size(size)
+                    .padding(6.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
