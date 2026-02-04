@@ -1,9 +1,16 @@
-const CONFIG = {
-  BRAND_NAME: "Valkirja",
-  YOUTUBE_VIDEO_ID: "REEMPLAZAR",
-  WHATSAPP_URL: "REEMPLAZAR",
-  INSTAGRAM_URL: "REEMPLAZAR",
-  MAPS_URL: "REEMPLAZAR"
+const CONFIG = window.SELLIA_CONFIG ?? {
+  brand: {
+    name: "Valkirja",
+    youtubeVideoId: "REEMPLAZAR"
+  },
+  contact: {
+    whatsappUrl: "REEMPLAZAR",
+    instagramUrl: "REEMPLAZAR",
+    mapsUrl: "REEMPLAZAR"
+  },
+  firebase: {
+    config: null
+  }
 };
 
 const state = {
@@ -12,7 +19,7 @@ const state = {
 
 const brandTargets = document.querySelectorAll("[data-brand]");
 brandTargets.forEach((el) => {
-  el.textContent = CONFIG.BRAND_NAME;
+  el.textContent = CONFIG.brand?.name ?? "Valkirja";
 });
 
 const yearEl = document.getElementById("year");
@@ -21,9 +28,9 @@ if (yearEl) {
 }
 
 const contactLinks = {
-  whatsapp: CONFIG.WHATSAPP_URL,
-  instagram: CONFIG.INSTAGRAM_URL,
-  maps: CONFIG.MAPS_URL
+  whatsapp: CONFIG.contact?.whatsappUrl,
+  instagram: CONFIG.contact?.instagramUrl,
+  maps: CONFIG.contact?.mapsUrl
 };
 
 Object.entries(contactLinks).forEach(([key, url]) => {
@@ -64,8 +71,8 @@ const videoPoster = document.getElementById("videoPoster");
 const videoPlayButton = document.querySelector(".video-play");
 let lastFocusedElement = null;
 
-if (CONFIG.YOUTUBE_VIDEO_ID !== "REEMPLAZAR") {
-  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.YOUTUBE_VIDEO_ID}/hqdefault.jpg`;
+if (CONFIG.brand?.youtubeVideoId && CONFIG.brand.youtubeVideoId !== "REEMPLAZAR") {
+  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.brand.youtubeVideoId}/hqdefault.jpg`;
   videoPoster.src = posterUrl;
 }
 
@@ -79,9 +86,9 @@ function trackEvent(name, detail = {}) {
 
 if (videoPlayButton) {
   videoPlayButton.addEventListener("click", () => {
-    const videoId = CONFIG.YOUTUBE_VIDEO_ID;
+    const videoId = CONFIG.brand?.youtubeVideoId;
     if (!videoId || videoId === "REEMPLAZAR") {
-      console.warn("Configurar YOUTUBE_VIDEO_ID para habilitar el video.");
+      console.warn("Configurar brand.youtubeVideoId en config.js para habilitar el video.");
       return;
     }
 
