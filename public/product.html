@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es-AR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ficha de producto | Sellia</title>
+    <meta
+      name="description"
+      content="Ficha pública de producto con precio y talles actualizados."
+    />
+    <meta name="theme-color" content="#111111" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="product-shell" id="contenido">
+      <section class="product-hero">
+        <div>
+          <p class="eyebrow" id="brandName">Sellia</p>
+          <h1 id="productTitle">Buscando producto...</h1>
+          <div class="product-meta" id="productMeta"></div>
+        </div>
+        <div class="hero-actions">
+          <a class="button primary" id="ctaWhatsapp" href="#" target="_blank" rel="noopener">
+            Consultar por WhatsApp
+          </a>
+          <a class="button ghost" id="ctaBack" href="/index.html">
+            Volver al sitio
+          </a>
+        </div>
+        <p class="sync-meta" id="syncMeta"></p>
+      </section>
+
+      <section class="product-grid-detail">
+        <div class="product-gallery" id="productGallery"></div>
+        <div class="product-hero">
+          <div class="price-grid" id="priceGrid"></div>
+          <div>
+            <h2>Descripción</h2>
+            <p id="productDescription" class="muted"></p>
+          </div>
+          <div>
+            <h2>Talles disponibles</h2>
+            <div class="sizes" id="productSizes"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="status-card" id="statusCard" hidden></section>
+    </main>
+
+    <script src="/config.js"></script>
+    <script src="/product.js" defer></script>
+  </body>
+</html>

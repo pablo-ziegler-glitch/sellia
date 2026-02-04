@@ -21,9 +21,13 @@ Elegí el proyecto correcto y deja `public` como directorio público.
 
 ## 3) Completar la configuración web
 
-Editá `public/config.js` y reemplazá los valores de `firebaseConfig`.
+Editá `public/config.js` y completá:
 
-También podés completar `storeContact` para mostrar datos de la tienda en la ficha pública.
+- `firebase`: credenciales de Firebase Web (apiKey, projectId, etc.).
+- `publicStoreUrl`: URL base donde vive `product.html`.
+- `refreshIntervalMs`: frecuencia de refresco de precios en la ficha pública.
+- `contact`: links de contacto (WhatsApp, Instagram, Maps).
+- `tenantId`: el ID del tenant que usa la app Android (para resolver precios y stock).
 
 ## 4) Publicar
 
@@ -44,5 +48,17 @@ https://tu-proyecto.web.app/product.html?q=PRODUCT-123
 
 ## 6) Reglas de Firestore
 
-Si vas a exponer productos desde Firestore, asegurate de permitir lecturas públicas solo de los campos necesarios.
-Recomendación: crear reglas que permitan leer documentos de `products` y nada más.
+La web pública lee desde `tenants/{tenantId}/public_products`, una colección cacheada y sanitizada.
+La app Android sincroniza precios a `tenants/{tenantId}/products`, y una Cloud Function replica los campos públicos.
+
+Para habilitar el refresco periódico, configurá el documento:
+
+```
+tenants/{tenantId}/config/public_store
+{
+  publicEnabled: true,
+  syncIntervalMinutes: 15
+}
+```
+
+Asegurate de permitir lecturas públicas únicamente de `public_products` (no de `products`).

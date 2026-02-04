@@ -1,9 +1,9 @@
 const CONFIG = {
-  BRAND_NAME: "Valkirja",
-  YOUTUBE_VIDEO_ID: "REEMPLAZAR",
-  WHATSAPP_URL: "REEMPLAZAR",
-  INSTAGRAM_URL: "REEMPLAZAR",
-  MAPS_URL: "REEMPLAZAR"
+  BRAND_NAME: window.SELLIA_CONFIG?.brandName || "Sellia",
+  YOUTUBE_VIDEO_ID: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR",
+  WHATSAPP_URL: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
+  INSTAGRAM_URL: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
+  MAPS_URL: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
 };
 
 const state = {
