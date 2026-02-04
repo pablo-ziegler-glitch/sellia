@@ -1,6 +1,7 @@
 # Hosting público con Firebase
 
-Esta guía explica cómo publicar el sitio web público para que el QR abra una ficha de producto sin instalar la app.
+Esta guía explica cómo publicar el sitio web público que acompaña al negocio y cómo dejar la configuración lista
+para producción.
 
 ## 1) Configurar Firebase CLI
 
@@ -21,9 +22,11 @@ Elegí el proyecto correcto y deja `public` como directorio público.
 
 ## 3) Completar la configuración web
 
-Editá `public/config.js` y reemplazá los valores de `firebaseConfig`.
+Editá `public/config.js` y reemplazá los valores de `window.SELLIA_CONFIG`:
 
-También podés completar `storeContact` para mostrar datos de la tienda en la ficha pública.
+- `brand.name` y `brand.youtubeVideoId` para la identidad del sitio.
+- `contact.whatsappUrl`, `contact.instagramUrl` y `contact.mapsUrl` para los enlaces de contacto.
+- `firebase.config` **solo si vas a consumir Firebase desde el sitio web** (si no, puede quedar en `null`).
 
 ## 4) Publicar
 
@@ -33,16 +36,19 @@ firebase deploy --only hosting
 
 ## 5) Generar QRs con URL pública
 
-En la app, configurá la **URL pública** en la pantalla de configuración de marketing.
-Esa URL se usará como base para los QRs, agregando el parámetro `q=`.
-
-Ejemplo:
+Usá la URL pública del hosting como destino del QR:
 
 ```
-https://tu-proyecto.web.app/product.html?q=PRODUCT-123
+https://tu-proyecto.web.app/
 ```
 
-## 6) Reglas de Firestore
+Si necesitás atribución de campañas, agregá parámetros UTM a esa URL, por ejemplo:
 
-Si vas a exponer productos desde Firestore, asegurate de permitir lecturas públicas solo de los campos necesarios.
-Recomendación: crear reglas que permitan leer documentos de `products` y nada más.
+```
+https://tu-proyecto.web.app/?utm_source=qr&utm_medium=offline&utm_campaign=local
+```
+
+## 6) Reglas de Firestore (opcional)
+
+Si en el futuro exponés productos desde Firestore, asegurate de permitir lecturas públicas solo de los campos
+necesarios. Recomendación: crear reglas que permitan leer documentos de `products` y nada más.
