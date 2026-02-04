@@ -18,11 +18,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,15 +32,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.data.csv.CustomerCsvImporter
@@ -333,34 +335,38 @@ private fun BulkSectionCard(
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(description, style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            val actions = buildList {
                 onDownloadTemplate?.let { action ->
-                    TextButton(onClick = action, enabled = enabled) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Plantilla")
-                    }
+                    add(BulkAction("Plantilla", Icons.Default.FileDownload, action))
                 }
                 onImport?.let { action ->
-                    TextButton(onClick = action, enabled = enabled) {
-                        Icon(Icons.Default.UploadFile, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Importar")
-                    }
+                    add(BulkAction("Importar", Icons.Default.UploadFile, action))
                 }
                 onExport?.let { action ->
-                    TextButton(onClick = action, enabled = enabled) {
-                        Text("Exportar")
-                    }
+                    add(BulkAction("Exportar", null, action))
                 }
-                if (onManage != null) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    TextButton(onClick = onManage, enabled = enabled) {
-                        Text("Gestionar")
+                onManage?.let { action ->
+                    add(BulkAction("Gestionar", Icons.Default.ChevronRight, action))
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                actions.chunked(2).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowItems.forEach { item ->
+                            BulkActionButton(
+                                label = item.label,
+                                icon = item.icon,
+                                enabled = enabled,
+                                onClick = item.onClick,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (rowItems.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -388,4 +394,33 @@ private fun rememberImportLauncher(
         )
     } catch (_: SecurityException) { }
     onPicked(uri)
+}
+
+private data class BulkAction(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun BulkActionButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    minHeight: Dp = 44.dp
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(minHeight),
+        shape = MaterialTheme.shapes.extraLarge
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }

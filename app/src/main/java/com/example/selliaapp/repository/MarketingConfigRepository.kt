@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.map
 data class MarketingSettings(
     val publicStoreUrl: String = "",
     val storeName: String = "Tu tienda",
+    val storeLogoUrl: String = "",
     val storePhone: String = "",
     val storeWhatsapp: String = "",
     val storeEmail: String = ""
@@ -22,6 +23,7 @@ class MarketingConfigRepository @Inject constructor(
     private object Keys {
         val publicStoreUrl = stringPreferencesKey("public_store_url")
         val storeName = stringPreferencesKey("store_name")
+        val storeLogoUrl = stringPreferencesKey("store_logo_url")
         val storePhone = stringPreferencesKey("store_phone")
         val storeWhatsapp = stringPreferencesKey("store_whatsapp")
         val storeEmail = stringPreferencesKey("store_email")
@@ -31,6 +33,7 @@ class MarketingConfigRepository @Inject constructor(
         MarketingSettings(
             publicStoreUrl = prefs[Keys.publicStoreUrl] ?: "",
             storeName = prefs[Keys.storeName] ?: "Tu tienda",
+            storeLogoUrl = prefs[Keys.storeLogoUrl] ?: "",
             storePhone = prefs[Keys.storePhone] ?: "",
             storeWhatsapp = prefs[Keys.storeWhatsapp] ?: "",
             storeEmail = prefs[Keys.storeEmail] ?: ""
@@ -41,6 +44,7 @@ class MarketingConfigRepository @Inject constructor(
         dataStore.edit { prefs ->
             prefs[Keys.publicStoreUrl] = updated.publicStoreUrl
             prefs[Keys.storeName] = updated.storeName
+            prefs[Keys.storeLogoUrl] = updated.storeLogoUrl
             prefs[Keys.storePhone] = updated.storePhone
             prefs[Keys.storeWhatsapp] = updated.storeWhatsapp
             prefs[Keys.storeEmail] = updated.storeEmail

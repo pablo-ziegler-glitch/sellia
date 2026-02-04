@@ -64,6 +64,11 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Unauthenticated
     }
 
+    suspend fun updatePassword(newPassword: String): Result<Unit> = runCatching {
+        val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
+        user.updatePassword(newPassword).await()
+    }
+
     override fun currentTenantId(): String? =
         (state.value as? AuthState.Authenticated)?.session?.tenantId
 

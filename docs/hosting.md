@@ -1,6 +1,7 @@
 # Hosting público con Firebase
 
-Esta guía explica cómo publicar el sitio web público para que el QR abra una ficha de producto sin instalar la app.
+Esta guía explica cómo publicar el sitio web público que acompaña al negocio y cómo dejar la configuración lista
+para producción.
 
 ## 1) Configurar Firebase CLI
 
@@ -37,16 +38,19 @@ firebase deploy --only hosting
 
 ## 5) Generar QRs con URL pública
 
-En la app, configurá la **URL pública** en la pantalla de configuración de marketing.
-Esa URL se usará como base para los QRs, agregando el parámetro `q=`.
-
-Ejemplo:
+Usá la URL pública del hosting como destino del QR:
 
 ```
-https://tu-proyecto.web.app/product.html?q=PRODUCT-123
+https://tu-proyecto.web.app/
 ```
 
-## 6) Reglas de Firestore
+Si necesitás atribución de campañas, agregá parámetros UTM a esa URL, por ejemplo:
+
+```
+https://tu-proyecto.web.app/?utm_source=qr&utm_medium=offline&utm_campaign=local
+```
+
+## 6) Reglas de Firestore (opcional)
 
 La web pública lee desde `tenants/{tenantId}/public_products`, una colección cacheada y sanitizada.
 La app Android sincroniza precios a `tenants/{tenantId}/products`, y una Cloud Function replica los campos públicos.
