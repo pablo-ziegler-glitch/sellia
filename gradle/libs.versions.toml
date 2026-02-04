@@ -62,10 +62,14 @@ androidx-work-runtime-ktx-v290 = { module = "androidx.work:work-runtime-ktx", ve
 charts = { module = "com.github.tehras:charts", version.ref = "charts" }
 core = { module = "com.google.zxing:core", version.ref = "core" }
 firebase-auth-ktx = { module = "com.google.firebase:firebase-auth-ktx", version.ref = "firebaseAuthKtx" }
+firebase-auth = { module = "com.google.firebase:firebase-auth" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore-ktx = { module = "com.google.firebase:firebase-firestore-ktx", version.ref = "firebaseFirestoreKtx" }
+firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 firebase-functions-ktx = { module = "com.google.firebase:firebase-functions-ktx" }
+firebase-functions = { module = "com.google.firebase:firebase-functions" }
 firebase-storage-ktx = { module = "com.google.firebase:firebase-storage-ktx" }
+firebase-storage = { module = "com.google.firebase:firebase-storage" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }

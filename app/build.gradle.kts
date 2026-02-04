@@ -148,12 +148,12 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler.vroomversion)
 
-    // Firebase (opcional si vas a usar Firestore)
-    implementation(libs.firebase.firestore.ktx)
-    implementation(libs.firebase.auth.ktx)
-    implementation(libs.firebase.functions.ktx)
-    implementation(libs.firebase.storage.ktx)
+    // Firebase (sin KTX)
     implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.functions)
+    implementation(libs.firebase.storage)
     implementation(libs.firebase.appcheck.playintegrity)
     debugImplementation(libs.firebase.appcheck.debug)
 

@@ -95,10 +95,11 @@ fun UsageDashboardScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            val errorMessage = state.errorMessage
             if (state.isLoading) {
                 LoadingState()
-            } else if (state.errorMessage != null) {
-                ErrorState(message = state.errorMessage)
+            } else if (errorMessage != null) {
+                ErrorState(message = errorMessage)
             } else if (state.services.isEmpty()) {
                 EmptyState(message = "Todavía no hay datos de consumo para este período.")
             } else {
@@ -173,87 +174,89 @@ private fun UsageLineChart(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = modifier
     ) {
-        if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(chartHeight),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(28.dp))
-            }
-            return
-        }
-
-        if (points.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(chartHeight),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Sin datos para graficar",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            return
-        }
-
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(chartHeight)
-                .padding(horizontal = 12.dp, vertical = 16.dp)
-        ) {
-            drawRoundRect(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                topLeft = Offset.Zero,
-                size = size,
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(16f)
-            )
-
-            val maxValue = points.maxOf { it.value }.takeIf { it > 0.0 } ?: 1.0
-            val minValue = points.minOf { it.value }
-            val verticalRange = (maxValue - minValue).takeIf { it > 0 } ?: 1.0
-
-            val widthStep = if (points.size > 1) size.width / (points.size - 1) else 0f
-            val linePath = Path()
-            val lineColor = MaterialTheme.colorScheme.primary
-
-            points.forEachIndexed { index, point ->
-                val x = widthStep * index
-                val normalized = (point.value - minValue) / verticalRange
-                val y = size.height - (normalized * size.height).toFloat()
-
-                if (index == 0) {
-                    linePath.moveTo(x, y)
-                } else {
-                    linePath.lineTo(x, y)
+        when {
+            isLoading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(chartHeight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
                 }
             }
 
-            drawPath(
-                path = linePath,
-                color = lineColor,
-                style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-            )
+            points.isEmpty() -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(chartHeight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Sin datos para graficar",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
-            points.forEachIndexed { index, point ->
-                val x = widthStep * index
-                val normalized = (point.value - minValue) / verticalRange
-                val y = size.height - (normalized * size.height).toFloat()
-                drawCircle(
-                    color = lineColor,
-                    radius = 6f,
-                    center = Offset(x, y)
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = 3f,
-                    center = Offset(x, y)
-                )
+            else -> {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(chartHeight)
+                        .padding(horizontal = 12.dp, vertical = 16.dp)
+                ) {
+                    drawRoundRect(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        topLeft = Offset.Zero,
+                        size = size,
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(16f)
+                    )
+
+                    val maxValue = points.maxOf { it.value }.takeIf { it > 0.0 } ?: 1.0
+                    val minValue = points.minOf { it.value }
+                    val verticalRange = (maxValue - minValue).takeIf { it > 0 } ?: 1.0
+
+                    val widthStep = if (points.size > 1) size.width / (points.size - 1) else 0f
+                    val linePath = Path()
+                    val lineColor = MaterialTheme.colorScheme.primary
+
+                    points.forEachIndexed { index, point ->
+                        val x = widthStep * index
+                        val normalized = (point.value - minValue) / verticalRange
+                        val y = size.height - (normalized * size.height).toFloat()
+
+                        if (index == 0) {
+                            linePath.moveTo(x, y)
+                        } else {
+                            linePath.lineTo(x, y)
+                        }
+                    }
+
+                    drawPath(
+                        path = linePath,
+                        color = lineColor,
+                        style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+
+                    points.forEachIndexed { index, point ->
+                        val x = widthStep * index
+                        val normalized = (point.value - minValue) / verticalRange
+                        val y = size.height - (normalized * size.height).toFloat()
+                        drawCircle(
+                            color = lineColor,
+                            radius = 6f,
+                            center = Offset(x, y)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 3f,
+                            center = Offset(x, y)
+                        )
+                    }
+                }
             }
         }
     }
@@ -350,7 +353,7 @@ private fun UsageShareBar(sharePercent: Double) {
                 .fillMaxWidth()
                 .height(10.dp)
         ) {
-            val barWidth = (size.width * (clamped / 100f)).coerceAtLeast(0f)
+            val barWidth = (size.width * (clamped / 100.0)).coerceAtLeast(0.0).toFloat()
             val radius = size.height / 2
             drawRoundRect(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),

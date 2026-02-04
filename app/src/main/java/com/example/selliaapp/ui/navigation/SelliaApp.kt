@@ -622,6 +622,8 @@ fun SelliaApp(
                     )
                 }
                 ConfigScreen(
+                    accountSummary = accountSummary,
+                    userProfile = userProfile,
                     onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
                     onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
@@ -631,6 +633,7 @@ fun SelliaApp(
                     onUsageAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSecuritySettings = { navController.navigate(Routes.SecuritySettings.route) },
                     canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
+                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = accessState.role == AppRole.ADMIN || accessState.role == AppRole.SUPER_ADMIN,
                     onBack = { navController.popBackStack() }
@@ -659,6 +662,14 @@ fun SelliaApp(
                 val vm: MarketingConfigViewModel = hiltViewModel()
                 MarketingConfigScreen(
                     vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.SecuritySettings.route) {
+                val vm: SecuritySettingsViewModel = hiltViewModel()
+                SecuritySettingsScreen(
+                    viewModel = vm,
                     onBack = { navController.popBackStack() }
                 )
             }
