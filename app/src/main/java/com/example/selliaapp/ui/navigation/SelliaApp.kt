@@ -39,6 +39,7 @@ import com.example.selliaapp.ui.screens.clients.ClientPurchasesScreen
 import com.example.selliaapp.ui.screens.clients.ClientsHubScreen
 import com.example.selliaapp.ui.screens.config.BulkDataScreen
 import com.example.selliaapp.ui.screens.config.CloudServicesAdminScreen
+import com.example.selliaapp.ui.screens.config.DevelopmentOptionsScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
@@ -99,6 +100,7 @@ import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
 import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
+import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.domain.security.Permission
 import com.example.selliaapp.ui.components.buildAccountSummary
 
@@ -256,7 +258,12 @@ fun SelliaApp(
             }
 
             composable(Routes.UsageAlerts.route) {
-                UsageAlertsScreen(onBack = { navController.popBackStack() })
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
+                UsageAlertsScreen(
+                    onBack = { navController.popBackStack() },
+                    canEditLimits = accessState.role == AppRole.ADMIN || accessState.role == AppRole.SUPER_ADMIN
+                )
             }
 
             composable(
@@ -624,9 +631,8 @@ fun SelliaApp(
                     onUsageAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSecuritySettings = { navController.navigate(Routes.SecuritySettings.route) },
                     canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
-                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
-                    accountSummary = accountSummary,
-                    userProfile = userProfile,
+                    onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
+                    showDevelopmentOptions = accessState.role == AppRole.ADMIN || accessState.role == AppRole.SUPER_ADMIN,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -663,10 +669,8 @@ fun SelliaApp(
                 )
             }
 
-            composable(Routes.SecuritySettings.route) {
-                val vm: SecuritySettingsViewModel = hiltViewModel()
-                SecuritySettingsScreen(
-                    viewModel = vm,
+            composable(Routes.DevelopmentOptions.route) {
+                DevelopmentOptionsScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

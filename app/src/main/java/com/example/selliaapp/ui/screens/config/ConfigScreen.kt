@@ -54,12 +54,8 @@ fun ConfigScreen(
     onBulkData: () -> Unit,
     onCloudServicesAdmin: () -> Unit,
     canManageCloudServices: Boolean,
-    onManageUsers: () -> Unit,
-    onUsageAlerts: () -> Unit,
-    onSecuritySettings: () -> Unit,
-    canManageUsers: Boolean,
-    accountSummary: AccountSummary,
-    userProfile: UserProfileDetails,
+    onDevelopmentOptions: () -> Unit,
+    showDevelopmentOptions: Boolean,
     onBack: () -> Unit
 ) {
     var showProfileDetails by remember { mutableStateOf(false) }
@@ -157,6 +153,13 @@ fun ConfigScreen(
                         icon = Icons.Filled.AdminPanelSettings,
                         title = "Servicios en la nube (Admin)",
                         onClick = onCloudServicesAdmin
+                    )
+                }
+                if (showDevelopmentOptions) {
+                    SettingsItem(
+                        icon = Icons.Filled.Assessment,
+                        title = "Opciones Desarrollo",
+                        onClick = onDevelopmentOptions
                     )
                 }
             }
