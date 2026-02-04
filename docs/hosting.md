@@ -22,11 +22,13 @@ Elegí el proyecto correcto y deja `public` como directorio público.
 
 ## 3) Completar la configuración web
 
-Editá `public/config.js` y reemplazá los valores de `window.SELLIA_CONFIG`:
+Editá `public/config.js` y completá:
 
-- `brand.name` y `brand.youtubeVideoId` para la identidad del sitio.
-- `contact.whatsappUrl`, `contact.instagramUrl` y `contact.mapsUrl` para los enlaces de contacto.
-- `firebase.config` **solo si vas a consumir Firebase desde el sitio web** (si no, puede quedar en `null`).
+- `firebase`: credenciales de Firebase Web (apiKey, projectId, etc.).
+- `publicStoreUrl`: URL base donde vive `product.html`.
+- `refreshIntervalMs`: frecuencia de refresco de precios en la ficha pública.
+- `contact`: links de contacto (WhatsApp, Instagram, Maps).
+- `tenantId`: el ID del tenant que usa la app Android (para resolver precios y stock).
 
 ## 4) Publicar
 
@@ -50,5 +52,17 @@ https://tu-proyecto.web.app/?utm_source=qr&utm_medium=offline&utm_campaign=local
 
 ## 6) Reglas de Firestore (opcional)
 
-Si en el futuro exponés productos desde Firestore, asegurate de permitir lecturas públicas solo de los campos
-necesarios. Recomendación: crear reglas que permitan leer documentos de `products` y nada más.
+La web pública lee desde `tenants/{tenantId}/public_products`, una colección cacheada y sanitizada.
+La app Android sincroniza precios a `tenants/{tenantId}/products`, y una Cloud Function replica los campos públicos.
+
+Para habilitar el refresco periódico, configurá el documento:
+
+```
+tenants/{tenantId}/config/public_store
+{
+  publicEnabled: true,
+  syncIntervalMinutes: 15
+}
+```
+
+Asegurate de permitir lecturas públicas únicamente de `public_products` (no de `products`).

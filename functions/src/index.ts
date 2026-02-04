@@ -140,6 +140,55 @@ const SERVICE_ALIAS_MAP: Record<string, UsageServiceKey> = {
   "Firebase Authentication": "auth",
 };
 
+type PublicProductPayload = {
+  id: string;
+  tenantId: string;
+  code?: string | null;
+  barcode?: string | null;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  price?: number | null;
+  listPrice?: number | null;
+  cashPrice?: number | null;
+  transferPrice?: number | null;
+  imageUrl?: string | null;
+  imageUrls: string[];
+  updatedAt?: string | admin.firestore.FieldValue;
+  publicUpdatedAt: admin.firestore.FieldValue;
+};
+
+const buildPublicProductPayload = (
+  tenantId: string,
+  productId: string,
+  data: FirebaseFirestore.DocumentData
+): PublicProductPayload => {
+  const rawUrls = Array.isArray(data.imageUrls)
+    ? data.imageUrls.filter((url) => typeof url === "string")
+    : [];
+  const legacyUrl = typeof data.imageUrl === "string" ? data.imageUrl : null;
+  const imageUrls = [...new Set([legacyUrl, ...rawUrls].filter(Boolean))] as string[];
+
+  return {
+    id: productId,
+    tenantId,
+    code: data.code ?? null,
+    barcode: data.barcode ?? null,
+    name: data.name ?? "Producto",
+    description: data.description ?? null,
+    category: data.category ?? null,
+    price: typeof data.price === "number" ? data.price : null,
+    listPrice: typeof data.listPrice === "number" ? data.listPrice : null,
+    cashPrice: typeof data.cashPrice === "number" ? data.cashPrice : null,
+    transferPrice:
+      typeof data.transferPrice === "number" ? data.transferPrice : null,
+    imageUrl: legacyUrl,
+    imageUrls,
+    updatedAt: data.updatedAt ?? admin.firestore.FieldValue.serverTimestamp(),
+    publicUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+};
+
 const getMpConfig = (): MpConfig => {
   const config = functions.config()?.mercadopago ?? {};
   const accessToken = process.env.MP_ACCESS_TOKEN ?? config.access_token;
@@ -982,6 +1031,94 @@ export const evaluateUsageAlerts = functions.pubsub
           }
         }
       }
+    }
+    return null;
+  });
+
+export const syncPublicProductOnWrite = functions.firestore
+  .document("tenants/{tenantId}/products/{productId}")
+  .onWrite(async (change, context) => {
+    const { tenantId, productId } = context.params;
+    const publicRef = db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("public_products")
+      .doc(productId);
+
+    if (!change.after.exists) {
+      await publicRef.delete();
+      return null;
+    }
+
+    const payload = buildPublicProductPayload(
+      tenantId,
+      productId,
+      change.after.data()
+    );
+    await publicRef.set(payload, { merge: true });
+    return null;
+  });
+
+export const refreshPublicProducts = functions.pubsub
+  .schedule("every 15 minutes")
+  .onRun(async () => {
+    const tenantsSnapshot = await db.collection("tenants").get();
+    const now = Date.now();
+
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantId = tenantDoc.id;
+      const configRef = db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("config")
+        .doc("public_store");
+      const configSnap = await configRef.get();
+      const configData = configSnap.data() || {};
+      const enabled = configData.publicEnabled === true;
+      if (!enabled) {
+        continue;
+      }
+
+      const intervalMinutes = Number(configData.syncIntervalMinutes) || 15;
+      const lastSyncedAt = configData.lastSyncedAt?.toDate?.();
+      if (lastSyncedAt && now - lastSyncedAt.getTime() < intervalMinutes * 60000) {
+        continue;
+      }
+
+      const productsSnapshot = await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("products")
+        .get();
+
+      let batch = db.batch();
+      let batchCount = 0;
+      for (const productDoc of productsSnapshot.docs) {
+        const payload = buildPublicProductPayload(
+          tenantId,
+          productDoc.id,
+          productDoc.data()
+        );
+        const publicRef = db
+          .collection("tenants")
+          .doc(tenantId)
+          .collection("public_products")
+          .doc(productDoc.id);
+        batch.set(publicRef, payload, { merge: true });
+        batchCount += 1;
+        if (batchCount === 450) {
+          await batch.commit();
+          batch = db.batch();
+          batchCount = 0;
+        }
+      }
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+      await configRef.set(
+        { lastSyncedAt: admin.firestore.FieldValue.serverTimestamp() },
+        { merge: true }
+      );
     }
     return null;
   });

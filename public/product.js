@@ -1,262 +1,334 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import {
-  getFirestore,
-  collection,
-  query,
-  where,
-  limit,
-  getDocs
-} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+const config = window.SELLIA_CONFIG || {};
+const brandName = config.brandName || "Sellia";
+const refreshIntervalMs = Number(config.refreshIntervalMs) || 300000;
+const tenantId = config.tenantId || "";
+const publicProductCollection = config.publicProductCollection || "public_products";
 
-const CONFIG = {
-  BRAND_NAME: "Valkirja",
-  WHATSAPP_URL: "REEMPLAZAR",
-  FIREBASE_CONFIG: {
-    apiKey: "REEMPLAZAR",
-    authDomain: "REEMPLAZAR",
-    projectId: "REEMPLAZAR",
-    storageBucket: "REEMPLAZAR",
-    messagingSenderId: "REEMPLAZAR",
-    appId: "REEMPLAZAR"
-  }
+const elements = {
+  brandName: document.getElementById("brandName"),
+  productTitle: document.getElementById("productTitle"),
+  productMeta: document.getElementById("productMeta"),
+  productGallery: document.getElementById("productGallery"),
+  priceGrid: document.getElementById("priceGrid"),
+  productDescription: document.getElementById("productDescription"),
+  productSizes: document.getElementById("productSizes"),
+  statusCard: document.getElementById("statusCard"),
+  syncMeta: document.getElementById("syncMeta"),
+  ctaWhatsapp: document.getElementById("ctaWhatsapp")
 };
 
-const DEFAULT_PLACEHOLDER = "/assets/placeholder.svg";
-
-const ui = {
-  status: document.getElementById("productStatus"),
-  layout: document.getElementById("productLayout"),
-  galleryMain: document.getElementById("productGalleryMain"),
-  galleryThumbs: document.getElementById("productGalleryThumbs"),
-  name: document.getElementById("productName"),
-  sku: document.getElementById("productSku"),
-  tag: document.getElementById("productTag"),
-  description: document.getElementById("productDescription"),
-  priceList: document.getElementById("priceList"),
-  priceCash: document.getElementById("priceCash"),
-  sizes: document.getElementById("productSizes"),
-  contactButton: document.getElementById("contactButton"),
-  contactHint: document.getElementById("contactHint")
+const state = {
+  sku: "",
+  product: null,
+  lastSync: null,
+  timer: null,
+  paused: false
 };
 
-function setStatus(message) {
-  if (!ui.status) return;
-  ui.status.textContent = message;
-  ui.status.hidden = false;
+function setStatus(message, isError = false) {
+  if (!elements.statusCard) return;
+  elements.statusCard.textContent = message;
+  elements.statusCard.hidden = !message;
+  elements.statusCard.classList.toggle("error", isError);
 }
 
-function showLayout() {
-  if (ui.layout) {
-    ui.layout.hidden = false;
-  }
-  if (ui.status) {
-    ui.status.hidden = true;
-  }
-}
-
-function normalizeImages(data) {
-  if (Array.isArray(data.images) && data.images.length) return data.images;
-  if (Array.isArray(data.photos) && data.photos.length) return data.photos;
-  if (data.image) return [data.image];
-  return [DEFAULT_PLACEHOLDER];
-}
-
-function formatPrice(value, currency = "ARS") {
-  if (value === undefined || value === null || value === "") {
-    return "Consultar";
-  }
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) {
-    return String(value);
-  }
+function formatCurrency(value) {
+  if (value === null || value === undefined || value === "") return "Sin precio";
+  const numberValue = Number(value);
+  if (Number.isNaN(numberValue)) return String(value);
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
-    currency,
+    currency: "ARS",
     maximumFractionDigits: 0
-  }).format(numeric);
+  }).format(numberValue);
 }
 
-function renderGallery(images, name) {
-  if (!ui.galleryMain || !ui.galleryThumbs) return;
-
-  const [primary, ...rest] = images;
-  ui.galleryMain.innerHTML = `
-    <img src="${primary}" alt="${name}" loading="lazy" />
-  `;
-
-  ui.galleryThumbs.innerHTML = images
-    .map(
-      (image, index) => `
-        <button type="button" class="thumb" data-image-index="${index}">
-          <img src="${image}" alt="${name} - vista ${index + 1}" loading="lazy" />
-        </button>
-      `
-    )
-    .join("");
-
-  const thumbButtons = ui.galleryThumbs.querySelectorAll("button");
-  thumbButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      const index = Number(button.dataset.imageIndex);
-      if (Number.isNaN(index)) return;
-      const nextImage = images[index];
-      ui.galleryMain.innerHTML = `
-        <img src="${nextImage}" alt="${name}" loading="lazy" />
-      `;
-    });
+function updateSyncMeta() {
+  if (!elements.syncMeta) return;
+  if (!state.lastSync) {
+    elements.syncMeta.textContent = "";
+    return;
+  }
+  const time = state.lastSync.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit"
   });
+  elements.syncMeta.textContent = `Última actualización: ${time}. Se refresca cada ${
+    Math.round(refreshIntervalMs / 60000)
+  } min.`;
 }
 
-function renderSizes(sizes) {
-  if (!ui.sizes) return;
-  if (!Array.isArray(sizes) || sizes.length === 0) {
-    ui.sizes.innerHTML = "<span class=\"size-pill\">Consultar talles</span>";
-    return;
+function renderProduct(product) {
+  if (!product) return;
+  elements.productTitle.textContent = product.name || "Producto";
+  elements.productDescription.textContent = product.description || "Sin descripción.";
+
+  elements.productMeta.innerHTML = "";
+  if (product.sku) {
+    const sku = document.createElement("span");
+    sku.textContent = `SKU: ${product.sku}`;
+    elements.productMeta.appendChild(sku);
+  }
+  if (product.category) {
+    const category = document.createElement("span");
+    category.textContent = `Categoría: ${product.category}`;
+    elements.productMeta.appendChild(category);
+  }
+  if (product.updatedAt) {
+    const updated = document.createElement("span");
+    updated.textContent = `Actualizado: ${product.updatedAt}`;
+    elements.productMeta.appendChild(updated);
   }
 
-  ui.sizes.innerHTML = sizes
-    .map((size) => `<span class="size-pill">${size}</span>`)
-    .join("");
-}
+  elements.productGallery.innerHTML = "";
+  const images = product.images?.length
+    ? product.images
+    : product.imageUrl
+      ? [product.imageUrl]
+      : ["/assets/placeholder.svg"];
+  images.forEach((url) => {
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = product.name || "Producto";
+    img.loading = "lazy";
+    elements.productGallery.appendChild(img);
+  });
 
-function applyUtmToContact() {
-  if (!ui.contactButton) return;
-
-  const utmParams = new URLSearchParams(window.location.search);
-  const utm = new URLSearchParams();
-  for (const [key, value] of utmParams.entries()) {
-    if (key.startsWith("utm_")) {
-      utm.set(key, value);
-    }
+  elements.priceGrid.innerHTML = "";
+  const basePrice = product.price ?? product.listPrice ?? product.cashPrice ?? null;
+  const priceRows = [
+    { label: "Precio lista", value: formatCurrency(product.listPrice ?? basePrice) },
+    { label: "Precio efectivo", value: formatCurrency(product.cashPrice ?? basePrice) }
+  ];
+  if (product.transferPrice !== null && product.transferPrice !== undefined) {
+    priceRows.push({ label: "Precio transferencia", value: formatCurrency(product.transferPrice) });
   }
+  priceRows.forEach((row) => {
+    const line = document.createElement("div");
+    line.className = "price-row";
+    line.innerHTML = `<span>${row.label}</span><strong>${row.value}</strong>`;
+    elements.priceGrid.appendChild(line);
+  });
 
-  if ([...utm.keys()].length === 0) return;
-
-  const href = ui.contactButton.getAttribute("href");
-  if (!href || href.startsWith("#") || href.startsWith("REEMPLAZAR")) return;
-  try {
-    const url = new URL(href);
-    utm.forEach((value, key) => {
-      url.searchParams.set(key, value);
+  elements.productSizes.innerHTML = "";
+  if (product.sizes?.length) {
+    product.sizes.forEach((size) => {
+      const pill = document.createElement("span");
+      pill.className = "size-pill";
+      pill.textContent = size;
+      elements.productSizes.appendChild(pill);
     });
-    ui.contactButton.href = url.toString();
-  } catch (error) {
-    console.warn("No se pudo aplicar UTM", error);
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "Sin talles cargados.";
+    elements.productSizes.appendChild(empty);
+  }
+
+  if (elements.ctaWhatsapp && config.contact?.whatsapp && !config.contact.whatsapp.startsWith("REEMPLAZAR")) {
+    const text = `Hola, quiero consultar por ${product.name} (SKU ${product.sku || state.sku}).`;
+    const url = new URL(config.contact.whatsapp);
+    url.searchParams.set("text", text);
+    elements.ctaWhatsapp.href = url.toString();
+  } else if (elements.ctaWhatsapp) {
+    elements.ctaWhatsapp.href = "#";
   }
 }
 
-function buildWhatsappLink(name, sku) {
-  if (!CONFIG.WHATSAPP_URL || CONFIG.WHATSAPP_URL.startsWith("REEMPLAZAR")) {
-    return "#";
-  }
-  try {
-    const url = new URL(CONFIG.WHATSAPP_URL);
-    const message = `Hola! Quiero consultar por el producto ${name} (SKU ${sku}).`;
-    url.searchParams.set("text", message);
-    return url.toString();
-  } catch (error) {
-    console.warn("WhatsApp URL inválida", error);
-    return CONFIG.WHATSAPP_URL;
-  }
-}
+function parseFirestoreDocument(doc) {
+  if (!doc?.fields) return null;
+  const fields = doc.fields;
+  const getString = (key) => fields[key]?.stringValue || "";
+  const getNumber = (key) =>
+    fields[key]?.doubleValue ?? fields[key]?.integerValue ?? "";
+  const getArray = (key) =>
+    fields[key]?.arrayValue?.values?.map((v) => v.stringValue).filter(Boolean) || [];
+  const imageUrl = getString("imageUrl");
+  const updatedAt =
+    fields.updatedAt?.stringValue ||
+    (fields.updatedAt?.timestampValue
+      ? new Date(fields.updatedAt.timestampValue).toISOString().slice(0, 10)
+      : "");
 
-function renderProduct(data) {
-  if (!data) {
-    setStatus("Producto no encontrado.");
-    return;
-  }
-
-  const images = normalizeImages(data);
-  renderGallery(images, data.name);
-
-  if (ui.tag) ui.tag.textContent = data.tag || "Producto";
-  if (ui.name) ui.name.textContent = data.name;
-  if (ui.sku) ui.sku.textContent = `SKU: ${data.sku}`;
-  if (ui.description) ui.description.textContent = data.description || "";
-  if (ui.priceList) ui.priceList.textContent = formatPrice(data.priceList, data.currency);
-  if (ui.priceCash) ui.priceCash.textContent = formatPrice(data.priceCash, data.currency);
-
-  renderSizes(data.sizes);
-
-  if (ui.contactButton) {
-    ui.contactButton.href = buildWhatsappLink(data.name, data.sku);
-  }
-  if (ui.contactHint) {
-    ui.contactHint.textContent = "Respondemos rápido con stock y tiempos de entrega.";
-  }
-
-  document.title = `${data.name} | ${CONFIG.BRAND_NAME}`;
-  showLayout();
-  applyUtmToContact();
-}
-
-async function fetchProductBySku(db, sku) {
-  const productsRef = collection(db, "products");
-  const skuQuery = query(productsRef, where("code", "==", sku), limit(1));
-  const snapshot = await getDocs(skuQuery);
-
-  if (!snapshot.empty) {
-    return snapshot.docs[0];
-  }
-
-  const barcodeQuery = query(productsRef, where("barcode", "==", sku), limit(1));
-  const barcodeSnapshot = await getDocs(barcodeQuery);
-  if (!barcodeSnapshot.empty) {
-    return barcodeSnapshot.docs[0];
-  }
-
-  return null;
-}
-
-function normalizeProduct(doc, sku) {
-  if (!doc) return null;
-  const data = doc.data();
   return {
-    id: doc.id,
-    sku,
-    name: data.name || "Producto sin nombre",
-    description: data.description || data.desc || "",
-    tag: data.tag || "",
-    priceList: data.priceList ?? data.price_list ?? null,
-    priceCash: data.priceCash ?? data.price_cash ?? null,
-    currency: data.currency || "ARS",
-    sizes: data.sizes || data.talles || [],
-    images: data.images || data.photos || [],
-    image: data.image || ""
+    id: doc.name?.split("/").pop() || "",
+    sku: getString("code") || getString("barcode"),
+    name: getString("name"),
+    description: getString("description"),
+    category: getString("category"),
+    price: getNumber("price"),
+    listPrice: getNumber("listPrice"),
+    cashPrice: getNumber("cashPrice"),
+    transferPrice: getNumber("transferPrice"),
+    images: getArray("imageUrls"),
+    imageUrl,
+    sizes: getArray("sizes"),
+    updatedAt
   };
 }
 
-async function init() {
-  const searchParams = new URLSearchParams(window.location.search);
-  const rawSku = searchParams.get("q");
-  const sku = rawSku ? rawSku.trim() : "";
+function buildPublicCollectionPath() {
+  if (!tenantId) return null;
+  return `tenants/${tenantId}/${publicProductCollection}`;
+}
 
-  if (!sku) {
-    setStatus("Producto no encontrado. Verificá el SKU.");
-    return;
-  }
+function buildRunQueryUrl() {
+  const projectId = config.firebase?.projectId;
+  const apiKey = config.firebase?.apiKey;
+  if (!projectId || !apiKey || apiKey === "REEMPLAZAR" || !tenantId) return null;
+  return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${tenantId}:runQuery?key=${apiKey}`;
+}
 
-  if (CONFIG.FIREBASE_CONFIG.projectId === "REEMPLAZAR") {
-    setStatus("Configurá Firebase para ver productos reales.");
-    return;
-  }
-
-  setStatus("Buscando producto...");
-
-  try {
-    const app = initializeApp(CONFIG.FIREBASE_CONFIG);
-    const db = getFirestore(app);
-    const doc = await fetchProductBySku(db, sku);
-    const product = normalizeProduct(doc, sku);
-    if (!product) {
-      setStatus("Producto no encontrado.");
-      return;
+async function fetchFirestoreByField(field, value) {
+  const url = buildRunQueryUrl();
+  if (!url) return null;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: publicProductCollection }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: field },
+          op: "EQUAL",
+          value: { stringValue: value }
+        }
+      },
+      select: {
+        fields: [
+          { fieldPath: "code" },
+          { fieldPath: "barcode" },
+          { fieldPath: "name" },
+          { fieldPath: "description" },
+          { fieldPath: "category" },
+          { fieldPath: "price" },
+          { fieldPath: "listPrice" },
+          { fieldPath: "cashPrice" },
+          { fieldPath: "transferPrice" },
+          { fieldPath: "imageUrl" },
+          { fieldPath: "imageUrls" },
+          { fieldPath: "sizes" },
+          { fieldPath: "updatedAt" }
+        ]
+      },
+      limit: 1
     }
-    renderProduct(product);
-  } catch (error) {
-    console.error("Error al cargar producto", error);
-    setStatus("No pudimos cargar el producto. Probá más tarde.");
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    throw new Error("No se pudo consultar Firestore");
   }
+  const data = await response.json();
+  const doc = data.find((item) => item.document)?.document;
+  return parseFirestoreDocument(doc);
+}
+
+async function fetchFirestoreById(id) {
+  const projectId = config.firebase?.projectId;
+  const apiKey = config.firebase?.apiKey;
+  const collectionPath = buildPublicCollectionPath();
+  if (!projectId || !apiKey || apiKey === "REEMPLAZAR" || !collectionPath) return null;
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionPath}/${encodeURIComponent(
+    id
+  )}?key=${apiKey}`;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  const data = await response.json();
+  return parseFirestoreDocument(data);
+}
+
+async function fetchDemoProduct(sku) {
+  try {
+    const response = await fetch("/data/products.json");
+    const data = await response.json();
+    const found = data.find((item) => item.id === sku || item.name === sku);
+    if (!found) return null;
+    return {
+      sku: found.id,
+      name: found.name,
+      description: found.longDesc || found.desc,
+      listPrice: "Consultar",
+      cashPrice: "Consultar",
+      images: found.images?.length ? found.images : [found.image],
+      sizes: ["S", "M", "L"]
+    };
+  } catch (error) {
+    console.warn("No se pudo cargar demo", error);
+    return null;
+  }
+}
+
+async function loadProduct() {
+  if (!state.sku) {
+    setStatus("Falta el SKU en la URL. Usá ?q=SKU.", true);
+    elements.productTitle.textContent = "Producto no encontrado";
+    return;
+  }
+
+  setStatus("Actualizando precios...", false);
+  elements.productTitle.textContent = "Buscando producto...";
+
+  let product = null;
+  try {
+    product = await fetchFirestoreByField("code", state.sku);
+    if (!product) {
+      product = await fetchFirestoreByField("barcode", state.sku);
+    }
+    if (!product) {
+      product = await fetchFirestoreById(state.sku);
+    }
+  } catch (error) {
+    console.warn("No se pudo consultar Firestore", error);
+  }
+
+  if (!product) {
+    product = await fetchDemoProduct(state.sku);
+  }
+
+  if (!product) {
+    setStatus("No encontramos el producto. Verificá el SKU.", true);
+    elements.productTitle.textContent = "Producto no encontrado";
+    return;
+  }
+
+  state.product = product;
+  state.lastSync = new Date();
+  setStatus("");
+  updateSyncMeta();
+  renderProduct(product);
+}
+
+function startPolling() {
+  if (state.timer || state.paused) return;
+  state.timer = setInterval(loadProduct, refreshIntervalMs);
+}
+
+function stopPolling() {
+  if (!state.timer) return;
+  clearInterval(state.timer);
+  state.timer = null;
+}
+
+function init() {
+  elements.brandName.textContent = brandName;
+  const params = new URLSearchParams(window.location.search);
+  state.sku = params.get("q")?.trim() || "";
+  if (!tenantId) {
+    setStatus("Falta configurar tenantId en config.js.", true);
+  }
+  loadProduct();
+  startPolling();
+  document.addEventListener("visibilitychange", () => {
+    state.paused = document.hidden;
+    if (state.paused) {
+      stopPolling();
+    } else {
+      loadProduct();
+      startPolling();
+    }
+  });
 }
 
 init();

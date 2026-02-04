@@ -1,16 +1,9 @@
-const CONFIG = window.SELLIA_CONFIG ?? {
-  brand: {
-    name: "Valkirja",
-    youtubeVideoId: "REEMPLAZAR"
-  },
-  contact: {
-    whatsappUrl: "REEMPLAZAR",
-    instagramUrl: "REEMPLAZAR",
-    mapsUrl: "REEMPLAZAR"
-  },
-  firebase: {
-    config: null
-  }
+const CONFIG = {
+  BRAND_NAME: window.SELLIA_CONFIG?.brandName || "Sellia",
+  YOUTUBE_VIDEO_ID: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR",
+  WHATSAPP_URL: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
+  INSTAGRAM_URL: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
+  MAPS_URL: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
 };
 
 const state = {

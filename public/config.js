@@ -1,14 +1,21 @@
 window.SELLIA_CONFIG = {
-  brand: {
-    name: "Valkirja",
-    youtubeVideoId: "REEMPLAZAR"
+  brandName: "Sellia",
+  publicStoreUrl: "https://tu-proyecto.web.app/product.html",
+  tenantId: "REEMPLAZAR_TENANT",
+  productCollection: "products",
+  publicProductCollection: "public_products",
+  refreshIntervalMs: 300000,
+  firebase: {
+    apiKey: "REEMPLAZAR",
+    authDomain: "REEMPLAZAR",
+    projectId: "REEMPLAZAR",
+    storageBucket: "REEMPLAZAR",
+    messagingSenderId: "REEMPLAZAR",
+    appId: "REEMPLAZAR"
   },
   contact: {
-    whatsappUrl: "REEMPLAZAR",
-    instagramUrl: "REEMPLAZAR",
-    mapsUrl: "REEMPLAZAR"
-  },
-  firebase: {
-    config: null
+    whatsapp: "REEMPLAZAR",
+    instagram: "REEMPLAZAR",
+    maps: "REEMPLAZAR"
   }
 };
