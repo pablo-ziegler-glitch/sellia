@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es-AR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ficha de producto | Valkirja</title>
+    <meta
+      name="description"
+      content="Ficha de producto con fotos, talles y precios actualizados desde Firestore."
+    />
+    <link rel="canonical" href="https://example.com/product.html" />
+    <meta property="og:title" content="Ficha de producto" />
+    <meta
+      property="og:description"
+      content="Consultá fotos, precios y talles actualizados en tiempo real."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://example.com/product.html" />
+    <meta property="og:image" content="/assets/og-image.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#111111" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="product-body">
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+    <header class="site-header">
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-link" href="/index.html#productos">Colección</a>
+        <a class="nav-link" href="/index.html#contacto">Contacto</a>
+      </nav>
+    </header>
+
+    <main id="contenido" class="product-page">
+      <section class="product-shell" aria-live="polite">
+        <div class="product-status" id="productStatus">Buscando producto...</div>
+
+        <div class="product-layout" id="productLayout" hidden>
+          <div class="product-gallery">
+            <div class="product-gallery-main" id="productGalleryMain"></div>
+            <div class="product-gallery-thumbs" id="productGalleryThumbs"></div>
+          </div>
+
+          <div class="product-detail">
+            <span class="tag" id="productTag"></span>
+            <h1 id="productName"></h1>
+            <p class="muted" id="productSku"></p>
+            <p id="productDescription"></p>
+
+            <div class="product-pricing">
+              <div class="price-card">
+                <p class="price-label">Precio lista</p>
+                <p class="price-value" id="priceList">Consultar</p>
+              </div>
+              <div class="price-card highlight">
+                <p class="price-label">Precio efectivo</p>
+                <p class="price-value" id="priceCash">Consultar</p>
+              </div>
+            </div>
+
+            <div class="product-sizes">
+              <h2>Talles disponibles</h2>
+              <div class="size-list" id="productSizes"></div>
+            </div>
+
+            <div class="product-cta">
+              <a class="button primary" id="contactButton" data-utm-link href="#">
+                Consultar por WhatsApp
+              </a>
+              <p class="muted" id="contactHint"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/product.js"></script>
+  </body>
+</html>
