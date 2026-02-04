@@ -25,7 +25,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navigation
+import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.ui.components.AppScaffold
 import com.example.selliaapp.ui.screens.HomeScreen
 import com.example.selliaapp.ui.screens.MoreScreen
@@ -38,6 +40,8 @@ import com.example.selliaapp.ui.screens.clients.ClientsHubScreen
 import com.example.selliaapp.ui.screens.config.BulkDataScreen
 import com.example.selliaapp.ui.screens.config.CloudServicesAdminScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
+import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
+import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
@@ -90,6 +94,7 @@ import com.example.selliaapp.viewmodel.UserViewModel
 import com.example.selliaapp.viewmodel.StockMovementsViewModel
 import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.viewmodel.AuthViewModel
+import com.example.selliaapp.viewmodel.SecuritySettingsViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
@@ -136,11 +141,15 @@ fun SelliaApp(
             composable(Routes.Home.route) {
                 val homeVm: HomeViewModel = hiltViewModel()
                 val accessVm: AccessControlViewModel = hiltViewModel()
+                val marketingVm: MarketingConfigViewModel = hiltViewModel()
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
                 val authState by authViewModel.authState.collectAsStateWithLifecycle()
                 val accountSummary = remember(authState, accessState) {
                     buildAccountSummary(authState, accessState)
                 }
+                val marketingSettings by marketingVm.settings.collectAsStateWithLifecycle(
+                    initialValue = MarketingSettings()
+                )
 
                 HomeScreen(
                     onNewSale = { navController.navigate(Routes.Pos.route) },
@@ -163,7 +172,9 @@ fun SelliaApp(
                     onCashOpen = { navController.navigate(Routes.CashOpen.route) },
                     onCashHub = { navController.navigate(Routes.Cash.route) },
                     vm = homeVm,
-                    accountSummary = accountSummary
+                    accountSummary = accountSummary,
+                    storeName = marketingSettings.storeName,
+                    storeLogoUrl = marketingSettings.storeLogoUrl
                 )
             }
 
@@ -589,13 +600,33 @@ fun SelliaApp(
             composable(Routes.Config.route) {
                 val accessVm: AccessControlViewModel = hiltViewModel()
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
+                val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                val accountSummary = remember(authState, accessState) {
+                    buildAccountSummary(authState, accessState)
+                }
+                val userProfile = remember(authState, accessState) {
+                    val session = (authState as? AuthState.Authenticated)?.session
+                    UserProfileDetails(
+                        displayName = accountSummary.displayName,
+                        email = accountSummary.email,
+                        roleLabel = accountSummary.roleLabel,
+                        uid = session?.uid,
+                        tenantId = session?.tenantId
+                    )
+                }
                 ConfigScreen(
                     onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
                     onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
                     onBulkData = { navController.navigate(Routes.BulkData.route) },
                     onCloudServicesAdmin = { navController.navigate(Routes.CloudServicesAdmin.route) },
+                    onManageUsers = { navController.navigate(Routes.AddUser.route) },
+                    onUsageAlerts = { navController.navigate(Routes.UsageAlerts.route) },
+                    onSecuritySettings = { navController.navigate(Routes.SecuritySettings.route) },
                     canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
+                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
+                    accountSummary = accountSummary,
+                    userProfile = userProfile,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -628,6 +659,14 @@ fun SelliaApp(
 
             composable(Routes.CloudServicesAdmin.route) {
                 CloudServicesAdminScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.SecuritySettings.route) {
+                val vm: SecuritySettingsViewModel = hiltViewModel()
+                SecuritySettingsScreen(
+                    viewModel = vm,
                     onBack = { navController.popBackStack() }
                 )
             }
