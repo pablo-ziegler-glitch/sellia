@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -48,12 +49,18 @@ import com.example.selliaapp.ui.components.BackTopAppBar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigScreen(
+    accountSummary: AccountSummary,
+    userProfile: UserProfileDetails,
     onPricingConfig: () -> Unit,
     onMarketingConfig: () -> Unit,
     onSync: () -> Unit,
     onBulkData: () -> Unit,
     onCloudServicesAdmin: () -> Unit,
     canManageCloudServices: Boolean,
+    onSecuritySettings: () -> Unit,
+    onUsageAlerts: () -> Unit,
+    onManageUsers: () -> Unit,
+    canManageUsers: Boolean,
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
     onBack: () -> Unit

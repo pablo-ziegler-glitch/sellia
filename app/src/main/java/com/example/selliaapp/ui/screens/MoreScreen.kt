@@ -146,8 +146,8 @@ fun MoreScreen(
                 supportingContent = { Text("Límites y consumo del plan") },
                 trailingContent = null,
                 overlineContent = null,
-                shadowElevation = null,
-                tonalElevation = null
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp
             )
 
             Divider()

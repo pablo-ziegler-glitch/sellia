@@ -56,6 +56,8 @@ class FakeScanProductRepository(
     override suspend fun getByIdModel(id: Int): Product? = null
     override suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? =
         products.firstOrNull { it.barcode == barcode }
+    override suspend fun getByCodeOrNull(code: String): ProductEntity? =
+        products.firstOrNull { it.code == code }
 
     // ---------- Búsquedas / listados ----------
     override fun search(q: String?): Flow<List<ProductEntity>> {

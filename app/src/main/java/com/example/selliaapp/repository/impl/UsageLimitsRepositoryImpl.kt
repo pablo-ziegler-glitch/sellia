@@ -41,7 +41,7 @@ class UsageLimitsRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun updateOverride(metric: String, limitValue: Double) = withContext(io) {
+    override suspend fun updateOverride(metric: String, limitValue: Double): Unit = withContext(io) {
         val tenantId = tenantProvider.requireTenantId()
         val userId = auth.currentUser?.uid
         firestore.collection("tenants")
@@ -58,5 +58,6 @@ class UsageLimitsRepositoryImpl @Inject constructor(
                 SetOptions.merge()
             )
             .await()
+        Unit
     }
 }
