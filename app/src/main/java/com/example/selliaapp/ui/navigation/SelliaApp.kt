@@ -24,6 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import androidx.navigation.navigation
 import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
@@ -412,7 +413,12 @@ fun SelliaApp(
             composable(
                 route = Routes.PublicProductCard.route +
                     "?${Routes.PublicProductCard.ARG_QR}={${Routes.PublicProductCard.ARG_QR}}",
-                arguments = Routes.PublicProductCard.arguments
+                arguments = Routes.PublicProductCard.arguments,
+                deepLinks = listOf(
+                    navDeepLink {
+                        uriPattern = "sellia://product?q={${Routes.PublicProductCard.ARG_QR}}"
+                    }
+                )
             ) { backStackEntry ->
                 val qrValue = backStackEntry.arguments
                     ?.getString(Routes.PublicProductCard.ARG_QR)
@@ -627,6 +633,7 @@ fun SelliaApp(
                     onPricingConfig = { navController.navigate(Routes.PricingConfig.route) },
                     onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onSync = { navController.navigate(Routes.Sync.route) },
+                    onProductQrs = { navController.navigate(Routes.ProductQr.route) },
                     onBulkData = { navController.navigate(Routes.BulkData.route) },
                     onCloudServicesAdmin = { navController.navigate(Routes.CloudServicesAdmin.route) },
                     onManageUsers = { navController.navigate(Routes.AddUser.route) },

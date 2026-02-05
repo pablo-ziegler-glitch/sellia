@@ -26,6 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -62,6 +63,8 @@ import java.util.Locale
 import java.nio.charset.StandardCharsets
 import kotlin.math.roundToInt
 
+private enum class QrAudience { PUBLIC, OWNER }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductQrScreen(
@@ -77,21 +80,27 @@ fun ProductQrScreen(
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(setOf<Int>()) }
     var sizeCmInput by remember { mutableStateOf("5") }
+    var qrAudience by remember { mutableStateOf(QrAudience.PUBLIC) }
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
     fun resolveQrValue(product: ProductEntity): String {
-        val baseUrl = marketingSettings.publicStoreUrl.trim()
-        if (baseUrl.isNotBlank()) {
-            val queryValue = product.code?.takeIf { it.isNotBlank() }
-                ?: product.barcode?.takeIf { it.isNotBlank() }
-                ?: "PRODUCT-${product.id}"
-            val encoded = URLEncoder.encode(queryValue, StandardCharsets.UTF_8.name())
-            val separator = if (baseUrl.contains("?")) "&" else "?"
-            return "${baseUrl.trimEnd('/')}$separator" + "q=$encoded"
-        }
-        return product.code?.takeIf { it.isNotBlank() }
+        val queryValue = product.code?.takeIf { it.isNotBlank() }
             ?: product.barcode?.takeIf { it.isNotBlank() }
             ?: "PRODUCT-${product.id}"
+        val baseUrl = marketingSettings.publicStoreUrl.trim().trimEnd('/')
+
+        if (baseUrl.isNotBlank()) {
+            val encoded = URLEncoder.encode(queryValue, StandardCharsets.UTF_8.name())
+            val separator = if (baseUrl.contains("?")) "&" else "?"
+            val mode = if (qrAudience == QrAudience.OWNER) "owner" else "public"
+            return "$baseUrl$separator" + "q=$encoded&mode=$mode"
+        }
+
+        return if (qrAudience == QrAudience.OWNER) {
+            "sellia://product?q=" + URLEncoder.encode(queryValue, StandardCharsets.UTF_8.name())
+        } else {
+            queryValue
+        }
     }
 
     fun parseSizeCm(): Float {
@@ -174,6 +183,21 @@ fun ProductQrScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = qrAudience == QrAudience.PUBLIC,
+                    onClick = { qrAudience = QrAudience.PUBLIC },
+                    label = { Text("QR público") }
+                )
+                FilterChip(
+                    selected = qrAudience == QrAudience.OWNER,
+                    onClick = { qrAudience = QrAudience.OWNER },
+                    label = { Text("QR interno") }
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

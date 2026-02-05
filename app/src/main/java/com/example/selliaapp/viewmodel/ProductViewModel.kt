@@ -321,11 +321,22 @@ class ProductViewModel @Inject constructor(
 
     suspend fun getByQrValue(rawValue: String): ProductEntity? =
         withContext(Dispatchers.IO) {
-            val value = rawValue.trim()
+            val value = normalizeQrValue(rawValue)
             repo.getByBarcodeOrNull(value)
                 ?: repo.getByCodeOrNull(value)
                 ?: parseProductId(value)?.let { repo.getById(it) }
+                ?: parseProductId(rawValue)?.let { repo.getById(it) }
         }
+
+    private fun normalizeQrValue(rawValue: String): String {
+        val value = rawValue.trim()
+        if (value.isBlank()) return value
+        val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return value
+        return parsed.getQueryParameter("q")
+            ?.takeIf { it.isNotBlank() }
+            ?: parsed.getQueryParameter("qr")?.takeIf { it.isNotBlank() }
+            ?: value
+    }
 
     private fun parseProductId(value: String): Int? {
         val normalized = value.trim()

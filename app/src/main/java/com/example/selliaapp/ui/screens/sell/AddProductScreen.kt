@@ -96,7 +96,6 @@ fun AddProductScreen(
     var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode ?: "") }
 
     // Precios y stock (tu bloque E4, intacto)
-    var priceText by remember { mutableStateOf("") }          // legacy
     var purchasePriceText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
     var cashPriceText by remember { mutableStateOf("") }
@@ -131,7 +130,6 @@ fun AddProductScreen(
                 code = p.code.orEmpty()
                 barcode = p.barcode.orEmpty()
 
-                priceText = p.price?.toString() ?: ""
                 listPriceText = p.listPrice?.toString() ?: ""
                 cashPriceText = p.cashPrice?.toString() ?: ""
                 transferPriceText = p.transferPrice?.toString() ?: ""
@@ -287,14 +285,6 @@ fun AddProductScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        OutlinedTextField(
-            value = priceText,
-            onValueChange = {
-                priceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-            },
-            label = { Text("Precio (legacy)") },
-            modifier = Modifier.fillMaxWidth()
-        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
@@ -493,7 +483,6 @@ fun AddProductScreen(
                 Button(onClick = {
                     // Parseo robusto (E4)
                     val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
-                    val legacy = priceText.replace(',', '.').toDoubleOrNull()
                     val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
                     val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
                     val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
@@ -511,7 +500,7 @@ fun AddProductScreen(
                             name = name,
                             barcode = barcode.ifBlank { null },
                             purchasePrice = purchase,
-                            legacyPrice = legacy,
+                            legacyPrice = null,
                             listPrice = listPrice,
                             cashPrice = cashPrice,
                             transferPrice = transferPrice,
@@ -539,7 +528,7 @@ fun AddProductScreen(
                             name = name,
                             barcode = barcode.ifBlank { null },
                             purchasePrice = purchase,
-                            legacyPrice = legacy,
+                            legacyPrice = null,
                             listPrice = listPrice,
                             cashPrice = cashPrice,
                             transferPrice = transferPrice,
