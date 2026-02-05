@@ -33,16 +33,26 @@ class SelliaAppApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
 
-        // StrictMode solo en debug
+        // StrictMode solo en debug (sin detectar sockets sin tag para evitar ruido de SDKs)
         // /* [ANTERIOR] import com.google.firebase.BuildConfig */
         if (BuildConfig.DEBUG) {
             android.os.StrictMode.setThreadPolicy(
                 android.os.StrictMode.ThreadPolicy.Builder()
-                    .detectAll().penaltyLog().build()
+                    .detectDiskReads()
+                    .detectDiskWrites()
+                    .detectNetwork()
+                    .detectCustomSlowCalls()
+                    .penaltyLog()
+                    .build()
             )
             android.os.StrictMode.setVmPolicy(
                 android.os.StrictMode.VmPolicy.Builder()
-                    .detectAll().penaltyLog().build()
+                    .detectLeakedSqlLiteObjects()
+                    .detectLeakedClosableObjects()
+                    .detectActivityLeaks()
+                    .detectLeakedRegistrationObjects()
+                    .penaltyLog()
+                    .build()
             )
         }
 
@@ -68,6 +78,14 @@ class SelliaAppApplication : Application(), Configuration.Provider {
             appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
+            appCheck.setTokenAutoRefreshEnabled(true)
+            appCheck.appCheckToken
+                .addOnSuccessListener { token ->
+                    Log.d("AppCheck", "Debug token activo: ${token.token}")
+                }
+                .addOnFailureListener { error ->
+                    Log.w("AppCheck", "No se pudo obtener token debug.", error)
+                }
         } else {
             appCheck.installAppCheckProviderFactory(
                 PlayIntegrityAppCheckProviderFactory.getInstance()
