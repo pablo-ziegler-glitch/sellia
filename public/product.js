@@ -14,7 +14,8 @@ const elements = {
   productSizes: document.getElementById("productSizes"),
   statusCard: document.getElementById("statusCard"),
   syncMeta: document.getElementById("syncMeta"),
-  ctaWhatsapp: document.getElementById("ctaWhatsapp")
+  ctaWhatsapp: document.getElementById("ctaWhatsapp"),
+  ctaOpenApp: document.getElementById("ctaOpenApp")
 };
 
 const state = {
@@ -22,7 +23,8 @@ const state = {
   product: null,
   lastSync: null,
   timer: null,
-  paused: false
+  paused: false,
+  mode: "public"
 };
 
 function setStatus(message, isError = false) {
@@ -311,13 +313,37 @@ function stopPolling() {
   state.timer = null;
 }
 
+
+function maybeEnableOwnerAppRedirect() {
+  if (!elements.ctaOpenApp || state.mode !== "owner" || !state.sku) return;
+  const deepLink = `sellia://product?q=${encodeURIComponent(state.sku)}`;
+  elements.ctaOpenApp.hidden = false;
+  elements.ctaOpenApp.href = deepLink;
+  elements.ctaOpenApp.addEventListener("click", (event) => {
+    event.preventDefault();
+    window.location.assign(deepLink);
+  });
+
+  const isAndroid = /Android/i.test(navigator.userAgent || "");
+  if (!isAndroid) return;
+  const startedAt = Date.now();
+  window.location.assign(deepLink);
+  window.setTimeout(() => {
+    if (document.visibilityState === "visible" && Date.now() - startedAt < 1700) {
+      setStatus("Mostrando versión web pública. Si tenés la app instalada, tocá 'Abrir en la app'.");
+    }
+  }, 1200);
+}
+
 function init() {
   elements.brandName.textContent = brandName;
   const params = new URLSearchParams(window.location.search);
   state.sku = params.get("q")?.trim() || "";
+  state.mode = params.get("mode")?.trim().toLowerCase() || "public";
   if (!tenantId) {
     setStatus("Falta configurar tenantId en config.js.", true);
   }
+  maybeEnableOwnerAppRedirect();
   loadProduct();
   startPolling();
   document.addEventListener("visibilitychange", () => {

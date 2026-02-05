@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +55,7 @@ fun ConfigScreen(
     onPricingConfig: () -> Unit,
     onMarketingConfig: () -> Unit,
     onSync: () -> Unit,
+    onProductQrs: () -> Unit,
     onBulkData: () -> Unit,
     onCloudServicesAdmin: () -> Unit,
     canManageCloudServices: Boolean,
@@ -132,6 +134,11 @@ fun ConfigScreen(
                     icon = Icons.Filled.CloudSync,
                     title = "Sincronización",
                     onClick = onSync
+                )
+                SettingsItem(
+                    icon = Icons.Filled.QrCode2,
+                    title = "QRs Productos",
+                    onClick = onProductQrs
                 )
                 SettingsItem(
                     icon = Icons.Filled.ChevronRight,
