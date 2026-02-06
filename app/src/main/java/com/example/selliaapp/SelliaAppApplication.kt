@@ -74,7 +74,7 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         )
 
         val appCheck = FirebaseAppCheck.getInstance()
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.APP_CHECK_DEBUG) {
             appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
@@ -90,6 +90,11 @@ class SelliaAppApplication : Application(), Configuration.Provider {
             appCheck.installAppCheckProviderFactory(
                 PlayIntegrityAppCheckProviderFactory.getInstance()
             )
+            appCheck.setTokenAutoRefreshEnabled(true)
+            appCheck.appCheckToken
+                .addOnFailureListener { error ->
+                    Log.w("AppCheck", "No se pudo obtener App Check token.", error)
+                }
         }
 
         PricingScheduler.enqueuePeriodic(this, 30)
