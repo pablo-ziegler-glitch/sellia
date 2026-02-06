@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -25,16 +26,37 @@ class SyncWorker @AssistedInject constructor(
             syncRepository.pushPending()
             syncRepository.pullRemote()
             Log.i(TAG, "Sincronización completada con éxito")
-            Result.success()
+            Result.success(
+                workDataOf(
+                    OUTPUT_STATUS to "success",
+                    OUTPUT_MESSAGE to "Sincronización completada con éxito."
+                )
+            )
         } catch (t: Throwable) {
             Log.e(TAG, "Error durante la sincronización", t)
-            val shouldFail = t is FirebaseFirestoreException && t.code == FirebaseFirestoreException.Code.INVALID_ARGUMENT
-            if (shouldFail) Result.failure() else Result.retry()
+            val message = buildErrorMessage(t)
+            Result.failure(
+                workDataOf(
+                    OUTPUT_STATUS to "failed",
+                    OUTPUT_MESSAGE to message
+                )
+            )
+        }
+    }
+
+    private fun buildErrorMessage(t: Throwable): String {
+        val base = t.message?.takeIf { it.isNotBlank() } ?: "Error desconocido"
+        return if (t is FirebaseFirestoreException) {
+            "Firestore ${t.code.name}: $base"
+        } else {
+            "${t::class.java.simpleName}: $base"
         }
     }
 
     companion object {
         const val UNIQUE_NAME: String = "sync_work"
         const val TAG: String = "SyncWorker"
+        const val OUTPUT_STATUS: String = "status"
+        const val OUTPUT_MESSAGE: String = "message"
     }
 }
