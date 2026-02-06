@@ -15,11 +15,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -29,6 +34,7 @@ import androidx.work.WorkManager
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.sync.SyncWorker
 import com.example.selliaapp.ui.components.BackTopAppBar
+import kotlinx.coroutines.launch
 
 /**
  * Pantalla simple para ejecutar la sincronización manual.
@@ -41,6 +47,9 @@ fun SyncScreen(
 ) {
     val context = LocalContext.current
     val workManager = remember(context) { WorkManager.getInstance(context) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var lastState by remember { mutableStateOf<WorkInfo.State?>(null) }
 
      // Observamos el estado del trabajo único por nombre
     val workInfos by workManager
@@ -51,7 +60,28 @@ fun SyncScreen(
     // syncing = hay un trabajo encolado o corriendo
     val syncing = workInfos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
 
-    Scaffold(topBar = { BackTopAppBar(title = "Sincronización", onBack = onBack) }) { padding ->
+    val last = workInfos.firstOrNull()
+    val lastMessage = last?.outputData?.getString(SyncWorker.OUTPUT_MESSAGE)
+
+    if (last?.state != null && lastState != last.state) {
+        lastState = last.state
+        scope.launch {
+            val text = when (last.state) {
+                WorkInfo.State.RUNNING -> "Sincronización en progreso..."
+                WorkInfo.State.SUCCEEDED -> lastMessage ?: "Sincronización completada."
+                WorkInfo.State.FAILED -> lastMessage ?: "Sincronización fallida."
+                WorkInfo.State.CANCELLED -> "Sincronización cancelada."
+                WorkInfo.State.ENQUEUED -> "Sincronización encolada."
+                WorkInfo.State.BLOCKED -> "Sincronización bloqueada."
+            }
+            snackbarHostState.showSnackbar(text)
+        }
+    }
+
+    Scaffold(
+        topBar = { BackTopAppBar(title = "Sincronización", onBack = onBack) },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -68,7 +98,10 @@ fun SyncScreen(
             // Botón principal: Encolar sync
             Button(
                 enabled = !syncing,               // deshabilitamos mientras hay un trabajo en curso
-                onClick = { SyncScheduler.enqueueNow(context) }
+                onClick = {
+                    SyncScheduler.enqueueNow(context)
+                    scope.launch { snackbarHostState.showSnackbar("Sincronización encolada.") }
+                }
             ) {
                 if (syncing) {
                     CircularProgressIndicator(
@@ -93,17 +126,14 @@ fun SyncScreen(
             // Estado visible (útil para debug)
             if (workInfos.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
-                val last = workInfos.firstOrNull()
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Estado: ${last?.state?.name ?: "N/A"}")
                 }
-                last?.outputData?.let { data ->
-                    // Si tu Worker setea datos de salida, podés mostrarlos acá.
-                    // Text("Resultado: ${data.getString("key") ?: "-"}")
+                if (!lastMessage.isNullOrBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Detalle: $lastMessage", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
     }
 }
-
-

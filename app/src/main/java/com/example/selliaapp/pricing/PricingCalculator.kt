@@ -90,13 +90,42 @@ object PricingCalculator {
         shippingTiers: List<PricingMlShippingTierEntity>
     ): MlPricingResult? {
         val start = roundUp500(maxOf(priceLowerBound, 1000.0))
-        val ml0 = findMlPrice(start, costBase, gainMinimum, commissionPercent, 0.0, shippingThreshold, weightKg, fixedCostTiers, shippingTiers)
-        val ml3 = findMlPrice(start, costBase, gainMinimum, commissionPercent, cuotas3Percent, shippingThreshold, weightKg, fixedCostTiers, shippingTiers)
-        val ml6 = findMlPrice(start, costBase, gainMinimum, commissionPercent, cuotas6Percent, shippingThreshold, weightKg, fixedCostTiers, shippingTiers)
+        val ml0 = findMlPrice(
+            startPrice = start,
+            costBase = costBase,
+            gainMinimum = gainMinimum,
+            commissionPercent = commissionPercent,
+            cuotaPercent = 0.0,
+            shippingThreshold = shippingThreshold,
+            weightKg = weightKg,
+            fixedCostTiers = fixedCostTiers,
+            shippingTiers = shippingTiers
+        ) ?: return null
 
-        if (ml0 == null || ml3 == null || ml6 == null) return null
-        if (!(ml6 > ml3 && ml3 > ml0)) return null
-        if (ml0 == ml3 || ml0 == ml6 || ml3 == ml6) return null
+        val ml3 = findMlPrice(
+            startPrice = maxOf(start, ml0 + 500.0),
+            costBase = costBase,
+            gainMinimum = gainMinimum,
+            commissionPercent = commissionPercent,
+            cuotaPercent = cuotas3Percent,
+            shippingThreshold = shippingThreshold,
+            weightKg = weightKg,
+            fixedCostTiers = fixedCostTiers,
+            shippingTiers = shippingTiers
+        ) ?: return null
+
+        val ml6 = findMlPrice(
+            startPrice = maxOf(start, ml3 + 500.0),
+            costBase = costBase,
+            gainMinimum = gainMinimum,
+            commissionPercent = commissionPercent,
+            cuotaPercent = cuotas6Percent,
+            shippingThreshold = shippingThreshold,
+            weightKg = weightKg,
+            fixedCostTiers = fixedCostTiers,
+            shippingTiers = shippingTiers
+        ) ?: return null
+
         return MlPricingResult(ml0 = ml0, ml3 = ml3, ml6 = ml6)
     }
 

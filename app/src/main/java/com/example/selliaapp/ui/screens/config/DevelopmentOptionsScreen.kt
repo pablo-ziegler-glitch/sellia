@@ -21,6 +21,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +37,8 @@ fun DevelopmentOptionsScreen(
     viewModel: DevelopmentOptionsViewModel = hiltViewModel()
 ) {
     val owners by viewModel.owners.collectAsState()
+    val appCheckState by viewModel.appCheckState.collectAsState()
+    val clipboardManager = LocalClipboardManager.current
 
     Scaffold(
         topBar = {
@@ -50,6 +54,42 @@ fun DevelopmentOptionsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "App Check",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val status = when {
+                            appCheckState.isLoading -> "Solicitando token..."
+                            appCheckState.error != null -> "Error: ${appCheckState.error}"
+                            appCheckState.token.isNullOrBlank() -> "Token no disponible"
+                            else -> "Token activo"
+                        }
+                        Text(status, style = MaterialTheme.typography.bodySmall)
+                        appCheckState.token?.let { token ->
+                            Text(token, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            TextButton(onClick = { viewModel.refreshAppCheckToken(forceRefresh = true) }) {
+                                Text("Actualizar")
+                            }
+                            if (!appCheckState.token.isNullOrBlank()) {
+                                TextButton(onClick = {
+                                    clipboardManager.setText(AnnotatedString(appCheckState.token.orEmpty()))
+                                }) {
+                                    Text("Copiar token")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 Text(
                     text = "Configuración por dueño de tienda",

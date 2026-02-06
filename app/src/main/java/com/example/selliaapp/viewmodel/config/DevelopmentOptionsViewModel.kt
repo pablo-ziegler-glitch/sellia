@@ -7,10 +7,13 @@ import com.example.selliaapp.domain.config.DevelopmentOptionsConfig
 import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.repository.DevelopmentOptionsRepository
 import com.example.selliaapp.repository.UserRepository
+import com.google.firebase.appcheck.FirebaseAppCheck
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -20,6 +23,12 @@ data class OwnerDevelopmentOptionsUi(
     val ownerEmail: String,
     val isActive: Boolean,
     val config: DevelopmentOptionsConfig
+)
+
+data class AppCheckUiState(
+    val token: String? = null,
+    val isLoading: Boolean = false,
+    val error: String? = null
 )
 
 @HiltViewModel
@@ -47,11 +56,35 @@ class DevelopmentOptionsViewModel @Inject constructor(
                 }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val _appCheckState = MutableStateFlow(AppCheckUiState())
+    val appCheckState: StateFlow<AppCheckUiState> = _appCheckState
+
+    init {
+        refreshAppCheckToken(forceRefresh = false)
+    }
+
     fun setFeature(ownerEmail: String, feature: DevelopmentFeatureKey, enabled: Boolean) {
         viewModelScope.launch {
             val current = findConfig(ownerEmail)
             developmentOptionsRepository.upsert(current.withFeature(feature, enabled))
         }
+    }
+
+    fun refreshAppCheckToken(forceRefresh: Boolean) {
+        _appCheckState.update { it.copy(isLoading = true, error = null) }
+        FirebaseAppCheck.getInstance()
+            .getAppCheckToken(forceRefresh)
+            .addOnSuccessListener { token ->
+                _appCheckState.update {
+                    it.copy(token = token.token, isLoading = false, error = null)
+                }
+            }
+            .addOnFailureListener { error ->
+                val message = error.message?.takeIf { it.isNotBlank() } ?: "Error al obtener token"
+                _appCheckState.update {
+                    it.copy(isLoading = false, error = message)
+                }
+            }
     }
 
     private fun findConfig(ownerEmail: String): DevelopmentOptionsConfig {
