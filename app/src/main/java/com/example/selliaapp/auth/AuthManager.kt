@@ -3,7 +3,10 @@ package com.example.selliaapp.auth
 import com.example.selliaapp.di.AppModule
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -13,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,6 +51,23 @@ class AuthManager @Inject constructor(
         session
     }.onFailure { error ->
         _state.value = AuthState.Error(error.message ?: "No se pudo iniciar sesión")
+    }
+
+    suspend fun signInWithGoogle(idToken: String): Result<AuthSession> = runCatching {
+        _state.value = AuthState.Loading
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        val result = firebaseAuth.signInWithCredential(credential).await()
+        val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
+        val session = runCatching { fetchSession(user) }
+            .getOrElse { ensurePublicCustomerSession(user) }
+        _state.value = AuthState.Authenticated(session)
+        session
+    }.onFailure { error ->
+        _state.value = AuthState.Error(error.message ?: "No se pudo iniciar sesión con Google")
+    }
+
+    fun reportAuthError(message: String) {
+        _state.value = AuthState.Error(message)
     }
 
     suspend fun refreshSession(): Result<AuthSession> = runCatching {
@@ -118,6 +139,55 @@ class AuthManager @Inject constructor(
         val tenantId = snapshot.getString("tenantId")
             ?: snapshot.getString("storeId")
             ?: throw IllegalStateException("El usuario no tiene tenantId/storeId asignado")
+        return AuthSession(
+            uid = user.uid,
+            tenantId = tenantId,
+            email = user.email,
+            displayName = user.displayName,
+            photoUrl = user.photoUrl?.toString()
+        )
+    }
+
+    private suspend fun ensurePublicCustomerSession(user: FirebaseUser): AuthSession {
+        val userRef = firestore.collection("users").document(user.uid)
+        val snapshot = userRef.get().await()
+        val existingTenant = snapshot.getString("tenantId") ?: snapshot.getString("storeId")
+        if (!existingTenant.isNullOrBlank()) {
+            return AuthSession(
+                uid = user.uid,
+                tenantId = existingTenant,
+                email = user.email,
+                displayName = user.displayName,
+                photoUrl = user.photoUrl?.toString()
+            )
+        }
+        val tenantId = UUID.randomUUID().toString()
+        val createdAt = FieldValue.serverTimestamp()
+        val batch = firestore.batch()
+        batch.set(
+            userRef,
+            mapOf(
+                "tenantId" to tenantId,
+                "email" to (user.email ?: ""),
+                "accountType" to "public_customer",
+                "createdAt" to createdAt
+            ),
+            SetOptions.merge()
+        )
+        val tenantRef = firestore.collection("tenants").document(tenantId)
+        batch.set(
+            tenantRef,
+            mapOf(
+                "id" to tenantId,
+                "name" to "Cliente público",
+                "ownerUid" to user.uid,
+                "ownerEmail" to (user.email ?: ""),
+                "accountType" to "public_customer",
+                "createdAt" to createdAt
+            ),
+            SetOptions.merge()
+        )
+        batch.commit().await()
         return AuthSession(
             uid = user.uid,
             tenantId = tenantId,

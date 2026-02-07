@@ -26,6 +26,7 @@ fun RegisterScreen(
     isLoading: Boolean,
     errorMessage: String?,
     onSubmit: (String, String, String) -> Unit,
+    onGoogleSignInClick: () -> Unit,
     onLoginClick: () -> Unit
 ) {
     var storeName by remember { mutableStateOf("") }
@@ -85,6 +86,13 @@ fun RegisterScreen(
                 storeName.isNotBlank()
         ) {
             Text(if (isLoading) "Creando..." else "Crear cuenta")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(
+            onClick = onGoogleSignInClick,
+            enabled = !isLoading
+        ) {
+            Text("Crear con Google")
         }
         Spacer(modifier = Modifier.height(12.dp))
         TextButton(onClick = onLoginClick, enabled = !isLoading) {

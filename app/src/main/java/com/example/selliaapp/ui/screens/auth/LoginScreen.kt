@@ -25,10 +25,12 @@ import androidx.compose.ui.unit.dp
 fun LoginScreen(
     isLoading: Boolean,
     errorMessage: String?,
+    email: String,
+    onEmailChange: (String) -> Unit,
     onSubmit: (String, String) -> Unit,
+    onGoogleSignInClick: () -> Unit,
     onRegisterClick: () -> Unit
 ) {
-    var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
     Column(
@@ -45,7 +47,7 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
             value = email,
-            onValueChange = { email = it },
+            onValueChange = onEmailChange,
             label = { Text("Email") },
             enabled = !isLoading,
             singleLine = true
@@ -73,6 +75,13 @@ fun LoginScreen(
             enabled = !isLoading && email.isNotBlank() && password.isNotBlank()
         ) {
             Text(if (isLoading) "Ingresando..." else "Ingresar")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(
+            onClick = onGoogleSignInClick,
+            enabled = !isLoading
+        ) {
+            Text("Continuar con Google")
         }
         Spacer(modifier = Modifier.height(12.dp))
         TextButton(onClick = onRegisterClick, enabled = !isLoading) {
