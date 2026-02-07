@@ -43,9 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -71,10 +68,8 @@ fun AddProductScreen(
     prefillName: String? = null,        // si no es null, estás editando / prellenando nombre
     onSaved: () -> Unit,
     navController: NavController,
-    offVm: OffLookupViewModel = hiltViewModel() // VM para hablar con OFF
+    offVm: OffLookupViewModel = hiltViewModel()
 ) {
-
-    val state by viewModel.autoFillState.collectAsState()
     val imageUploadState by viewModel.imageUploadState.collectAsState()
     val context = LocalContext.current
 
@@ -98,10 +93,10 @@ fun AddProductScreen(
 
     val pendingImageUris = remember { mutableStateListOf<Uri>() }
 
-    // Corregimos el bug: barcode debe ser VAR (mutable) y recordado
+    // Barcode mutable
     var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode.orEmpty()) }
 
-    // Precios y stock (tu bloque E4, intacto)
+    // Precios y stock
     var priceText by remember { mutableStateOf("") }          // legacy
     var purchasePriceText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
@@ -121,7 +116,7 @@ fun AddProductScreen(
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var minStockText by remember { mutableStateOf("") }
 
-    // Control del dialog de error/info
+    // Dialog de error/info
     var infoMessage by remember { mutableStateOf<String?>(null) }
 
     // Listas
@@ -129,7 +124,6 @@ fun AddProductScreen(
         viewModel.getAllCategoryNames().collectAsState(initial = emptyList()).value
     val providers: List<String> =
         viewModel.getAllProviderNames().collectAsState(initial = emptyList()).value
-
 
     // Si editás, precargamos desde DB
     LaunchedEffect(editId) {
@@ -149,6 +143,7 @@ fun AddProductScreen(
                 ml6cPriceText = p.ml6cPrice?.toString() ?: ""
                 stockText = p.quantity.toString()
                 description = p.description.orEmpty()
+
                 val loadedImageUrls = if (p.imageUrls.isNotEmpty()) {
                     p.imageUrls
                 } else {
@@ -159,10 +154,8 @@ fun AddProductScreen(
                 pendingImageUris.clear()
 
                 selectedCategoryName = p.category.orEmpty()
-                // Si tu modelo aún no tiene providerName, quedará vacío
                 selectedProviderName = p.providerName.orEmpty()
                 providerSku = p.providerSku.orEmpty()
-
                 minStockText = p.minStock?.toString() ?: ""
             }
         }
@@ -188,7 +181,7 @@ fun AddProductScreen(
         }
     }
 
-    // --- Autodetección OFF: si tenemos barcode y faltan name/brand, buscamos ---
+    // --- OFF lookup ---
     val offState by offVm.state.collectAsState()
 
     LaunchedEffect(barcode) {
@@ -198,28 +191,20 @@ fun AddProductScreen(
         }
     }
 
-    // Reaccionamos a resultado OFF: solo completar si usuario NO escribió aún
     LaunchedEffect(offState) {
         when (val s = offState) {
             is UiState.Success -> {
                 val d = s.data
                 if (name.isBlank()) name = d.name
                 if (brand.isBlank()) brand = d.brand
-                if (imageUrls.isEmpty() && !d.imageUrl.isNullOrBlank()) {
-                    imageUrls.add(d.imageUrl)
-                }
-                // Mantener barcode detectado
+                if (imageUrls.isEmpty() && !d.imageUrl.isNullOrBlank()) imageUrls.add(d.imageUrl)
                 if (barcode.isBlank()) barcode = d.barcode
             }
-            is UiState.Error -> {
-                // NO mostramos dialog infinito; lo controlamos con estado
-                infoMessage = s.message
-            }
+            is UiState.Error -> infoMessage = s.message
             else -> Unit
         }
     }
 
-    // Dialog controlado
     if (infoMessage != null) {
         InfoMessage(
             text = infoMessage.orEmpty(),
@@ -242,22 +227,18 @@ fun AddProductScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-            // --- Estado de OFF (loading) ---
-            when (offState) {
-                UiState.Loading -> {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator()
-                        Text("Buscando datos en Open Food Facts…")
-                    }
+            // --- Estado OFF loading ---
+            if (offState == UiState.Loading) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator()
+                    Text("Buscando datos en Open Food Facts…")
                 }
-                else -> Unit
             }
 
-            // --- Campos principales ---
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -279,16 +260,15 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Botón manual para reintentar OFF (opcional)
+            // Reintentar OFF manual
             Button(
-                onClick = { viewModel.autocompleteFromOff(barcode) },
-                enabled = !state.loading,
+                onClick = { if (barcode.isNotBlank()) offVm.fetch(barcode) },
+                enabled = barcode.isNotBlank() && offState != UiState.Loading,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (state.loading) "Consultando OFF..." else "Autocompletar con OFF")
+                Text(if (offState == UiState.Loading) "Consultando OFF..." else "Autocompletar con OFF")
             }
 
-            // Marca
             OutlinedTextField(
                 value = brand,
                 onValueChange = { brand = it },
@@ -296,7 +276,7 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // --- Precios (E4) ---
+            // --- Precios ---
             OutlinedTextField(
                 value = purchasePriceText,
                 onValueChange = { purchasePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
@@ -356,7 +336,6 @@ fun AddProductScreen(
                 )
             }
 
-            // Stock
             OutlinedTextField(
                 value = stockText,
                 onValueChange = { stockText = it.filter { ch -> ch.isDigit() } },
@@ -364,7 +343,6 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Descripción / Imagen (manual)
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -372,6 +350,7 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Imágenes
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -416,7 +395,7 @@ fun AddProductScreen(
 
             ImageUrlListEditor(imageUrls = imageUrls)
 
-            // --- Categoría ---
+            // Categoría
             Column {
                 OutlinedTextField(
                     value = selectedCategoryName,
@@ -447,7 +426,7 @@ fun AddProductScreen(
                 }
             }
 
-            // --- Proveedor ---
+            // Proveedor
             Column {
                 OutlinedTextField(
                     value = selectedProviderName,
@@ -485,7 +464,6 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Stock mínimo
             OutlinedTextField(
                 value = minStockText,
                 onValueChange = { minStockText = it.filter { ch -> ch.isDigit() } },
@@ -493,34 +471,21 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // --- Acciones ---
+            // --- Acciones (FIX: un solo Button, llaves ok) ---
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
                     onClick = {
-                        // Parseo robusto (E4)
                         val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
                         val legacy = priceText.replace(',', '.').toDoubleOrNull()
                         val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
                         val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
                         val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
-                        val transferNetPrice = null
+                        val transferNetPrice: Double? = null
                         val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
                         val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
                         val ml6cPrice = ml6cPriceText.replace(',', '.').toDoubleOrNull()
                         val qty = stockText.toIntOrNull() ?: 0
                         val minStock = minStockText.toIntOrNull()
-                Button(onClick = {
-                    // Parseo robusto (E4)
-                    val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
-                    val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
-                    val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
-                    val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
-                    val transferNetPrice = null
-                    val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
-                    val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
-                    val ml6cPrice = ml6cPriceText.replace(',', '.').toDoubleOrNull()
-                    val qty = stockText.toIntOrNull() ?: 0
-                    val minStock = minStockText.toIntOrNull()
 
                         val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
 
@@ -603,9 +568,7 @@ private fun InfoMessage(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("OK") }
-        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
         title = { Text("Información") },
         text = { Text(text) }
     )

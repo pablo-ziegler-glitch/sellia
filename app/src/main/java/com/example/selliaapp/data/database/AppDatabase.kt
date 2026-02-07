@@ -11,6 +11,7 @@ import com.example.selliaapp.data.dao.CashMovementDao
 import com.example.selliaapp.data.dao.CashSessionDao
 import com.example.selliaapp.data.dao.CloudServiceConfigDao
  import com.example.selliaapp.data.dao.CustomerDao
+import com.example.selliaapp.data.dao.DevelopmentOptionsDao
 import com.example.selliaapp.data.dao.ExpenseBudgetDao
 import com.example.selliaapp.data.dao.ExpenseRecordDao
 import com.example.selliaapp.data.dao.ExpenseTemplateDao
@@ -58,6 +59,7 @@ import com.example.selliaapp.data.model.InvoiceItem
 import com.example.selliaapp.data.model.ProviderInvoice
 import com.example.selliaapp.data.model.ProviderInvoiceItem
 import com.example.selliaapp.data.model.User
+import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
 
 /**
  * Base de datos Room principal.
@@ -84,6 +86,7 @@ import com.example.selliaapp.data.model.User
         CashMovementEntity::class,
         CashAuditEntity::class,
         CloudServiceConfigEntity::class,
+        DevelopmentOptionsEntity::class,
 
         // Tablas de negocio basadas en modelos (ya tienen @Entity)
         Invoice::class,
@@ -95,7 +98,7 @@ import com.example.selliaapp.data.model.User
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 37,
+    version = 38,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -126,6 +129,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cashMovementDao(): CashMovementDao
     abstract fun cashAuditDao(): CashAuditDao
     abstract fun cloudServiceConfigDao(): CloudServiceConfigDao
+    abstract fun developmentOptionsDao(): DevelopmentOptionsDao
+
 
     companion object {
         val MIGRATION_31_32 = object : Migration(31, 32) {
@@ -339,6 +344,30 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_36_37 = object : Migration(36, 37) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `users` ADD COLUMN `isActive` INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+        @JvmField
+        val MIGRATION_37_38 = object : Migration(37, 38) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `development_options_configs` (
+                        `ownerEmail` TEXT NOT NULL,
+                        `salesEnabled` INTEGER NOT NULL,
+                        `stockEnabled` INTEGER NOT NULL,
+                        `customersEnabled` INTEGER NOT NULL,
+                        `providersEnabled` INTEGER NOT NULL,
+                        `expensesEnabled` INTEGER NOT NULL,
+                        `reportsEnabled` INTEGER NOT NULL,
+                        `cashEnabled` INTEGER NOT NULL,
+                        `usageAlertsEnabled` INTEGER NOT NULL,
+                        `configEnabled` INTEGER NOT NULL,
+                        `publicCatalogEnabled` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`ownerEmail`)
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }

@@ -41,8 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardOptions
-import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.data.model.AlertSeverity
 import com.example.selliaapp.data.model.UsageAlert
@@ -55,6 +54,7 @@ import java.text.NumberFormat
 import java.util.Locale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 
@@ -72,7 +72,7 @@ fun UsageAlertsScreen(
     }
     val numberFormatter = remember { NumberFormat.getNumberInstance(Locale.getDefault()) }
     var editingSummary by remember { mutableStateOf<UsageLimitSummary?>(null) }
-    var limitText by remember { mutableStateOf(\"\") }
+    var limitText by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -210,6 +210,7 @@ fun UsageAlertsScreen(
                 }
             }
         }
+
     }
 }
 
@@ -378,25 +379,32 @@ private fun UsageLimitBar(
 ) {
     val clamped = percentage.coerceIn(0, 150)
     val thresholds = listOf(50, 80, 100)
-    Canvas(
-        modifier = modifier
-            .height(12.dp)
-    ) {
+
+    // ✅ Tomar colores en contexto @Composable (afuera del draw scope)
+    val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val tickColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+    val barColor =
+        if (clamped >= 100) MaterialTheme.colorScheme.error
+        else MaterialTheme.colorScheme.primary
+
+    Canvas(modifier = modifier.height(12.dp)) {
         val radius = size.height / 2
         drawRoundRect(
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+            color = trackColor,
             cornerRadius = CornerRadius(radius, radius)
         )
+
         val width = size.width * (clamped / 100f)
         drawRoundRect(
-            color = if (clamped >= 100) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            color = barColor,
             size = Size(width.coerceAtMost(size.width), size.height),
             cornerRadius = CornerRadius(radius, radius)
         )
+
         thresholds.forEach { threshold ->
             val x = size.width * (threshold / 100f)
             drawLine(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                color = tickColor,
                 start = androidx.compose.ui.geometry.Offset(x, 0f),
                 end = androidx.compose.ui.geometry.Offset(x, size.height),
                 strokeWidth = 2f

@@ -146,6 +146,7 @@ dependencies {
 
     implementation(libs.androidx.ui)
 
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
 // Room
     implementation(libs.androidx.room.runtime)
@@ -153,6 +154,11 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler.vroomversion)
 
+    // Firebase (opcional si vas a usar Firestore)
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.functions)
+    implementation(libs.firebase.storage)
     // Firebase (sin KTX)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)

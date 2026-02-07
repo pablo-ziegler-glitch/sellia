@@ -54,6 +54,10 @@ class FakeScanProductRepository(
     override suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? =
         products.firstOrNull { it.barcode == barcode }
 
+    override suspend fun getByCodeOrNull(code: String): ProductEntity? {
+        TODO("Not yet implemented")
+    }
+
     // ---------- Búsquedas / listados ----------
     override fun search(q: String?): Flow<List<ProductEntity>> {
         val t = (q ?: "").trim().lowercase()

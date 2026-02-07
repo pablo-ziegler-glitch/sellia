@@ -170,6 +170,12 @@ private fun UsageLineChart(
 ) {
     val chartHeight = 180.dp
 
+    // ✅ Resolver colores en contexto @Composable (antes del Canvas)
+    val colorScheme = MaterialTheme.colorScheme
+    val chartBg = colorScheme.onSurface.copy(alpha = 0.06f)
+    val lineColor = colorScheme.primary
+    val innerPointColor = colorScheme.surface
+
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = modifier
@@ -208,11 +214,16 @@ private fun UsageLineChart(
                         .height(chartHeight)
                         .padding(horizontal = 12.dp, vertical = 16.dp)
                 ) {
+                    val corner = 16.dp.toPx()
+                    val strokeW = 4.dp.toPx()
+                    val outerR = 6.dp.toPx()
+                    val innerR = 3.dp.toPx()
+
                     drawRoundRect(
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        color = chartBg,
                         topLeft = Offset.Zero,
                         size = size,
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(16f)
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner)
                     )
 
                     val maxValue = points.maxOf { it.value }.takeIf { it > 0.0 } ?: 1.0
@@ -221,40 +232,28 @@ private fun UsageLineChart(
 
                     val widthStep = if (points.size > 1) size.width / (points.size - 1) else 0f
                     val linePath = Path()
-                    val lineColor = MaterialTheme.colorScheme.primary
 
                     points.forEachIndexed { index, point ->
                         val x = widthStep * index
                         val normalized = (point.value - minValue) / verticalRange
                         val y = size.height - (normalized * size.height).toFloat()
 
-                        if (index == 0) {
-                            linePath.moveTo(x, y)
-                        } else {
-                            linePath.lineTo(x, y)
-                        }
+                        if (index == 0) linePath.moveTo(x, y) else linePath.lineTo(x, y)
                     }
 
                     drawPath(
                         path = linePath,
                         color = lineColor,
-                        style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                        style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
 
                     points.forEachIndexed { index, point ->
                         val x = widthStep * index
                         val normalized = (point.value - minValue) / verticalRange
                         val y = size.height - (normalized * size.height).toFloat()
-                        drawCircle(
-                            color = lineColor,
-                            radius = 6f,
-                            center = Offset(x, y)
-                        )
-                        drawCircle(
-                            color = Color.White,
-                            radius = 3f,
-                            center = Offset(x, y)
-                        )
+
+                        drawCircle(color = lineColor, radius = outerR, center = Offset(x, y))
+                        drawCircle(color = innerPointColor, radius = innerR, center = Offset(x, y))
                     }
                 }
             }
@@ -331,6 +330,11 @@ private fun UsageShareBar(sharePercent: Double) {
     val clamped = sharePercent.coerceIn(0.0, 100.0)
     val percentLabel = formatPercent(sharePercent)
 
+    // ✅ Resolver colores antes del Canvas
+    val colorScheme = MaterialTheme.colorScheme
+    val trackColor = colorScheme.onSurface.copy(alpha = 0.08f)
+    val fillColor = colorScheme.primary
+
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -355,12 +359,13 @@ private fun UsageShareBar(sharePercent: Double) {
         ) {
             val barWidth = (size.width * (clamped / 100.0)).coerceAtLeast(0.0).toFloat()
             val radius = size.height / 2
+
             drawRoundRect(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                color = trackColor,
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
             )
             drawRoundRect(
-                color = MaterialTheme.colorScheme.primary,
+                color = fillColor,
                 size = androidx.compose.ui.geometry.Size(barWidth, size.height),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
             )

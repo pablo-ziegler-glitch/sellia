@@ -1,11 +1,11 @@
 package com.example.selliaapp.ui.navigation
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,9 +15,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.example.selliaapp.R
 import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.ui.screens.auth.LoginScreen
@@ -27,8 +30,6 @@ import com.example.selliaapp.viewmodel.RegisterViewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
-import androidx.compose.ui.platform.LocalContext
-import com.example.selliaapp.R
 
 @Composable
 fun SelliaRoot(
@@ -39,12 +40,17 @@ fun SelliaRoot(
 ) {
     val authState by authViewModel.authState.collectAsState()
     val registerState by registerViewModel.uiState.collectAsState()
+
     var isRegistering by rememberSaveable { mutableStateOf(false) }
     var loginEmail by rememberSaveable { mutableStateOf("") }
+
     val context = LocalContext.current
 
-    val googleSignInClient = remember(context) {
-        val webClientId = context.getString(R.string.default_web_client_id)
+    // ✅ Leemos el web client id en contexto composable (1 sola fuente de verdad)
+    val webClientId = stringResource(id = R.string.default_web_client_id)
+
+    // Se crea 1 vez por composición/Context (no recalcular en cada recomposition)
+    val googleSignInClient = remember(context, webClientId) {
         GoogleSignIn.getClient(
             context,
             GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -61,6 +67,7 @@ fun SelliaRoot(
             authViewModel.reportAuthError("No se pudo completar el inicio con Google.")
             return@rememberLauncherForActivityResult
         }
+
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         runCatching { task.getResult(ApiException::class.java) }
             .onSuccess { account ->
@@ -76,8 +83,8 @@ fun SelliaRoot(
             }
     }
 
-    val onGoogleSignInClick = {
-        val webClientId = context.getString(R.string.default_web_client_id)
+    // ✅ Callback NORMAL (no @Composable)
+    val onGoogleSignInClick: () -> Unit = {
         if (webClientId.isBlank()) {
             authViewModel.reportAuthError("Falta configurar el web client id de Google.")
         } else {
@@ -94,12 +101,14 @@ fun SelliaRoot(
                 CircularProgressIndicator()
             }
         }
+
         is AuthState.Authenticated -> {
             SelliaApp(
                 navController = navController,
                 customerRepo = customerRepo
             )
         }
+
         is AuthState.Error -> {
             val message = (authState as AuthState.Error).message
             if (isRegistering) {
@@ -121,12 +130,11 @@ fun SelliaRoot(
                     onEmailChange = { loginEmail = it },
                     onSubmit = authViewModel::signIn,
                     onGoogleSignInClick = onGoogleSignInClick,
-                    onRegisterClick = {
-                        isRegistering = true
-                    }
+                    onRegisterClick = { isRegistering = true }
                 )
             }
         }
+
         AuthState.Unauthenticated -> {
             if (isRegistering) {
                 RegisterScreen(

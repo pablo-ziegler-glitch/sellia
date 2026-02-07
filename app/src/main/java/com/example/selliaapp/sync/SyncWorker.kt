@@ -9,6 +9,11 @@ import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import com.google.firebase.firestore.FirebaseFirestoreException
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+
 
 /**
  * Worker de sincronización inyectado por Hilt.
@@ -19,6 +24,25 @@ class SyncWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val syncRepository: SyncRepository
 ) : CoroutineWorker(appContext, params) {
+
+    /**
+     * Fallback constructor para entornos donde WorkManager no usa HiltWorkerFactory.
+     * Mantiene compatibilidad con el constructor por reflexión (Context, WorkerParameters).
+     */
+    constructor(
+        appContext: Context,
+        params: WorkerParameters
+    ) : this(
+        appContext,
+        params,
+        EntryPointAccessors.fromApplication(
+            appContext,
+            SyncWorkerEntryPoint::class.java
+        ).syncRepository()
+    )
+
+
+
 
     override suspend fun doWork(): Result {
         Log.i(TAG, "Iniciando sincronización manual (workId=$id)")
@@ -59,4 +83,9 @@ class SyncWorker @AssistedInject constructor(
         const val OUTPUT_STATUS: String = "status"
         const val OUTPUT_MESSAGE: String = "message"
     }
+}
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface SyncWorkerEntryPoint {
+    fun syncRepository(): SyncRepository
 }
