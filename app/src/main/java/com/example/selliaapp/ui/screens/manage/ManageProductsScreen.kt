@@ -1,7 +1,5 @@
 package com.example.selliaapp.ui.screens.manage
 
-
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,8 +13,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -175,23 +176,35 @@ fun ManageProductsScreen(
                             )
                         },
                         trailingContent = {
-                            Row {
-                                IconButton(onClick = {
-                                    editing = p
-                                    showEditor = true
-                                }) { Icon(Icons.Default.Edit, contentDescription = null) }
-
-                                IconButton(onClick = {
-                                    scope.launch { vm.deleteById(p.id) }
-                                }) { Icon(Icons.Default.Delete, contentDescription = null) }
+                            var menuExpanded by remember { mutableStateOf(false) }
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "Acciones")
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Editar") },
+                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        editing = p
+                                        showEditor = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Eliminar") },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        scope.launch { vm.deleteById(p.id) }
+                                    }
+                                )
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                editing = p
-                                showEditor = true
-                            }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
@@ -204,7 +217,7 @@ fun ManageProductsScreen(
         ProductEditorDialog(
             initial = editing, // ahora asumimos ProductEditorDialog<ProductEntity?>
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls ->
+            onSave = { name, barcode, purchasePrice, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls ->
                 scope.launch {
                     val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
                     val base: ProductEntity = editing ?: ProductEntity(
@@ -212,6 +225,7 @@ fun ManageProductsScreen(
                         code = null,
                         barcode = barcode,
                         name = name,
+                        purchasePrice = purchasePrice,
                         price = price,
                         listPrice = listPrice,
                         cashPrice = cashPrice,
@@ -231,6 +245,7 @@ fun ManageProductsScreen(
                     val toSave: ProductEntity = base.copy(
                         name = name,
                         barcode = barcode,
+                        purchasePrice = purchasePrice,
                         price = price,
                         listPrice = listPrice,
                         cashPrice = cashPrice,

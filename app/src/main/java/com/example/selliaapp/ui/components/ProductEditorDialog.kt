@@ -29,6 +29,7 @@ fun ProductEditorDialog(
     onSave: (
         name: String,
         barcode: String,
+        purchasePrice: Double?,
         price: Double,
         listPrice: Double?,
         cashPrice: Double?,
@@ -44,6 +45,7 @@ fun ProductEditorDialog(
 ) {
     var name by remember { mutableStateOf(TextFieldValue(initial?.name.orEmpty())) }
     var barcode by remember { mutableStateOf(TextFieldValue(initial?.barcode.orEmpty())) }
+    var purchasePrice by remember { mutableStateOf(TextFieldValue(initial?.purchasePrice?.toString() ?: "")) }
     var price by remember { mutableStateOf(TextFieldValue(initial?.price?.toString() ?: "")) }
     var listPrice by remember { mutableStateOf(TextFieldValue(initial?.listPrice?.toString() ?: "")) }
     var cashPrice by remember { mutableStateOf(TextFieldValue(initial?.cashPrice?.toString() ?: "")) }
@@ -55,6 +57,7 @@ fun ProductEditorDialog(
     var minStock by remember { mutableStateOf(TextFieldValue(initial?.minStock?.toString() ?: "")) }
     var description by remember { mutableStateOf(TextFieldValue(initial?.description ?: "")) }
     var minStockError by remember { mutableStateOf(false) }
+    var purchasePriceError by remember { mutableStateOf(false) }
     val imageUrls: SnapshotStateList<String> = remember {
         mutableStateListOf<String>().apply {
             val initialUrls = if (initial?.imageUrls?.isNotEmpty() == true) {
@@ -79,8 +82,32 @@ fun ProductEditorDialog(
                     .heightIn(max = 420.dp)
                     .verticalScroll(scrollState)
             ) {
-                OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(barcode, { barcode = it }, label = { Text("Código") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text("Nombre*") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    stock,
+                    { stock = it },
+                    label = { Text("Stock*") },
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = { Text("Si se deja vacío, se guarda en 0.") }
+                )
+                OutlinedTextField(
+                    purchasePrice,
+                    {
+                        purchasePrice = it
+                        if (purchasePriceError) {
+                            purchasePriceError = false
+                        }
+                    },
+                    label = { Text("Costo de adquisición*") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = purchasePriceError,
+                    supportingText = {
+                        if (purchasePriceError) {
+                            Text("Ingresá un costo de adquisición válido.")
+                        }
+                    }
+                )
+                OutlinedTextField(barcode, { barcode = it }, label = { Text("Código QR público") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(price, { price = it }, label = { Text("Precio") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(listPrice, { listPrice = it }, label = { Text("Precio lista") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(cashPrice, { cashPrice = it }, label = { Text("Precio efectivo") }, modifier = Modifier.fillMaxWidth())
@@ -88,7 +115,6 @@ fun ProductEditorDialog(
                 OutlinedTextField(mlPrice, { mlPrice = it }, label = { Text("Precio ML") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(ml3cPrice, { ml3cPrice = it }, label = { Text("Precio ML 3C") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(ml6cPrice, { ml6cPrice = it }, label = { Text("Precio ML 6C") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(stock, { stock = it }, label = { Text("Stock") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(
                     minStock,
                     {
@@ -112,6 +138,11 @@ fun ProductEditorDialog(
         },
         confirmButton = {
             TextButton(onClick = {
+                val purchase = purchasePrice.text.toDoubleOrNull()
+                if (purchasePrice.text.isBlank() || purchase == null) {
+                    purchasePriceError = true
+                    return@TextButton
+                }
                 val p = price.text.toDoubleOrNull() ?: 0.0
                 val list = listPrice.text.toDoubleOrNull()
                 val cash = cashPrice.text.toDoubleOrNull()
@@ -129,6 +160,7 @@ fun ProductEditorDialog(
                 onSave(
                     name.text.trim(),
                     barcode.text.trim(),
+                    purchase,
                     p,
                     list,
                     cash,
