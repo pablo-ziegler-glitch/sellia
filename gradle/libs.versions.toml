@@ -26,6 +26,7 @@ roomExternalAntlr = "2.7.2"
 runtimeLivedata = "1.8.3"
 cameraCore = "1.3.4"
 playServicesMlkitBarcodeScanning = "18.3.1"
+playServicesAuth = "21.2.0"
 material3Android = "1.3.2"
 foundationAndroid = "1.7.2"
 benchmarkTraceprocessorAndroid = "1.4.0"
@@ -83,6 +84,7 @@ androidx-room-external-antlr = { group = "androidx.room", name = "room-external-
 androidx-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata", version.ref = "runtimeLivedata" }
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraCore" }
 play-services-mlkit-barcode-scanning = { group = "com.google.android.gms", name = "play-services-mlkit-barcode-scanning", version.ref = "playServicesMlkitBarcodeScanning" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 androidx-material3-android = { group = "androidx.compose.material3", name = "material3-android", version.ref = "material3Android" }
 androidx-foundation-android = { group = "androidx.compose.foundation", name = "foundation-android", version.ref = "foundationAndroid" }
 androidx-benchmark-traceprocessor-android = { group = "androidx.benchmark", name = "benchmark-traceprocessor-android", version.ref = "benchmarkTraceprocessorAndroid" }

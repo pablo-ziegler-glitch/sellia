@@ -22,6 +22,16 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun signInWithGoogle(idToken: String) {
+        viewModelScope.launch {
+            authManager.signInWithGoogle(idToken)
+        }
+    }
+
+    fun reportAuthError(message: String) {
+        authManager.reportAuthError(message)
+    }
+
     fun signOut() {
         authManager.signOut()
     }
