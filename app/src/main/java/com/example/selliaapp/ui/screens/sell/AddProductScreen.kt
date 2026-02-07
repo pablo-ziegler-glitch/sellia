@@ -242,7 +242,22 @@ fun AddProductScreen(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Nombre") },
+                label = { Text("Nombre*") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = stockText,
+                onValueChange = { stockText = it.filter { ch -> ch.isDigit() } },
+                label = { Text("Stock*") },
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = { Text("Si se deja vacío, se guarda en 0.") }
+            )
+
+            OutlinedTextField(
+                value = purchasePriceText,
+                onValueChange = { purchasePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                label = { Text("Costo de adquisición*") },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -256,7 +271,7 @@ fun AddProductScreen(
             OutlinedTextField(
                 value = barcode,
                 onValueChange = { barcode = it },
-                label = { Text("Código de barras") },
+                label = { Text("Código QR público") },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -277,13 +292,6 @@ fun AddProductScreen(
             )
 
             // --- Precios ---
-            OutlinedTextField(
-                value = purchasePriceText,
-                onValueChange = { purchasePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                label = { Text("Costo de adquisición") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
             OutlinedTextField(
                 value = priceText,
                 onValueChange = { priceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
@@ -335,13 +343,6 @@ fun AddProductScreen(
                     modifier = Modifier.weight(1f)
                 )
             }
-
-            OutlinedTextField(
-                value = stockText,
-                onValueChange = { stockText = it.filter { ch -> ch.isDigit() } },
-                label = { Text("Stock") },
-                modifier = Modifier.fillMaxWidth()
-            )
 
             OutlinedTextField(
                 value = description,
@@ -475,7 +476,15 @@ fun AddProductScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
                     onClick = {
+                        if (purchasePriceText.isBlank()) {
+                            infoMessage = "El costo de adquisición es obligatorio."
+                            return@Button
+                        }
                         val purchase = purchasePriceText.replace(',', '.').toDoubleOrNull()
+                        if (purchase == null) {
+                            infoMessage = "Ingresá un costo de adquisición válido."
+                            return@Button
+                        }
                         val legacy = priceText.replace(',', '.').toDoubleOrNull()
                         val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
                         val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
