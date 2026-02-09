@@ -9,7 +9,7 @@ import androidx.work.WorkManager
 
 
 object SyncScheduler {
-    fun enqueueNow(context: Context) {
+    fun enqueueNow(context: Context, includeBackup: Boolean) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -17,6 +17,7 @@ object SyncScheduler {
         val req = OneTimeWorkRequestBuilder<SyncWorker>()
             .setConstraints(constraints)
             .addTag(SyncWorker.TAG)
+            .setInputData(SyncWorker.inputData(includeBackup))
             .build()
 
         WorkManager.getInstance(context)

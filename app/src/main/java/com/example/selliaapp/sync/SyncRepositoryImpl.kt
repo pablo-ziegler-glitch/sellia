@@ -1,5 +1,7 @@
 package com.example.selliaapp.sync
 
+import android.util.Base64
+import android.util.Log
 import androidx.room.withTransaction
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.InvoiceDao
@@ -13,6 +15,7 @@ import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
 import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier real del ZIP está dentro de AppModule
 import com.example.selliaapp.repository.ProductRepository
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
@@ -31,6 +34,7 @@ class SyncRepositoryImpl @Inject constructor(
     private val syncOutboxDao: SyncOutboxDao,
     private val productRepository: ProductRepository,
     private val firestore: FirebaseFirestore,
+    private val auth: FirebaseAuth,
     private val tenantProvider: TenantProvider,
     /* [ANTERIOR]
     import com.example.selliaapp.di.IoDispatcher
@@ -40,12 +44,20 @@ class SyncRepositoryImpl @Inject constructor(
 ) : SyncRepository {
 
     override suspend fun pushPending() = withContext(io) {
+        if (!hasAdminSyncAccess()) {
+            Log.i(TAG, "Sincronización omitida: rol sin permisos.")
+            return@withContext
+        }
         val now = System.currentTimeMillis()
         pushPendingProducts(now)
         pushPendingInvoices(now)
     }
 
     override suspend fun pullRemote() = withContext(io) {
+        if (!hasAdminSyncAccess()) {
+            Log.i(TAG, "Sincronización omitida: rol sin permisos.")
+            return@withContext
+        }
         productRepository.syncDown()
 
         val invoicesCollection = firestore.collection("tenants")
@@ -69,6 +81,14 @@ class SyncRepositoryImpl @Inject constructor(
                     invoiceItemDao.insertAll(remote.items)
                 }
             }
+        }
+    }
+
+    override suspend fun runSync(includeBackup: Boolean) = withContext(io) {
+        pushPending()
+        pullRemote()
+        if (includeBackup) {
+            pushAllLocalTables()
         }
     }
 
@@ -175,10 +195,101 @@ class SyncRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun pushAllLocalTables() {
+        val tenantId = tenantProvider.requireTenantId()
+        val readableDb = db.openHelper.readableDatabase
+        val tables = mutableListOf<String>()
+        readableDb.query("SELECT name FROM sqlite_master WHERE type='table'").use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(0)
+                if (shouldSyncTable(name)) {
+                    tables.add(name)
+                }
+            }
+        }
+
+        tables.forEach { table ->
+            var batch = firestore.batch()
+            var ops = 0
+            readableDb.query("SELECT rowid, * FROM $table").use { cursor ->
+                val rowIdIndex = cursor.getColumnIndex("rowid")
+                while (cursor.moveToNext()) {
+                    val data = mutableMapOf<String, Any?>(
+                        "__table" to table
+                    )
+                    val columnCount = cursor.columnCount
+                    for (i in 0 until columnCount) {
+                        val columnName = cursor.getColumnName(i)
+                        if (columnName == "rowid") continue
+                        val value = when (cursor.getType(i)) {
+                            android.database.Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(i)
+                            android.database.Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(i)
+                            android.database.Cursor.FIELD_TYPE_STRING -> cursor.getString(i)
+                            android.database.Cursor.FIELD_TYPE_BLOB -> {
+                                val blob = cursor.getBlob(i)
+                                if (blob == null) null else Base64.encodeToString(blob, Base64.NO_WRAP)
+                            }
+                            else -> null
+                        }
+                        data[columnName] = value
+                    }
+                    val rowId = if (rowIdIndex >= 0) cursor.getLong(rowIdIndex) else 0L
+                    val docId = when {
+                        data["id"] != null -> data["id"].toString()
+                        data["uuid"] != null -> data["uuid"].toString()
+                        else -> rowId.toString()
+                    }
+                    data["__rowId"] = rowId
+                    val docRef = firestore.collection("tenants")
+                        .document(tenantId)
+                        .collection("sync_data")
+                        .document(table)
+                        .collection("rows")
+                        .document(docId)
+                    batch.set(docRef, data, SetOptions.merge())
+                    ops++
+                    if (ops >= MAX_BATCH_OPS) {
+                        batch.commit().await()
+                        batch = firestore.batch()
+                        ops = 0
+                    }
+                }
+            }
+            if (ops > 0) {
+                batch.commit().await()
+            }
+        }
+    }
+
     // [NUEVO] Mismo formato que el ZIP (y evita inventar un campo "number" en Room)
     private fun formatInvoiceNumber(id: Long): String =
         "F-" + id.toString().padStart(8, '0')
 
     private fun extractErrorMessage(t: Throwable): String =
         t.message?.take(512) ?: t::class.java.simpleName
+
+    private suspend fun hasAdminSyncAccess(): Boolean {
+        val uid = auth.currentUser?.uid ?: return false
+        val snapshot = firestore.collection("users").document(uid).get().await()
+        val role = snapshot.getString("role")?.trim()?.lowercase().orEmpty()
+        val isAdmin = role == "admin" || role == "super_admin"
+        val isPrivileged = role == "owner" || role == "manager"
+        val hasAdminFlags = snapshot.getBoolean("isAdmin") == true ||
+            snapshot.getBoolean("isSuperAdmin") == true
+        return isAdmin || isPrivileged || hasAdminFlags
+    }
+
+    private fun shouldSyncTable(name: String): Boolean = name !in EXCLUDED_SYNC_TABLES &&
+        !name.startsWith("sqlite_")
+
+    companion object {
+        private const val MAX_BATCH_OPS = 450
+        private const val TAG = "SyncRepository"
+        private val EXCLUDED_SYNC_TABLES = setOf(
+            "android_metadata",
+            "room_master_table",
+            "sqlite_sequence",
+            "sync_outbox"
+        )
+    }
 }

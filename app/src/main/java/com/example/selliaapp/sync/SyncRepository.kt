@@ -8,4 +8,5 @@ package com.example.selliaapp.sync
 interface SyncRepository {
     suspend fun pushPending()
     suspend fun pullRemote()
+    suspend fun runSync(includeBackup: Boolean)
 }

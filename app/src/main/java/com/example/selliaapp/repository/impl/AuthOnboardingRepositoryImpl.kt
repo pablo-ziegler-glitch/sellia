@@ -1,6 +1,7 @@
 package com.example.selliaapp.repository.impl
 
 import com.example.selliaapp.di.AppModule
+import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.repository.AuthOnboardingRepository
 import com.example.selliaapp.repository.OnboardingResult
 import com.google.firebase.auth.FirebaseAuth
@@ -38,6 +39,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 mapOf(
                     "tenantId" to tenantId,
                     "email" to email,
+                    "role" to AppRole.OWNER.raw,
                     "createdAt" to createdAt
                 )
             )
@@ -54,7 +56,52 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
             )
 
+            val directoryRef = firestore.collection("tenant_directory").document(tenantId)
+            batch.set(
+                directoryRef,
+                mapOf(
+                    "id" to tenantId,
+                    "name" to storeName,
+                    "ownerUid" to user.uid,
+                    "createdAt" to createdAt
+                )
+            )
+
             batch.commit().await()
+            OnboardingResult(uid = user.uid, tenantId = tenantId)
+        }.onFailure {
+            val currentUser = auth.currentUser
+            if (currentUser != null && currentUser.email == email) {
+                runCatching { currentUser.delete().await() }
+            }
+        }
+    }
+
+    override suspend fun registerViewer(
+        email: String,
+        password: String,
+        tenantId: String
+    ): Result<OnboardingResult> = withContext(io) {
+        runCatching {
+            val tenantSnapshot = firestore.collection("tenants")
+                .document(tenantId)
+                .get()
+                .await()
+            if (!tenantSnapshot.exists()) {
+                throw IllegalArgumentException("La tienda seleccionada no existe")
+            }
+            val result = auth.createUserWithEmailAndPassword(email, password).await()
+            val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
+            val createdAt = FieldValue.serverTimestamp()
+            val userRef = firestore.collection("users").document(user.uid)
+            userRef.set(
+                mapOf(
+                    "tenantId" to tenantId,
+                    "email" to email,
+                    "role" to AppRole.VIEWER.raw,
+                    "createdAt" to createdAt
+                )
+            ).await()
             OnboardingResult(uid = user.uid, tenantId = tenantId)
         }.onFailure {
             val currentUser = auth.currentUser
