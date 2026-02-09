@@ -75,7 +75,18 @@ fun SelliaRoot(
                 if (token.isNullOrBlank()) {
                     authViewModel.reportAuthError("No se pudo obtener el token de Google.")
                 } else {
-                    authViewModel.signInWithGoogle(token)
+                    if (isRegistering && registerState.mode == com.example.selliaapp.viewmodel.RegisterMode.FINAL_CUSTOMER) {
+                        val tenantName = registerState.tenants.firstOrNull {
+                            it.id == registerState.selectedTenantId
+                        }?.name
+                        registerViewModel.registerWithGoogle(
+                            idToken = token,
+                            tenantId = registerState.selectedTenantId,
+                            tenantName = tenantName
+                        )
+                    } else {
+                        authViewModel.signInWithGoogle(token)
+                    }
                 }
             }
             .onFailure {
@@ -115,6 +126,7 @@ fun SelliaRoot(
                 RegisterScreen(
                     isLoading = registerState.isLoading,
                     errorMessage = registerState.errorMessage,
+                    successMessage = registerState.successMessage,
                     tenants = registerState.tenants,
                     selectedTenantId = registerState.selectedTenantId,
                     mode = registerState.mode,
@@ -122,7 +134,14 @@ fun SelliaRoot(
                     onModeChange = registerViewModel::updateMode,
                     onTenantChange = registerViewModel::selectTenant,
                     onSubmit = registerViewModel::register,
-                    onGoogleSignInClick = onGoogleSignInClick,
+                    onGoogleSignInClick = { tenantId, _ ->
+                        if (tenantId.isNullOrBlank()) {
+                            registerViewModel.clearError()
+                            authViewModel.reportAuthError("Seleccioná una tienda para continuar.")
+                        } else {
+                            onGoogleSignInClick()
+                        }
+                    },
                     onLoginClick = {
                         registerViewModel.clearError()
                         isRegistering = false
@@ -146,6 +165,7 @@ fun SelliaRoot(
                 RegisterScreen(
                     isLoading = registerState.isLoading,
                     errorMessage = registerState.errorMessage,
+                    successMessage = registerState.successMessage,
                     tenants = registerState.tenants,
                     selectedTenantId = registerState.selectedTenantId,
                     mode = registerState.mode,
@@ -153,7 +173,14 @@ fun SelliaRoot(
                     onModeChange = registerViewModel::updateMode,
                     onTenantChange = registerViewModel::selectTenant,
                     onSubmit = registerViewModel::register,
-                    onGoogleSignInClick = onGoogleSignInClick,
+                    onGoogleSignInClick = { tenantId, _ ->
+                        if (tenantId.isNullOrBlank()) {
+                            registerViewModel.clearError()
+                            authViewModel.reportAuthError("Seleccioná una tienda para continuar.")
+                        } else {
+                            onGoogleSignInClick()
+                        }
+                    },
                     onLoginClick = {
                         registerViewModel.clearError()
                         isRegistering = false

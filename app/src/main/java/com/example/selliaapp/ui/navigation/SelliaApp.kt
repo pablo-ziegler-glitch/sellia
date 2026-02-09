@@ -102,6 +102,7 @@ import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
 import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
+import com.example.selliaapp.viewmodel.admin.AccountRequestsViewModel
 import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.domain.security.Permission
 import com.example.selliaapp.ui.components.buildAccountSummary
@@ -698,8 +699,10 @@ fun SelliaApp(
             composable(Routes.AddUser.route) {
                 val accessVm: AccessControlViewModel = hiltViewModel()
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
+                val requestsVm: AccountRequestsViewModel = hiltViewModel()
                 ManageUsersScreen(
                     vm = userViewModel,
+                    requestsViewModel = requestsVm,
                     onBack = { navController.popBackStack() },
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
                 )

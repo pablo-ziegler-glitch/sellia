@@ -24,7 +24,15 @@ class UserViewModel  @Inject constructor(
             emptyList()
         )
 
+    init {
+        refreshFromCloud()
+    }
 
+    fun refreshFromCloud() {
+        viewModelScope.launch {
+            repository.syncFromCloud()
+        }
+    }
 
     fun addUser(name: String, email: String, role: String, isActive: Boolean = true) {
         viewModelScope.launch {

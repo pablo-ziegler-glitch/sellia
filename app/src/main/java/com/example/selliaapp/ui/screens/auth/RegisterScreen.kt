@@ -33,17 +33,33 @@ import com.example.selliaapp.viewmodel.RegisterMode
 fun RegisterScreen(
     isLoading: Boolean,
     errorMessage: String?,
+    successMessage: String?,
     tenants: List<TenantSummary>,
     selectedTenantId: String?,
     mode: RegisterMode,
     isLoadingTenants: Boolean,
     onModeChange: (RegisterMode) -> Unit,
     onTenantChange: (String) -> Unit,
-    onSubmit: (String, String, String, String?, RegisterMode) -> Unit,
-    onGoogleSignInClick: () -> Unit,
+    onSubmit: (
+        String,
+        String,
+        String,
+        String,
+        String,
+        String?,
+        String?,
+        String,
+        String?,
+        RegisterMode
+    ) -> Unit,
+    onGoogleSignInClick: (String?, String?) -> Unit,
     onLoginClick: () -> Unit
 ) {
     var storeName by remember { mutableStateOf("") }
+    var storeAddress by remember { mutableStateOf("") }
+    var storePhone by remember { mutableStateOf("") }
+    var customerName by remember { mutableStateOf("") }
+    var customerPhone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var modeExpanded by remember { mutableStateOf(false) }
@@ -92,11 +108,27 @@ fun RegisterScreen(
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        if (mode == RegisterMode.CREATE_STORE) {
+        if (mode == RegisterMode.STORE_OWNER) {
             OutlinedTextField(
                 value = storeName,
                 onValueChange = { storeName = it },
                 label = { Text("Nombre de la tienda") },
+                enabled = !isLoading,
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = storeAddress,
+                onValueChange = { storeAddress = it },
+                label = { Text("Dirección comercial") },
+                enabled = !isLoading,
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = storePhone,
+                onValueChange = { storePhone = it },
+                label = { Text("Teléfono comercial") },
                 enabled = !isLoading,
                 singleLine = true
             )
@@ -139,6 +171,22 @@ fun RegisterScreen(
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = customerName,
+                onValueChange = { customerName = it },
+                label = { Text("Nombre y apellido") },
+                enabled = !isLoading,
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = customerPhone,
+                onValueChange = { customerPhone = it },
+                label = { Text("Teléfono celular (opcional)") },
+                enabled = !isLoading,
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
         }
         OutlinedTextField(
             value = email,
@@ -164,23 +212,51 @@ fun RegisterScreen(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+        if (!successMessage.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = successMessage,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
         Spacer(modifier = Modifier.height(16.dp))
         Button(
-            onClick = { onSubmit(email.trim(), password, storeName.trim(), selectedTenantId, mode) },
+            onClick = {
+                onSubmit(
+                    email.trim(),
+                    password,
+                    storeName.trim(),
+                    storeAddress.trim(),
+                    storePhone.trim(),
+                    selectedTenantId,
+                    selectedTenant?.name,
+                    customerName.trim(),
+                    customerPhone.takeIf { it.isNotBlank() }?.trim(),
+                    mode
+                )
+            },
             enabled = !isLoading &&
                 email.isNotBlank() &&
                 password.isNotBlank() &&
-                (mode == RegisterMode.CREATE_STORE && storeName.isNotBlank() ||
-                    mode == RegisterMode.SELECT_STORE && !selectedTenantId.isNullOrBlank())
+                (mode == RegisterMode.STORE_OWNER &&
+                    storeName.isNotBlank() &&
+                    storeAddress.isNotBlank() &&
+                    storePhone.isNotBlank() ||
+                    mode == RegisterMode.FINAL_CUSTOMER &&
+                    customerName.isNotBlank() &&
+                    !selectedTenantId.isNullOrBlank())
         ) {
             Text(if (isLoading) "Creando..." else "Crear cuenta")
         }
-        Spacer(modifier = Modifier.height(12.dp))
-        Button(
-            onClick = onGoogleSignInClick,
-            enabled = !isLoading
-        ) {
-            Text("Crear con Google")
+        if (mode == RegisterMode.FINAL_CUSTOMER) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { onGoogleSignInClick(selectedTenantId, selectedTenant?.name) },
+                enabled = !isLoading && !selectedTenantId.isNullOrBlank()
+            ) {
+                Text("Crear con Google")
+            }
         }
         Spacer(modifier = Modifier.height(12.dp))
         TextButton(onClick = onLoginClick, enabled = !isLoading) {
