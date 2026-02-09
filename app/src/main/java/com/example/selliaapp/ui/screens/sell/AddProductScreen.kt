@@ -549,8 +549,13 @@ fun AddProductScreen(
                                 providerName = selectedProviderName.ifBlank { null },
                                 providerSku = providerSku.ifBlank { null },
                                 minStock = minStock
-                            )
-                            onSaved()
+                            ) { result ->
+                                if (result.isSuccess) {
+                                    onSaved()
+                                } else {
+                                    infoMessage = result.exceptionOrNull()?.message ?: "Error actualizando producto"
+                                }
+                            }
                         }
                     }
                 ) {

@@ -34,6 +34,9 @@ class ManageProductsViewModel @Inject constructor(
     private val _state = MutableStateFlow(ManageProductsUiState())
     val state: StateFlow<ManageProductsUiState> = _state.asStateFlow()
 
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
     // Flujo Paginado según búsqueda (filtros simples se aplican en UI por ahora)
     @OptIn(ExperimentalCoroutinesApi::class)
     val productsPaged: Flow<PagingData<ProductEntity>> =
@@ -68,18 +71,30 @@ class ManageProductsViewModel @Inject constructor(
     // ---- Acciones de datos ----
     fun deleteById(id: Int) {
         viewModelScope.launch {
-            repo.deleteById(id)
+            runCatching { repo.deleteById(id) }
+                .onFailure { error ->
+                    _message.value = error.message ?: "No se pudo eliminar el producto."
+                }
         }
     }
 
     fun upsert(product: ProductEntity, onDone: (Int) -> Unit = {}) {
         viewModelScope.launch {
-            val id = if (product.id == 0) {
-                repo.addProduct(product)
-            } else {
-                repo.updateProduct(product)
+            runCatching {
+                if (product.id == 0) {
+                    repo.addProduct(product)
+                } else {
+                    repo.updateProduct(product)
+                }
+            }.onSuccess { id ->
+                onDone(id)
+            }.onFailure { error ->
+                _message.value = error.message ?: "No se pudo guardar el producto."
             }
-            onDone(id)
         }
+    }
+
+    fun clearMessage() {
+        _message.value = null
     }
 }
