@@ -164,7 +164,7 @@ fun SelliaApp(
                     onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                     onPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
                     onPublicProductScan = { navController.navigate(Routes.PublicProductScan.route) },
-                    onSyncNow = { SyncScheduler.enqueueNow(context) },
+                    onSyncNow = { SyncScheduler.enqueueNow(context, false) },
                     onAlertAdjustStock = { productId ->
                         navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
                     },
@@ -250,7 +250,7 @@ fun SelliaApp(
                     onReports = { navController.navigate(Routes.Reports.route) },
                     onAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSettings = { navController.navigate(Routes.Config.route) },
-                    onSync = { SyncScheduler.enqueueNow(context) },
+                    onSync = { SyncScheduler.enqueueNow(context, false) },
                     onManageUsers = { navController.navigate(Routes.AddUser.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,

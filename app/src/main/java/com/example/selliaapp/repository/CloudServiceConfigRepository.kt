@@ -20,6 +20,10 @@ class CloudServiceConfigRepository @Inject constructor(
     suspend fun upsert(config: CloudServiceConfig) = withContext(io) {
         dao.upsert(config.toEntity())
     }
+
+    suspend fun isCloudEnabled(): Boolean = withContext(io) {
+        dao.countCloudEnabled() > 0
+    }
 }
 
 private fun CloudServiceConfigEntity.toDomain(): CloudServiceConfig =

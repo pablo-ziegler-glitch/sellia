@@ -15,11 +15,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -31,6 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.selliaapp.viewmodel.manage.SyncViewModel
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.sync.SyncWorker
 import com.example.selliaapp.ui.components.BackTopAppBar
@@ -46,10 +50,13 @@ fun SyncScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val viewModel: SyncViewModel = hiltViewModel()
+    val uiState by viewModel.uiState.collectAsState()
     val workManager = remember(context) { WorkManager.getInstance(context) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var lastState by remember { mutableStateOf<WorkInfo.State?>(null) }
+    var includeBackup by remember { mutableStateOf(false) }
 
      // Observamos el estado del trabajo único por nombre
     val workInfos by workManager
@@ -95,11 +102,50 @@ fun SyncScreen(
                 style = MaterialTheme.typography.bodyLarge
             )
 
+            Text(
+                "Opción 1: Sincronización estándar",
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                "Sube cambios pendientes y baja productos/facturas remotas (requiere Datos en la nube activo).",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Respaldo operativo completo",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        "Guarda todas las tablas locales en Firestore para recuperación y auditoría (requiere Datos en la nube activo).",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = includeBackup,
+                    onCheckedChange = { includeBackup = it },
+                    enabled = uiState.cloudEnabled && !syncing
+                )
+            }
+
+            if (!uiState.cloudEnabled) {
+                Text(
+                    "Sincronización deshabilitada (requiere Datos en la nube activo).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
             // Botón principal: Encolar sync
             Button(
-                enabled = !syncing,               // deshabilitamos mientras hay un trabajo en curso
+                enabled = !syncing && uiState.cloudEnabled,
                 onClick = {
-                    SyncScheduler.enqueueNow(context)
+                    SyncScheduler.enqueueNow(context, includeBackup)
                     scope.launch { snackbarHostState.showSnackbar("Sincronización encolada.") }
                 }
             ) {

@@ -13,6 +13,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import com.example.selliaapp.repository.CloudServiceConfigRepository
 
 
 /**
@@ -22,7 +23,8 @@ import dagger.hilt.components.SingletonComponent
 class SyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val syncRepository: SyncRepository
+    private val syncRepository: SyncRepository,
+    private val cloudServiceConfigRepository: CloudServiceConfigRepository
 ) : CoroutineWorker(appContext, params) {
 
     /**
@@ -38,7 +40,11 @@ class SyncWorker @AssistedInject constructor(
         EntryPointAccessors.fromApplication(
             appContext,
             SyncWorkerEntryPoint::class.java
-        ).syncRepository()
+        ).syncRepository(),
+        EntryPointAccessors.fromApplication(
+            appContext,
+            SyncWorkerEntryPoint::class.java
+        ).cloudServiceConfigRepository()
     )
 
 
@@ -47,8 +53,16 @@ class SyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         Log.i(TAG, "Iniciando sincronización manual (workId=$id)")
         return try {
-            syncRepository.pushPending()
-            syncRepository.pullRemote()
+            if (!cloudServiceConfigRepository.isCloudEnabled()) {
+                return Result.failure(
+                    workDataOf(
+                        OUTPUT_STATUS to "failed",
+                        OUTPUT_MESSAGE to "Sincronización deshabilitada (requiere Datos en la nube activo)."
+                    )
+                )
+            }
+            val includeBackup = inputData.getBoolean(INPUT_BACKUP, false)
+            syncRepository.runSync(includeBackup)
             Log.i(TAG, "Sincronización completada con éxito")
             Result.success(
                 workDataOf(
@@ -82,10 +96,14 @@ class SyncWorker @AssistedInject constructor(
         const val TAG: String = "SyncWorker"
         const val OUTPUT_STATUS: String = "status"
         const val OUTPUT_MESSAGE: String = "message"
+        const val INPUT_BACKUP: String = "include_backup"
+
+        fun inputData(includeBackup: Boolean) = workDataOf(INPUT_BACKUP to includeBackup)
     }
 }
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface SyncWorkerEntryPoint {
     fun syncRepository(): SyncRepository
+    fun cloudServiceConfigRepository(): CloudServiceConfigRepository
 }

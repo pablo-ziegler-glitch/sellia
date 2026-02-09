@@ -15,6 +15,9 @@ interface CloudServiceConfigDao {
     @Query("SELECT * FROM cloud_service_configs WHERE ownerEmail = :ownerEmail LIMIT 1")
     suspend fun getByOwnerEmail(ownerEmail: String): CloudServiceConfigEntity?
 
+    @Query("SELECT COUNT(*) FROM cloud_service_configs WHERE cloudEnabled = 1")
+    suspend fun countCloudEnabled(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(config: CloudServiceConfigEntity)
 }

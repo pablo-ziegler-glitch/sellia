@@ -59,11 +59,13 @@ import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.SecurityConfigRepository
 import com.example.selliaapp.repository.StorageRepository
+import com.example.selliaapp.repository.TenantDirectoryRepository
 import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
+import com.example.selliaapp.repository.impl.TenantDirectoryRepositoryImpl
 import com.example.selliaapp.repository.impl.StorageRepositoryImpl
 import com.example.selliaapp.repository.impl.UsageRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
@@ -251,6 +253,16 @@ object AppModule {
         @IoDispatcher io: CoroutineDispatcher
     ): AuthOnboardingRepository = AuthOnboardingRepositoryImpl(
         auth = auth,
+        firestore = firestore,
+        io = io
+    )
+
+    @Provides
+    @Singleton
+    fun provideTenantDirectoryRepository(
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): TenantDirectoryRepository = TenantDirectoryRepositoryImpl(
         firestore = firestore,
         io = io
     )

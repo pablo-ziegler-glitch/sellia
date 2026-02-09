@@ -115,6 +115,12 @@ fun SelliaRoot(
                 RegisterScreen(
                     isLoading = registerState.isLoading,
                     errorMessage = registerState.errorMessage,
+                    tenants = registerState.tenants,
+                    selectedTenantId = registerState.selectedTenantId,
+                    mode = registerState.mode,
+                    isLoadingTenants = registerState.isLoadingTenants,
+                    onModeChange = registerViewModel::updateMode,
+                    onTenantChange = registerViewModel::selectTenant,
                     onSubmit = registerViewModel::register,
                     onGoogleSignInClick = onGoogleSignInClick,
                     onLoginClick = {
@@ -140,6 +146,12 @@ fun SelliaRoot(
                 RegisterScreen(
                     isLoading = registerState.isLoading,
                     errorMessage = registerState.errorMessage,
+                    tenants = registerState.tenants,
+                    selectedTenantId = registerState.selectedTenantId,
+                    mode = registerState.mode,
+                    isLoadingTenants = registerState.isLoadingTenants,
+                    onModeChange = registerViewModel::updateMode,
+                    onTenantChange = registerViewModel::selectTenant,
                     onSubmit = registerViewModel::register,
                     onGoogleSignInClick = onGoogleSignInClick,
                     onLoginClick = {

@@ -11,4 +11,10 @@ interface AuthOnboardingRepository {
         password: String,
         storeName: String
     ): Result<OnboardingResult>
+
+    suspend fun registerViewer(
+        email: String,
+        password: String,
+        tenantId: String
+    ): Result<OnboardingResult>
 }
