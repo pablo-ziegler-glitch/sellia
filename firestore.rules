@@ -58,6 +58,19 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
+    match /account_requests/{requestId} {
+      allow create: if isAuthenticated()
+        && request.auth.uid == requestId;
+      allow read: if isAuthenticated()
+        && (request.auth.uid == requestId || isAdminUser());
+      allow update, delete: if isAdminUser();
+    }
+
+    match /tenant_users/{tenantUserId} {
+      allow read: if isAdminForTenant(resource.data.tenantId);
+      allow write: if isAdminForTenant(request.resource.data.tenantId);
+    }
+
     match /tenant_directory/{tenantId} {
       allow read: if true;
       allow create: if isAuthenticated()
