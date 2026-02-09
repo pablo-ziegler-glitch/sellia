@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import com.google.firebase.appcheck.FirebaseAppCheckException
 
 data class OwnerDevelopmentOptionsUi(
     val ownerName: String,
@@ -94,9 +93,9 @@ class DevelopmentOptionsViewModel @Inject constructor(
                 }
             }
             .addOnFailureListener { error ->
-                val isTooManyAttempts = (error as? FirebaseAppCheckException)?.errorCode ==
-                    FirebaseAppCheckException.ErrorCode.TOO_MANY_REQUESTS ||
-                    error.message?.contains("Too many attempts", ignoreCase = true) == true
+                val isTooManyAttempts = error.message?.contains("TOO_MANY_REQUESTS", ignoreCase = true) == true ||
+                    error.message?.contains("Too many attempts", ignoreCase = true) == true ||
+                    error.cause?.message?.contains("TOO_MANY_REQUESTS", ignoreCase = true) == true
                 if (isTooManyAttempts) {
                     startCooldown(DEFAULT_APP_CHECK_COOLDOWN_MS)
                 }
