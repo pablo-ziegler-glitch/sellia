@@ -39,7 +39,7 @@ class UserViewModel  @Inject constructor(
             val sanitizedRole = role.trim().ifBlank { AppRole.VIEWER.raw }
             val totalUsers = repository.countUsers()
             val effectiveRole = if (totalUsers == 0) {
-                AppRole.SUPER_ADMIN.raw
+                AppRole.ADMIN.raw
             } else {
                 sanitizedRole
             }

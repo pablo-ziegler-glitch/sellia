@@ -265,7 +265,7 @@ fun SelliaApp(
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
                 UsageAlertsScreen(
                     onBack = { navController.popBackStack() },
-                    canEditLimits = accessState.role == AppRole.ADMIN || accessState.role == AppRole.SUPER_ADMIN
+                    canEditLimits = accessState.role == AppRole.ADMIN
                 )
             }
 
@@ -644,7 +644,7 @@ fun SelliaApp(
                     canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
-                    showDevelopmentOptions = accessState.role == AppRole.ADMIN || accessState.role == AppRole.SUPER_ADMIN,
+                    showDevelopmentOptions = accessState.role == AppRole.ADMIN,
                     onBack = { navController.popBackStack() }
                 )
             }

@@ -1,7 +1,6 @@
 package com.example.selliaapp.domain.security
 
 enum class AppRole(val raw: String, val label: String) {
-    SUPER_ADMIN("super_admin", "Super administrador/a"),
     ADMIN("admin", "Administrador/a"),
     OWNER("owner", "Dueño/a"),
     MANAGER("manager", "Encargado/a"),
@@ -11,6 +10,9 @@ enum class AppRole(val raw: String, val label: String) {
     companion object {
         fun fromRaw(value: String?): AppRole {
             val normalized = value?.trim()?.lowercase().orEmpty()
+            if (normalized == "super_admin") {
+                return ADMIN
+            }
             return entries.firstOrNull { it.raw == normalized } ?: VIEWER
         }
     }

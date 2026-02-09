@@ -272,7 +272,7 @@ class SyncRepositoryImpl @Inject constructor(
         val uid = auth.currentUser?.uid ?: return false
         val snapshot = firestore.collection("users").document(uid).get().await()
         val role = snapshot.getString("role")?.trim()?.lowercase().orEmpty()
-        val isAdmin = role == "admin" || role == "super_admin"
+        val isAdmin = role == "admin"
         val isPrivileged = role == "owner" || role == "manager"
         val hasAdminFlags = snapshot.getBoolean("isAdmin") == true ||
             snapshot.getBoolean("isSuperAdmin") == true

@@ -29,12 +29,11 @@ service cloud.firestore {
 
     function hasAdminClaim() {
       return request.auth.token.admin == true
-        || request.auth.token.super_admin == true
-        || request.auth.token.role in ['admin', 'super_admin'];
+        || request.auth.token.role == 'admin';
     }
 
     function hasAdminField() {
-      return userData().role in ['admin', 'super_admin']
+      return userData().role == 'admin'
         || userData().isAdmin == true
         || userData().isSuperAdmin == true;
     }
@@ -43,15 +42,8 @@ service cloud.firestore {
       return isAuthenticated() && (hasAdminClaim() || hasAdminField());
     }
 
-    function isSuperAdmin() {
-      return isAuthenticated()
-        && (request.auth.token.super_admin == true
-          || userData().role == 'super_admin'
-          || userData().isSuperAdmin == true);
-    }
-
     function isAdminForTenant(tenantId) {
-      return isAdminUser() && (isSuperAdmin() || userTenantId() == tenantId);
+      return isAdminUser();
     }
 
     match /users/{userId} {
