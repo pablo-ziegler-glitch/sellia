@@ -522,7 +522,7 @@ type UsageAlertPayload = {
 };
 
 const ALERT_THRESHOLDS = [70, 90, 100];
-const ADMIN_ROLES = new Set(["admin", "super_admin", "owner"]);
+const ADMIN_ROLES = new Set(["admin", "owner"]);
 
 const toNumberMap = (value: unknown): Record<string, number> => {
   if (!value || typeof value !== "object") {

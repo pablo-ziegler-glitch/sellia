@@ -63,10 +63,10 @@ class AccessControlRepositoryImpl @Inject constructor(
         val firestoreRole = resolveRoleFromCloud()
         val totalUsers = userDao.countUsers()
         val role = when {
-            isConfiguredAdmin -> AppRole.SUPER_ADMIN
+            isConfiguredAdmin -> AppRole.ADMIN
             user != null && user.isActive -> AppRole.fromRaw(user.role)
             firestoreRole != null -> firestoreRole
-            totalUsers == 0 && !email.isNullOrBlank() -> AppRole.SUPER_ADMIN
+            totalUsers == 0 && !email.isNullOrBlank() -> AppRole.ADMIN
             else -> AppRole.fromRaw(null)
         }
         UserAccessState(
@@ -88,8 +88,9 @@ class AccessControlRepositoryImpl @Inject constructor(
         val isSuperAdmin = snapshot.getBoolean("isSuperAdmin") == true
         val isAdmin = snapshot.getBoolean("isAdmin") == true
         return when {
-            isSuperAdmin -> AppRole.SUPER_ADMIN
-            roleRaw == AppRole.SUPER_ADMIN.raw || isAdmin -> AppRole.ADMIN
+            isSuperAdmin -> AppRole.ADMIN
+            roleRaw == "super_admin" -> AppRole.ADMIN
+            isAdmin -> AppRole.ADMIN
             else -> AppRole.fromRaw(roleRaw)
         }
     }
