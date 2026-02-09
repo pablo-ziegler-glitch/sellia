@@ -47,6 +47,7 @@ import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CloudServiceConfigRepository
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.AccessControlRepository
+import com.example.selliaapp.repository.AccountRequestsRepository
 import com.example.selliaapp.repository.AuthOnboardingRepository
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.DevelopmentOptionsRepository
@@ -62,6 +63,7 @@ import com.example.selliaapp.repository.StorageRepository
 import com.example.selliaapp.repository.TenantDirectoryRepository
 import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
+import com.example.selliaapp.repository.impl.AccountRequestsRepositoryImpl
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
@@ -216,7 +218,19 @@ object AppModule {
     )
 
     @Provides @Singleton fun provideCustomerRepository(dao: CustomerDao): CustomerRepository = CustomerRepository(dao)
-    @Provides @Singleton fun provideUserRepository(dao: UserDao): UserRepository = UserRepository(dao)
+    @Provides
+    @Singleton
+    fun provideUserRepository(
+        dao: UserDao,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
+        @IoDispatcher io: CoroutineDispatcher
+    ): UserRepository = UserRepository(
+        userDao = dao,
+        firestore = firestore,
+        tenantProvider = tenantProvider,
+        io = io
+    )
     @Provides
     @Singleton
     fun provideCloudServiceConfigRepository(
@@ -236,11 +250,13 @@ object AppModule {
     fun provideAccessControlRepository(
         userDao: UserDao,
         auth: FirebaseAuth,
+        firestore: FirebaseFirestore,
         securityConfigRepository: SecurityConfigRepository,
         @IoDispatcher io: CoroutineDispatcher
     ): AccessControlRepository = AccessControlRepositoryImpl(
         userDao = userDao,
         auth = auth,
+        firestore = firestore,
         securityConfigRepository = securityConfigRepository,
         io = io
     )
@@ -253,6 +269,16 @@ object AppModule {
         @IoDispatcher io: CoroutineDispatcher
     ): AuthOnboardingRepository = AuthOnboardingRepositoryImpl(
         auth = auth,
+        firestore = firestore,
+        io = io
+    )
+
+    @Provides
+    @Singleton
+    fun provideAccountRequestsRepository(
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): AccountRequestsRepository = AccountRequestsRepositoryImpl(
         firestore = firestore,
         io = io
     )

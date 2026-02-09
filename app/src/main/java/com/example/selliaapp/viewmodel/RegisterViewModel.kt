@@ -14,17 +14,18 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class RegisterMode(val label: String) {
-    CREATE_STORE("Crear nueva tienda"),
-    SELECT_STORE("Elegir tienda existente")
+    FINAL_CUSTOMER("Cliente final"),
+    STORE_OWNER("Dueño tienda")
 }
 
 data class RegisterUiState(
     val isLoading: Boolean = false,
     val isLoadingTenants: Boolean = false,
     val errorMessage: String? = null,
+    val successMessage: String? = null,
     val tenants: List<TenantSummary> = emptyList(),
     val selectedTenantId: String? = null,
-    val mode: RegisterMode = RegisterMode.SELECT_STORE
+    val mode: RegisterMode = RegisterMode.FINAL_CUSTOMER
 )
 
 @HiltViewModel
@@ -45,35 +46,93 @@ class RegisterViewModel @Inject constructor(
         email: String,
         password: String,
         storeName: String,
+        storeAddress: String,
+        storePhone: String,
         selectedTenantId: String?,
+        selectedTenantName: String?,
+        customerName: String,
+        customerPhone: String?,
         mode: RegisterMode
     ) {
         if (email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Completá email y contraseña") }
             return
         }
-        if (mode == RegisterMode.CREATE_STORE && storeName.isBlank()) {
+        if (mode == RegisterMode.STORE_OWNER && storeName.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Indicá el nombre de la tienda") }
             return
         }
-        if (mode == RegisterMode.SELECT_STORE && selectedTenantId.isNullOrBlank()) {
+        if (mode == RegisterMode.STORE_OWNER && storeAddress.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Indicá la dirección comercial") }
+            return
+        }
+        if (mode == RegisterMode.STORE_OWNER && storePhone.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Indicá el teléfono comercial") }
+            return
+        }
+        if (mode == RegisterMode.FINAL_CUSTOMER && selectedTenantId.isNullOrBlank()) {
             _uiState.update { it.copy(errorMessage = "Seleccioná una tienda") }
             return
         }
-        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        if (mode == RegisterMode.FINAL_CUSTOMER && customerName.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Ingresá tu nombre") }
+            return
+        }
+        _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
         viewModelScope.launch {
             val result = when (mode) {
-                RegisterMode.CREATE_STORE -> onboardingRepository.registerStore(
+                RegisterMode.STORE_OWNER -> onboardingRepository.registerStore(
                     email = email.trim(),
                     password = password,
-                    storeName = storeName.trim()
+                    storeName = storeName.trim(),
+                    storeAddress = storeAddress.trim(),
+                    storePhone = storePhone.trim()
                 )
-                RegisterMode.SELECT_STORE -> onboardingRepository.registerViewer(
+                RegisterMode.FINAL_CUSTOMER -> onboardingRepository.registerViewer(
                     email = email.trim(),
                     password = password,
-                    tenantId = selectedTenantId.orEmpty()
+                    tenantId = selectedTenantId.orEmpty(),
+                    tenantName = selectedTenantName.orEmpty(),
+                    customerName = customerName.trim(),
+                    customerPhone = customerPhone?.trim()
                 )
             }
+            result.onSuccess {
+                if (mode == RegisterMode.STORE_OWNER) {
+                    authManager.signOut()
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            successMessage = "Solicitud enviada. Un administrador debe habilitar tu cuenta."
+                        )
+                    }
+                } else {
+                    authManager.refreshSession()
+                    _uiState.update { state -> state.copy(isLoading = false) }
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = error.message ?: "No se pudo completar el registro"
+                    )
+                }
+            }
+        }
+    }
+
+    fun registerWithGoogle(idToken: String, tenantId: String?, tenantName: String?) {
+        if (tenantId.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "Seleccioná una tienda") }
+            return
+        }
+        _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+        viewModelScope.launch {
+            val result = onboardingRepository.registerViewerWithGoogle(
+                idToken = idToken,
+                tenantId = tenantId,
+                tenantName = tenantName.orEmpty()
+            )
             result.onSuccess {
                 authManager.refreshSession()
                 _uiState.update { state -> state.copy(isLoading = false) }
@@ -89,20 +148,15 @@ class RegisterViewModel @Inject constructor(
     }
 
     fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+        _uiState.update { it.copy(errorMessage = null, successMessage = null) }
     }
 
     fun updateMode(mode: RegisterMode) {
-        _uiState.update {
-            it.copy(
-                mode = mode,
-                errorMessage = null
-            )
-        }
+        _uiState.update { it.copy(mode = mode, errorMessage = null, successMessage = null) }
     }
 
     fun selectTenant(tenantId: String) {
-        _uiState.update { it.copy(selectedTenantId = tenantId, errorMessage = null) }
+        _uiState.update { it.copy(selectedTenantId = tenantId, errorMessage = null, successMessage = null) }
     }
 
     private fun loadTenants() {

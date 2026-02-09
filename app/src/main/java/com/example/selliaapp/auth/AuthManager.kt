@@ -136,6 +136,10 @@ class AuthManager @Inject constructor(
 
     private suspend fun fetchSession(user: FirebaseUser): AuthSession {
         val snapshot = firestore.collection("users").document(user.uid).get().await()
+        val status = snapshot.getString("status")?.lowercase()
+        if (!status.isNullOrBlank() && status != "active") {
+            throw IllegalStateException("Tu cuenta está pendiente de aprobación o fue deshabilitada.")
+        }
         val tenantId = snapshot.getString("tenantId")
             ?: snapshot.getString("storeId")
             ?: throw IllegalStateException("El usuario no tiene tenantId/storeId asignado")
