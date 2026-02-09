@@ -52,6 +52,7 @@ fun ReportsScreen(
     vm: ReportsViewModel = hiltViewModel(),
     onBack: () -> Boolean,
     navController: NavController,
+    canAccessPriceSummary: Boolean,
 ) {
     val state by vm.state.collectAsState()
     val localeEsAr = Locale("es", "AR")
@@ -181,6 +182,15 @@ fun ReportsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Ver facturas de venta")
+            }
+            if (canAccessPriceSummary) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { navController.navigate(Routes.PriceSummary.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Resumen de precios (solo dueño)")
+                }
             }
         }
     }
