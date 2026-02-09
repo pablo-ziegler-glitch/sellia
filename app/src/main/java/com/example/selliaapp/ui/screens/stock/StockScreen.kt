@@ -25,10 +25,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -48,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberScrollState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -103,6 +107,8 @@ fun StockScreen(
     var isImporting by rememberSaveable { mutableStateOf(false) }        // [NUEVO]
     var importMessage by rememberSaveable { mutableStateOf<String?>(null) } // [NUEVO]
     var lastFileName by rememberSaveable { mutableStateOf<String?>(null) }   // [NUEVO]
+    var importErrorSummary by remember { mutableStateOf<String?>(null) }
+    var importErrorDetails by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // Snackbar host para mostrar mensajes del import
     val snackbarHostState = remember { SnackbarHostState() } // [NUEVO]
@@ -141,7 +147,13 @@ fun StockScreen(
             strategy = ProductRepository.ImportStrategy.Append
         ) { result ->
             isImporting = false
-            importMessage = result.toUserMessage(fileName = lastFileName)
+            if (result.hasErrors) {
+                importErrorSummary = result.toUserMessage(fileName = lastFileName, includeErrors = false)
+                importErrorDetails = result.errors
+                importMessage = null
+            } else {
+                importMessage = result.toUserMessage(fileName = lastFileName)
+            }
         }
     }
 
@@ -291,6 +303,35 @@ fun StockScreen(
             }
         }
     }
+
+    if (importErrorSummary != null) {
+        val scrollState = rememberScrollState()
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Errores de importación") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(scrollState)) {
+                    Text(importErrorSummary ?: "")
+                    if (importErrorDetails.isNotEmpty()) {
+                        Spacer(modifier = Modifier.size(8.dp))
+                        importErrorDetails.forEach { error ->
+                            Text("• $error")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        importErrorSummary = null
+                        importErrorDetails = emptyList()
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 }
 
 /** Mini-FAB con etiqueta alineada a la derecha (para el speed-dial). */
@@ -374,7 +415,8 @@ private fun queryDisplayName(cr: ContentResolver, uri: Uri): String? {
  */
 private fun ImportResult.toUserMessage(
     fileName: String? = null,
-    maxErrorsToShow: Int = 25
+    maxErrorsToShow: Int = 25,
+    includeErrors: Boolean = true
 ): String {
     val sb = StringBuilder()
     fileName?.let { sb.appendLine("Archivo: $it") }
@@ -382,12 +424,16 @@ private fun ImportResult.toUserMessage(
     sb.appendLine("Actualizados: $updated")
 
     if (errors.isNotEmpty()) {
-        sb.appendLine("Errores (${errors.size}):")
-        errors.take(maxErrorsToShow).forEachIndexed { i, msg ->
-            sb.appendLine(" • [${i + 1}] $msg")
-        }
-        if (errors.size > maxErrorsToShow) {
-            sb.appendLine(" …y ${errors.size - maxErrorsToShow} errores más.")
+        if (includeErrors) {
+            sb.appendLine("Errores (${errors.size}):")
+            errors.take(maxErrorsToShow).forEachIndexed { i, msg ->
+                sb.appendLine(" • [${i + 1}] $msg")
+            }
+            if (errors.size > maxErrorsToShow) {
+                sb.appendLine(" …y ${errors.size - maxErrorsToShow} errores más.")
+            }
+        } else {
+            sb.appendLine("Errores: ${errors.size}")
         }
     } else {
         sb.appendLine("Sin errores.")

@@ -225,7 +225,8 @@ class ProductViewModel @Inject constructor(
         categoryName: String?,
         providerName: String?,
         providerSku: String?,
-        minStock: Int?
+        minStock: Int?,
+        onDone: (Result<Unit>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
@@ -254,7 +255,21 @@ class ProductViewModel @Inject constructor(
                 minStock = minStock,
                 updatedAt = LocalDate.now()
             )
-            repo.update(entity)
+            runCatching {
+                repo.update(entity)
+            }.onSuccess {
+                withContext(Dispatchers.Main) {
+                    onDone(Result.success(Unit))
+                }
+            }.onFailure { error ->
+                _imageUploadState.value = ImageUploadUiState(
+                    uploading = false,
+                    message = error.message ?: "No se pudo actualizar el producto."
+                )
+                withContext(Dispatchers.Main) {
+                    onDone(Result.failure(error))
+                }
+            }
         }
     }
 
@@ -352,7 +367,15 @@ class ProductViewModel @Inject constructor(
         onResult: (ImportResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = repo.importProductsFromFile(context, fileUri, strategy)
+            val result = runCatching {
+                repo.importProductsFromFile(context, fileUri, strategy)
+            }.getOrElse { error ->
+                ImportResult(
+                    inserted = 0,
+                    updated = 0,
+                    errors = listOf(error.message ?: "No se pudo importar el archivo.")
+                )
+            }
             onResult(result)
         }
     }

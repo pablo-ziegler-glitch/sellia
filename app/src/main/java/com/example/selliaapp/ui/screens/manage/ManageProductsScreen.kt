@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -74,6 +76,7 @@ fun ManageProductsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val state by vm.state.collectAsState()
+    val message by vm.message.collectAsState()
 
     // PagingData<ProductEntity>
     val lazyItems: LazyPagingItems<ProductEntity> = vm.productsPaged.collectAsLazyPagingItems()
@@ -263,6 +266,19 @@ fun ManageProductsScreen(
 
                     vm.upsert(toSave) { /* id -> podrías mostrar snackbar */ }
                     showEditor = false
+                }
+            }
+        )
+    }
+
+    if (message != null) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Atención") },
+            text = { Text(message ?: "") },
+            confirmButton = {
+                Button(onClick = { vm.clearMessage() }) {
+                    Text("OK")
                 }
             }
         )

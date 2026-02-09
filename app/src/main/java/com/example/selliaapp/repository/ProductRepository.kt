@@ -315,18 +315,32 @@ class ProductRepository(
         val errors = mutableListOf<String>()
         val touchedIds = mutableSetOf<Int>()
         val now = System.currentTimeMillis()
+        val seenCodes = mutableSetOf<String>()
 
         db.withTransaction {
             rows.forEachIndexed { idx, r ->
                 try {
+                    val lineNumber = idx + 2
+                    val normalizedCode = r.code?.trim()?.takeIf { it.isNotBlank() }
+                    if (normalizedCode != null && !seenCodes.add(normalizedCode)) {
+                        errors += "Línea $lineNumber: el código \"$normalizedCode\" está duplicado en el archivo."
+                        return@forEachIndexed
+                    }
                     val existing = when {
                         !r.barcode.isNullOrBlank() -> productDao.getByBarcodeOnce(r.barcode!!)
                         else                       -> productDao.getByNameOnce(r.name)
                     }
+                    if (normalizedCode != null) {
+                        val codeOwner = productDao.getByCodeOnce(normalizedCode)
+                        if (codeOwner != null && (existing == null || codeOwner.id != existing.id)) {
+                            errors += "Línea $lineNumber: el código \"$normalizedCode\" ya existe."
+                            return@forEachIndexed
+                        }
+                    }
 
                     if (existing == null) {
                         val p = ProductEntity(
-                            code = r.code,
+                            code = normalizedCode,
                             barcode = r.barcode,
                             name = r.name,
                             purchasePrice = r.purchasePrice,
@@ -353,6 +367,7 @@ class ProductRepository(
                         )
                         val priced = applyAutoPricing(p, existing)
                         val prepared = ensureAutoCodes(priced)
+                        assertCodeAvailable(prepared.code, currentId = null)
                         val id = productDao.insert(prepared).toInt()
                         touchedIds += id
                         if (r.imageUrls.isNotEmpty()) {
@@ -383,7 +398,7 @@ class ProductRepository(
                             ImportStrategy.Replace -> max(0, r.quantity)
                         }
                         val merged = existing.copy(
-                            code        = r.code ?: existing.code,
+                            code        = normalizedCode ?: existing.code,
                             barcode     = r.barcode ?: existing.barcode,
                             name        = r.name.ifBlank { existing.name },
                             purchasePrice = r.purchasePrice ?: existing.purchasePrice,
@@ -407,6 +422,7 @@ class ProductRepository(
                             updatedAt   = r.updatedAt ?: LocalDate.now()
                         )
                         val priced = applyAutoPricing(merged, existing)
+                        assertCodeAvailable(priced.code, currentId = existing.id)
                         productDao.update(priced)
                         touchedIds += existing.id
                         if (r.imageUrls.isNotEmpty()) {
@@ -667,8 +683,10 @@ class ProductRepository(
         val now = System.currentTimeMillis()
         var newId = 0
         db.withTransaction {
+            assertCodeAvailable(normalized.code, currentId = null)
             val priced = applyAutoPricing(normalized)
             val prepared = ensureAutoCodes(priced)
+            assertCodeAvailable(prepared.code, currentId = null)
             newId = productDao.upsert(prepared)
             replaceProductImages(newId, prepared.imageUrls)
             if (prepared.quantity != 0) {
@@ -721,6 +739,7 @@ class ProductRepository(
         var rows = 0
         db.withTransaction {
             val current = productDao.getById(entity.id) ?: return@withTransaction
+            assertCodeAvailable(entity.code, currentId = current.id)
             val normalized = entity.copy(updatedAt = LocalDate.now())
             val purchaseChanged = current.purchasePrice != normalized.purchasePrice
             val priced = when {
@@ -756,6 +775,14 @@ class ProductRepository(
             trySyncProductsNow(listOf(entity.id), now)
         }
         return rows
+    }
+
+    private suspend fun assertCodeAvailable(code: String?, currentId: Int?) {
+        val normalized = code?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val existing = productDao.getByCodeOnce(normalized) ?: return
+        if (currentId == null || existing.id != currentId) {
+            throw IllegalArgumentException("El código \"$normalized\" ya existe.")
+        }
     }
 
     private suspend fun adjustStockInternal(

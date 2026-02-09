@@ -264,42 +264,45 @@ class ProductCsvImporter(
                 val code = idx.get(row, "code", aliases = listOf("codigo_interno", "sku"))?.ifBlank { null }
                 val barcode = idx.get(row, "barcode", aliases = listOf("codigo", "código", "ean", "upc", "sku"))?.ifBlank { null }
 
-                val price = idx.get(row, "price", aliases = listOf("precio", "amount"))
-                    ?.replace(',', '.')?.toDoubleOrNull()
+                val price = parseDecimal(idx.get(row, "price", aliases = listOf("precio", "amount")))
                 val purchasePrice = idx.get(
                     row,
                     "purchase_price",
                     aliases = listOf("precio_adquisicion", "cost_price", "purchase")
-                )?.replace(',', '.')?.toDoubleOrNull()
-                val listPrice = idx.get(row, "list_price", aliases = listOf("precio_lista", "price_list"))
-                    ?.replace(',', '.')?.toDoubleOrNull()
-                val cashPrice = idx.get(row, "cash_price", aliases = listOf("precio_efectivo", "price_cash"))
-                    ?.replace(',', '.')?.toDoubleOrNull()
+                )?.let { parseDecimal(it) }
+                val listPrice = parseDecimal(
+                    idx.get(row, "list_price", aliases = listOf("precio_lista", "price_list"))
+                )
+                val cashPrice = parseDecimal(
+                    idx.get(row, "cash_price", aliases = listOf("precio_efectivo", "price_cash"))
+                )
                 val transferPrice = idx.get(
                     row,
                     "transfer_price",
                     aliases = listOf("precio_transferencia", "price_transfer")
-                )?.replace(',', '.')?.toDoubleOrNull()
+                )?.let { parseDecimal(it) }
                 val transferNetPrice = idx.get(
                     row,
                     "transfer_net_price",
                     aliases = listOf("precio_transferencia_neto", "transfer_net")
-                )?.replace(',', '.')?.toDoubleOrNull()
-                val mlPrice = idx.get(row, "ml_price", aliases = listOf("precio_ml", "price_ml"))
-                    ?.replace(',', '.')?.toDoubleOrNull()
+                )?.let { parseDecimal(it) }
+                val mlPrice = parseDecimal(
+                    idx.get(row, "ml_price", aliases = listOf("precio_ml", "price_ml"))
+                )
                 val ml3cPrice = idx.get(
                     row,
                     "ml_3c_price",
                     aliases = listOf("precio_ml_3c", "price_ml_3c")
-                )?.replace(',', '.')?.toDoubleOrNull()
+                )?.let { parseDecimal(it) }
                 val ml6cPrice = idx.get(
                     row,
                     "ml_6c_price",
                     aliases = listOf("precio_ml_6c", "price_ml_6c")
-                )?.replace(',', '.')?.toDoubleOrNull()
+                )?.let { parseDecimal(it) }
 
-                val quantity = idx.get(row, "quantity", aliases = listOf("qty", "stock", "cantidad"))
-                    ?.toIntOrNull() ?: 0
+                val quantity = parseIntValue(
+                    idx.get(row, "quantity", aliases = listOf("qty", "stock", "cantidad"))
+                ) ?: 0
 
                 val description = idx.get(row, "description", aliases = listOf("descripcion", "desc"))?.ifBlank { null }
                 val imageUrl = idx.get(row, "imageUrl", aliases = listOf("imagen", "url"))?.ifBlank { null }
@@ -323,8 +326,9 @@ class ProductCsvImporter(
                     "provider_sku",
                     aliases = listOf("sku_proveedor", "skuProveedor", "supplier_sku")
                 )?.ifBlank { null }
-                val minStock = idx.get(row, "min_stock", aliases = listOf("minimo", "minstock", "stockmin"))
-                    ?.toIntOrNull()?.let { if (it < 0) 0 else it }
+                val minStock = parseIntValue(
+                    idx.get(row, "min_stock", aliases = listOf("minimo", "minstock", "stockmin"))
+                )?.let { if (it < 0) 0 else it }
 
                 val updatedAt = idx.get(row, "updated_at", aliases = listOf("actualizado", "fecha"))
                     ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
@@ -354,6 +358,43 @@ class ProductCsvImporter(
                 )
             }
             return rows
+        }
+
+        private fun parseDecimal(raw: String?): Double? {
+            val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val sanitized = value
+                .replace("AR$", "", ignoreCase = true)
+                .replace("$", "")
+                .replace("€", "")
+                .replace("\\s".toRegex(), "")
+            val hasComma = sanitized.contains(',')
+            val hasDot = sanitized.contains('.')
+            val normalized = when {
+                hasComma && hasDot -> {
+                    if (sanitized.lastIndexOf(',') > sanitized.lastIndexOf('.')) {
+                        sanitized.replace(".", "").replace(",", ".")
+                    } else {
+                        sanitized.replace(",", "")
+                    }
+                }
+                hasComma -> sanitized.replace(".", "").replace(",", ".")
+                hasDot -> {
+                    val parts = sanitized.split('.')
+                    if (parts.size == 2 && parts.last().length == 3) {
+                        sanitized.replace(".", "")
+                    } else {
+                        sanitized
+                    }
+                }
+                else -> sanitized
+            }
+            return normalized.toDoubleOrNull()
+        }
+
+        private fun parseIntValue(raw: String?): Int? {
+            val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val normalized = value.replace("[^0-9-]".toRegex(), "")
+            return normalized.toIntOrNull()
         }
     }
 
