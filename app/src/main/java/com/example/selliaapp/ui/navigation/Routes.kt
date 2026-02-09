@@ -47,6 +47,7 @@ sealed class Routes(val route: String) {
     object DevelopmentOptions : Routes("development_options")
     object Checkout : Routes("checkout")
     object Reports : Routes("reports")
+    object PriceSummary : Routes("price_summary")
     object Sales : Routes("sales")
     object SaleDetail : Routes("sale_detail/{invoiceId}") {
         const val ARG_ID = "invoiceId"

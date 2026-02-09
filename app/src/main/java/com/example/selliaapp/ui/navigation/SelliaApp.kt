@@ -69,6 +69,7 @@ import com.example.selliaapp.ui.screens.providers.ProviderInvoicesScreen
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.providers.ProviderPaymentsScreen
 import com.example.selliaapp.ui.screens.providers.ProvidersHubScreen
+import com.example.selliaapp.ui.screens.reports.PriceSummaryScreen
 import com.example.selliaapp.ui.screens.reports.ReportsScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
@@ -706,14 +707,26 @@ fun SelliaApp(
 
             // -------------------- REPORTES -----------------------------
             composable(Routes.Reports.route) {
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
                 val vm: ReportsViewModel = hiltViewModel()
                 // Si tu ReportsScreen actual sólo necesita onBack, dejamos simple:
                 ReportsScreen(
                     onBack = { navController.popBackStack() },
                     vm = vm,
-                    navController =  navController
+                    navController =  navController,
+                    canAccessPriceSummary = accessState.role == AppRole.OWNER
                 )
 
+            }
+
+            composable(Routes.PriceSummary.route) {
+                val accessVm: AccessControlViewModel = hiltViewModel()
+                val accessState by accessVm.state.collectAsStateWithLifecycle()
+                PriceSummaryScreen(
+                    onBack = { navController.popBackStack() },
+                    canAccess = accessState.role == AppRole.OWNER
+                )
             }
 
             composable(Routes.Sales.route) {
