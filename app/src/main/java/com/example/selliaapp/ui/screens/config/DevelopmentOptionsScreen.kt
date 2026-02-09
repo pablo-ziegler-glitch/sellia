@@ -64,6 +64,8 @@ fun DevelopmentOptionsScreen(
                         )
                         val status = when {
                             appCheckState.isLoading -> "Solicitando token..."
+                            appCheckState.cooldownRemainingSeconds != null ->
+                                "Rate limit activo. Reintentá en ${appCheckState.cooldownRemainingSeconds}s."
                             appCheckState.error != null -> "Error: ${appCheckState.error}"
                             appCheckState.token.isNullOrBlank() -> "Token no disponible"
                             else -> "Token activo"
@@ -76,7 +78,10 @@ fun DevelopmentOptionsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            TextButton(onClick = { viewModel.refreshAppCheckToken(forceRefresh = true) }) {
+                            TextButton(
+                                enabled = !appCheckState.isLoading && appCheckState.cooldownRemainingSeconds == null,
+                                onClick = { viewModel.refreshAppCheckToken(forceRefresh = true) }
+                            ) {
                                 Text("Actualizar")
                             }
                             if (!appCheckState.token.isNullOrBlank()) {

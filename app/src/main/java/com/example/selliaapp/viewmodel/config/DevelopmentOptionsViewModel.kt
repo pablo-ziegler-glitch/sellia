@@ -9,14 +9,18 @@ import com.example.selliaapp.repository.DevelopmentOptionsRepository
 import com.example.selliaapp.repository.UserRepository
 import com.google.firebase.appcheck.FirebaseAppCheck
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.google.firebase.appcheck.FirebaseAppCheckException
 
 data class OwnerDevelopmentOptionsUi(
     val ownerName: String,
@@ -28,7 +32,8 @@ data class OwnerDevelopmentOptionsUi(
 data class AppCheckUiState(
     val token: String? = null,
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val cooldownRemainingSeconds: Int? = null
 )
 
 @HiltViewModel
@@ -58,6 +63,7 @@ class DevelopmentOptionsViewModel @Inject constructor(
 
     private val _appCheckState = MutableStateFlow(AppCheckUiState())
     val appCheckState: StateFlow<AppCheckUiState> = _appCheckState
+    private var cooldownJob: Job? = null
 
     init {
         refreshAppCheckToken(forceRefresh = false)
@@ -71,16 +77,33 @@ class DevelopmentOptionsViewModel @Inject constructor(
     }
 
     fun refreshAppCheckToken(forceRefresh: Boolean) {
+        if (_appCheckState.value.isLoading) return
+        val cooldownRemaining = _appCheckState.value.cooldownRemainingSeconds
+        if (cooldownRemaining != null && cooldownRemaining > 0) {
+            _appCheckState.update {
+                it.copy(error = "Demasiados intentos. Esperá ${cooldownRemaining}s para reintentar.")
+            }
+            return
+        }
         _appCheckState.update { it.copy(isLoading = true, error = null) }
         FirebaseAppCheck.getInstance()
             .getAppCheckToken(forceRefresh)
             .addOnSuccessListener { token ->
                 _appCheckState.update {
-                    it.copy(token = token.token, isLoading = false, error = null)
+                    it.copy(token = token.token, isLoading = false, error = null, cooldownRemainingSeconds = null)
                 }
             }
             .addOnFailureListener { error ->
-                val message = error.message?.takeIf { it.isNotBlank() } ?: "Error al obtener token"
+                val isTooManyAttempts = (error as? FirebaseAppCheckException)?.errorCode ==
+                    FirebaseAppCheckException.ErrorCode.TOO_MANY_REQUESTS ||
+                    error.message?.contains("Too many attempts", ignoreCase = true) == true
+                if (isTooManyAttempts) {
+                    startCooldown(DEFAULT_APP_CHECK_COOLDOWN_MS)
+                }
+                val message = when {
+                    isTooManyAttempts -> "Demasiados intentos. Esperá ${DEFAULT_APP_CHECK_COOLDOWN_MS / 1000}s para reintentar."
+                    else -> error.message?.takeIf { it.isNotBlank() } ?: "Error al obtener token"
+                }
                 _appCheckState.update {
                     it.copy(isLoading = false, error = message)
                 }
@@ -90,5 +113,26 @@ class DevelopmentOptionsViewModel @Inject constructor(
     private fun findConfig(ownerEmail: String): DevelopmentOptionsConfig {
         return configs.value.firstOrNull { it.ownerEmail == ownerEmail }
             ?: DevelopmentOptionsConfig.defaultFor(ownerEmail)
+    }
+
+    private fun startCooldown(durationMs: Long) {
+        val endAt = System.currentTimeMillis() + durationMs
+        cooldownJob?.cancel()
+        cooldownJob = viewModelScope.launch {
+            while (isActive) {
+                val remainingSeconds = ((endAt - System.currentTimeMillis()) / 1000).toInt()
+                if (remainingSeconds <= 0) {
+                    _appCheckState.update { it.copy(cooldownRemainingSeconds = null) }
+                    break
+                }
+                _appCheckState.update { it.copy(cooldownRemainingSeconds = remainingSeconds) }
+                delay(COOLDOWN_TICK_MS)
+            }
+        }
+    }
+
+    private companion object {
+        private const val DEFAULT_APP_CHECK_COOLDOWN_MS = 60_000L
+        private const val COOLDOWN_TICK_MS = 1_000L
     }
 }
