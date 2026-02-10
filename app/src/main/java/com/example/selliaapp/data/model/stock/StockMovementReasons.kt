@@ -15,6 +15,7 @@ object StockMovementReasons {
     const val SCAN_ADJUST = "SCAN_ADJUST"
     const val SALE = "SALE"
     const val SALE_CANCEL = "SALE_CANCEL"
+    const val PRICING_RECALC = "PRICING_RECALC"
 
     /**
      * Devuelve una etiqueta legible para mostrar en la UI.
@@ -31,6 +32,7 @@ object StockMovementReasons {
         SCAN_ADJUST -> "Ajuste por escaneo"
         SALE -> "Venta"
         SALE_CANCEL -> "Anulación de venta"
+        PRICING_RECALC -> "Repricing automático"
         else -> code.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
     }
 }

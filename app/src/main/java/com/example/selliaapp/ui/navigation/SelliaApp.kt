@@ -87,6 +87,7 @@ import com.example.selliaapp.ui.screens.admin.UsageDashboardScreen
 import com.example.selliaapp.ui.screens.pos.PosSuccessScreen
 import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
+import com.example.selliaapp.ui.screens.stock.ProductPriceAuditScreen
 import com.example.selliaapp.ui.screens.stock.StockImportScreen
 import com.example.selliaapp.ui.screens.stock.StockMovementsScreen
 import com.example.selliaapp.ui.screens.stock.StockScreen
@@ -96,6 +97,7 @@ import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
+import com.example.selliaapp.viewmodel.ProductPriceAuditViewModel
 import com.example.selliaapp.viewmodel.QuickReorderViewModel
 import com.example.selliaapp.viewmodel.QuickStockAdjustViewModel
 import com.example.selliaapp.viewmodel.ReportsViewModel
@@ -508,10 +510,20 @@ fun SelliaApp(
                     onAddProduct = { navController.navigate(Routes.AddProduct.route) },
                     onScan =  { navController.navigate(Routes.ScannerForStock.route) },
                     onImportCsv =  { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
+                    onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
                     onProductClick = { product ->
                         // EDICIÓN: ir a add_product/{id}
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
                     },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.StockPriceAudit.route) {
+                val vm: ProductPriceAuditViewModel = hiltViewModel()
+                val state by vm.state.collectAsState()
+                ProductPriceAuditScreen(
+                    state = state,
                     onBack = { navController.popBackStack() }
                 )
             }

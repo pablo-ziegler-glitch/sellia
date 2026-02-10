@@ -11,10 +11,14 @@ import com.example.selliaapp.data.local.entity.PricingMlFixedCostTierEntity
 import com.example.selliaapp.data.local.entity.PricingMlShippingTierEntity
 import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.di.AppModule
+import com.example.selliaapp.auth.TenantProvider
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
@@ -24,6 +28,8 @@ class PricingConfigRepository(
     private val pricingAuditDao: PricingAuditDao,
     private val pricingMlFixedCostTierDao: PricingMlFixedCostTierDao,
     private val pricingMlShippingTierDao: PricingMlShippingTierDao,
+    private val firestore: FirebaseFirestore,
+    private val tenantProvider: TenantProvider,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) {
     fun observeFixedCosts(): Flow<List<PricingFixedCostEntity>> =
@@ -94,6 +100,7 @@ class PricingConfigRepository(
             }
         }
         resolved
+            .also { syncPricingConfigToCloud() }
     }
 
     suspend fun deleteFixedCost(id: Int, changedBy: String = "System") = withContext(io) {
@@ -110,6 +117,7 @@ class PricingConfigRepository(
                 changedAt = Instant.now(),
                 changedBy = changedBy
             )
+            syncPricingConfigToCloud()
         }
     }
 
@@ -133,6 +141,7 @@ class PricingConfigRepository(
             }
         }
         resolved
+            .also { syncPricingConfigToCloud() }
     }
 
     suspend fun deleteMlFixedCostTier(id: Int, changedBy: String = "System") = withContext(io) {
@@ -149,6 +158,7 @@ class PricingConfigRepository(
                 changedAt = Instant.now(),
                 changedBy = changedBy
             )
+            syncPricingConfigToCloud()
         }
     }
 
@@ -172,6 +182,7 @@ class PricingConfigRepository(
             }
         }
         resolved
+            .also { syncPricingConfigToCloud() }
     }
 
     suspend fun deleteMlShippingTier(id: Int, changedBy: String = "System") = withContext(io) {
@@ -188,6 +199,7 @@ class PricingConfigRepository(
                 changedAt = Instant.now(),
                 changedBy = changedBy
             )
+            syncPricingConfigToCloud()
         }
     }
 
@@ -231,6 +243,64 @@ class PricingConfigRepository(
             auditField("coefficient7501To10000Percent", existing.coefficient7501To10000Percent, candidate.coefficient7501To10000Percent, now, changedBy)
             auditField("coefficient10001PlusPercent", existing.coefficient10001PlusPercent, candidate.coefficient10001PlusPercent, now, changedBy)
             auditField("recalcIntervalMinutes", existing.recalcIntervalMinutes, candidate.recalcIntervalMinutes, now, changedBy)
+        }
+        syncPricingConfigToCloud()
+    }
+
+    private suspend fun syncPricingConfigToCloud() {
+        runCatching {
+            val tenantId = tenantProvider.requireTenantId()
+            val settings = pricingSettingsDao.getOnce() ?: return
+            val fixedCosts = pricingFixedCostDao.getAllOnce()
+            val mlFixedTiers = pricingMlFixedCostTierDao.getAllOnce()
+            val mlShippingTiers = pricingMlShippingTierDao.getAllOnce()
+            val payload = mapOf(
+                "tenantId" to tenantId,
+                "settings" to mapOf(
+                    "ivaTerminalPercent" to settings.ivaTerminalPercent,
+                    "monthlySalesEstimate" to settings.monthlySalesEstimate,
+                    "operativosLocalPercent" to settings.operativosLocalPercent,
+                    "posnet3CuotasPercent" to settings.posnet3CuotasPercent,
+                    "transferenciaRetencionPercent" to settings.transferenciaRetencionPercent,
+                    "gainTargetPercent" to settings.gainTargetPercent,
+                    "mlCommissionPercent" to settings.mlCommissionPercent,
+                    "mlCuotas3Percent" to settings.mlCuotas3Percent,
+                    "mlCuotas6Percent" to settings.mlCuotas6Percent,
+                    "mlGainMinimum" to settings.mlGainMinimum,
+                    "mlShippingThreshold" to settings.mlShippingThreshold,
+                    "mlDefaultWeightKg" to settings.mlDefaultWeightKg,
+                    "coefficient0To1500Percent" to settings.coefficient0To1500Percent,
+                    "coefficient1501To3000Percent" to settings.coefficient1501To3000Percent,
+                    "coefficient3001To5000Percent" to settings.coefficient3001To5000Percent,
+                    "coefficient5001To7500Percent" to settings.coefficient5001To7500Percent,
+                    "coefficient7501To10000Percent" to settings.coefficient7501To10000Percent,
+                    "coefficient10001PlusPercent" to settings.coefficient10001PlusPercent,
+                    "recalcIntervalMinutes" to settings.recalcIntervalMinutes,
+                    "updatedBy" to settings.updatedBy
+                ),
+                "fixedCosts" to fixedCosts.map {
+                    mapOf(
+                        "id" to it.id,
+                        "name" to it.name,
+                        "description" to it.description,
+                        "amount" to it.amount,
+                        "applyIva" to it.applyIva
+                    )
+                },
+                "mlFixedCostTiers" to mlFixedTiers.map {
+                    mapOf("id" to it.id, "maxPrice" to it.maxPrice, "cost" to it.cost)
+                },
+                "mlShippingTiers" to mlShippingTiers.map {
+                    mapOf("id" to it.id, "maxWeightKg" to it.maxWeightKg, "cost" to it.cost)
+                },
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            firestore.collection("tenants")
+                .document(tenantId)
+                .collection("config")
+                .document("pricing")
+                .set(payload)
+                .await()
         }
     }
 

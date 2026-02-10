@@ -18,6 +18,7 @@ import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductPriceAuditDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
@@ -41,6 +42,7 @@ import com.example.selliaapp.data.local.entity.CustomerEntity
 import com.example.selliaapp.data.local.entity.CloudServiceConfigEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
+import com.example.selliaapp.data.local.entity.ProductPriceAuditEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
 import com.example.selliaapp.data.local.entity.PricingAuditEntity
 import com.example.selliaapp.data.local.entity.PricingFixedCostEntity
@@ -70,6 +72,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         // Persistencia principal
         ProductEntity::class,
         ProductImageEntity::class,
+        ProductPriceAuditEntity::class,
         CustomerEntity::class,
         ProviderEntity::class,
         ReportDataEntity::class,
@@ -98,13 +101,14 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 38,
+    version = 39,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
 @TypeConverters(Converters::class, ReportConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
+    abstract fun productPriceAuditDao(): ProductPriceAuditDao
     abstract fun productImageDao(): ProductImageDao
     abstract fun userDao(): UserDao
     abstract fun customerDao(): CustomerDao
@@ -368,6 +372,40 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        @JvmField
+        val MIGRATION_38_39 = object : Migration(38, 39) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `product_price_audit_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productId` INTEGER NOT NULL,
+                        `productName` TEXT NOT NULL,
+                        `purchasePrice` REAL,
+                        `oldListPrice` REAL,
+                        `newListPrice` REAL,
+                        `oldCashPrice` REAL,
+                        `newCashPrice` REAL,
+                        `oldTransferPrice` REAL,
+                        `newTransferPrice` REAL,
+                        `oldMlPrice` REAL,
+                        `newMlPrice` REAL,
+                        `oldMl3cPrice` REAL,
+                        `newMl3cPrice` REAL,
+                        `oldMl6cPrice` REAL,
+                        `newMl6cPrice` REAL,
+                        `reason` TEXT NOT NULL,
+                        `changedBy` TEXT NOT NULL,
+                        `source` TEXT NOT NULL,
+                        `changedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_price_audit_log_productId` ON `product_price_audit_log` (`productId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_price_audit_log_changedAt` ON `product_price_audit_log` (`changedAt`)")
             }
         }
     }
