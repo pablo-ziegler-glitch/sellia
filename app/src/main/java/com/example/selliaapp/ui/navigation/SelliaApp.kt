@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Storefront
@@ -76,6 +77,7 @@ import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoicesScreen
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.providers.ProviderPaymentsScreen
+import com.example.selliaapp.ui.screens.providers.ProviderPurchaseOrdersScreen
 import com.example.selliaapp.ui.screens.providers.ProvidersHubScreen
 import com.example.selliaapp.ui.screens.reports.PriceSummaryScreen
 import com.example.selliaapp.ui.screens.reports.ReportsScreen
@@ -147,6 +149,7 @@ fun SelliaApp(
             listOf(
                 BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
                 BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true),
+                BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2),
                 BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney),
                 BottomNavItem(Routes.More.route, "Más", Icons.Default.Menu)
             )
@@ -201,8 +204,7 @@ fun SelliaApp(
 
                     HomeScreen(
                         onNewSale = { navController.navigate(Routes.Pos.route) },
-                        onStock = { navController.navigate(Routes.Stock.route) },
-                        onClientes = { navController.navigate(Routes.ClientsHub.route) },
+                            onClientes = { navController.navigate(Routes.ClientsHub.route) },
                         onConfig = { navController.navigate(Routes.Config.route) },
                         onReports = { navController.navigate(Routes.Reports.route) },
                         onProviders = { navController.navigate(Routes.ProvidersHub.route) },
@@ -282,7 +284,6 @@ fun SelliaApp(
 
             composable(Routes.More.route) {
                 MoreScreen(
-                    onStock = { navController.navigate(Routes.Stock.route) },
                     onStockHistory = { navController.navigate(Routes.StockMovements.route) },
                     onCustomers = { navController.navigate(Routes.ClientsHub.route) },
                     onProviders = { navController.navigate(Routes.ProvidersHub.route) },
@@ -404,7 +405,7 @@ fun SelliaApp(
 
 
                 // CHECKOUT (usa el MISMO VM del flujo con CompositionLocalProvider)
-                composable(Routes.PosPayment.route) {
+                composable(Routes.PosCheckout.route) {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val parentEntry = remember(navBackStackEntry) {
                         navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) // ej.: "sell_flow"
@@ -842,6 +843,7 @@ fun SelliaApp(
                 ProvidersHubScreen(
                     onManageProviders = { navController.navigate(Routes.ManageProviders.route) },
                     onProviderInvoices = { navController.navigate(Routes.ProviderInvoices.route) },
+                    onProviderPurchaseOrders = { navController.navigate(Routes.ProviderPurchaseOrders.route) },
                     onProviderPayments = { navController.navigate(Routes.ProviderPayments.route) },
                     onBack = { navController.popBackStack() }
                 )
@@ -850,6 +852,16 @@ fun SelliaApp(
             composable(Routes.ManageProviders.route) {
                 val repo = hiltViewModel<ProvidersEntryPoint>().repo // ver nota de DI abajo
                 ManageProvidersScreen(repo = repo, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.ProviderPurchaseOrders.route) {
+                val pRepo = hiltViewModel<ProvidersEntryPoint>().repo
+                val invRepo = hiltViewModel<ProviderInvoicesEntryPoint>().repo
+                ProviderPurchaseOrdersScreen(
+                    providerRepo = pRepo,
+                    invoiceRepo = invRepo,
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             composable(Routes.ProviderInvoices.route) {
