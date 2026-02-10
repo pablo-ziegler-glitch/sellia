@@ -411,7 +411,7 @@ fun SellScreen(
                                         snackbarHostState.showSnackbar(msg)
                                     }
                                 } else {
-                                    navController.navigate(Routes.PosPayment.route)
+                                    navController.navigate(Routes.PosCheckout.route)
                                 }
                             },
                             enabled = ui.items.isNotEmpty(),

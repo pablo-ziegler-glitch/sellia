@@ -12,9 +12,7 @@ sealed class Routes(val route: String) {
     object Pos : Routes("sell")
     object Cash : Routes("cash")
     object More : Routes("more")
-    object Sell : Routes("sell")
     object PosCheckout : Routes("pos_checkout")
-    object PosPayment : Routes("pos_checkout")
     object PosSuccess : Routes("pos_success?invoiceId={invoiceId}&total={total}&method={method}") {
         const val ARG_ID = "invoiceId"
         const val ARG_TOTAL = "total"
@@ -104,6 +102,7 @@ sealed class Routes(val route: String) {
     // ---------- NUEVO: Proveedores ----------
     object ProvidersHub : Routes("providers_hub")
     object ManageProviders : Routes("manage_providers")
+    object ProviderPurchaseOrders : Routes("provider_purchase_orders")
     object ProviderInvoices : Routes("provider_invoices")              // listado por proveedor
     object ProviderInvoiceDetail : Routes("provider_invoice_detail?invoiceId={invoiceId}") {
         const val ARG_ID = "invoiceId"
