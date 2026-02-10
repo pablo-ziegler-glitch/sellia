@@ -29,23 +29,43 @@ class UserRepository(
         .onStart { /* hook para loading si querés */ }
 
     suspend fun insert(user: User): Long = withContext(io) {
-        val rowId = userDao.insert(user)
-        upsertCloudUser(user)
-        rowId
+        val sanitizedUser = user.sanitized()
+        upsertCloudUser(sanitizedUser)
+        val existing = userDao.getByEmail(sanitizedUser.email)
+        if (existing == null) {
+            userDao.insert(sanitizedUser)
+        } else {
+            userDao.update(existing.copy(
+                name = sanitizedUser.name,
+                role = sanitizedUser.role,
+                isActive = sanitizedUser.isActive
+            ))
+            existing.id.toLong()
+        }
     }
 
     suspend fun countUsers(): Int = withContext(io) { userDao.countUsers() }
 
     suspend fun update(user: User): Int = withContext(io) {
-        val rows = userDao.update(user)
-        upsertCloudUser(user)
-        rows
+        val sanitizedUser = user.sanitized()
+        upsertCloudUser(sanitizedUser)
+        val existing = userDao.getByEmail(sanitizedUser.email)
+        if (existing == null) {
+            userDao.insert(sanitizedUser)
+            1
+        } else {
+            userDao.update(existing.copy(
+                name = sanitizedUser.name,
+                role = sanitizedUser.role,
+                isActive = sanitizedUser.isActive
+            ))
+        }
     }
 
     suspend fun delete(user: User): Int = withContext(io) {
-        val rows = userDao.delete(user)
-        deleteCloudUser(user)
-        rows
+        val sanitizedUser = user.sanitized()
+        deleteCloudUser(sanitizedUser)
+        userDao.deleteByEmail(sanitizedUser.email)
     }
 
     suspend fun syncFromCloud(): Result<Unit> = withContext(io) {
@@ -55,21 +75,38 @@ class UserRepository(
                 .whereEqualTo("tenantId", tenantId)
                 .get()
                 .await()
-            snapshot.documents.forEach { doc ->
-                val email = doc.getString("email")?.trim().orEmpty()
+
+            val cloudUsers = snapshot.documents.mapNotNull { doc ->
+                val email = doc.getString("email")?.trim().orEmpty().lowercase()
                 val name = doc.getString("name")?.trim().orEmpty()
                 val role = doc.getString("role")?.trim().orEmpty()
                 val isActive = doc.getBoolean("isActive") ?: true
-                if (email.isBlank() || name.isBlank() || role.isBlank()) return@forEach
-                val existing = userDao.getByEmail(email)
+                if (email.isBlank() || name.isBlank() || role.isBlank()) return@mapNotNull null
+                User(name = name, email = email, role = role, isActive = isActive)
+            }
+
+            val cloudEmails = cloudUsers.map { it.email }
+            if (cloudEmails.isEmpty()) {
+                userDao.deleteAll()
+                return@runCatching
+            }
+
+            cloudUsers.forEach { cloudUser ->
+                val existing = userDao.getByEmail(cloudUser.email)
                 if (existing == null) {
-                    userDao.insert(User(name = name, email = email, role = role, isActive = isActive))
+                    userDao.insert(cloudUser)
                 } else {
                     userDao.update(
-                        existing.copy(name = name, role = role, isActive = isActive)
+                        existing.copy(
+                            name = cloudUser.name,
+                            role = cloudUser.role,
+                            isActive = cloudUser.isActive
+                        )
                     )
                 }
             }
+
+            userDao.deleteByEmailsNotIn(cloudEmails)
         }
     }
 
@@ -93,12 +130,15 @@ class UserRepository(
             }
 
             try {
-                val existing = userDao.getByEmail(email)
+                val normalizedEmail = email.lowercase()
+                val existing = userDao.getByEmail(normalizedEmail)
+                val cloudUser = User(name = name, email = normalizedEmail, role = role, isActive = true)
+                upsertCloudUser(cloudUser)
                 if (existing == null) {
-                    userDao.insert(User(name = name, email = email, role = role, isActive = true))
+                    userDao.insert(cloudUser)
                     inserted++
                 } else {
-                    userDao.update(existing.copy(name = name, role = role))
+                    userDao.update(existing.copy(name = name, role = role, isActive = true))
                     updated++
                 }
             } catch (t: Throwable) {
@@ -109,6 +149,13 @@ class UserRepository(
         ImportResult(inserted, updated, errors)
     }
 
+
+
+    private fun User.sanitized(): User = copy(
+        name = name.trim(),
+        email = email.trim().lowercase(),
+        role = role.trim()
+    )
     private suspend fun upsertCloudUser(user: User) {
         val tenantId = tenantProvider.requireTenantId()
         val docId = "${tenantId}_${user.email.trim().lowercase()}"

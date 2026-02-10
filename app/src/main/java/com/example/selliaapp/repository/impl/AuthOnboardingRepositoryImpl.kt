@@ -94,6 +94,21 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
             )
 
+            val tenantUserRef = firestore.collection("tenant_users")
+                .document("${tenantId}_${email.trim().lowercase()}")
+            batch.set(
+                tenantUserRef,
+                mapOf(
+                    "tenantId" to tenantId,
+                    "name" to storeName,
+                    "email" to email.trim().lowercase(),
+                    "role" to AppRole.OWNER.raw,
+                    "isActive" to true,
+                    "updatedAt" to createdAt
+                ),
+                SetOptions.merge()
+            )
+
             batch.commit().await()
             OnboardingResult(uid = user.uid, tenantId = tenantId)
         }.onFailure {
@@ -136,6 +151,20 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "createdAt" to createdAt
                 )
             ).await()
+            firestore.collection("tenant_users")
+                .document("${tenantId}_${email.trim().lowercase()}")
+                .set(
+                    mapOf(
+                        "tenantId" to tenantId,
+                        "name" to customerName,
+                        "email" to email.trim().lowercase(),
+                        "role" to AppRole.VIEWER.raw,
+                        "isActive" to true,
+                        "updatedAt" to createdAt
+                    ),
+                    SetOptions.merge()
+                )
+                .await()
             firestore.collection("account_requests")
                 .document(user.uid)
                 .set(
@@ -180,18 +209,34 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
             val createdAt = FieldValue.serverTimestamp()
             val userRef = firestore.collection("users").document(user.uid)
+            val normalizedEmail = (user.email ?: "").trim().lowercase()
+            val displayName = (user.displayName ?: "").trim()
             userRef.set(
                 mapOf(
                     "tenantId" to tenantId,
-                    "email" to (user.email ?: ""),
+                    "email" to normalizedEmail,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to "final_customer",
                     "status" to "active",
-                    "displayName" to (user.displayName ?: ""),
+                    "displayName" to displayName,
                     "createdAt" to createdAt
                 ),
                 SetOptions.merge()
             ).await()
+            firestore.collection("tenant_users")
+                .document("${tenantId}_${normalizedEmail}")
+                .set(
+                    mapOf(
+                        "tenantId" to tenantId,
+                        "name" to displayName,
+                        "email" to normalizedEmail,
+                        "role" to AppRole.VIEWER.raw,
+                        "isActive" to true,
+                        "updatedAt" to createdAt
+                    ),
+                    SetOptions.merge()
+                )
+                .await()
             firestore.collection("account_requests")
                 .document(user.uid)
                 .set(
