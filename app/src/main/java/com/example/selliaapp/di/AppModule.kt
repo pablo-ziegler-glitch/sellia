@@ -217,7 +217,19 @@ object AppModule {
         io = io
     )
 
-    @Provides @Singleton fun provideCustomerRepository(dao: CustomerDao): CustomerRepository = CustomerRepository(dao)
+    @Provides
+    @Singleton
+    fun provideCustomerRepository(
+        customerDao: CustomerDao,
+        syncOutboxDao: SyncOutboxDao,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider
+    ): CustomerRepository = CustomerRepository(
+        customerDao = customerDao,
+        syncOutboxDao = syncOutboxDao,
+        firestore = firestore,
+        tenantProvider = tenantProvider
+    )
     @Provides
     @Singleton
     fun provideUserRepository(
