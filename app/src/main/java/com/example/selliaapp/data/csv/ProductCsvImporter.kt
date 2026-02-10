@@ -254,12 +254,15 @@ class ProductCsvImporter(
 
             val rows = mutableListOf<Row>()
 
-            table.drop(1).forEachIndexed { lineIdx, row ->
-                if (row.isEmpty() || row.all { it.isBlank() }) return@forEachIndexed
+            val dataRows = table.drop(1)
+            for ((lineIdx, row) in dataRows.withIndex()) {
+                if (row.isEmpty() || row.all { it.isBlank() }) {
+                    break
+                }
 
                 val name = idx.get(row, "name", aliases = listOf("nombre", "product", "producto"))
                     ?.takeIf { it.isNotBlank() }
-                    ?: throw IllegalArgumentException("name vacío (línea ${lineIdx + 2})")
+                    ?: continue
 
                 val code = idx.get(row, "code", aliases = listOf("codigo_interno", "sku"))?.ifBlank { null }
                 val barcode = idx.get(row, "barcode", aliases = listOf("codigo", "código", "ean", "upc", "sku"))?.ifBlank { null }

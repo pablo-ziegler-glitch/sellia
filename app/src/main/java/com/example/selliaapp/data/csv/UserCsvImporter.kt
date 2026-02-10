@@ -21,13 +21,24 @@ object UserCsvImporter {
         if (table.isEmpty()) return emptyList()
         val header = table.first()
         val idx = CsvUtils.HeaderIndex(header)
-        return table.drop(1)
-            .filter { row -> row.any { it.isNotBlank() } }
-            .map { row ->
+        return CsvUtils.dataRowsUntilFirstBlank(table)
+            .mapNotNull { row ->
+                val name = idx.get(row, "name", listOf("nombre", "usuario"))
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                val email = idx.get(row, "email", listOf("mail", "correo"))
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                val role = idx.get(row, "role", listOf("rol", "perfil"))
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
                 Row(
-                    name = idx.get(row, "name", listOf("nombre", "usuario")).orEmpty(),
-                    email = idx.get(row, "email", listOf("mail", "correo")).orEmpty(),
-                    role = idx.get(row, "role", listOf("rol", "perfil")).orEmpty()
+                    name = name,
+                    email = email,
+                    role = role
                 )
             }
     }

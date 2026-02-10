@@ -29,11 +29,15 @@ object CustomerCsvImporter {
         if (table.isEmpty()) return emptyList()
         val header = table.first()
         val idx = CsvUtils.HeaderIndex(header)
-        return table.drop(1)
-            .filter { row -> row.any { it.isNotBlank() } }
-            .map { row ->
+        return CsvUtils.dataRowsUntilFirstBlank(table)
+            .mapNotNull { row ->
+                val name = idx.get(row, "name", listOf("nombre", "cliente", "customer"))
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+
                 Row(
-                    name = idx.get(row, "name", listOf("nombre", "cliente", "customer")).orEmpty(),
+                    name = name,
                     phone = idx.get(row, "phone", listOf("telefono", "teléfono", "celular", "whatsapp"))?.ifBlank { null },
                     email = idx.get(row, "email", listOf("mail", "correo"))?.ifBlank { null },
                     address = idx.get(row, "address", listOf("direccion", "dirección", "domicilio"))?.ifBlank { null },

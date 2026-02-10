@@ -20,14 +20,19 @@ object ExpenseCsvImporter {
         if (table.isEmpty()) return emptyList()
         val header = table.first()
         val idx = CsvUtils.HeaderIndex(header)
-        return table.drop(1)
-            .filter { row -> row.any { it.isNotBlank() } }
-            .map { row ->
+        return CsvUtils.dataRowsUntilFirstBlank(table)
+            .mapNotNull { row ->
                 val id = idx.get(row, "id")?.toIntOrNull() ?: 0
                 val templateId = idx.get(row, "template_id", listOf("templateId"))?.toIntOrNull() ?: 0
-                val name = idx.get(row, "name", listOf("nombre"))?.ifBlank { null } ?: "Gasto"
+                val name = idx.get(row, "name", listOf("nombre"))
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
                 val category = idx.get(row, "category", listOf("categoria", "categoría"))?.ifBlank { null } ?: "General"
-                val amount = idx.get(row, "amount", listOf("monto", "importe"))?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+                val amount = idx.get(row, "amount", listOf("monto", "importe"))
+                    ?.replace(',', '.')
+                    ?.toDoubleOrNull()
+                    ?: return@mapNotNull null
                 val month = idx.get(row, "month", listOf("mes"))?.toIntOrNull() ?: 1
                 val year = idx.get(row, "year", listOf("anio", "año"))?.toIntOrNull() ?: 1970
                 val statusText = idx.get(row, "status", listOf("estado"))?.ifBlank { null } ?: ExpenseStatus.IMPAGO.name
