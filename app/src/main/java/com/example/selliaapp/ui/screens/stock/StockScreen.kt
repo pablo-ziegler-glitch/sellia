@@ -11,7 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,9 +29,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -109,6 +111,10 @@ fun StockScreen(
     var lastFileName by rememberSaveable { mutableStateOf<String?>(null) }   // [NUEVO]
     var importErrorSummary by remember { mutableStateOf<String?>(null) }
     var importErrorDetails by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectionModeEnabled by rememberSaveable { mutableStateOf(false) }
+    var selectedProductIds by rememberSaveable { mutableStateOf(setOf<Int>()) }
+    var showDeleteSelectedDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeleteAllDialog by rememberSaveable { mutableStateOf(false) }
 
     // Snackbar host para mostrar mensajes del import
     val snackbarHostState = remember { SnackbarHostState() } // [NUEVO]
@@ -184,7 +190,31 @@ fun StockScreen(
         topBar = {
             // Barra superior con la franja de búsqueda
             Column(Modifier.fillMaxWidth()) {
-                BackTopAppBar(title = "Stock", onBack = onBack)
+                BackTopAppBar(
+                    title = if (selectionModeEnabled) "Seleccionados: ${selectedProductIds.size}" else "Stock",
+                    onBack = {
+                        if (selectionModeEnabled) {
+                            selectionModeEnabled = false
+                            selectedProductIds = emptySet()
+                        } else {
+                            onBack()
+                        }
+                    },
+                    actions = {
+                        if (selectionModeEnabled) {
+                            IconButton(onClick = {
+                                if (selectedProductIds.isNotEmpty()) {
+                                    showDeleteSelectedDialog = true
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Eliminar seleccionados"
+                                )
+                            }
+                        }
+                    }
+                )
                 // Indicador de importación bajo la AppBar
                 if (isImporting) { // [NUEVO]
                     LinearProgressIndicator(
@@ -246,6 +276,22 @@ fun StockScreen(
                                     onScan()
                                 }
                             )
+                            SmallFabWithLabel(
+                                label = "Eliminar seleccionados",
+                                icon = { Icon(Icons.Default.Delete, contentDescription = "Eliminar seleccionados") },
+                                onClick = {
+                                    fabExpanded = false
+                                    selectionModeEnabled = true
+                                }
+                            )
+                            SmallFabWithLabel(
+                                label = "Eliminar todos",
+                                icon = { Icon(Icons.Default.Delete, contentDescription = "Eliminar todos") },
+                                onClick = {
+                                    fabExpanded = false
+                                    showDeleteAllDialog = true
+                                }
+                            )
                             // Agregar producto
                             SmallFabWithLabel(
                                 label = "Agregar producto",
@@ -297,11 +343,86 @@ fun StockScreen(
                     ProductRow(
                         product = p,
                         currency = currency,
-                        onClick = { onProductClick(p) }
+                        isSelectionMode = selectionModeEnabled,
+                        isSelected = selectedProductIds.contains(p.id),
+                        onClick = {
+                            if (selectionModeEnabled) {
+                                selectedProductIds = if (selectedProductIds.contains(p.id)) {
+                                    selectedProductIds - p.id
+                                } else {
+                                    selectedProductIds + p.id
+                                }
+                            } else {
+                                onProductClick(p)
+                            }
+                        },
+                        onLongClick = {
+                            selectionModeEnabled = true
+                            selectedProductIds = selectedProductIds + p.id
+                        }
                     )
                 }
             }
         }
+    }
+
+    if (showDeleteSelectedDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSelectedDialog = false },
+            title = { Text("Eliminar productos seleccionados") },
+            text = { Text("Se van a eliminar ${selectedProductIds.size} productos seleccionados. Esta acción no se puede deshacer.") },
+            confirmButton = {
+                Button(onClick = {
+                    val idsToDelete = selectedProductIds
+                    showDeleteSelectedDialog = false
+                    vm.deleteProductsByIds(idsToDelete) { result ->
+                        result.onSuccess { deleted ->
+                            importMessage = "Se eliminaron $deleted productos."
+                            selectionModeEnabled = false
+                            selectedProductIds = emptySet()
+                        }.onFailure { error ->
+                            importMessage = error.message ?: "No se pudieron eliminar los productos seleccionados."
+                        }
+                    }
+                }) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteSelectedDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllDialog = false },
+            title = { Text("Eliminar todo el stock") },
+            text = { Text("Se van a eliminar todos los productos del stock. Esta acción no se puede deshacer.") },
+            confirmButton = {
+                Button(onClick = {
+                    showDeleteAllDialog = false
+                    vm.deleteAllProducts { result ->
+                        result.onSuccess { deleted ->
+                            importMessage = "Se eliminaron $deleted productos del stock."
+                            selectionModeEnabled = false
+                            selectedProductIds = emptySet()
+                        }.onFailure { error ->
+                            importMessage = error.message ?: "No se pudo eliminar todo el stock."
+                        }
+                    }
+                }) {
+                    Text("Eliminar todo")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteAllDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 
     if (importErrorSummary != null) {
@@ -355,7 +476,10 @@ private fun SmallFabWithLabel(
 private fun ProductRow(
     product: ProductEntity,
     currency: NumberFormat,
-    onClick: () -> Unit
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val listPrice = product.listPrice ?: product.price ?: 0.0
     val cashPrice = product.cashPrice ?: product.listPrice ?: product.price ?: 0.0
@@ -366,7 +490,7 @@ private fun ProductRow(
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(
@@ -391,6 +515,13 @@ private fun ProductRow(
                 text = "ML: $mlPriceLabel · ML 3C: $ml3cPriceLabel · ML 6C: $ml6cPriceLabel",
                 style = MaterialTheme.typography.bodySmall
             )
+            if (isSelectionMode) {
+                Spacer(Modifier.size(2.dp))
+                Text(
+                    text = if (isSelected) "Seleccionado" else "Mantener presionado para seleccionar",
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
             product.barcode?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.size(2.dp))
                 Text("Barcode: $it", style = MaterialTheme.typography.bodySmall)

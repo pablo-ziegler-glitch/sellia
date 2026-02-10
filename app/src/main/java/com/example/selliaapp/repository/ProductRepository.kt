@@ -31,6 +31,8 @@ import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.ProductRemoteDataSource
+import com.example.selliaapp.data.remote.StockInteractionEvent
+import com.example.selliaapp.data.remote.StockInteractionRemoteDataSource
 import com.example.selliaapp.di.IoDispatcher
 import com.example.selliaapp.pricing.PricingCalculator
 import com.example.selliaapp.sync.CsvImportWorker
@@ -68,6 +70,7 @@ class ProductRepository(
     private val stockMovementDao = db.stockMovementDao()
     private val syncOutboxDao = db.syncOutboxDao()
     private val remote = ProductRemoteDataSource(firestore, tenantProvider)
+    private val stockInteractionRemote = StockInteractionRemoteDataSource(firestore, tenantProvider)
 
     suspend fun insert(entity: ProductEntity): Int = withContext(io) {
         persistProduct(entity.copy(id = 0), StockMovementReasons.PRODUCT_CREATE)
@@ -173,6 +176,7 @@ class ProductRepository(
         if (rows.isEmpty()) return@withContext
         val now = System.currentTimeMillis()
         val touchedIds = mutableSetOf<Int>()
+        val interactionEvents = mutableListOf<StockInteractionEvent>()
 
         db.withTransaction {
             rows.forEach { r ->
@@ -237,11 +241,22 @@ class ProductRepository(
                         createdAt = now
                     )
                 )
+                interactionEvents += StockInteractionEvent(
+                    action = if (existing == null) "PRODUCT_CREATED" else "PRODUCT_UPDATED",
+                    productId = id,
+                    productName = current.name,
+                    delta = delta,
+                    reason = StockMovementReasons.CSV_IMPORT,
+                    note = if (existing == null) "Importación CSV (nuevo)" else "Importación CSV (actualización)",
+                    source = "CSV_IMPORT",
+                    occurredAtEpochMs = now
+                )
             }
             lastCache = productDao.getAllOnce()
         }
 
         trySyncProductsNow(touchedIds, now)
+        saveStockInteractions(interactionEvents)
     }
 
     // ---------- Flujo/consultas básicas ----------
@@ -316,6 +331,7 @@ class ProductRepository(
         val touchedIds = mutableSetOf<Int>()
         val now = System.currentTimeMillis()
         val seenCodes = mutableSetOf<String>()
+        val interactionEvents = mutableListOf<StockInteractionEvent>()
 
         db.withTransaction {
             rows.forEachIndexed { idx, r ->
@@ -392,6 +408,16 @@ class ProductRepository(
                             )
                         )
                         inserted++
+                        interactionEvents += StockInteractionEvent(
+                            action = "PRODUCT_CREATED",
+                            productId = id,
+                            productName = prepared.name,
+                            delta = prepared.quantity,
+                            reason = StockMovementReasons.CSV_IMPORT,
+                            note = "Importación CSV (nuevo)",
+                            source = "CSV_IMPORT",
+                            occurredAtEpochMs = now
+                        )
                     } else {
                         val newQty = when (strategy) {
                             ImportStrategy.Append  -> existing.quantity + max(0, r.quantity)
@@ -448,6 +474,16 @@ class ProductRepository(
                             )
                         )
                         updated++
+                        interactionEvents += StockInteractionEvent(
+                            action = "PRODUCT_UPDATED",
+                            productId = existing.id,
+                            productName = priced.name,
+                            delta = newQty - existing.quantity,
+                            reason = StockMovementReasons.CSV_IMPORT,
+                            note = "Importación CSV (${strategy.name.lowercase()})",
+                            source = "CSV_IMPORT",
+                            occurredAtEpochMs = now
+                        )
                     }
                 } catch (e: Exception) {
                     errors += "Línea ${idx + 2}: ${e.message}"
@@ -456,6 +492,7 @@ class ProductRepository(
             lastCache = productDao.getAllOnce()
         }
         trySyncProductsNow(touchedIds, now)
+        saveStockInteractions(interactionEvents)
         return ImportResult(inserted, updated, errors)
     }
 
@@ -519,6 +556,20 @@ class ProductRepository(
         }
         try {
             remote.deleteById(id)
+            saveStockInteractions(
+                listOf(
+                    StockInteractionEvent(
+                        action = "PRODUCT_DELETED",
+                        productId = id,
+                        productName = product.name,
+                        delta = -product.quantity,
+                        reason = StockMovementReasons.MANUAL_ADJUST,
+                        note = "Eliminación de producto",
+                        source = "STOCK_SCREEN",
+                        occurredAtEpochMs = now
+                    )
+                )
+            )
         } catch (t: Throwable) {
             Log.w("ProductRepository", "Error eliminando producto en Firestore", t)
         }
@@ -710,6 +761,20 @@ class ProductRepository(
             lastCache = productDao.getAllOnce()
         }
         trySyncProductsNow(listOf(newId), now)
+        saveStockInteractions(
+            listOf(
+                StockInteractionEvent(
+                    action = "PRODUCT_CREATED",
+                    productId = newId,
+                    productName = normalized.name,
+                    delta = normalized.quantity,
+                    reason = reason,
+                    note = "Alta de producto",
+                    source = "STOCK_SCREEN",
+                    occurredAtEpochMs = now
+                )
+            )
+        )
         return newId
     }
 
@@ -773,6 +838,20 @@ class ProductRepository(
         }
         if (rows > 0) {
             trySyncProductsNow(listOf(entity.id), now)
+            saveStockInteractions(
+                listOf(
+                    StockInteractionEvent(
+                        action = "PRODUCT_UPDATED",
+                        productId = entity.id,
+                        productName = entity.name,
+                        delta = 0,
+                        reason = reason,
+                        note = "Edición manual",
+                        source = "STOCK_SCREEN",
+                        occurredAtEpochMs = now
+                    )
+                )
+            )
         }
         return rows
     }
@@ -825,6 +904,21 @@ class ProductRepository(
         }
         if (success) {
             trySyncProductsNow(listOf(productId), now)
+            val productName = productDao.getById(productId)?.name
+            saveStockInteractions(
+                listOf(
+                    StockInteractionEvent(
+                        action = "STOCK_ADJUSTED",
+                        productId = productId,
+                        productName = productName,
+                        delta = delta,
+                        reason = reason,
+                        note = note,
+                        source = "STOCK_OPERATION",
+                        occurredAtEpochMs = now
+                    )
+                )
+            )
         }
         return success
     }
@@ -855,6 +949,19 @@ class ProductRepository(
                 t
             )
         }
+    }
+
+
+    private suspend fun saveStockInteractions(events: List<StockInteractionEvent>) {
+        if (events.isEmpty()) return
+        runCatching { stockInteractionRemote.save(events) }
+            .onFailure { error ->
+                Log.w(
+                    "ProductRepository",
+                    "No se pudo guardar la interacción de stock en Firestore",
+                    error
+                )
+            }
     }
 
     private suspend fun loadProductImages(productId: Int): List<String> {
