@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
@@ -88,6 +89,7 @@ fun StockScreen(
     onAddProduct: () -> Unit,
     onScan: () -> Unit,
     onImportCsv: () -> Unit,
+    onOpenPriceAudit: () -> Unit,
     onProductClick: (ProductEntity) -> Unit,
     onBack: () -> Unit
 ) {
@@ -210,6 +212,13 @@ fun StockScreen(
                                 Icon(
                                     imageVector = Icons.Default.Delete,
                                     contentDescription = "Eliminar seleccionados"
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = onOpenPriceAudit) {
+                                Icon(
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = "Auditoría de precios"
                                 )
                             }
                         }

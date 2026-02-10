@@ -36,6 +36,7 @@ sealed class Routes(val route: String) {
         val arguments = listOf(navArgument(ARG_PRODUCT_ID) { type = NavType.IntType })
     }
     object StockMovements : Routes("stock/movements")
+    object StockPriceAudit : Routes("stock/price_audit")
 
     object Config : Routes("config")
     object PricingConfig : Routes("pricing_config")

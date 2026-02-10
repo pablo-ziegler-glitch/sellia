@@ -16,9 +16,11 @@ import com.example.selliaapp.data.csv.ProductCsvImporter
 import com.example.selliaapp.data.dao.CategoryDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
+import com.example.selliaapp.data.dao.ProductPriceAuditDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
+import com.example.selliaapp.data.local.entity.ProductPriceAuditEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
@@ -58,6 +60,7 @@ class ProductRepository(
     private val productImageDao: ProductImageDao,
     private val categoryDao: CategoryDao,
     private val providerDao: ProviderDao,
+    private val productPriceAuditDao: ProductPriceAuditDao,
     private val pricingConfigRepository: PricingConfigRepository,
     private val firestore: FirebaseFirestore,
     private val tenantProvider: TenantProvider,
@@ -676,23 +679,72 @@ class ProductRepository(
     fun observeRecentStockMovements(limit: Int = 50): Flow<List<StockMovementWithProduct>> =
         stockMovementDao.observeRecentDetailed(limit)
 
-    suspend fun recalculateAutoPricingForAll(): Int = withContext(io) {
+    suspend fun recalculateAutoPricingForAll(
+        reason: String = "Pricing config updated",
+        changedBy: String = "System",
+        source: String = "PRICING_CONFIG"
+    ): Int = withContext(io) {
         val now = System.currentTimeMillis()
         val updatedIds = mutableListOf<Int>()
+        val priceAudits = mutableListOf<ProductPriceAuditEntity>()
+        val interactionEvents = mutableListOf<StockInteractionEvent>()
         db.withTransaction {
             val all = productDao.getAllOnce()
             all.forEach { product ->
                 if (!product.autoPricing || product.purchasePrice == null) return@forEach
                 val priced = applyAutoPricing(product, product, force = true)
                 if (priced != product) {
+                    val listChanged = priced.listPrice != product.listPrice
+                    val cashChanged = priced.cashPrice != product.cashPrice
+                    val transferChanged = priced.transferPrice != product.transferPrice
+                    val mlChanged = priced.mlPrice != product.mlPrice
+                    val ml3Changed = priced.ml3cPrice != product.ml3cPrice
+                    val ml6Changed = priced.ml6cPrice != product.ml6cPrice
+                    if (listChanged || cashChanged || transferChanged || mlChanged || ml3Changed || ml6Changed) {
+                        priceAudits += ProductPriceAuditEntity(
+                            productId = product.id,
+                            productName = product.name,
+                            purchasePrice = product.purchasePrice,
+                            oldListPrice = product.listPrice,
+                            newListPrice = priced.listPrice,
+                            oldCashPrice = product.cashPrice,
+                            newCashPrice = priced.cashPrice,
+                            oldTransferPrice = product.transferPrice,
+                            newTransferPrice = priced.transferPrice,
+                            oldMlPrice = product.mlPrice,
+                            newMlPrice = priced.mlPrice,
+                            oldMl3cPrice = product.ml3cPrice,
+                            newMl3cPrice = priced.ml3cPrice,
+                            oldMl6cPrice = product.ml6cPrice,
+                            newMl6cPrice = priced.ml6cPrice,
+                            reason = reason,
+                            changedBy = changedBy,
+                            source = source,
+                            changedAt = Instant.ofEpochMilli(now)
+                        )
+                        interactionEvents += StockInteractionEvent(
+                            action = "PRODUCT_PRICE_RECALCULATED",
+                            productId = product.id,
+                            productName = product.name,
+                            delta = 0,
+                            reason = StockMovementReasons.PRICING_RECALC,
+                            note = "Lista ${product.listPrice}→${priced.listPrice}, Efectivo ${product.cashPrice}→${priced.cashPrice}",
+                            source = source,
+                            occurredAtEpochMs = now
+                        )
+                    }
                     productDao.update(priced.copy(updatedAt = LocalDate.now()))
                     updatedIds += product.id
                 }
+            }
+            if (priceAudits.isNotEmpty()) {
+                productPriceAuditDao.insertAll(priceAudits)
             }
             lastCache = productDao.getAllOnce()
         }
         if (updatedIds.isNotEmpty()) {
             trySyncProductsNow(updatedIds, now)
+            saveStockInteractions(interactionEvents)
         }
         updatedIds.size
     }
