@@ -380,6 +380,49 @@ class ProductViewModel @Inject constructor(
         }
     }
 
+    fun deleteProductsByIds(
+        productIds: Set<Int>,
+        onDone: (Result<Int>) -> Unit = {}
+    ) {
+        val uniqueIds = productIds.filter { it > 0 }.distinct()
+        if (uniqueIds.isEmpty()) {
+            onDone(Result.success(0))
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                uniqueIds.forEach { id -> repo.deleteById(id) }
+                uniqueIds.size
+            }.onSuccess { deleted ->
+                withContext(Dispatchers.Main) {
+                    onDone(Result.success(deleted))
+                }
+            }.onFailure { error ->
+                withContext(Dispatchers.Main) {
+                    onDone(Result.failure(error))
+                }
+            }
+        }
+    }
+
+    fun deleteAllProducts(onDone: (Result<Int>) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val ids = repo.cachedOrEmpty().map { it.id }.filter { it > 0 }
+                ids.forEach { id -> repo.deleteById(id) }
+                ids.size
+            }.onSuccess { deleted ->
+                withContext(Dispatchers.Main) {
+                    onDone(Result.success(deleted))
+                }
+            }.onFailure { error ->
+                withContext(Dispatchers.Main) {
+                    onDone(Result.failure(error))
+                }
+            }
+        }
+    }
+
     private suspend fun uploadPendingImagesIfAny(
         productId: Int,
         pendingImageUris: List<Uri>
