@@ -46,11 +46,12 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Loading
         val result = firebaseAuth.signInWithEmailAndPassword(email, password).await()
         val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
+        enforceEmailVerification(user)
         val session = fetchSession(user)
         _state.value = AuthState.Authenticated(session)
         session
     }.onFailure { error ->
-        _state.value = AuthState.Error(error.message ?: "No se pudo iniciar sesión")
+        _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión"))
     }
 
     suspend fun signInWithGoogle(idToken: String): Result<AuthSession> = runCatching {
@@ -63,7 +64,7 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Authenticated(session)
         session
     }.onFailure { error ->
-        _state.value = AuthState.Error(error.message ?: "No se pudo iniciar sesión con Google")
+        _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión con Google"))
     }
 
     fun reportAuthError(message: String) {
@@ -77,7 +78,7 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Authenticated(session)
         session
     }.onFailure { error ->
-        _state.value = AuthState.Error(error.message ?: "No se pudo actualizar la sesión")
+        _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo actualizar la sesión"))
     }
 
     fun signOut() {
@@ -103,6 +104,16 @@ class AuthManager @Inject constructor(
             else -> null
         }
         return resolved ?: throw IllegalStateException("Sesión no disponible para obtener tenantId")
+    }
+
+    private suspend fun enforceEmailVerification(user: FirebaseUser) {
+        user.reload().await()
+        if (!user.isEmailVerified) {
+            firebaseAuth.signOut()
+            throw IllegalStateException(
+                "Necesitás verificar tu email antes de ingresar. Revisá tu bandeja y correo no deseado."
+            )
+        }
     }
 
     private fun loadSession(user: FirebaseUser) {

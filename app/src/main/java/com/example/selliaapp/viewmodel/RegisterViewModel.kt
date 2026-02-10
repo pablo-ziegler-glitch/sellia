@@ -2,6 +2,7 @@ package com.example.selliaapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.selliaapp.auth.AuthErrorMapper
 import com.example.selliaapp.auth.AuthManager
 import com.example.selliaapp.repository.AuthOnboardingRepository
 import com.example.selliaapp.repository.TenantDirectoryRepository
@@ -98,23 +99,23 @@ class RegisterViewModel @Inject constructor(
                 )
             }
             result.onSuccess {
-                if (mode == RegisterMode.STORE_OWNER) {
-                    authManager.signOut()
-                    _uiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            successMessage = "Solicitud enviada. Un administrador debe habilitar tu cuenta."
-                        )
-                    }
+                authManager.signOut()
+                val successMessage = if (mode == RegisterMode.STORE_OWNER) {
+                    "Cuenta creada. Verificá tu email para continuar; además un administrador debe habilitar tu tienda."
                 } else {
-                    authManager.refreshSession()
-                    _uiState.update { state -> state.copy(isLoading = false) }
+                    "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        isLoading = false,
+                        successMessage = successMessage
+                    )
                 }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = error.message ?: "No se pudo completar el registro"
+                        errorMessage = AuthErrorMapper.toUserMessage(error, "No se pudo completar el registro")
                     )
                 }
             }
@@ -140,7 +141,7 @@ class RegisterViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = error.message ?: "No se pudo completar el registro"
+                        errorMessage = AuthErrorMapper.toUserMessage(error, "No se pudo completar el registro")
                     )
                 }
             }
