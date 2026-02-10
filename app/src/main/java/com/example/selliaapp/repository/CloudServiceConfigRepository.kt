@@ -4,6 +4,7 @@ import com.example.selliaapp.data.dao.CloudServiceConfigDao
 import com.example.selliaapp.data.local.entity.CloudServiceConfigEntity
 import com.example.selliaapp.di.AppModule.IoDispatcher
 import com.example.selliaapp.domain.config.CloudServiceConfig
+import com.example.selliaapp.domain.security.SecurityHashing
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -28,7 +29,7 @@ class CloudServiceConfigRepository @Inject constructor(
 
 private fun CloudServiceConfigEntity.toDomain(): CloudServiceConfig =
     CloudServiceConfig(
-        ownerEmail = ownerEmail,
+        ownerEmail = SecurityHashing.normalizeEmail(ownerEmail),
         cloudEnabled = cloudEnabled,
         firestoreBackupEnabled = firestoreBackupEnabled,
         authSyncEnabled = authSyncEnabled,
@@ -39,7 +40,7 @@ private fun CloudServiceConfigEntity.toDomain(): CloudServiceConfig =
 
 private fun CloudServiceConfig.toEntity(): CloudServiceConfigEntity =
     CloudServiceConfigEntity(
-        ownerEmail = ownerEmail,
+        ownerEmail = SecurityHashing.normalizeEmail(ownerEmail),
         cloudEnabled = cloudEnabled,
         firestoreBackupEnabled = firestoreBackupEnabled,
         authSyncEnabled = authSyncEnabled,
