@@ -5,6 +5,7 @@ import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.repository.AuthOnboardingRepository
 import com.example.selliaapp.repository.OnboardingResult
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -33,6 +34,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         runCatching {
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
+            sendEmailVerification(user)
             val tenantId = UUID.randomUUID().toString()
             val batch = firestore.batch()
             val createdAt = FieldValue.serverTimestamp()
@@ -137,6 +139,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             }
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
+            sendEmailVerification(user)
             val createdAt = FieldValue.serverTimestamp()
             val userRef = firestore.collection("users").document(user.uid)
             userRef.set(
@@ -255,6 +258,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 .await()
             OnboardingResult(uid = user.uid, tenantId = tenantId)
         }
+    }
+
+    private suspend fun sendEmailVerification(user: FirebaseUser) {
+        user.sendEmailVerification().await()
     }
 
     private fun defaultEnabledModules(): Map<String, Boolean> = mapOf(
