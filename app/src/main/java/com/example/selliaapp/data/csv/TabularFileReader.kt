@@ -22,6 +22,11 @@ object TabularFileReader {
     private val SPREADSHEET_EXTENSIONS = setOf("xls", "xlsx", "xlsm", "gsheet")
     private val CSV_MIME_HINTS = listOf("text/csv", "text/comma-separated-values", "application/csv")
     private val SHEET_MIME_HINTS = listOf("spreadsheet", "excel")
+    private val SPREADSHEET_MIME_TO_EXTENSION = mapOf(
+        "application/vnd.ms-excel" to "xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" to "xlsx",
+        "application/vnd.ms-excel.sheet.macroenabled.12" to "xlsm"
+    )
 
     fun readAll(resolver: ContentResolver, uri: Uri): List<List<String>> {
         val mime = resolver.getType(uri)?.lowercase(Locale.ROOT).orEmpty()
@@ -34,16 +39,16 @@ object TabularFileReader {
                 readSpreadsheet(stream)
             }
             else -> {
-                val csvAttempt = runCatching {
-                    resolver.openRequired(uri).use { CsvUtils.readAll(it) }
+                val sheetAttempt = runCatching {
+                    resolver.openRequired(uri).use { stream -> readSpreadsheet(stream) }
                 }.getOrNull()
-                if (!csvAttempt.isNullOrEmpty()) {
-                    csvAttempt
+                if (!sheetAttempt.isNullOrEmpty()) {
+                    sheetAttempt
                 } else {
-                    val sheetAttempt = runCatching {
-                        resolver.openRequired(uri).use { stream -> readSpreadsheet(stream) }
+                    val csvAttempt = runCatching {
+                        resolver.openRequired(uri).use { CsvUtils.readAll(it) }
                     }.getOrNull()
-                    sheetAttempt ?: csvAttempt ?: emptyList()
+                    csvAttempt ?: sheetAttempt ?: emptyList()
                 }
             }
         }
@@ -70,6 +75,9 @@ object TabularFileReader {
     }
 
     private fun guessExtension(mime: String, displayName: String?): String? {
+        val normalizedMime = mime.lowercase(Locale.ROOT)
+        SPREADSHEET_MIME_TO_EXTENSION[normalizedMime]?.let { return it }
+
         val fromMime = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
         if (!fromMime.isNullOrBlank()) return fromMime.lowercase(Locale.ROOT)
         val fromName = displayName
@@ -130,4 +138,3 @@ object TabularFileReader {
         }
     }
 }
-
