@@ -44,22 +44,21 @@ class PriceSummaryViewModel @Inject constructor(
         val productsWithStock = products.count { it.quantity > 0 }
         val rows = listOf(
             buildRow("Precio final", products) { product ->
-                product.price ?: product.listPrice ?: product.cashPrice ?: product.transferPrice
+                product.listPrice ?: product.cashPrice ?: product.transferPrice
             },
             buildRow("Precio lista", products) { product ->
-                product.listPrice ?: product.price
+                product.listPrice
             },
             buildRow("Precio efectivo", products) { product ->
-                product.cashPrice ?: product.listPrice ?: product.price
+                product.cashPrice ?: product.listPrice
             },
             buildRow("Precio transferencia", products) { product ->
-                product.transferPrice ?: product.listPrice ?: product.price
+                product.transferPrice ?: product.listPrice
             },
             buildRow("Precio transferencia neto", products) { product ->
                 product.transferNetPrice
                     ?: product.transferPrice
                     ?: product.listPrice
-                    ?: product.price
             },
             buildRow("Precio ML", products) { product ->
                 product.mlPrice

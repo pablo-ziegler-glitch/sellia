@@ -147,8 +147,11 @@ type PublicProductPayload = {
   barcode?: string | null;
   name: string;
   description?: string | null;
+  brand?: string | null;
+  parentCategory?: string | null;
   category?: string | null;
-  price?: number | null;
+  color?: string | null;
+  sizes: string[];
   listPrice?: number | null;
   cashPrice?: number | null;
   transferPrice?: number | null;
@@ -176,8 +179,13 @@ const buildPublicProductPayload = (
     barcode: data.barcode ?? null,
     name: data.name ?? "Producto",
     description: data.description ?? null,
+    brand: data.brand ?? null,
+    parentCategory: data.parentCategory ?? null,
     category: data.category ?? null,
-    price: typeof data.price === "number" ? data.price : null,
+    color: data.color ?? null,
+    sizes: Array.isArray(data.sizes)
+      ? data.sizes.filter((size) => typeof size === "string")
+      : [],
     listPrice: typeof data.listPrice === "number" ? data.listPrice : null,
     cashPrice: typeof data.cashPrice === "number" ? data.cashPrice : null,
     transferPrice:

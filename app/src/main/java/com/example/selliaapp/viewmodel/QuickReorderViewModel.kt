@@ -73,7 +73,7 @@ class QuickReorderViewModel @Inject constructor(
                 if (missing > 0) missing.toString() else ""
             } ?: ""
             val price = product?.let { p ->
-                val resolved = p.listPrice ?: p.price
+                val resolved = p.listPrice
                 resolved?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: ""
             } ?: ""
             _state.update {

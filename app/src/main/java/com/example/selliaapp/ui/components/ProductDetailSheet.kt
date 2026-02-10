@@ -146,9 +146,9 @@ fun ProductDetailSheet(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                PriceRow("Lista", product.listPrice ?: product.price, currency)
-                PriceRow("Efectivo", product.cashPrice ?: product.listPrice ?: product.price, currency)
-                PriceRow("Transferencia", product.transferPrice ?: product.listPrice ?: product.price, currency)
+                PriceRow("Lista", product.listPrice, currency)
+                PriceRow("Efectivo", product.cashPrice ?: product.listPrice, currency)
+                PriceRow("Transferencia", product.transferPrice ?: product.listPrice, currency)
                 PriceRow("ML", product.mlPrice, currency)
                 PriceRow("ML 3C", product.ml3cPrice, currency)
                 PriceRow("ML 6C", product.ml6cPrice, currency)

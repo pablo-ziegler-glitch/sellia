@@ -34,7 +34,6 @@ class ProductCsvImporter(
         val barcode: String?,
         val name: String,
         val quantity: Int,
-        val price: Double?,
         val purchasePrice: Double?,
         val listPrice: Double?,
         val cashPrice: Double?,
@@ -46,9 +45,13 @@ class ProductCsvImporter(
         val description: String?,
         val imageUrl: String?,
         val imageUrls: List<String>,
+        val parentCategory: String?,
         val category: String?,
         val providerName: String?,
         val providerSku: String?,
+        val brand: String?,
+        val color: String?,
+        val sizes: List<String>,
         val minStock: Int?,
         val updatedAt: LocalDate?
     )
@@ -75,7 +78,6 @@ class ProductCsvImporter(
                     barcode = r.barcode,
                     name = r.name,
                     purchasePrice = r.purchasePrice,
-                    price = r.price,
                     listPrice = r.listPrice,
                     cashPrice = r.cashPrice,
                     transferPrice = r.transferPrice,
@@ -88,9 +90,13 @@ class ProductCsvImporter(
                     description = r.description,
                     imageUrl = r.imageUrl,
                     imageUrls = r.imageUrls,
+                    parentCategory = r.parentCategory,
                     category = r.category,
                     providerName = r.providerName,
                     providerSku = r.providerSku,
+                    brand = r.brand,
+                    color = r.color,
+                    sizes = r.sizes,
                     minStock = r.minStock,
                     updatedAt = r.updatedAt ?: LocalDate.now()
                 )
@@ -133,7 +139,6 @@ class ProductCsvImporter(
                     barcode = r.barcode,
                     name = r.name,
                     purchasePrice = r.purchasePrice,
-                    price = r.price,
                             listPrice = r.listPrice,
                             cashPrice = r.cashPrice,
                             transferPrice = r.transferPrice,
@@ -146,9 +151,13 @@ class ProductCsvImporter(
                             description = r.description,
                             imageUrl = r.imageUrl,
                             imageUrls = r.imageUrls,
+                            parentCategory = r.parentCategory,
                             category = r.category,
                             providerName = r.providerName,
                             providerSku = r.providerSku,
+                            brand = r.brand,
+                            color = r.color,
+                            sizes = r.sizes,
                             minStock = r.minStock,
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
@@ -159,7 +168,6 @@ class ProductCsvImporter(
                         // Merge simple
                         val merged = existing.copy(
                             name        = r.name.ifBlank { existing.name },
-                            price       = r.price ?: existing.price,
                             listPrice   = r.listPrice ?: existing.listPrice,
                             cashPrice   = r.cashPrice ?: existing.cashPrice,
                             transferPrice = r.transferPrice ?: existing.transferPrice,
@@ -173,9 +181,13 @@ class ProductCsvImporter(
                             description = r.description ?: existing.description,
                             imageUrl    = r.imageUrl ?: existing.imageUrl,
                             imageUrls   = if (r.imageUrls.isEmpty()) existing.imageUrls else r.imageUrls,
+                            parentCategory = r.parentCategory ?: existing.parentCategory,
                             category    = r.category ?: existing.category,
                             providerName = r.providerName ?: existing.providerName,
                             providerSku  = r.providerSku ?: existing.providerSku,
+                            brand       = r.brand ?: existing.brand,
+                            color       = r.color ?: existing.color,
+                            sizes       = if (r.sizes.isEmpty()) existing.sizes else r.sizes,
                             minStock    = r.minStock ?: existing.minStock,
                             updatedAt   = r.updatedAt ?: existing.updatedAt
                         )
@@ -191,8 +203,7 @@ class ProductCsvImporter(
                         barcode = r.barcode,
                         name = r.name,
                         purchasePrice = r.purchasePrice,
-                        price = r.price,
-                        listPrice = r.listPrice,
+                            listPrice = r.listPrice,
                         cashPrice = r.cashPrice,
                         transferPrice = r.transferPrice,
                         transferNetPrice = r.transferNetPrice,
@@ -204,9 +215,13 @@ class ProductCsvImporter(
                     description = r.description,
                     imageUrl = r.imageUrl,
                     imageUrls = r.imageUrls,
+                    parentCategory = r.parentCategory,
                     category = r.category,
                     providerName = r.providerName,
                     providerSku = r.providerSku,
+                    brand = r.brand,
+                    color = r.color,
+                    sizes = r.sizes,
                         minStock = r.minStock,
                         updatedAt = r.updatedAt ?: LocalDate.now()
                     )
@@ -267,7 +282,6 @@ class ProductCsvImporter(
                 val code = idx.get(row, "code", aliases = listOf("codigo_interno", "sku"))?.ifBlank { null }
                 val barcode = idx.get(row, "barcode", aliases = listOf("codigo", "código", "ean", "upc", "sku"))?.ifBlank { null }
 
-                val price = parseDecimal(idx.get(row, "price", aliases = listOf("precio", "amount")))
                 val purchasePrice = idx.get(
                     row,
                     "purchase_price",
@@ -321,7 +335,12 @@ class ProductCsvImporter(
                     ?.distinct()
                     ?: emptyList()
                 val combinedImages = (listOfNotNull(imageUrl) + imageUrls).distinct()
-                val category = idx.get(row, "category", aliases = listOf("categoria"))?.ifBlank { null }
+                val parentCategory = idx.get(
+                    row,
+                    "parent_category",
+                    aliases = listOf("categoria_padre", "rubro", "parentCategory")
+                )?.ifBlank { null }
+                val category = idx.get(row, "category", aliases = listOf("categoria", "subcategoria", "subcategory"))?.ifBlank { null }
                 val providerName = idx.get(row, "provider", aliases = listOf("proveedor", "provider_name", "supplier"))
                     ?.ifBlank { null }
                 val providerSku = idx.get(
@@ -329,6 +348,14 @@ class ProductCsvImporter(
                     "provider_sku",
                     aliases = listOf("sku_proveedor", "skuProveedor", "supplier_sku")
                 )?.ifBlank { null }
+                val brand = idx.get(row, "brand", aliases = listOf("marca"))?.ifBlank { null }
+                val color = idx.get(row, "color", aliases = listOf("colour"))?.ifBlank { null }
+                val sizes = idx.get(row, "sizes", aliases = listOf("talles", "talle", "size_list"))
+                    ?.split("|")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotBlank() }
+                    ?.distinct()
+                    ?: emptyList()
                 val minStock = parseIntValue(
                     idx.get(row, "min_stock", aliases = listOf("minimo", "minstock", "stockmin"))
                 )?.let { if (it < 0) 0 else it }
@@ -341,7 +368,6 @@ class ProductCsvImporter(
                     barcode = barcode,
                     name = name,
                     quantity = if (quantity < 0) 0 else quantity,
-                    price = price,
                     purchasePrice = purchasePrice,
                     listPrice = listPrice,
                     cashPrice = cashPrice,
@@ -353,9 +379,13 @@ class ProductCsvImporter(
                     description = description,
                     imageUrl = imageUrl ?: combinedImages.firstOrNull(),
                     imageUrls = combinedImages,
+                    parentCategory = parentCategory,
                     category = category,
                     providerName = providerName,
                     providerSku = providerSku,
+                    brand = brand,
+                    color = color,
+                    sizes = sizes,
                     minStock = minStock,
                     updatedAt = updatedAt
                 )

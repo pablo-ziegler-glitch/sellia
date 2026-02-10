@@ -22,7 +22,6 @@ data class Product(
     // E4:
     val purchasePrice: Double? = null,
     // Legacy:
-    val price: Double? = null,
     val listPrice: Double? = null,
     val cashPrice: Double? = null,
     val transferPrice: Double? = null,
@@ -36,9 +35,13 @@ data class Product(
     val imageUrl: String? = null,
     val imageUrls: List<String> = emptyList(),
     // E1:
+    val parentCategory: String? = null,
     val category: String? = null,
     val providerName: String? = null,
     val providerSku: String? = null,
+    val brand: String? = null,
+    val color: String? = null,
+    val sizes: List<String> = emptyList(),
     val minStock: Int? = null,
     val updatedAt: LocalDate? = null
 )

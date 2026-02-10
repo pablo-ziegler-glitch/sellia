@@ -30,7 +30,6 @@ object ProductFirestoreMappers {
             "barcode"      to product.barcode,
             "name"         to product.name,
             "purchasePrice" to product.purchasePrice,
-            "price"        to product.price,
             "listPrice"    to product.listPrice,
             "cashPrice"    to product.cashPrice,
             "transferPrice" to product.transferPrice,
@@ -47,7 +46,11 @@ object ProductFirestoreMappers {
             "providerId"   to product.providerId,
             "providerName" to product.providerName,
             "providerSku"  to product.providerSku,
+            "brand"        to product.brand,
+            "parentCategory" to product.parentCategory,
             "category"     to product.category,
+            "color"        to product.color,
+            "sizes"        to product.sizes,
             "minStock"     to product.minStock,
             "updatedAt"    to product.updatedAt.format(ISO_DATE)
         )
@@ -65,7 +68,6 @@ object ProductFirestoreMappers {
             barcode      = data["barcode"] as? String,
             name         = (data["name"] as? String).orEmpty(),
             purchasePrice = (data["purchasePrice"] as? Number)?.toDouble(),
-            price        = (data["price"] as? Number)?.toDouble(),
             listPrice    = (data["listPrice"] as? Number)?.toDouble(),
             cashPrice    = (data["cashPrice"] as? Number)?.toDouble(),
             transferPrice = (data["transferPrice"] as? Number)?.toDouble(),
@@ -82,7 +84,11 @@ object ProductFirestoreMappers {
             providerId   = (data["providerId"] as? Number)?.toInt(),
             providerName = data["providerName"] as? String,
             providerSku  = data["providerSku"] as? String,
+            brand        = data["brand"] as? String,
+            parentCategory = data["parentCategory"] as? String,
             category     = data["category"] as? String,
+            color        = data["color"] as? String,
+            sizes        = (data["sizes"] as? List<*>)?.mapNotNull { it as? String }.orEmpty(),
             minStock     = (data["minStock"] as? Number)?.toInt(),
             updatedAt    = updatedAt
         )

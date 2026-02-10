@@ -172,9 +172,9 @@ fun ManageProductsScreen(
                         headlineContent = { Text(p.name) },
                         supportingContent = {
                             Text(
-                                "Lista: ${p.listPrice ?: p.price ?: 0.0} · " +
-                                    "Efectivo: ${p.cashPrice ?: p.listPrice ?: p.price ?: 0.0} · " +
-                                    "Transferencia: ${p.transferPrice ?: p.listPrice ?: p.price ?: 0.0} · " +
+                                "Lista: ${p.listPrice ?: 0.0} · " +
+                                    "Efectivo: ${p.cashPrice ?: p.listPrice ?: 0.0} · " +
+                                    "Transferencia: ${p.transferPrice ?: p.listPrice ?: 0.0} · " +
                                     "Stock: ${p.quantity} · Código: ${p.barcode ?: "—"}"
                             )
                         },
@@ -220,7 +220,7 @@ fun ManageProductsScreen(
         ProductEditorDialog(
             initial = editing, // ahora asumimos ProductEditorDialog<ProductEntity?>
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, purchasePrice, price, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls ->
+            onSave = { name, barcode, purchasePrice, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls ->
                 scope.launch {
                     val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
                     val base: ProductEntity = editing ?: ProductEntity(
@@ -229,7 +229,6 @@ fun ManageProductsScreen(
                         barcode = barcode,
                         name = name,
                         purchasePrice = purchasePrice,
-                        price = price,
                         listPrice = listPrice,
                         cashPrice = cashPrice,
                         transferPrice = transferPrice,
@@ -249,7 +248,6 @@ fun ManageProductsScreen(
                         name = name,
                         barcode = barcode,
                         purchasePrice = purchasePrice,
-                        price = price,
                         listPrice = listPrice,
                         cashPrice = cashPrice,
                         transferPrice = transferPrice,

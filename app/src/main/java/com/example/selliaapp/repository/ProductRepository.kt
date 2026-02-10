@@ -135,7 +135,6 @@ class ProductRepository(
             incoming.listPrice,
             incoming.cashPrice,
             incoming.transferPrice,
-            incoming.price
         ).any { it != null }
         val shouldAuto = when {
             force -> true
@@ -166,7 +165,6 @@ class ProductRepository(
             mlPrice = result.mlPrice,
             ml3cPrice = result.ml3cPrice,
             ml6cPrice = result.ml6cPrice,
-            price = incoming.price ?: result.listPrice,
             autoPricing = true
         )
     }
@@ -192,7 +190,6 @@ class ProductRepository(
                     barcode = r.barcode,
                     name = r.name,
                     purchasePrice = r.purchasePrice,
-                    price = r.price,
                     listPrice = r.listPrice,
                     cashPrice = r.cashPrice,
                     transferPrice = r.transferPrice,
@@ -209,7 +206,11 @@ class ProductRepository(
                     providerId = existing?.providerId,
                     providerName = existing?.providerName,
                     providerSku = existing?.providerSku,
+                    brand = r.brand ?: existing?.brand,
+                    parentCategory = r.parentCategory ?: existing?.parentCategory,
                     category = r.category ?: existing?.category,
+                    color = r.color ?: existing?.color,
+                    sizes = if (r.sizes.isNotEmpty()) r.sizes else existing?.sizes.orEmpty(),
                     minStock = r.minStock?.let { max(0, it) } ?: existing?.minStock,
                     updatedAt = updated
                 )
@@ -360,7 +361,6 @@ class ProductRepository(
                             barcode = r.barcode,
                             name = r.name,
                             purchasePrice = r.purchasePrice,
-                            price = r.price, // legacy
                             listPrice = r.listPrice,
                             cashPrice = r.cashPrice,
                             transferPrice = r.transferPrice,
@@ -377,7 +377,11 @@ class ProductRepository(
                             providerId = null,                      // si en el futuro sumamos CSV con proveedor
                             providerName = r.providerName,
                             providerSku = r.providerSku,
+                            brand = r.brand,
+                            parentCategory = r.parentCategory,
                             category = r.category,
+                            color = r.color,
+                            sizes = r.sizes,
                             minStock = r.minStock?.let { max(0, it) },
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
@@ -428,7 +432,6 @@ class ProductRepository(
                             barcode     = r.barcode ?: existing.barcode,
                             name        = r.name.ifBlank { existing.name },
                             purchasePrice = r.purchasePrice ?: existing.purchasePrice,
-                            price       = r.price ?: existing.price,
                             listPrice   = r.listPrice ?: existing.listPrice,
                             cashPrice   = r.cashPrice ?: existing.cashPrice,
                             transferPrice = r.transferPrice ?: existing.transferPrice,
@@ -441,9 +444,13 @@ class ProductRepository(
                             description = r.description ?: existing.description,
                             imageUrl    = r.imageUrl ?: existing.imageUrl,
                             imageUrls   = if (r.imageUrls.isEmpty()) existing.imageUrls else r.imageUrls,
+                            parentCategory = r.parentCategory ?: existing.parentCategory,
                             category    = r.category ?: existing.category,
                             providerName = r.providerName ?: existing.providerName,
                             providerSku  = r.providerSku ?: existing.providerSku,
+                            brand       = r.brand ?: existing.brand,
+                            color       = r.color ?: existing.color,
+                            sizes       = if (r.sizes.isEmpty()) existing.sizes else r.sizes,
                             minStock    = r.minStock ?: existing.minStock,
                             updatedAt   = r.updatedAt ?: LocalDate.now()
                         )

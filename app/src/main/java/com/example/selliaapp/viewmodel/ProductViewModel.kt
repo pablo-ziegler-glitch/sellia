@@ -121,7 +121,6 @@ class ProductViewModel @Inject constructor(
         name: String,
         barcode: String?,
         purchasePrice: Double?,
-        legacyPrice: Double?,
         listPrice: Double?,
         cashPrice: Double?,
         transferPrice: Double?,
@@ -133,9 +132,13 @@ class ProductViewModel @Inject constructor(
         code: String?,
         description: String?,
         imageUrls: List<String>,
+        parentCategoryName: String?,
         categoryName: String?,
         providerName: String?,
         providerSku: String?,
+        brand: String?,
+        color: String?,
+        sizes: List<String>,
         minStock: Int?,
         pendingImageUris: List<Uri> = emptyList(),
         onDone: (Result<Int>) -> Unit = {}
@@ -151,7 +154,6 @@ class ProductViewModel @Inject constructor(
                 // E4 (nuevos):
                 purchasePrice = purchasePrice,
                 // Legacy:
-                price = legacyPrice,
                 listPrice = listPrice,
                 cashPrice = cashPrice,
                 transferPrice = transferPrice,
@@ -167,9 +169,13 @@ class ProductViewModel @Inject constructor(
                 imageUrl = normalizedImages.firstOrNull(),
                 imageUrls = normalizedImages,
                 // E1:
+                parentCategory = parentCategoryName,
                 category = categoryName,
                 providerName = providerName,
                 providerSku = providerSku,
+                brand = brand,
+                color = color,
+                sizes = sizes,
                 minStock = minStock,
                 // timestamps si los tenés, dejá null o setéalos en DAO/DB trigger
                 updatedAt = LocalDate.now()
@@ -210,7 +216,6 @@ class ProductViewModel @Inject constructor(
         name: String,
         barcode: String?,
         purchasePrice: Double?,
-        legacyPrice: Double?,
         listPrice: Double?,
         cashPrice: Double?,
         transferPrice: Double?,
@@ -222,9 +227,13 @@ class ProductViewModel @Inject constructor(
         code: String?,
         description: String?,
         imageUrls: List<String>,
+        parentCategoryName: String?,
         categoryName: String?,
         providerName: String?,
         providerSku: String?,
+        brand: String?,
+        color: String?,
+        sizes: List<String>,
         minStock: Int?,
         onDone: (Result<Unit>) -> Unit = {}
     ) {
@@ -236,7 +245,6 @@ class ProductViewModel @Inject constructor(
                 barcode = barcode,
                 name = name,
                 purchasePrice = purchasePrice,
-                price = legacyPrice,
                 listPrice = listPrice,
                 cashPrice = cashPrice,
                 transferPrice = transferPrice,
@@ -249,9 +257,13 @@ class ProductViewModel @Inject constructor(
                 description = description,
                 imageUrl = normalizedImages.firstOrNull(),
                 imageUrls = normalizedImages,
+                parentCategory = parentCategoryName,
                 category = categoryName,
                 providerName = providerName,
                 providerSku = providerSku,
+                brand = brand,
+                color = color,
+                sizes = sizes,
                 minStock = minStock,
                 updatedAt = LocalDate.now()
             )

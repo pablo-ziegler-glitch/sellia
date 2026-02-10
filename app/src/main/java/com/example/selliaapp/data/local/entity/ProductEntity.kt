@@ -36,7 +36,6 @@ data class ProductEntity(
     val purchasePrice: Double? = null,
 
     // Legacy: mantenemos por compatibilidad con flows antiguos
-    val price: Double? = null,
     val listPrice: Double? = null,
     val cashPrice: Double? = null,
     val transferPrice: Double? = null,
@@ -60,9 +59,13 @@ data class ProductEntity(
     // 🔧 Ahora con valor por defecto (evita TODO() en creaciones)
     val providerName: String? = null,
     val providerSku: String? = null,
+    val brand: String? = null,
 
-    // Legacy de UI (puede usarse para mostrados rápidos)
+    // Legacy de UI (se mantiene compatibilidad: category = subcategoría)
+    val parentCategory: String? = null,
     val category: String? = null,
+    val color: String? = null,
+    val sizes: List<String> = emptyList(),
     val minStock: Int? = null,
 
     // Auditoría simple

@@ -85,7 +85,7 @@ class SellViewModel @Inject constructor(
     fun addToCart(product: ProductEntity, qty: Int = 1) {
         _state.update { ui ->
             val max = (product.quantity ?: 0).coerceAtLeast(0)
-            val listPrice = product.listPrice ?: product.price ?: 0.0
+            val listPrice = product.listPrice ?: 0.0
             val cashPrice = product.cashPrice ?: listPrice
             val transferPrice = product.transferPrice ?: listPrice
             val unit = resolveUnitPrice(ui.paymentMethod, listPrice, cashPrice, transferPrice)

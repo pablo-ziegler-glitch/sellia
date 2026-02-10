@@ -185,8 +185,30 @@ private fun ProductCard(
                 style = MaterialTheme.typography.titleLarge
             )
 
-            PriceRow(label = "Precio lista", value = formatPrice(product.listPrice, currency))
-            PriceRow(label = "Precio efectivo", value = formatPrice(product.cashPrice, currency))
+            PriceRow(label = "PRECIO LISTA", value = formatPrice(product.listPrice, currency))
+            PriceRow(label = "PRECIO EFECTIVO", value = formatPrice(product.cashPrice, currency))
+            PriceRow(label = "PRECIO TRANSFERENCIA", value = formatPrice(product.transferPrice, currency))
+
+            if (!product.code.isNullOrBlank()) {
+                Text(text = "Código: ${product.code}", style = MaterialTheme.typography.bodyMedium)
+            }
+            if (!product.brand.isNullOrBlank()) {
+                Text(text = "Marca: ${product.brand}", style = MaterialTheme.typography.bodyMedium)
+            }
+            if (!product.parentCategory.isNullOrBlank()) {
+                Text(text = "Rubro: ${product.parentCategory}", style = MaterialTheme.typography.bodyMedium)
+            }
+            if (!product.category.isNullOrBlank()) {
+                Text(text = "Subcategoría: ${product.category}", style = MaterialTheme.typography.bodyMedium)
+            }
+            if (product.parentCategory.equals("Indumentaria", ignoreCase = true)) {
+                if (!product.color.isNullOrBlank()) {
+                    Text(text = "Color: ${product.color}", style = MaterialTheme.typography.bodyMedium)
+                }
+                if (product.sizes.isNotEmpty()) {
+                    Text(text = "Talle/s: ${product.sizes.joinToString()}", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
 
             if (!product.description.isNullOrBlank()) {
                 Text(

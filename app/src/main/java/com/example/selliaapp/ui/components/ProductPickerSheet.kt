@@ -70,9 +70,9 @@ fun ProductPickerSheet(
                             headlineContent = { Text(p.name) },
                             supportingContent = {
                                 Text(
-                                    "Lista: ${p.listPrice ?: p.price ?: "-"} · " +
-                                        "Efectivo: ${p.cashPrice ?: p.listPrice ?: p.price ?: "-"} · " +
-                                        "Transferencia: ${p.transferPrice ?: p.listPrice ?: p.price ?: "-"} · " +
+                                    "Lista: ${p.listPrice ?: "-"} · " +
+                                        "Efectivo: ${p.cashPrice ?: p.listPrice ?: "-"} · " +
+                                        "Transferencia: ${p.transferPrice ?: p.listPrice ?: "-"} · " +
                                         "Stock: ${p.quantity} · ${p.barcode}"
                                 )
                             },
