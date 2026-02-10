@@ -231,7 +231,8 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     implementation("org.apache.poi:poi:5.2.5")
-    implementation("org.apache.poi:poi-ooxml-lite:5.2.5")
+    // Necesario para soportar archivos .xlsx/.xlsm en runtime (WorkbookFactory + OOXML providers)
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
 
     // --- Tests (unit) ---
     testImplementation("junit:junit:4.13.2")
