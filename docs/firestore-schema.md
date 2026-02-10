@@ -36,3 +36,11 @@ Este esquema define el modelo de **órdenes** y **pagos** para el flujo de check
 - **Backend:** escritura de `orders` y `payments`, y lectura de `payments`.
 
 Esto evita que el cliente pueda alterar el estado del pago y reduce riesgos de fraude.
+
+
+## 4) Clientes finales (multi-tienda)
+
+Ver propuesta completa en `docs/customers-multitenant.md`.
+
+- **Implementado ahora (operacional):** persistencia accionable de clientes en `tenants/{tenantId}/customers/{customerId}` (alta/edición/baja con fallback outbox).
+- **Siguiente paso recomendado:** sumar `customer_profiles/{customerId}` para identidad global compartida entre N tiendas.

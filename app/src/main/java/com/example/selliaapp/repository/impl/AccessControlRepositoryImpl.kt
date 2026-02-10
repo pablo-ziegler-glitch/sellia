@@ -32,6 +32,10 @@ class AccessControlRepositoryImpl @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher
 ) : AccessControlRepository {
 
+    private companion object {
+        const val FIXED_SUPER_ADMIN_EMAIL = "pabloz18ezeiza@gmail.com"
+    }
+
     override fun observeAccessState(): Flow<UserAccessState> = callbackFlow {
         val scope = CoroutineScope(SupervisorJob() + io)
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
@@ -53,9 +57,11 @@ class AccessControlRepositoryImpl @Inject constructor(
         resolveAccess(auth.currentUser?.email)
 
     private suspend fun resolveAccess(email: String?): UserAccessState = withContext(io) {
+        val normalizedEmail = email?.trim()?.lowercase()
         val adminHash = securityConfigRepository.getAdminEmailHash()
-        val isConfiguredAdmin = !email.isNullOrBlank() &&
-            SecurityHashing.hashEmail(email) == adminHash
+        val isFixedSuperAdmin = normalizedEmail == FIXED_SUPER_ADMIN_EMAIL
+        val isConfiguredAdmin = !normalizedEmail.isNullOrBlank() &&
+            SecurityHashing.hashEmail(normalizedEmail) == adminHash
         val user = when {
             !email.isNullOrBlank() -> userDao.getByEmail(email)
             else -> userDao.getFirst()
@@ -63,6 +69,7 @@ class AccessControlRepositoryImpl @Inject constructor(
         val firestoreRole = resolveRoleFromCloud()
         val totalUsers = userDao.countUsers()
         val role = when {
+            isFixedSuperAdmin -> AppRole.ADMIN
             isConfiguredAdmin -> AppRole.ADMIN
             user != null && user.isActive -> AppRole.fromRaw(user.role)
             firestoreRole != null -> firestoreRole

@@ -2,12 +2,20 @@ package com.example.selliaapp.repository
 
 import android.content.Context
 import android.net.Uri
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.csv.CustomerCsvImporter
 import com.example.selliaapp.data.dao.CustomerDao
+import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.CustomerEntity
+import com.example.selliaapp.data.local.entity.SyncEntityType
+import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.model.ImportResult
+import com.example.selliaapp.data.remote.CustomerFirestoreMappers
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -20,16 +28,39 @@ import javax.inject.Singleton
  */
 @Singleton
 class CustomerRepository @Inject constructor(
-    private val customerDao: CustomerDao
+    private val customerDao: CustomerDao,
+    private val syncOutboxDao: SyncOutboxDao,
+    private val firestore: FirebaseFirestore,
+    private val tenantProvider: TenantProvider
 ) {
     fun observeAll(): Flow<List<CustomerEntity>> = customerDao.observeAll()
 
     suspend fun getAllOnce(): List<CustomerEntity> = customerDao.getAllOnce()
 
     suspend fun upsert(c: CustomerEntity): Int {
-        // Si es alta nueva (id=0), el createdAt ya viene con LocalDateTime.now() por default.
-        // Si fuese un update, respetamos el createdAt existente.
-        return customerDao.upsert(c)
+        val localId = customerDao.upsert(c)
+        if (localId <= 0) return localId
+
+        val persisted = customerDao.getById(localId) ?: return localId
+        val tenantId = runCatching { tenantProvider.requireTenantId() }.getOrNull()
+        if (tenantId.isNullOrBlank()) {
+            enqueueCustomerSync(localId.toLong())
+            return localId
+        }
+
+        val docRef = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("customers")
+            .document(localId.toString())
+        val payload = CustomerFirestoreMappers.toMap(persisted, tenantId)
+
+        runCatching {
+            docRef.set(payload, SetOptions.merge()).await()
+        }.onFailure {
+            enqueueCustomerSync(localId.toLong())
+        }
+
+        return localId
     }
 
     /** Búsqueda por nombre/email/teléfono/apodo. */
@@ -65,7 +96,7 @@ class CustomerRepository @Inject constructor(
             try {
                 val existing = customerDao.getByName(name)
                 if (existing == null) {
-                    customerDao.insert(
+                    val id = upsert(
                         CustomerEntity(
                             name = name,
                             phone = row.phone,
@@ -78,7 +109,7 @@ class CustomerRepository @Inject constructor(
                             createdAt = LocalDateTime.now()
                         )
                     )
-                    inserted++
+                    if (id > 0) inserted++
                 } else {
                     val merged = existing.copy(
                         phone = row.phone ?: existing.phone,
@@ -89,8 +120,8 @@ class CustomerRepository @Inject constructor(
                         paymentTerm = row.paymentTerm ?: existing.paymentTerm,
                         paymentMethod = row.paymentMethod ?: existing.paymentMethod
                     )
-                    customerDao.update(merged)
-                    updated++
+                    val id = upsert(merged)
+                    if (id > 0) updated++
                 }
             } catch (t: Throwable) {
                 errors += "L${idx + 2}: ${t.message ?: t::class.java.simpleName}"
@@ -101,7 +132,36 @@ class CustomerRepository @Inject constructor(
     }
 
     /** Borrado de cliente. */
-    suspend fun delete(c: CustomerEntity) = customerDao.delete(c)
+    suspend fun delete(c: CustomerEntity) {
+        val deletedRows = customerDao.delete(c)
+        if (deletedRows <= 0 || c.id <= 0) return
+
+        val tenantId = runCatching { tenantProvider.requireTenantId() }.getOrNull()
+        if (tenantId.isNullOrBlank()) {
+            enqueueCustomerSync(c.id.toLong())
+            return
+        }
+
+        val docRef = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("customers")
+            .document(c.id.toString())
+
+        runCatching {
+            docRef.delete().await()
+        }.onFailure {
+            enqueueCustomerSync(c.id.toLong())
+        }
+    }
+
+    private suspend fun enqueueCustomerSync(customerId: Long) {
+        syncOutboxDao.upsert(
+            SyncOutboxEntity(
+                entityType = SyncEntityType.CUSTOMER.storageKey,
+                entityId = customerId
+            )
+        )
+    }
 
     // ---------- Métricas helpers ----------
     private fun ldtToMillis(ldt: LocalDateTime): Long =

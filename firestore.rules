@@ -2,6 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isFixedSuperAdmin() {
+      return isAuthenticated()
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'pabloz18ezeiza@gmail.com';
+    }
+
     function isAuthenticated() {
       return request.auth != null && request.auth.uid != null;
     }
@@ -20,7 +26,7 @@ service cloud.firestore {
 
     function isTenantUser(tenantId) {
       return isAuthenticated()
-        && userTenantId() == tenantId;
+        && (userTenantId() == tenantId || isFixedSuperAdmin());
     }
 
     function isBackend() {
@@ -28,7 +34,8 @@ service cloud.firestore {
     }
 
     function hasAdminClaim() {
-      return request.auth.token.admin == true
+      return isFixedSuperAdmin()
+        || request.auth.token.admin == true
         || request.auth.token.role == 'admin';
     }
 
@@ -51,11 +58,23 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.tenantId is string
-        && exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId));
+        && (
+          exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
+          || existsAfter(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
+        );
       allow update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.tenantId == resource.data.tenantId;
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /tenants/{tenantId} {
+      allow read: if isTenantUser(tenantId) || isAdminUser();
+      allow create: if isAuthenticated()
+        && request.resource.data.id == tenantId
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isAdminUser()
+        || (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
     }
 
     match /account_requests/{requestId} {

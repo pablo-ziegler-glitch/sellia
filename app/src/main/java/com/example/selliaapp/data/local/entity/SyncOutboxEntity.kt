@@ -24,5 +24,6 @@ data class SyncOutboxEntity(
 
 enum class SyncEntityType(val storageKey: String) {
     PRODUCT("product"),
-    INVOICE("invoice");
+    INVOICE("invoice"),
+    CUSTOMER("customer");
 }
