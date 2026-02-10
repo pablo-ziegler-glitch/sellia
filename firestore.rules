@@ -64,6 +64,28 @@ service cloud.firestore {
         );
     }
 
+    function isSelfTenantUserWrite() {
+      return isAuthenticated()
+        && request.resource.data.tenantId is string
+        && request.resource.data.email is string
+        && request.auth.token.email is string
+        && request.resource.data.email.lower() == request.auth.token.email.lower()
+        && (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          || existsAfter(/databases/$(database)/documents/users/$(request.auth.uid))
+        )
+        && (
+          (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == request.resource.data.tenantId
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == request.resource.data.role
+          )
+          || (
+            getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == request.resource.data.tenantId
+            && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == request.resource.data.role
+          )
+        );
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated()
         && (
@@ -123,7 +145,10 @@ service cloud.firestore {
 
     match /tenant_users/{tenantUserId} {
       allow read: if isAdminForTenant(resource.data.tenantId);
-      allow write: if isAdminForTenant(request.resource.data.tenantId);
+      allow create: if isAdminForTenant(request.resource.data.tenantId)
+        || isSelfTenantUserWrite();
+      allow update: if isAdminForTenant(request.resource.data.tenantId);
+      allow delete: if isAdminForTenant(resource.data.tenantId);
     }
 
     match /tenant_directory/{tenantId} {
