@@ -6,12 +6,14 @@ import androidx.room.withTransaction
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
+import com.example.selliaapp.data.dao.CustomerDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
+import com.example.selliaapp.data.remote.CustomerFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
 import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier real del ZIP está dentro de AppModule
 import com.example.selliaapp.repository.ProductRepository
@@ -31,6 +33,7 @@ class SyncRepositoryImpl @Inject constructor(
     private val productImageDao: ProductImageDao,
     private val invoiceDao: InvoiceDao,
     private val invoiceItemDao: InvoiceItemDao,
+    private val customerDao: CustomerDao,
     private val syncOutboxDao: SyncOutboxDao,
     private val productRepository: ProductRepository,
     private val firestore: FirebaseFirestore,
@@ -51,6 +54,7 @@ class SyncRepositoryImpl @Inject constructor(
         val now = System.currentTimeMillis()
         pushPendingProducts(now)
         pushPendingInvoices(now)
+        pushPendingCustomers(now)
     }
 
     override suspend fun pullRemote() = withContext(io) {
@@ -188,6 +192,50 @@ class SyncRepositoryImpl @Inject constructor(
             syncOutboxDao.markAttempt(
                 SyncEntityType.INVOICE.storageKey,
                 relations.map { it.invoice.id },
+                now,
+                error
+            )
+            throw t
+        }
+    }
+
+    private suspend fun pushPendingCustomers(now: Long) {
+        val pending = syncOutboxDao.getByType(SyncEntityType.CUSTOMER.storageKey)
+        if (pending.isEmpty()) return
+
+        val ids = pending.map { it.entityId.toInt() }
+        val tenantId = tenantProvider.requireTenantId()
+        val customersCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("customers")
+
+        val existingCustomers = ids.mapNotNull { id -> customerDao.getById(id) }
+        val foundIds = existingCustomers.map { it.id.toLong() }.toSet()
+        val deletedIds = pending.map { it.entityId }.filterNot { it in foundIds }
+
+        val batch = firestore.batch()
+        existingCustomers.forEach { customer ->
+            val docRef = customersCollection.document(customer.id.toString())
+            batch.set(docRef, CustomerFirestoreMappers.toMap(customer, tenantId), SetOptions.merge())
+        }
+        deletedIds.forEach { customerId ->
+            val docRef = customersCollection.document(customerId.toString())
+            batch.delete(docRef)
+        }
+
+        if (existingCustomers.isEmpty() && deletedIds.isEmpty()) return
+
+        try {
+            batch.commit().await()
+            syncOutboxDao.deleteByTypeAndIds(
+                SyncEntityType.CUSTOMER.storageKey,
+                pending.map { it.entityId }
+            )
+        } catch (t: Throwable) {
+            val error = extractErrorMessage(t)
+            syncOutboxDao.markAttempt(
+                SyncEntityType.CUSTOMER.storageKey,
+                pending.map { it.entityId },
                 now,
                 error
             )
