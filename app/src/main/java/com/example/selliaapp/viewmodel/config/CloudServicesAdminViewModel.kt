@@ -2,9 +2,9 @@ package com.example.selliaapp.viewmodel.config
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.selliaapp.data.model.User
 import com.example.selliaapp.domain.config.CloudServiceConfig
 import com.example.selliaapp.domain.security.AppRole
+import com.example.selliaapp.domain.security.SecurityHashing
 import com.example.selliaapp.repository.CloudServiceConfigRepository
 import com.example.selliaapp.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,17 +32,32 @@ class CloudServicesAdminViewModel @Inject constructor(
 
     val owners: StateFlow<List<OwnerCloudServiceConfigUi>> =
         combine(userRepository.observeUsers(), configs) { users, configList ->
-            val configByEmail = configList.associateBy { it.ownerEmail }
-            users.filter { AppRole.fromRaw(it.role) == AppRole.OWNER }
-                .sortedBy { it.name.lowercase() }
-                .map { user ->
-                    val config = configByEmail[user.email] ?: CloudServiceConfig.defaultFor(user.email)
-                    OwnerCloudServiceConfigUi(
-                        ownerName = user.name,
-                        ownerEmail = user.email,
-                        config = config
+            val configByEmail = configList.associateBy { SecurityHashing.normalizeEmail(it.ownerEmail) }
+            val ownerUsers = users
+                .asSequence()
+                .filter { AppRole.fromRaw(it.role) == AppRole.OWNER }
+                .map { user -> user.copy(email = SecurityHashing.normalizeEmail(user.email)) }
+                .filter { it.email.isNotBlank() }
+                .plus(
+                    com.example.selliaapp.data.model.User(
+                        name = FIXED_SUPER_ADMIN_NAME,
+                        email = FIXED_SUPER_ADMIN_EMAIL,
+                        role = AppRole.OWNER.raw,
+                        isActive = true
                     )
-                }
+                )
+                .distinctBy { it.email }
+                .sortedBy { it.name.lowercase() }
+                .toList()
+
+            ownerUsers.map { user ->
+                val config = configByEmail[user.email] ?: CloudServiceConfig.defaultFor(user.email)
+                OwnerCloudServiceConfigUi(
+                    ownerName = user.name,
+                    ownerEmail = user.email,
+                    config = config
+                )
+            }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setCloudEnabled(ownerEmail: String, enabled: Boolean) {
@@ -95,7 +110,13 @@ class CloudServicesAdminViewModel @Inject constructor(
     }
 
     private fun findConfig(ownerEmail: String): CloudServiceConfig {
-        return configs.value.firstOrNull { it.ownerEmail == ownerEmail }
-            ?: CloudServiceConfig.defaultFor(ownerEmail)
+        val normalizedEmail = SecurityHashing.normalizeEmail(ownerEmail)
+        return configs.value.firstOrNull { SecurityHashing.normalizeEmail(it.ownerEmail) == normalizedEmail }
+            ?: CloudServiceConfig.defaultFor(normalizedEmail)
+    }
+
+    private companion object {
+        const val FIXED_SUPER_ADMIN_EMAIL = "pabloz18ezeiza@gmail.com"
+        const val FIXED_SUPER_ADMIN_NAME = "Pablo (Super Admin)"
     }
 }

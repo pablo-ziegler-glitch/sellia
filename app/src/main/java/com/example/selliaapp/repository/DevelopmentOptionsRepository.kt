@@ -4,6 +4,7 @@ import com.example.selliaapp.data.dao.DevelopmentOptionsDao
 import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
 import com.example.selliaapp.di.AppModule.IoDispatcher
 import com.example.selliaapp.domain.config.DevelopmentOptionsConfig
+import com.example.selliaapp.domain.security.SecurityHashing
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -24,7 +25,7 @@ class DevelopmentOptionsRepository @Inject constructor(
 
 private fun DevelopmentOptionsEntity.toDomain(): DevelopmentOptionsConfig =
     DevelopmentOptionsConfig(
-        ownerEmail = ownerEmail,
+        ownerEmail = SecurityHashing.normalizeEmail(ownerEmail),
         salesEnabled = salesEnabled,
         stockEnabled = stockEnabled,
         customersEnabled = customersEnabled,
@@ -39,7 +40,7 @@ private fun DevelopmentOptionsEntity.toDomain(): DevelopmentOptionsConfig =
 
 private fun DevelopmentOptionsConfig.toEntity(): DevelopmentOptionsEntity =
     DevelopmentOptionsEntity(
-        ownerEmail = ownerEmail,
+        ownerEmail = SecurityHashing.normalizeEmail(ownerEmail),
         salesEnabled = salesEnabled,
         stockEnabled = stockEnabled,
         customersEnabled = customersEnabled,
