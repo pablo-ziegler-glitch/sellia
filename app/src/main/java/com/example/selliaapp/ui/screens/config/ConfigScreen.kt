@@ -65,6 +65,7 @@ fun ConfigScreen(
     canManageUsers: Boolean,
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
+    isClientFinal: Boolean,
     onBack: () -> Unit
 ) {
     var showProfileDetails by remember { mutableStateOf(false) }
@@ -118,6 +119,16 @@ fun ConfigScreen(
                 }
 
                 Spacer(Modifier.height(24.dp))
+
+                if (isClientFinal) {
+                    Text(
+                        text = "Solo tenés acceso a tus datos de perfil.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    return@Column
+                }
 
                 // Menú
                 SettingsItem(

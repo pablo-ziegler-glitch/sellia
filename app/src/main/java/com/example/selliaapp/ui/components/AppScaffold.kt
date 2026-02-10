@@ -1,10 +1,5 @@
 package com.example.selliaapp.ui.components
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -15,11 +10,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
-import com.example.selliaapp.ui.navigation.Routes
 
 @Immutable
 data class BottomNavItem(
@@ -35,20 +28,14 @@ fun AppScaffold(
     currentDestination: NavDestination?,
     onNavigate: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
+    navigationItems: List<BottomNavItem>,
     content: @Composable (androidx.compose.foundation.layout.PaddingValues) -> Unit
 ) {
-    val items = listOf(
-        BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
-        BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true),
-        BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney),
-        BottomNavItem(Routes.More.route, "Más", Icons.Default.Menu)
-    )
-
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar {
-                items.forEach { item ->
+                navigationItems.forEach { item ->
                     val selected = currentDestination
                         ?.hierarchy
                         ?.any { it.route == item.route }

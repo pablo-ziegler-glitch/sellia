@@ -2,6 +2,12 @@ package com.example.selliaapp.ui.navigation
 
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -30,6 +36,8 @@ import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.ui.components.AppScaffold
+import com.example.selliaapp.ui.components.BottomNavItem
+import com.example.selliaapp.ui.screens.ClientHomeScreen
 import com.example.selliaapp.ui.screens.HomeScreen
 import com.example.selliaapp.ui.screens.MoreScreen
 import com.example.selliaapp.ui.screens.alerts.UsageAlertsScreen
@@ -121,7 +129,29 @@ fun SelliaApp(
     // ViewModels inyectados por Hilt (scope de navegación)
     val userViewModel: UserViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
-
+    val accessVm: AccessControlViewModel = hiltViewModel()
+    val accessState by accessVm.state.collectAsStateWithLifecycle()
+    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val accountSummary = remember(authState, accessState) {
+        buildAccountSummary(authState, accessState)
+    }
+    val isClientFinal = accessState.role == AppRole.VIEWER
+    val navigationItems = remember(isClientFinal) {
+        if (isClientFinal) {
+            listOf(
+                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
+                BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront),
+                BottomNavItem(Routes.More.route, "Cuenta", Icons.Default.Menu)
+            )
+        } else {
+            listOf(
+                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
+                BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true),
+                BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney),
+                BottomNavItem(Routes.More.route, "Más", Icons.Default.Menu)
+            )
+        }
+    }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -129,13 +159,24 @@ fun SelliaApp(
     AppScaffold(
         currentDestination = currentDestination,
         onNavigate = { route ->
+            if (isClientFinal && route !in setOf(
+                    Routes.Home.route,
+                    Routes.PublicProductCatalog.route,
+                    Routes.More.route,
+                    Routes.Config.route,
+                    Routes.PublicProductScan.route
+                )
+            ) {
+                return@AppScaffold
+            }
             navController.navigate(route) {
                 launchSingleTop = true
                 restoreState = false
                 popUpTo(navController.graph.startDestinationId) { inclusive = false }
             }
         },
-        snackbarHostState = snackbarHostState
+        snackbarHostState = snackbarHostState,
+        navigationItems = navigationItems
     ) { paddingValues ->
         NavHost(
             navController = navController,
@@ -144,43 +185,46 @@ fun SelliaApp(
         ) {
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {
-                val homeVm: HomeViewModel = hiltViewModel()
-                val accessVm: AccessControlViewModel = hiltViewModel()
-                val marketingVm: MarketingConfigViewModel = hiltViewModel()
-                val accessState by accessVm.state.collectAsStateWithLifecycle()
-                val authState by authViewModel.authState.collectAsStateWithLifecycle()
-                val accountSummary = remember(authState, accessState) {
-                    buildAccountSummary(authState, accessState)
-                }
-                val marketingSettings by marketingVm.settings.collectAsStateWithLifecycle(
-                    initialValue = MarketingSettings()
-                )
+                if (isClientFinal) {
+                    ClientHomeScreen(
+                        accountSummary = accountSummary,
+                        onOpenPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
+                        onScanPublicProduct = { navController.navigate(Routes.PublicProductScan.route) },
+                        onOpenProfile = { navController.navigate(Routes.Config.route) }
+                    )
+                } else {
+                    val homeVm: HomeViewModel = hiltViewModel()
+                    val marketingVm: MarketingConfigViewModel = hiltViewModel()
+                    val marketingSettings by marketingVm.settings.collectAsStateWithLifecycle(
+                        initialValue = MarketingSettings()
+                    )
 
-                HomeScreen(
-                    onNewSale = { navController.navigate(Routes.Pos.route) },
-                    onStock = { navController.navigate(Routes.Stock.route) },
-                    onClientes = { navController.navigate(Routes.ClientsHub.route) },
-                    onConfig = { navController.navigate(Routes.Config.route) },
-                    onReports = { navController.navigate(Routes.Reports.route) },
-                    onProviders = { navController.navigate(Routes.ProvidersHub.route) },   // NUEVO
-                    onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
-                    onPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
-                    onPublicProductScan = { navController.navigate(Routes.PublicProductScan.route) },
-                    onSyncNow = { SyncScheduler.enqueueNow(context, false) },
-                    onAlertAdjustStock = { productId ->
-                        navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
-                    },
-                    onAlertCreatePurchase = { productId ->
-                        navController.navigate(Routes.QuickReorder.withProduct(productId))
-                    },
-                    onViewStockMovements = { navController.navigate(Routes.StockMovements.route) },
-                    onCashOpen = { navController.navigate(Routes.CashOpen.route) },
-                    onCashHub = { navController.navigate(Routes.Cash.route) },
-                    vm = homeVm,
-                    accountSummary = accountSummary,
-                    storeName = marketingSettings.storeName,
-                    storeLogoUrl = marketingSettings.storeLogoUrl
-                )
+                    HomeScreen(
+                        onNewSale = { navController.navigate(Routes.Pos.route) },
+                        onStock = { navController.navigate(Routes.Stock.route) },
+                        onClientes = { navController.navigate(Routes.ClientsHub.route) },
+                        onConfig = { navController.navigate(Routes.Config.route) },
+                        onReports = { navController.navigate(Routes.Reports.route) },
+                        onProviders = { navController.navigate(Routes.ProvidersHub.route) },
+                        onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
+                        onPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
+                        onPublicProductScan = { navController.navigate(Routes.PublicProductScan.route) },
+                        onSyncNow = { SyncScheduler.enqueueNow(context, false) },
+                        onAlertAdjustStock = { productId ->
+                            navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
+                        },
+                        onAlertCreatePurchase = { productId ->
+                            navController.navigate(Routes.QuickReorder.withProduct(productId))
+                        },
+                        onViewStockMovements = { navController.navigate(Routes.StockMovements.route) },
+                        onCashOpen = { navController.navigate(Routes.CashOpen.route) },
+                        onCashHub = { navController.navigate(Routes.Cash.route) },
+                        vm = homeVm,
+                        accountSummary = accountSummary,
+                        storeName = marketingSettings.storeName,
+                        storeLogoUrl = marketingSettings.storeLogoUrl
+                    )
+                }
             }
 
             composable(Routes.Cash.route) {
@@ -237,12 +281,6 @@ fun SelliaApp(
             }
 
             composable(Routes.More.route) {
-                val accessVm: AccessControlViewModel = hiltViewModel()
-                val accessState by accessVm.state.collectAsStateWithLifecycle()
-                val authState by authViewModel.authState.collectAsStateWithLifecycle()
-                val accountSummary = remember(authState, accessState) {
-                    buildAccountSummary(authState, accessState)
-                }
                 MoreScreen(
                     onStock = { navController.navigate(Routes.Stock.route) },
                     onStockHistory = { navController.navigate(Routes.StockMovements.route) },
@@ -256,7 +294,8 @@ fun SelliaApp(
                     onManageUsers = { navController.navigate(Routes.AddUser.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,
-                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
+                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
+                    isClientFinal = isClientFinal
                 )
             }
 
@@ -613,12 +652,6 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
-                val accessVm: AccessControlViewModel = hiltViewModel()
-                val accessState by accessVm.state.collectAsStateWithLifecycle()
-                val authState by authViewModel.authState.collectAsStateWithLifecycle()
-                val accountSummary = remember(authState, accessState) {
-                    buildAccountSummary(authState, accessState)
-                }
                 val userProfile = remember(authState, accessState) {
                     val session = (authState as? AuthState.Authenticated)?.session
                     UserProfileDetails(
@@ -645,6 +678,7 @@ fun SelliaApp(
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = accessState.role == AppRole.ADMIN,
+                    isClientFinal = isClientFinal,
                     onBack = { navController.popBackStack() }
                 )
             }

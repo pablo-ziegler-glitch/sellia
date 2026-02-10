@@ -50,7 +50,8 @@ fun MoreScreen(
     onManageUsers: () -> Unit,
     onSignOut: () -> Unit,
     accountSummary: AccountSummary,
-    canManageUsers: Boolean
+    canManageUsers: Boolean,
+    isClientFinal: Boolean
 ) {
     Surface {
         val scrollState = rememberScrollState()
@@ -71,6 +72,33 @@ fun MoreScreen(
                     modifier = Modifier.weight(1f)
                 )
                 AccountAvatarMenu(accountSummary = accountSummary)
+            }
+
+
+            if (isClientFinal) {
+                SectionTitle("Cuenta")
+                ListItem(
+                    headlineContent = { Text("Configuración de perfil") },
+                    leadingContent = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onSettings),
+                    supportingContent = { Text("Datos de cuenta y perfil") },
+                    trailingContent = null,
+                    overlineContent = null
+                )
+                ListItem(
+                    headlineContent = { Text("Cerrar sesión") },
+                    leadingContent = { Icon(Icons.Default.Logout, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onSignOut),
+                    supportingContent = { Text("Salir para ingresar con otra cuenta") },
+                    trailingContent = null,
+                    overlineContent = null
+                )
+                Spacer(Modifier.height(8.dp))
+                return@Surface
             }
 
             SectionTitle("Operación")
