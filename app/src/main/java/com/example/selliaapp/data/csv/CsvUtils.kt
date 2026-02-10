@@ -75,6 +75,22 @@ object CsvUtils {
         return if (isNotEmpty() && this[0] == '\uFEFF') substring(1) else this
     }
 
+
+
+    /**
+     * Devuelve filas de datos (sin encabezado) hasta la primera fila completamente vacía.
+     * Se usa para cortar importaciones cuando el usuario deja líneas en blanco al final.
+     */
+    fun dataRowsUntilFirstBlank(table: List<List<String>>): List<List<String>> {
+        if (table.size <= 1) return emptyList()
+        val rows = mutableListOf<List<String>>()
+        for (row in table.drop(1)) {
+            if (row.isEmpty() || row.all { it.isBlank() }) break
+            rows += row
+        }
+        return rows
+    }
+
     /** Utilidad para resolver encabezados con alias. */
     class HeaderIndex(private val header: List<String>) {
         private fun idxOf(name: String, aliases: List<String>): Int? {

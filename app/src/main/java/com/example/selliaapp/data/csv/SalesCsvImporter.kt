@@ -42,10 +42,11 @@ object SalesCsvImporter {
         if (table.isEmpty()) return emptyList()
         val header = table.first()
         val idx = CsvUtils.HeaderIndex(header)
-        return table.drop(1)
-            .filter { row -> row.any { it.isNotBlank() } }
-            .map { row ->
-                val invoiceId = idx.get(row, "invoice_id", listOf("id"))?.toLongOrNull() ?: 0L
+        return CsvUtils.dataRowsUntilFirstBlank(table)
+            .mapNotNull { row ->
+                val invoiceId = idx.get(row, "invoice_id", listOf("id"))?.toLongOrNull()
+                    ?.takeIf { it > 0L }
+                    ?: return@mapNotNull null
                 val dateText = idx.get(row, "date", listOf("fecha"))?.ifBlank { null }
                 val dateMillis = dateText?.let { parseDateMillis(it) } ?: System.currentTimeMillis()
                 val customerId = idx.get(row, "customer_id", listOf("cliente_id"))?.toIntOrNull()
@@ -61,9 +62,17 @@ object SalesCsvImporter {
                     ?.ifBlank { null } ?: "EFECTIVO"
                 val paymentNotes = idx.get(row, "payment_notes", listOf("nota_pago"))?.ifBlank { null }
                 val productId = idx.get(row, "product_id", listOf("producto_id"))?.toIntOrNull()
-                val productName = idx.get(row, "product_name", listOf("producto"))?.ifBlank { null }
+                    ?: return@mapNotNull null
+                val productName = idx.get(row, "product_name", listOf("producto"))
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
                 val quantity = idx.get(row, "quantity", listOf("cantidad"))?.toIntOrNull()
-                val unitPrice = idx.get(row, "unit_price", listOf("precio_unitario"))?.replace(',', '.')?.toDoubleOrNull()
+                    ?: return@mapNotNull null
+                val unitPrice = idx.get(row, "unit_price", listOf("precio_unitario"))
+                    ?.replace(',', '.')
+                    ?.toDoubleOrNull()
+                    ?: return@mapNotNull null
                 val lineTotal = idx.get(row, "line_total", listOf("total_linea"))?.replace(',', '.')?.toDoubleOrNull()
                 Row(
                     invoiceId = invoiceId,
