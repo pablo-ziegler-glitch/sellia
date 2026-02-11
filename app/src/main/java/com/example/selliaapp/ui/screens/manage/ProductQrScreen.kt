@@ -3,6 +3,8 @@ package com.example.selliaapp.ui.screens.manage
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.pdf.PdfDocument
 import android.provider.MediaStore
 import android.widget.Toast
@@ -18,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.QrCode
@@ -29,7 +30,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,7 +78,6 @@ fun ProductQrScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(setOf<Int>()) }
-    var sizeCmInput by remember { mutableStateOf("5") }
     var qrAudience by remember { mutableStateOf(QrAudience.PUBLIC) }
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
@@ -103,29 +101,55 @@ fun ProductQrScreen(
         }
     }
 
-    fun parseSizeCm(): Float {
-        return sizeCmInput.replace(',', '.').toFloatOrNull()?.coerceIn(1f, 20f) ?: 5f
-    }
-
     @SuppressLint("NewApi")
     fun exportQrPdf(items: List<ProductEntity>, fileName: String) {
         if (items.isEmpty()) {
             Toast.makeText(context, "No hay productos para exportar.", Toast.LENGTH_SHORT).show()
             return
         }
-        val sizeCm = parseSizeCm()
-        val pageSize = cmToPoints(sizeCm)
+        val labelWidthPoints = mmToPoints(30f)
+        val labelHeightPoints = mmToPoints(15f)
+        val qrSize = mmToPoints(15f)
+        val textBlockWidth = labelWidthPoints - qrSize
+        val padding = mmToPoints(0.8f)
+        val skuTextSize = mmToPoints(2.7f).toFloat()
+        val nameTextSize = mmToPoints(2.2f).toFloat()
+
+        val skuPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = skuTextSize
+            isFakeBoldText = true
+        }
+        val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = nameTextSize
+        }
+
         val document = PdfDocument()
         items.forEachIndexed { index, product ->
-            val pageInfo = PdfDocument.PageInfo.Builder(pageSize, pageSize, index + 1).create()
+            val pageInfo = PdfDocument.PageInfo.Builder(labelWidthPoints, labelHeightPoints, index + 1).create()
             val page = document.startPage(pageInfo)
             val canvas = page.canvas
             canvas.drawColor(Color.WHITE)
-            val qrSize = (pageSize * 0.9f).roundToInt().coerceAtLeast(64)
+
+            val skuValue = product.code?.takeIf { it.isNotBlank() }
+                ?: product.barcode?.takeIf { it.isNotBlank() }
+                ?: "SKU-${product.id}"
+            val nameValue = product.name.trim()
+
+            val skuY = padding + skuPaint.textSize
+            val skuText = ellipsizeToWidth(skuValue, skuPaint, (textBlockWidth - (padding * 2)).toFloat())
+            canvas.drawText(skuText, padding.toFloat(), skuY, skuPaint)
+
+            val maxNameY = labelHeightPoints - padding
+            val proposedNameY = skuY + namePaint.textSize + mmToPoints(0.8f)
+            if (nameValue.isNotBlank() && proposedNameY <= maxNameY) {
+                val nameText = ellipsizeToWidth(nameValue, namePaint, (textBlockWidth - (padding * 2)).toFloat())
+                canvas.drawText(nameText, padding.toFloat(), proposedNameY, namePaint)
+            }
+
             val qrBitmap = generateQrBitmap(resolveQrValue(product), qrSize)
-            val left = ((pageSize - qrSize) / 2f).roundToInt()
-            val top = ((pageSize - qrSize) / 2f).roundToInt()
-            canvas.drawBitmap(qrBitmap, left.toFloat(), top.toFloat(), null)
+            canvas.drawBitmap(qrBitmap, null, Rect(textBlockWidth, 0, labelWidthPoints, labelHeightPoints), null)
             document.finishPage(page)
         }
 
@@ -176,12 +200,8 @@ fun ProductQrScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedTextField(
-                value = sizeCmInput,
-                onValueChange = { sizeCmInput = it },
-                label = { Text("Tamaño del QR (cm)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth()
+            Text(
+                "Formato de descarga: etiqueta 30mm x 15mm (texto a la izquierda y QR 15x15mm a la derecha)."
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -307,6 +327,18 @@ private fun generateQrBitmap(content: String, sizePx: Int): Bitmap {
     return Bitmap.createBitmap(pixels, sizePx, sizePx, Bitmap.Config.ARGB_8888)
 }
 
-private fun cmToPoints(cm: Float): Int {
-    return (cm * 72f / 2.54f).roundToInt()
+
+private fun mmToPoints(mm: Float): Int {
+    return (mm * 72f / 25.4f).roundToInt()
+}
+
+private fun ellipsizeToWidth(text: String, paint: Paint, maxWidthPx: Float): String {
+    if (text.isBlank()) return text
+    if (paint.measureText(text) <= maxWidthPx) return text
+    val ellipsis = "…"
+    var candidate = text
+    while (candidate.isNotEmpty() && paint.measureText(candidate + ellipsis) > maxWidthPx) {
+        candidate = candidate.dropLast(1)
+    }
+    return if (candidate.isEmpty()) ellipsis else candidate + ellipsis
 }
