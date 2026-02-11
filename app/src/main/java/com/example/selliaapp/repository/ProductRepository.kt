@@ -134,11 +134,26 @@ class ProductRepository(
         force: Boolean = false
     ): ProductEntity {
         val purchasePrice = incoming.purchasePrice ?: existing?.purchasePrice ?: return incoming
-        val hasManualPrices = listOf(
-            incoming.listPrice,
-            incoming.cashPrice,
-            incoming.transferPrice,
-        ).any { it != null }
+        val hasManualPrices = when {
+            existing == null -> listOf(
+                incoming.listPrice,
+                incoming.cashPrice,
+                incoming.transferPrice,
+            ).any { it != null }
+
+            existing.autoPricing -> {
+                val listChangedManually = incoming.listPrice != null && incoming.listPrice != existing.listPrice
+                val cashChangedManually = incoming.cashPrice != null && incoming.cashPrice != existing.cashPrice
+                val transferChangedManually = incoming.transferPrice != null && incoming.transferPrice != existing.transferPrice
+                listChangedManually || cashChangedManually || transferChangedManually
+            }
+
+            else -> listOf(
+                incoming.listPrice,
+                incoming.cashPrice,
+                incoming.transferPrice,
+            ).any { it != null }
+        }
         val shouldAuto = when {
             force -> true
             hasManualPrices -> false
