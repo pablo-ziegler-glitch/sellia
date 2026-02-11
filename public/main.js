@@ -1,9 +1,9 @@
 const CONFIG = {
-  BRAND_NAME: window.SELLIA_CONFIG?.brandName || "Sellia",
-  YOUTUBE_VIDEO_ID: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR",
-  WHATSAPP_URL: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
-  INSTAGRAM_URL: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
-  MAPS_URL: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
+  BRAND_NAME: window.STORE_CONFIG?.brandName || "Tu tienda",
+  YOUTUBE_VIDEO_ID: window.STORE_CONFIG?.youtubeVideoId || "REEMPLAZAR",
+  WHATSAPP_URL: window.STORE_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
+  INSTAGRAM_URL: window.STORE_CONFIG?.contact?.instagram || "REEMPLAZAR",
+  MAPS_URL: window.STORE_CONFIG?.contact?.maps || "REEMPLAZAR"
 };
 
 const state = {
@@ -12,7 +12,7 @@ const state = {
 
 const brandTargets = document.querySelectorAll("[data-brand]");
 brandTargets.forEach((el) => {
-  el.textContent = CONFIG.brand?.name ?? "Valkirja";
+  el.textContent = CONFIG.BRAND_NAME;
 });
 
 const yearEl = document.getElementById("year");
@@ -21,9 +21,9 @@ if (yearEl) {
 }
 
 const contactLinks = {
-  whatsapp: CONFIG.contact?.whatsappUrl,
-  instagram: CONFIG.contact?.instagramUrl,
-  maps: CONFIG.contact?.mapsUrl
+  whatsapp: CONFIG.WHATSAPP_URL,
+  instagram: CONFIG.INSTAGRAM_URL,
+  maps: CONFIG.MAPS_URL
 };
 
 Object.entries(contactLinks).forEach(([key, url]) => {
@@ -64,8 +64,8 @@ const videoPoster = document.getElementById("videoPoster");
 const videoPlayButton = document.querySelector(".video-play");
 let lastFocusedElement = null;
 
-if (CONFIG.brand?.youtubeVideoId && CONFIG.brand.youtubeVideoId !== "REEMPLAZAR") {
-  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.brand.youtubeVideoId}/hqdefault.jpg`;
+if (CONFIG.YOUTUBE_VIDEO_ID && CONFIG.YOUTUBE_VIDEO_ID !== "REEMPLAZAR") {
+  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.YOUTUBE_VIDEO_ID}/hqdefault.jpg`;
   videoPoster.src = posterUrl;
 }
 
@@ -79,15 +79,15 @@ function trackEvent(name, detail = {}) {
 
 if (videoPlayButton) {
   videoPlayButton.addEventListener("click", () => {
-    const videoId = CONFIG.brand?.youtubeVideoId;
+    const videoId = CONFIG.YOUTUBE_VIDEO_ID;
     if (!videoId || videoId === "REEMPLAZAR") {
-      console.warn("Configurar brand.youtubeVideoId en config.js para habilitar el video.");
+      console.warn("Configurar youtubeVideoId en config.js para habilitar el video.");
       return;
     }
 
     const iframe = document.createElement("iframe");
     iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1`;
-    iframe.title = "Video de la historia de Valkirja";
+    iframe.title = `Video de ${CONFIG.BRAND_NAME}`;
     iframe.allow =
       "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
     iframe.allowFullscreen = true;
