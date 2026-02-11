@@ -19,7 +19,7 @@ import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier r
 import com.example.selliaapp.repository.ProductRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.QueryDocumentSnapshot
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
@@ -359,7 +359,7 @@ class SyncRepositoryImpl @Inject constructor(
             }
     }
 
-    private fun QueryDocumentSnapshot.toCustomerEntityOrNull() = runCatching {
+    private fun DocumentSnapshot.toCustomerEntityOrNull() = runCatching {
         val idValue = getLong("id")?.toInt()
             ?: id.takeIf { it.all(Char::isDigit) }?.toIntOrNull()
             ?: return null
