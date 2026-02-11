@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Storefront
@@ -76,6 +77,7 @@ import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoicesScreen
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.providers.ProviderPaymentsScreen
+import com.example.selliaapp.ui.screens.providers.ProviderPurchaseOrdersScreen
 import com.example.selliaapp.ui.screens.providers.ProvidersHubScreen
 import com.example.selliaapp.ui.screens.reports.PriceSummaryScreen
 import com.example.selliaapp.ui.screens.reports.ReportsScreen
@@ -87,6 +89,7 @@ import com.example.selliaapp.ui.screens.admin.UsageDashboardScreen
 import com.example.selliaapp.ui.screens.pos.PosSuccessScreen
 import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
+import com.example.selliaapp.ui.screens.stock.ProductPriceAuditScreen
 import com.example.selliaapp.ui.screens.stock.StockImportScreen
 import com.example.selliaapp.ui.screens.stock.StockMovementsScreen
 import com.example.selliaapp.ui.screens.stock.StockScreen
@@ -96,6 +99,7 @@ import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
+import com.example.selliaapp.viewmodel.ProductPriceAuditViewModel
 import com.example.selliaapp.viewmodel.QuickReorderViewModel
 import com.example.selliaapp.viewmodel.QuickStockAdjustViewModel
 import com.example.selliaapp.viewmodel.ReportsViewModel
@@ -147,6 +151,7 @@ fun SelliaApp(
             listOf(
                 BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
                 BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true),
+                BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2),
                 BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney),
                 BottomNavItem(Routes.More.route, "Más", Icons.Default.Menu)
             )
@@ -201,8 +206,7 @@ fun SelliaApp(
 
                     HomeScreen(
                         onNewSale = { navController.navigate(Routes.Pos.route) },
-                        onStock = { navController.navigate(Routes.Stock.route) },
-                        onClientes = { navController.navigate(Routes.ClientsHub.route) },
+                            onClientes = { navController.navigate(Routes.ClientsHub.route) },
                         onConfig = { navController.navigate(Routes.Config.route) },
                         onReports = { navController.navigate(Routes.Reports.route) },
                         onProviders = { navController.navigate(Routes.ProvidersHub.route) },
@@ -282,7 +286,6 @@ fun SelliaApp(
 
             composable(Routes.More.route) {
                 MoreScreen(
-                    onStock = { navController.navigate(Routes.Stock.route) },
                     onStockHistory = { navController.navigate(Routes.StockMovements.route) },
                     onCustomers = { navController.navigate(Routes.ClientsHub.route) },
                     onProviders = { navController.navigate(Routes.ProvidersHub.route) },
@@ -404,7 +407,7 @@ fun SelliaApp(
 
 
                 // CHECKOUT (usa el MISMO VM del flujo con CompositionLocalProvider)
-                composable(Routes.PosPayment.route) {
+                composable(Routes.PosCheckout.route) {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val parentEntry = remember(navBackStackEntry) {
                         navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) // ej.: "sell_flow"
@@ -508,10 +511,20 @@ fun SelliaApp(
                     onAddProduct = { navController.navigate(Routes.AddProduct.route) },
                     onScan =  { navController.navigate(Routes.ScannerForStock.route) },
                     onImportCsv =  { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
+                    onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
                     onProductClick = { product ->
                         // EDICIÓN: ir a add_product/{id}
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
                     },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.StockPriceAudit.route) {
+                val vm: ProductPriceAuditViewModel = hiltViewModel()
+                val state by vm.state.collectAsState()
+                ProductPriceAuditScreen(
+                    state = state,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -842,6 +855,7 @@ fun SelliaApp(
                 ProvidersHubScreen(
                     onManageProviders = { navController.navigate(Routes.ManageProviders.route) },
                     onProviderInvoices = { navController.navigate(Routes.ProviderInvoices.route) },
+                    onProviderPurchaseOrders = { navController.navigate(Routes.ProviderPurchaseOrders.route) },
                     onProviderPayments = { navController.navigate(Routes.ProviderPayments.route) },
                     onBack = { navController.popBackStack() }
                 )
@@ -850,6 +864,16 @@ fun SelliaApp(
             composable(Routes.ManageProviders.route) {
                 val repo = hiltViewModel<ProvidersEntryPoint>().repo // ver nota de DI abajo
                 ManageProvidersScreen(repo = repo, onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.ProviderPurchaseOrders.route) {
+                val pRepo = hiltViewModel<ProvidersEntryPoint>().repo
+                val invRepo = hiltViewModel<ProviderInvoicesEntryPoint>().repo
+                ProviderPurchaseOrdersScreen(
+                    providerRepo = pRepo,
+                    invoiceRepo = invRepo,
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             composable(Routes.ProviderInvoices.route) {

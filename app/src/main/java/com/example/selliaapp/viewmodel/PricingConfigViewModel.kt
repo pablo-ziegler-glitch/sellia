@@ -7,6 +7,7 @@ import com.example.selliaapp.data.local.entity.PricingMlFixedCostTierEntity
 import com.example.selliaapp.data.local.entity.PricingMlShippingTierEntity
 import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.repository.PricingConfigRepository
+import com.example.selliaapp.repository.ProductRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PricingConfigViewModel @Inject constructor(
-    private val repository: PricingConfigRepository
+    private val repository: PricingConfigRepository,
+    private val productRepository: ProductRepository
 ) : ViewModel() {
 
     private val _settings = MutableStateFlow<PricingSettingsEntity?>(null)
@@ -43,42 +45,77 @@ class PricingConfigViewModel @Inject constructor(
     fun saveSettings(updated: PricingSettingsEntity) {
         viewModelScope.launch {
             repository.updateSettings(updated)
+            productRepository.recalculateAutoPricingForAll(
+                reason = "Actualización de settings de pricing",
+                changedBy = "System",
+                source = "PRICING_CONFIG_SCREEN"
+            )
         }
     }
 
     fun saveFixedCost(item: PricingFixedCostEntity) {
         viewModelScope.launch {
             repository.upsertFixedCost(item)
+            productRepository.recalculateAutoPricingForAll(
+                reason = "Actualización de costos fijos",
+                changedBy = "System",
+                source = "PRICING_CONFIG_SCREEN"
+            )
         }
     }
 
     fun deleteFixedCost(id: Int) {
         viewModelScope.launch {
             repository.deleteFixedCost(id)
+            productRepository.recalculateAutoPricingForAll(
+                reason = "Eliminación de costo fijo",
+                changedBy = "System",
+                source = "PRICING_CONFIG_SCREEN"
+            )
         }
     }
 
     fun saveMlFixedCostTier(item: PricingMlFixedCostTierEntity) {
         viewModelScope.launch {
             repository.upsertMlFixedCostTier(item)
+            productRepository.recalculateAutoPricingForAll(
+                reason = "Actualización de tramos ML costo fijo",
+                changedBy = "System",
+                source = "PRICING_CONFIG_SCREEN"
+            )
         }
     }
 
     fun deleteMlFixedCostTier(id: Int) {
         viewModelScope.launch {
             repository.deleteMlFixedCostTier(id)
+            productRepository.recalculateAutoPricingForAll(
+                reason = "Eliminación de tramo ML costo fijo",
+                changedBy = "System",
+                source = "PRICING_CONFIG_SCREEN"
+            )
         }
     }
 
     fun saveMlShippingTier(item: PricingMlShippingTierEntity) {
         viewModelScope.launch {
             repository.upsertMlShippingTier(item)
+            productRepository.recalculateAutoPricingForAll(
+                reason = "Actualización de tramos ML envío",
+                changedBy = "System",
+                source = "PRICING_CONFIG_SCREEN"
+            )
         }
     }
 
     fun deleteMlShippingTier(id: Int) {
         viewModelScope.launch {
             repository.deleteMlShippingTier(id)
+            productRepository.recalculateAutoPricingForAll(
+                reason = "Eliminación de tramo ML envío",
+                changedBy = "System",
+                source = "PRICING_CONFIG_SCREEN"
+            )
         }
     }
 }

@@ -18,6 +18,7 @@ import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductPriceAuditDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
@@ -41,6 +42,7 @@ import com.example.selliaapp.data.local.entity.CustomerEntity
 import com.example.selliaapp.data.local.entity.CloudServiceConfigEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
+import com.example.selliaapp.data.local.entity.ProductPriceAuditEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
 import com.example.selliaapp.data.local.entity.PricingAuditEntity
 import com.example.selliaapp.data.local.entity.PricingFixedCostEntity
@@ -70,6 +72,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         // Persistencia principal
         ProductEntity::class,
         ProductImageEntity::class,
+        ProductPriceAuditEntity::class,
         CustomerEntity::class,
         ProviderEntity::class,
         ReportDataEntity::class,
@@ -105,6 +108,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
 @TypeConverters(Converters::class, ReportConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
+    abstract fun productPriceAuditDao(): ProductPriceAuditDao
     abstract fun productImageDao(): ProductImageDao
     abstract fun userDao(): UserDao
     abstract fun customerDao(): CustomerDao

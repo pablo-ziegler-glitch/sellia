@@ -13,7 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
@@ -38,7 +37,6 @@ import com.example.selliaapp.ui.components.AccountSummary
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoreScreen(
-    onStock: () -> Unit,
     onStockHistory: () -> Unit,
     onCustomers: () -> Unit,
     onProviders: () -> Unit,
@@ -101,27 +99,7 @@ fun MoreScreen(
                 return@Surface
             }
 
-            SectionTitle("Operación")
-            ListItem(
-                headlineContent = { Text("Stock") },
-                leadingContent = { Icon(Icons.Default.Inventory2, contentDescription = null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onStock),
-                supportingContent = { Text("Productos y ajustes") },
-                trailingContent = null,
-                overlineContent = null
-            )
-            ListItem(
-                headlineContent = { Text("Historial de stock") },
-                leadingContent = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onStockHistory),
-                supportingContent = { Text("Entradas y salidas") },
-                trailingContent = null,
-                overlineContent = null
-            )
+            SectionTitle("Operación diaria")
             ListItem(
                 headlineContent = { Text("Clientes") },
                 leadingContent = { Icon(Icons.Default.People, contentDescription = null) },
@@ -139,6 +117,17 @@ fun MoreScreen(
                     .fillMaxWidth()
                     .clickable(onClick = onProviders),
                 supportingContent = { Text("Facturas y pagos") },
+                trailingContent = null,
+                overlineContent = null
+            )
+
+            ListItem(
+                headlineContent = { Text("Historial de stock") },
+                leadingContent = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onStockHistory),
+                supportingContent = { Text("Entradas y salidas") },
                 trailingContent = null,
                 overlineContent = null
             )

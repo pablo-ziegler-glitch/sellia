@@ -31,6 +31,7 @@ import com.example.selliaapp.data.dao.ExpenseTemplateDao
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
+import com.example.selliaapp.data.dao.ProductPriceAuditDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
@@ -138,6 +139,7 @@ object AppModule {
     // DAOs
     // -----------------------------
     @Provides @Singleton fun provideProductDao(db: AppDatabase): ProductDao = db.productDao()
+    @Provides @Singleton fun provideProductPriceAuditDao(db: AppDatabase): ProductPriceAuditDao = db.productPriceAuditDao()
     @Provides @Singleton fun provideProductImageDao(db: AppDatabase): ProductImageDao = db.productImageDao()
     @Provides @Singleton fun provideCategoryDao(db: AppDatabase): CategoryDao = db.categoryDao()
     @Provides @Singleton fun provideVariantDao(db: AppDatabase): VariantDao = db.variantDao()
@@ -184,6 +186,7 @@ object AppModule {
         productImageDao: ProductImageDao,
         categoryDao: CategoryDao,
         providerDao: ProviderDao,
+        productPriceAuditDao: ProductPriceAuditDao,
         pricingConfigRepository: PricingConfigRepository,
         firestore: FirebaseFirestore,
         tenantProvider: TenantProvider,
@@ -195,6 +198,7 @@ object AppModule {
         productImageDao = productImageDao,
         categoryDao = categoryDao,
         providerDao = providerDao,
+        productPriceAuditDao = productPriceAuditDao,
         pricingConfigRepository = pricingConfigRepository,
         firestore = firestore,
         tenantProvider = tenantProvider,
@@ -209,6 +213,8 @@ object AppModule {
         pricingAuditDao: PricingAuditDao,
         pricingMlFixedCostTierDao: PricingMlFixedCostTierDao,
         pricingMlShippingTierDao: PricingMlShippingTierDao,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
         @IoDispatcher io: CoroutineDispatcher
     ): PricingConfigRepository = PricingConfigRepository(
         pricingFixedCostDao = pricingFixedCostDao,
@@ -216,6 +222,8 @@ object AppModule {
         pricingAuditDao = pricingAuditDao,
         pricingMlFixedCostTierDao = pricingMlFixedCostTierDao,
         pricingMlShippingTierDao = pricingMlShippingTierDao,
+        firestore = firestore,
+        tenantProvider = tenantProvider,
         io = io
     )
 

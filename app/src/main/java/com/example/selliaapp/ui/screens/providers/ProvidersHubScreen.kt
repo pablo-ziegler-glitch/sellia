@@ -21,6 +21,7 @@ import com.example.selliaapp.ui.components.BackTopAppBar
 fun ProvidersHubScreen(
     onManageProviders: () -> Unit,
     onProviderInvoices: () -> Unit,
+    onProviderPurchaseOrders: () -> Unit,
     onProviderPayments: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -37,6 +38,7 @@ fun ProvidersHubScreen(
         ) {
             Button(onClick = onManageProviders) { Text("Gestionar Proveedores (CRUD)") }
             Button(onClick = onProviderInvoices) { Text("Boletas/Facturas por Proveedor") }
+            Button(onClick = onProviderPurchaseOrders) { Text("Pedidos de compra pendientes") }
             Button(onClick = onProviderPayments) { Text("Pagos a Proveedores (Pendientes)") }
         }
     }
