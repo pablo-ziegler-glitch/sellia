@@ -560,19 +560,9 @@ class ProductRepository(
     suspend fun deleteById(id: Int) = withContext(io) {
         val now = System.currentTimeMillis()
         val product = productDao.getById(id) ?: return@withContext
+        val removedQuantity = product.quantity
         db.withTransaction {
             productDao.deleteById(id)
-            if (product.quantity != 0) {
-                stockMovementDao.insert(
-                    StockMovementEntity(
-                        productId = id,
-                        delta = -product.quantity,
-                        reason = StockMovementReasons.MANUAL_ADJUST,
-                        ts = Instant.ofEpochMilli(now),
-                        note = "Eliminación de producto"
-                    )
-                )
-            }
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.PRODUCT.storageKey,
                 listOf(id.toLong())
@@ -587,7 +577,7 @@ class ProductRepository(
                         action = "PRODUCT_DELETED",
                         productId = id,
                         productName = product.name,
-                        delta = -product.quantity,
+                        delta = -removedQuantity,
                         reason = StockMovementReasons.MANUAL_ADJUST,
                         note = "Eliminación de producto",
                         source = "STOCK_SCREEN",
