@@ -8,12 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lock
@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,13 +96,6 @@ fun HomeScreen(
             ?.format(dateFormatter)
             ?: "-"
     }
-    val saleCashTickets = remember(state.cashSummary?.movements) {
-        state.cashSummary?.movements
-            ?.count { it.type == "SALE_CASH" }
-            ?.toString()
-            ?: "0"
-    }
-    val lowStockAlertPreview = remember(state.lowStockAlerts) { state.lowStockAlerts.take(3) }
 
     if (showCashRequired) {
         AlertDialog(
@@ -119,321 +113,269 @@ fun HomeScreen(
                         showCashRequired = false
                         onCashOpen()
                     }
+                ) {
+                    Text("Abrir caja")
                 }
-            )
-        }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCashRequired = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 
-    LazyColumn(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .navigationBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .navigationBarsPadding()
     ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        val isCompactWidth = maxWidth < 600.dp
+
+        LazyColumn(
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
                 Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    StoreLogo(logoUrl = storeLogoUrl, contentDescription = storeName)
-                    Text(
-                        text = storeName.ifBlank { "Tu tienda" },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                AccountAvatarMenu(accountSummary = accountSummary)
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.ReceiptLong, contentDescription = null)
-                        Text("Estado de caja", style = MaterialTheme.typography.titleMedium)
-                    }
-                    if (!state.hasOpenCashSession) {
-                        Text(
-                            "Caja cerrada",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "Necesaria para vender con efectivo.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Button(onClick = onCashOpen, modifier = Modifier.fillMaxWidth()) {
-                            Text("Abrir caja")
-                        }
-                    } else {
-                        Text(
-                            "Abierta $openedTime · ${cashSession?.openedBy ?: "Operador"}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            "Saldo teórico: ${currency.format(state.cashSummary?.expectedAmount ?: 0.0)}",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
-                                Text("Arqueo")
-                            }
-                            FilledTonalButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
-                                Text("Cerrar caja")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "Acción principal",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        "Vender",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        "Abrí un nuevo ticket y cobrá rápido.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Button(
-                        onClick = {
-                            if (!state.hasOpenCashSession && BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS) {
-                                showCashRequired = true
-                            } else {
-                                onNewSale()
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.PointOfSale, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Vender")
-                    }
-                }
-                if (state.overdueProviderInvoices > 0) {
-                    Text(
-                        "Facturas vencidas: ${state.overdueProviderInvoices}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onCashAudit, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.ReceiptLong, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Arqueo caja")
-                        }
-                        FilledTonalButton(onClick = onCashClose, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.Lock, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Cerrar ahora")
-                        }
-                    }
-                    TextButton(onClick = onCashHub, modifier = Modifier.align(Alignment.End)) {
-                        Text("Ver panel de caja")
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Catálogo público", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Mostrá productos sin pedir autenticación.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(
-                            onClick = onPublicCatalog,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Ver catálogo")
-                        }
-                        OutlinedButton(
-                            onClick = onPublicProductScan,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Escanear QR")
-                        }
-                    }
-                }
-            }
-
-            KpiSection(
-                isCompactWidth = isCompactWidth,
-                dailySales = currency.format(state.dailySales),
-                tickets = state.cashSummary?.movements
-                    ?.count { it.type == "SALE_CASH" }
-                    ?.toString() ?: "0",
-                averageTicket = currency.format(state.averageTicket)
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(Icons.Default.Warning, contentDescription = null)
-                        Text("Alertas operativas", style = MaterialTheme.typography.titleMedium)
-                    }
-                    if (state.lowStockAlerts.isEmpty() && state.overdueProviderInvoices == 0) {
+                        StoreLogo(logoUrl = storeLogoUrl, contentDescription = storeName)
                         Text(
-                            "Sin alertas por ahora.",
+                            text = storeName.ifBlank { "Tu tienda" },
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    AccountAvatarMenu(accountSummary = accountSummary)
+                }
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                            Text("Estado de caja", style = MaterialTheme.typography.titleMedium)
+                        }
+
+                        if (!state.hasOpenCashSession) {
+                            Text(
+                                "Caja cerrada",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "Necesaria para vender con efectivo.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(onClick = onCashOpen, modifier = Modifier.fillMaxWidth()) {
+                                Text("Abrir caja")
+                            }
+                        } else {
+                            Text(
+                                "Abierta $openedTime · ${cashSession?.openedBy ?: "Operador"}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                "Saldo teórico: ${currency.format(state.cashSummary?.expectedAmount ?: 0.0)}",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = onCashAudit, modifier = Modifier.weight(1f)) {
+                                    Text("Arqueo")
+                                }
+                                FilledTonalButton(onClick = onCashClose, modifier = Modifier.weight(1f)) {
+                                    Text("Cerrar caja")
+                                }
+                            }
+                            TextButton(onClick = onCashHub, modifier = Modifier.align(Alignment.End)) {
+                                Text("Ver panel de caja")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Acción principal",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "Vender",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "Abrí un nuevo ticket y cobrá rápido.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Button(
+                            onClick = {
+                                if (!state.hasOpenCashSession && BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS) {
+                                    showCashRequired = true
+                                } else {
+                                    onNewSale()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.PointOfSale, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Vender")
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Catálogo público", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Mostrá productos sin pedir autenticación.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    } else {
-                        if (state.lowStockAlerts.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(onClick = onPublicCatalog, modifier = Modifier.weight(1f)) {
+                                Text("Ver catálogo")
+                            }
+                            OutlinedButton(onClick = onPublicProductScan, modifier = Modifier.weight(1f)) {
+                                Text("Escanear QR")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                KpiSection(
+                    isCompactWidth = isCompactWidth,
+                    dailySales = currency.format(state.dailySales),
+                    tickets = state.cashSummary?.movements?.count { it.type == "SALE_CASH" }?.toString() ?: "0",
+                    averageTicket = currency.format(state.averageTicket)
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = null)
+                            Text("Alertas operativas", style = MaterialTheme.typography.titleMedium)
+                        }
+                        if (state.lowStockAlerts.isEmpty() && state.overdueProviderInvoices == 0) {
                             Text(
-                                "Stock bajo (${state.lowStockAlerts.size})",
-                                style = MaterialTheme.typography.bodyMedium
+                                "Sin alertas por ahora.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            state.lowStockAlerts.take(3).forEach { alert ->
+                        } else {
+                            if (state.lowStockAlerts.isNotEmpty()) {
                                 Text(
-                                    "• ${alert.name} (${alert.quantity} u.)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    "Stock bajo (${state.lowStockAlerts.size})",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                state.lowStockAlerts.take(3).forEach { alert ->
+                                    Text(
+                                        "• ${alert.name} (${alert.quantity} u.)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            if (state.overdueProviderInvoices > 0) {
+                                Text(
+                                    "Facturas vencidas: ${state.overdueProviderInvoices}",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                             }
                         }
-                        if (state.overdueProviderInvoices > 0) {
-                            Text(
-                                "Facturas vencidas: ${state.overdueProviderInvoices}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
                     }
                 }
             }
 
-            ShortcutsSection(
-                isCompactWidth = isCompactWidth,
-                onNewSale = onNewSale,
-                onStock = onStock,
-                onClientes = onClientes,
-                onReports = onReports
-            )
+            item {
+                ShortcutsSection(
+                    isCompactWidth = isCompactWidth,
+                    onNewSale = onNewSale,
+                    onStock = onStock,
+                    onClientes = onClientes,
+                    onReports = onReports
+                )
+            }
         }
     }
 }
 
-        item {
-            Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
-        }
-
-        item {
+@Composable
+private fun KpiSection(
+    isCompactWidth: Boolean,
+    dailySales: String,
+    tickets: String,
+    averageTicket: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
+        if (isCompactWidth) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                KpiCard(title = "Ventas hoy", value = dailySales, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    KpiCard(title = "Tickets", value = tickets, modifier = Modifier.weight(1f))
+                    KpiCard(title = "Ticket promedio", value = averageTicket, modifier = Modifier.weight(1f))
+                }
+            }
+        } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                KpiCard(
-                    title = "Ventas hoy",
-                    value = currency.format(state.dailySales),
-                    modifier = Modifier.weight(1f)
-                )
-                KpiCard(
-                    title = "Tickets",
-                    value = saleCashTickets,
-                    modifier = Modifier.weight(1f)
-                )
-                KpiCard(
-                    title = "Ticket promedio",
-                    value = currency.format(state.averageTicket),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-    }
-}
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.Warning, contentDescription = null)
-                        Text("Alertas operativas", style = MaterialTheme.typography.titleMedium)
-                    }
-                    if (state.lowStockAlerts.isEmpty() && state.overdueProviderInvoices == 0) {
-                        Text(
-                            "Sin alertas por ahora.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        if (state.lowStockAlerts.isNotEmpty()) {
-                            Text(
-                                "Stock bajo (${state.lowStockAlerts.size})",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        if (state.overdueProviderInvoices > 0) {
-                            Text(
-                                "Facturas vencidas: ${state.overdueProviderInvoices}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            kpis.forEach { item ->
-                KpiCard(
-                    title = item.title,
-                    value = item.value,
-                    modifier = Modifier.weight(1f)
-                )
+                KpiCard(title = "Ventas hoy", value = dailySales, modifier = Modifier.weight(1f))
+                KpiCard(title = "Tickets", value = tickets, modifier = Modifier.weight(1f))
+                KpiCard(title = "Ticket promedio", value = averageTicket, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -454,45 +396,28 @@ private fun ShortcutsSection(
         ShortcutItem("Reportes", Icons.Default.QueryStats, onReports)
     )
 
-        items(
-            items = lowStockAlertPreview,
-            key = { alert -> alert.productId }
-        ) { alert ->
-            Text(
-                text = "• ${alert.name} (${alert.quantity} u.)",
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-            )
-        }
-
-        item {
-            Text("Atajos", style = MaterialTheme.typography.titleMedium)
-        }
-
-        item {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Atajos", style = MaterialTheme.typography.titleMedium)
+        if (isCompactWidth) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                ShortcutButton("Ventas", Icons.Default.QueryStats, onReports, Modifier.weight(1f))
-                ShortcutButton("Stock", Icons.Default.Inventory2, onStock, Modifier.weight(1f))
+                shortcuts.take(2).forEach { item ->
+                    ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
+                }
             }
-        }
-
-        item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                ShortcutButton("Clientes", Icons.Default.People, onClientes, Modifier.weight(1f))
-                ShortcutButton("Reportes", Icons.Default.QueryStats, onReports, Modifier.weight(1f))
+                shortcuts.drop(2).forEach { item ->
+                    ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                shortcuts.forEach { item ->
+                    ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
+                }
             }
         }
     }
 }
-
-private data class KpiItem(
-    val title: String,
-    val value: String
-)
 
 private data class ShortcutItem(
     val label: String,
