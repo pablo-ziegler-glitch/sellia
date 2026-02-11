@@ -100,6 +100,13 @@ class FakeProductRepository : IProductRepository {
     override suspend fun addProduct(p: ProductEntity): Int = 1
     override suspend fun updateProduct(p: ProductEntity): Int = 1
 
+    // ---------- Pricing ----------
+    override suspend fun recalculateAutoPricingForAll(
+        reason: String,
+        changedBy: String,
+        source: String
+    ): Int = 0
+
     // ---------- Sync (pull) ----------
     override suspend fun syncDown(): Int = 0
 
