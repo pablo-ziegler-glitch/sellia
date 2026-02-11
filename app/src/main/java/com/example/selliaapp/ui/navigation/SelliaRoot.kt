@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.selliaapp.R
 import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.auth.LoginScreen
 import com.example.selliaapp.ui.screens.auth.RegisterScreen
 import com.example.selliaapp.viewmodel.AuthViewModel
@@ -114,6 +116,11 @@ fun SelliaRoot(
         }
 
         is AuthState.Authenticated -> {
+            val tenantId = (authState as AuthState.Authenticated).session.tenantId
+            LaunchedEffect(tenantId) {
+                // Fuerza una sincronización inicial al entrar con una sesión en un dispositivo nuevo.
+                SyncScheduler.enqueueNow(context, false)
+            }
             SelliaApp(
                 navController = navController,
                 customerRepo = customerRepo

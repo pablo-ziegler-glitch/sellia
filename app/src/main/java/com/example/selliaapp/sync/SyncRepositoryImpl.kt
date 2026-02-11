@@ -19,10 +19,14 @@ import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier r
 import com.example.selliaapp.repository.ProductRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.QueryDocumentSnapshot
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,7 +51,7 @@ class SyncRepositoryImpl @Inject constructor(
 ) : SyncRepository {
 
     override suspend fun pushPending() = withContext(io) {
-        if (!hasAdminSyncAccess()) {
+        if (!hasPrivilegedSyncAccess()) {
             Log.i(TAG, "Sincronización omitida: rol sin permisos.")
             return@withContext
         }
@@ -58,7 +62,7 @@ class SyncRepositoryImpl @Inject constructor(
     }
 
     override suspend fun pullRemote() = withContext(io) {
-        if (!hasAdminSyncAccess()) {
+        if (!hasReadSyncAccess()) {
             Log.i(TAG, "Sincronización omitida: rol sin permisos.")
             return@withContext
         }
@@ -86,6 +90,8 @@ class SyncRepositoryImpl @Inject constructor(
                 }
             }
         }
+
+        syncCustomersFromRemote()
     }
 
     override suspend fun runSync(includeBackup: Boolean) = withContext(io) {
@@ -316,7 +322,7 @@ class SyncRepositoryImpl @Inject constructor(
     private fun extractErrorMessage(t: Throwable): String =
         t.message?.take(512) ?: t::class.java.simpleName
 
-    private suspend fun hasAdminSyncAccess(): Boolean {
+    private suspend fun hasPrivilegedSyncAccess(): Boolean {
         val uid = auth.currentUser?.uid ?: return false
         val snapshot = firestore.collection("users").document(uid).get().await()
         val role = snapshot.getString("role")?.trim()?.lowercase().orEmpty()
@@ -326,6 +332,61 @@ class SyncRepositoryImpl @Inject constructor(
             snapshot.getBoolean("isSuperAdmin") == true
         return isAdmin || isPrivileged || hasAdminFlags
     }
+
+    private suspend fun hasReadSyncAccess(): Boolean {
+        val uid = auth.currentUser?.uid ?: return false
+        val snapshot = firestore.collection("users").document(uid).get().await()
+        val status = snapshot.getString("status")?.trim()?.lowercase()
+        if (!status.isNullOrBlank() && status != "active") {
+            return false
+        }
+        val tenantId = snapshot.getString("tenantId") ?: snapshot.getString("storeId")
+        return !tenantId.isNullOrBlank()
+    }
+
+    private suspend fun syncCustomersFromRemote() {
+        val tenantId = tenantProvider.requireTenantId()
+        val customersCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("customers")
+        val snapshot = customersCollection.get().await()
+        if (snapshot.isEmpty) return
+
+        snapshot.documents
+            .mapNotNull { doc -> doc.toCustomerEntityOrNull() }
+            .forEach { customer ->
+                customerDao.upsert(customer)
+            }
+    }
+
+    private fun QueryDocumentSnapshot.toCustomerEntityOrNull() = runCatching {
+        val idValue = getLong("id")?.toInt()
+            ?: id.takeIf { it.all(Char::isDigit) }?.toIntOrNull()
+            ?: return null
+        val name = getString("name")?.trim().orEmpty()
+        if (name.isBlank()) {
+            return null
+        }
+        val createdAtMillis = getLong("createdAtMillis")
+        val createdAt = createdAtMillis
+            ?.let { millis ->
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault())
+            }
+            ?: LocalDateTime.now()
+
+        com.example.selliaapp.data.local.entity.CustomerEntity(
+            id = idValue,
+            name = name,
+            phone = getString("phone"),
+            email = getString("email"),
+            address = getString("address"),
+            nickname = getString("nickname"),
+            rubrosCsv = getString("rubrosCsv"),
+            paymentTerm = getString("paymentTerm"),
+            paymentMethod = getString("paymentMethod"),
+            createdAt = createdAt
+        )
+    }.getOrNull()
 
     private fun shouldSyncTable(name: String): Boolean = name !in EXCLUDED_SYNC_TABLES &&
         !name.startsWith("sqlite_")
