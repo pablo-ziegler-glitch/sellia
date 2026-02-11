@@ -59,6 +59,37 @@ class UsageAlertsRepositoryImpl @Inject constructor(
         }
     }
 
+
+    override suspend fun fetchCurrentUsageMetrics(): Map<String, Double> = withContext(io) {
+        val tenantId = tenantProvider.requireTenantId()
+        val currentSnapshot = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("usageSnapshots")
+            .document("current")
+            .get()
+            .await()
+
+        val data = currentSnapshot.data ?: return@withContext emptyMap()
+        val candidateMaps = listOf(
+            data["metrics"],
+            data["usage"],
+            data["counts"]
+        ).mapNotNull { value ->
+            @Suppress("UNCHECKED_CAST")
+            (value as? Map<String, Any?>)?.mapValues { (_, raw) ->
+                (raw as? Number)?.toDouble() ?: Double.NaN
+            }?.filterValues { it.isFinite() }
+        }
+
+        val resolved = candidateMaps.firstOrNull { it.isNotEmpty() }
+        if (resolved != null) return@withContext resolved
+
+        data.mapNotNull { (key, value) ->
+            val numericValue = (value as? Number)?.toDouble() ?: return@mapNotNull null
+            key to numericValue
+        }.toMap()
+    }
+
     override suspend fun markAlertRead(alertId: String) = withContext(io) {
         val tenantId = tenantProvider.requireTenantId()
         val userId = auth.currentUser?.uid ?: return@withContext
