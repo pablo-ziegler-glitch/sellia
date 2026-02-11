@@ -1,19 +1,55 @@
 const CONFIG = {
-  BRAND_NAME: window.SELLIA_CONFIG?.brandName || "Sellia",
-  YOUTUBE_VIDEO_ID: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR",
-  WHATSAPP_URL: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
-  INSTAGRAM_URL: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
-  MAPS_URL: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
+  brand: {
+    name: window.SELLIA_CONFIG?.brandName?.trim() || "",
+    youtubeVideoId: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR"
+  },
+  siteBaseUrl: window.SELLIA_CONFIG?.siteBaseUrl || window.location.origin,
+  contact: {
+    whatsappUrl: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
+    instagramUrl: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
+    mapsUrl: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
+  }
 };
+
+applySeoMetadata();
 
 const state = {
   products: []
 };
 
+function applySeoMetadata() {
+  const storeName = CONFIG.brand.name;
+  const baseUrl = (CONFIG.siteBaseUrl || window.location.origin).replace(/\/$/, "");
+  const canonicalUrl = `${baseUrl}/`;
+  const title = storeName ? `Historia real de Valkirja | ${storeName}` : "Historia real de Valkirja";
+  const description =
+    "Esto no es una campaña publicitaria. Es la historia real de una marca que quiere acompañarlos hacia la adolescencia.";
+
+  document.title = title;
+
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (canonical) canonical.setAttribute("href", canonicalUrl);
+
+  const setMeta = (selector, attribute, value) => {
+    const element = document.querySelector(selector);
+    if (!element) return;
+    element.setAttribute(attribute, value);
+  };
+
+  setMeta('meta[name="description"]', "content", description);
+  setMeta('meta[property="og:title"]', "content", title);
+  setMeta('meta[property="og:description"]', "content", description);
+  setMeta('meta[property="og:url"]', "content", canonicalUrl);
+  setMeta('meta[name="twitter:title"]', "content", title);
+  setMeta('meta[name="twitter:description"]', "content", description);
+}
+
 const brandTargets = document.querySelectorAll("[data-brand]");
-brandTargets.forEach((el) => {
-  el.textContent = CONFIG.brand?.name ?? "Valkirja";
-});
+if (CONFIG.brand.name) {
+  brandTargets.forEach((el) => {
+    el.textContent = CONFIG.brand.name;
+  });
+}
 
 const yearEl = document.getElementById("year");
 if (yearEl) {
