@@ -27,6 +27,7 @@ data class UsageLimitSummary(
 data class UsageAlertsUiState(
     val alerts: List<UsageAlert> = emptyList(),
     val limitSummaries: List<UsageLimitSummary> = emptyList(),
+    val currentMetrics: Map<String, Double> = emptyMap(),
     val loading: Boolean = false,
     val error: String? = null
 ) {
@@ -40,7 +41,13 @@ class UsageAlertsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
-        UsageAlertsUiState(limitSummaries = buildLimitSummaries(emptyList(), emptyList()))
+        UsageAlertsUiState(
+            limitSummaries = buildLimitSummaries(
+                alerts = emptyList(),
+                overrides = emptyList(),
+                currentMetrics = emptyMap()
+            )
+        )
     )
     val state: StateFlow<UsageAlertsUiState> = _state.asStateFlow()
 
@@ -53,18 +60,23 @@ class UsageAlertsViewModel @Inject constructor(
             _state.update { it.copy(loading = true, error = null) }
             val alertsDeferred = async { runCatching { repository.fetchAlerts() } }
             val overridesDeferred = async { runCatching { limitsRepository.fetchOverrides() } }
+            val metricsDeferred = async { runCatching { repository.fetchCurrentUsageMetrics() } }
             val alertsResult = alertsDeferred.await()
             val overridesResult = overridesDeferred.await()
+            val metricsResult = metricsDeferred.await()
             val alerts = alertsResult.getOrDefault(emptyList())
             val overrides = overridesResult.getOrDefault(emptyList())
-            val summaries = buildLimitSummaries(alerts, overrides)
+            val currentMetrics = metricsResult.getOrDefault(emptyMap())
+            val summaries = buildLimitSummaries(alerts, overrides, currentMetrics)
             _state.update {
                 it.copy(
                     alerts = alerts,
                     limitSummaries = summaries,
+                    currentMetrics = currentMetrics,
                     loading = false,
                     error = alertsResult.exceptionOrNull()?.message
                         ?: overridesResult.exceptionOrNull()?.message
+                        ?: metricsResult.exceptionOrNull()?.message
                 )
             }
         }
@@ -122,7 +134,8 @@ class UsageAlertsViewModel @Inject constructor(
 
     private fun buildLimitSummaries(
         alerts: List<UsageAlert>,
-        overrides: List<UsageLimitOverride>
+        overrides: List<UsageLimitOverride>,
+        currentMetrics: Map<String, Double>
     ): List<UsageLimitSummary> {
         val alertByMetric = alerts.groupBy { it.metric }
             .mapValues { (_, group) ->
@@ -143,7 +156,7 @@ class UsageAlertsViewModel @Inject constructor(
         return (defaults + extraMetrics).map { metric ->
             val alert = alertByMetric[metric.key]
             val override = overridesByMetric[metric.key]
-            val current = alert?.currentValue ?: 0.0
+            val current = currentMetrics[metric.key] ?: alert?.currentValue ?: 0.0
             val baseLimit = alert?.limitValue?.takeIf { it > 0 } ?: metric.defaultLimit
             val finalLimit = override?.limitValue?.takeIf { it > 0 } ?: baseLimit
             UsageLimitSummary(

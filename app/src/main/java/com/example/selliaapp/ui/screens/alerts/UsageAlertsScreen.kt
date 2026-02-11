@@ -191,6 +191,14 @@ fun UsageAlertsScreen(
                                 }
                             )
                         }
+                        if (state.currentMetrics.isNotEmpty()) {
+                            item {
+                                UsageCurrentMetricsCard(
+                                    metrics = state.currentMetrics,
+                                    numberFormatter = numberFormatter
+                                )
+                            }
+                        }
                         if (state.alerts.isEmpty()) {
                             item {
                                 Text(
@@ -211,6 +219,48 @@ fun UsageAlertsScreen(
             }
         }
 
+    }
+}
+
+
+@Composable
+private fun UsageCurrentMetricsCard(
+    metrics: Map<String, Double>,
+    numberFormatter: NumberFormat
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Consumos actuales (tienda)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            metrics.entries
+                .sortedBy { it.key }
+                .forEach { (metric, value) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = metric.replace('_', ' ').replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = numberFormatter.format(value),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+        }
     }
 }
 
