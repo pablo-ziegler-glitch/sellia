@@ -407,6 +407,26 @@ class ProductViewModel @Inject constructor(
         }
     }
 
+
+    fun deleteById(
+        productId: Int,
+        onDone: (Result<Unit>) -> Unit = {}
+    ) {
+        if (productId <= 0) {
+            onDone(Result.failure(IllegalArgumentException("Id de producto inválido.")))
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { repo.deleteById(productId) }
+                .onSuccess {
+                    withContext(Dispatchers.Main) { onDone(Result.success(Unit)) }
+                }
+                .onFailure { error ->
+                    withContext(Dispatchers.Main) { onDone(Result.failure(error)) }
+                }
+        }
+    }
+
     fun deleteProductsByIds(
         productIds: Set<Int>,
         onDone: (Result<Int>) -> Unit = {}

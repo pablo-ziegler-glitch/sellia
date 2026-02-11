@@ -2,24 +2,30 @@ package com.example.selliaapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.PagingData
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.domain.product.ProductFilterParams
+import com.example.selliaapp.domain.product.ProductSortOption
+import com.example.selliaapp.domain.product.filterAndSortProducts
 import com.example.selliaapp.repository.IProductRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ManageProductsUiState(
     val query: String = "",
+    val parentCategory: String = "",
+    val category: String = "",
+    val color: String = "",
+    val size: String = "",
+    val minPrice: String = "",
+    val maxPrice: String = "",
+    val sort: ProductSortOption = ProductSortOption.UPDATED_DESC,
     val onlyLowStock: Boolean = false,
     val onlyNoImage: Boolean = false,
     val onlyNoBarcode: Boolean = false
@@ -30,45 +36,35 @@ class ManageProductsViewModel @Inject constructor(
     private val repo: IProductRepository
 ) : ViewModel() {
 
-    // Estado UI (búsqueda + filtros)
     private val _state = MutableStateFlow(ManageProductsUiState())
     val state: StateFlow<ManageProductsUiState> = _state.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
-    // Flujo Paginado según búsqueda (filtros simples se aplican en UI por ahora)
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val productsPaged: Flow<PagingData<ProductEntity>> =
-        _state
-            .map { it.query.trim() }
-            .distinctUntilChanged()
-            .flatMapLatest { q ->
-                val query = q.takeIf { it.isNotEmpty() } ?: ""
-                repo.pagingSearchFlow(query)
-            }
-
-    // Listado no paginado (si alguna UI lo necesita)
     val productsAll: Flow<List<ProductEntity>> = repo.observeAll()
 
-    // ---- Acciones sobre estado ----
-    fun setQuery(q: String) {
-        _state.update { it.copy(query = q) }
+    val filteredProducts: Flow<List<ProductEntity>> = combine(productsAll, state) { products, uiState ->
+        filterAndSortProducts(products, uiState.toFilterParams())
     }
 
-    fun toggleLowStock() {
-        _state.update { it.copy(onlyLowStock = !it.onlyLowStock) }
+    fun setQuery(value: String) = _state.update { it.copy(query = value) }
+    fun setParentCategory(value: String) = _state.update { it.copy(parentCategory = value) }
+    fun setCategory(value: String) = _state.update { it.copy(category = value) }
+    fun setColor(value: String) = _state.update { it.copy(color = value) }
+    fun setSize(value: String) = _state.update { it.copy(size = value) }
+    fun setMinPrice(value: String) = _state.update { it.copy(minPrice = value) }
+    fun setMaxPrice(value: String) = _state.update { it.copy(maxPrice = value) }
+    fun setSort(sort: ProductSortOption) = _state.update { it.copy(sort = sort) }
+
+    fun toggleLowStock() = _state.update { it.copy(onlyLowStock = !it.onlyLowStock) }
+    fun toggleNoImage() = _state.update { it.copy(onlyNoImage = !it.onlyNoImage) }
+    fun toggleNoBarcode() = _state.update { it.copy(onlyNoBarcode = !it.onlyNoBarcode) }
+
+    fun clearFilters() {
+        _state.value = ManageProductsUiState()
     }
 
-    fun toggleNoImage() {
-        _state.update { it.copy(onlyNoImage = !it.onlyNoImage) }
-    }
-
-    fun toggleNoBarcode() {
-        _state.update { it.copy(onlyNoBarcode = !it.onlyNoBarcode) }
-    }
-
-    // ---- Acciones de datos ----
     fun deleteById(id: Int) {
         viewModelScope.launch {
             runCatching { repo.deleteById(id) }
@@ -98,3 +94,17 @@ class ManageProductsViewModel @Inject constructor(
         _message.value = null
     }
 }
+
+private fun ManageProductsUiState.toFilterParams(): ProductFilterParams = ProductFilterParams(
+    query = query,
+    parentCategory = parentCategory.ifBlank { null },
+    category = category.ifBlank { null },
+    color = color.ifBlank { null },
+    size = size.ifBlank { null },
+    minPrice = minPrice.toDoubleOrNull(),
+    maxPrice = maxPrice.toDoubleOrNull(),
+    onlyLowStock = onlyLowStock,
+    onlyNoImage = onlyNoImage,
+    onlyNoBarcode = onlyNoBarcode,
+    sort = sort
+)

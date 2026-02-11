@@ -68,6 +68,7 @@ import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.ui.components.BackTopAppBar
+import com.example.selliaapp.ui.components.ProductQuickDetailDialog
 import com.example.selliaapp.viewmodel.ProductViewModel
 import java.text.NumberFormat
 import java.util.Locale
@@ -91,6 +92,7 @@ fun StockScreen(
     onScan: () -> Unit,
     onImportCsv: () -> Unit,
     onOpenPriceAudit: () -> Unit,
+    onEditProduct: (ProductEntity) -> Unit,
     onOpenQrLabels: () -> Unit,
     onProductClick: (ProductEntity) -> Unit,
     onBack: () -> Unit
@@ -119,6 +121,7 @@ fun StockScreen(
     var selectedProductIds by rememberSaveable { mutableStateOf(setOf<Int>()) }
     var showDeleteSelectedDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteAllDialog by rememberSaveable { mutableStateOf(false) }
+    var detailProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
     // Snackbar host para mostrar mensajes del import
     val snackbarHostState = remember { SnackbarHostState() } // [NUEVO]
@@ -378,7 +381,7 @@ fun StockScreen(
                                     selectedProductIds + p.id
                                 }
                             } else {
-                                onProductClick(p)
+                                detailProduct = p
                             }
                         },
                         onLongClick = {
@@ -389,6 +392,28 @@ fun StockScreen(
                 }
             }
         }
+    }
+
+
+    detailProduct?.let { product ->
+        ProductQuickDetailDialog(
+            product = product,
+            onDismiss = { detailProduct = null },
+            onEdit = {
+                detailProduct = null
+                onEditProduct(product)
+            },
+            onDelete = {
+                detailProduct = null
+                vm.deleteById(product.id) { result ->
+                    result.onSuccess {
+                        importMessage = "Producto eliminado correctamente."
+                    }.onFailure { error ->
+                        importMessage = error.message ?: "No se pudo eliminar el producto."
+                    }
+                }
+            }
+        )
     }
 
     if (showDeleteSelectedDialog) {

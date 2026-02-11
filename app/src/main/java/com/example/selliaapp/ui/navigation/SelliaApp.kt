@@ -532,9 +532,7 @@ fun SelliaApp(
                     onScan =  { navController.navigate(Routes.ScannerForStock.route) },
                     onImportCsv =  { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
                     onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
-                    onOpenQrLabels = { navController.navigate(Routes.ProductQr.route) },
-                    onProductClick = { product ->
-                        // EDICIÓN: ir a add_product/{id}
+                    onEditProduct = { product ->
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
                     },
                     onBack = { navController.popBackStack() }
