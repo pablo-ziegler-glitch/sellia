@@ -18,7 +18,6 @@ const elements = {
   productDescription: document.getElementById("productDescription"),
   productSizes: document.getElementById("productSizes"),
   statusCard: document.getElementById("statusCard"),
-  syncMeta: document.getElementById("syncMeta"),
   ctaWhatsapp: document.getElementById("ctaWhatsapp"),
   ctaOpenApp: document.getElementById("ctaOpenApp")
 };
@@ -83,7 +82,6 @@ function applyProduct(product, source = "network") {
   state.product = product;
   state.lastSync = new Date();
   setStatus(source === "cache" ? "Mostrando precio guardado. Verificando novedades..." : "");
-  updateSyncMeta();
   renderProduct(product);
 }
 
@@ -103,21 +101,6 @@ function formatCurrency(value) {
     currency: "ARS",
     maximumFractionDigits: 0
   }).format(numberValue);
-}
-
-function updateSyncMeta() {
-  if (!elements.syncMeta) return;
-  if (!state.lastSync) {
-    elements.syncMeta.textContent = "";
-    return;
-  }
-  const time = state.lastSync.toLocaleTimeString("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-  elements.syncMeta.textContent = `Última actualización: ${time}. Se refresca cada ${
-    Math.round(refreshIntervalMs / 60000)
-  } min.`;
 }
 
 function renderProduct(product) {
@@ -191,9 +174,12 @@ function renderProduct(product) {
 
   elements.productSizes.innerHTML = "";
   if (product.parentCategory?.toLowerCase() === "indumentaria" && product.sizes?.length) {
+    elements.productSizes.setAttribute("role", "list");
     product.sizes.forEach((size) => {
       const pill = document.createElement("span");
       pill.className = "size-pill";
+      pill.setAttribute("role", "listitem");
+      pill.setAttribute("aria-label", `Talle ${size}`);
       pill.textContent = size;
       elements.productSizes.appendChild(pill);
     });
