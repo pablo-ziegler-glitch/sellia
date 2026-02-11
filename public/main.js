@@ -1,10 +1,38 @@
+const CONFIG_PLACEHOLDER = "REEMPLAZAR";
+
 const CONFIG = {
-  BRAND_NAME: window.SELLIA_CONFIG?.brandName || "Sellia",
-  YOUTUBE_VIDEO_ID: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR",
-  WHATSAPP_URL: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
-  INSTAGRAM_URL: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
-  MAPS_URL: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
+  brandName: window.SELLIA_CONFIG?.brandName || "Sellia",
+  youtubeVideoId: window.SELLIA_CONFIG?.youtubeVideoId || CONFIG_PLACEHOLDER,
+  contact: {
+    whatsapp: window.SELLIA_CONFIG?.contact?.whatsapp || CONFIG_PLACEHOLDER,
+    instagram: window.SELLIA_CONFIG?.contact?.instagram || CONFIG_PLACEHOLDER,
+    maps: window.SELLIA_CONFIG?.contact?.maps || CONFIG_PLACEHOLDER
+  }
 };
+
+function isConfiguredValue(value) {
+  return Boolean(value) && !String(value).startsWith(CONFIG_PLACEHOLDER);
+}
+
+function validatePublicConfig(config) {
+  const requiredKeys = [
+    { path: "brandName", value: config.brandName },
+    { path: "youtubeVideoId", value: config.youtubeVideoId },
+    { path: "contact.whatsapp", value: config.contact?.whatsapp },
+    { path: "contact.instagram", value: config.contact?.instagram },
+    { path: "contact.maps", value: config.contact?.maps }
+  ];
+
+  const missingKeys = requiredKeys.filter(({ value }) => !isConfiguredValue(value)).map(({ path }) => path);
+
+  if (missingKeys.length > 0) {
+    console.warn(
+      `[config] Faltan valores válidos en SELLIA_CONFIG para: ${missingKeys.join(", ")}. Reemplazá los placeholders en public/config.js.`
+    );
+  }
+}
+
+validatePublicConfig(CONFIG);
 
 const state = {
   products: []
@@ -12,7 +40,7 @@ const state = {
 
 const brandTargets = document.querySelectorAll("[data-brand]");
 brandTargets.forEach((el) => {
-  el.textContent = CONFIG.brand?.name ?? "Valkirja";
+  el.textContent = CONFIG.brandName;
 });
 
 const yearEl = document.getElementById("year");
@@ -21,14 +49,14 @@ if (yearEl) {
 }
 
 const contactLinks = {
-  whatsapp: CONFIG.contact?.whatsappUrl,
-  instagram: CONFIG.contact?.instagramUrl,
-  maps: CONFIG.contact?.mapsUrl
+  whatsapp: CONFIG.contact.whatsapp,
+  instagram: CONFIG.contact.instagram,
+  maps: CONFIG.contact.maps
 };
 
 Object.entries(contactLinks).forEach(([key, url]) => {
   const link = document.querySelector(`[data-contact="${key}"]`);
-  if (link && url && !url.startsWith("REEMPLAZAR")) {
+  if (link && isConfiguredValue(url)) {
     link.href = url;
   }
 });
@@ -44,7 +72,7 @@ for (const [key, value] of utmParams.entries()) {
 if ([...utm.keys()].length) {
   document.querySelectorAll("[data-utm-link]").forEach((link) => {
     const href = link.getAttribute("href");
-    if (!href || href.startsWith("#") || href.startsWith("REEMPLAZAR")) {
+    if (!href || href.startsWith("#") || href.startsWith(CONFIG_PLACEHOLDER)) {
       return;
     }
     try {
@@ -64,8 +92,8 @@ const videoPoster = document.getElementById("videoPoster");
 const videoPlayButton = document.querySelector(".video-play");
 let lastFocusedElement = null;
 
-if (CONFIG.brand?.youtubeVideoId && CONFIG.brand.youtubeVideoId !== "REEMPLAZAR") {
-  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.brand.youtubeVideoId}/hqdefault.jpg`;
+if (isConfiguredValue(CONFIG.youtubeVideoId)) {
+  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.youtubeVideoId}/hqdefault.jpg`;
   videoPoster.src = posterUrl;
 }
 
@@ -79,9 +107,9 @@ function trackEvent(name, detail = {}) {
 
 if (videoPlayButton) {
   videoPlayButton.addEventListener("click", () => {
-    const videoId = CONFIG.brand?.youtubeVideoId;
-    if (!videoId || videoId === "REEMPLAZAR") {
-      console.warn("Configurar brand.youtubeVideoId en config.js para habilitar el video.");
+    const videoId = CONFIG.youtubeVideoId;
+    if (!isConfiguredValue(videoId)) {
+      console.warn("Configurá youtubeVideoId en config.js para habilitar el video.");
       return;
     }
 
