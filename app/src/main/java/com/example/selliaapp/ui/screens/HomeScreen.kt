@@ -54,6 +54,7 @@ import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.ui.components.AccountAvatarMenu
 import com.example.selliaapp.ui.components.AccountSummary
 import com.example.selliaapp.viewmodel.HomeViewModel
+import com.example.selliaapp.viewmodel.hasOpenCashSession
 import java.text.NumberFormat
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

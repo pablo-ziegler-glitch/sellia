@@ -42,6 +42,7 @@ firebaseCrashlyticsBuildtools = "3.0.6"
 junitJunit = "4.12"
 viewbinding = "7.3.1"
 androidxBrowser = "1.8.0"
+runtimeSaveable = "1.10.2"
 
 
 [libraries]
@@ -98,5 +99,6 @@ firebase-appcheck-debug = { module = "com.google.firebase:firebase-appcheck-debu
 junit-junit = { group = "junit", name = "junit", version.ref = "junitJunit" }
 androidx-viewbinding = { group = "androidx.databinding", name = "viewbinding", version.ref = "viewbinding" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
+androidx-compose-runtime-saveable = { group = "androidx.compose.runtime", name = "runtime-saveable", version.ref = "runtimeSaveable" }
 
 [plugins]

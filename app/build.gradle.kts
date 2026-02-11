@@ -100,6 +100,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.androidx.compose.runtime.saveable)
     val hiltVersion = "2.55"
 
     implementation("com.google.dagger:hilt-android:$hiltVersion")
