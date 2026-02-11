@@ -490,9 +490,9 @@ private fun ProductRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val listPrice = product.listPrice ?: product.price ?: 0.0
-    val cashPrice = product.cashPrice ?: product.listPrice ?: product.price ?: 0.0
-    val transferPrice = product.transferPrice ?: product.listPrice ?: product.price ?: 0.0
+    val listPrice = product.listPrice ?: 0.0
+    val cashPrice = product.cashPrice ?: product.listPrice ?: 0.0
+    val transferPrice = product.transferPrice ?: product.listPrice ?: 0.0
     val mlPriceLabel = product.mlPrice?.let { currency.format(it) } ?: "-"
     val ml3cPriceLabel = product.ml3cPrice?.let { currency.format(it) } ?: "-"
     val ml6cPriceLabel = product.ml6cPrice?.let { currency.format(it) } ?: "-"

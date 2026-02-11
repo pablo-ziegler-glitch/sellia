@@ -48,10 +48,18 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.ui.components.ImageUrlListEditor
+import com.example.selliaapp.ui.components.MultiSelectChipPicker
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel.UiState
 import com.example.selliaapp.viewmodel.PrefillData
 import com.example.selliaapp.viewmodel.ProductViewModel
+
+private const val INDUMENTARIA_PARENT_CATEGORY = "Indumentaria"
+
+private val INDUMENTARIA_SIZE_OPTIONS = listOf(
+    "3M", "6M", "9M", "12M", "18M", "24M", "36",
+    "0", "2", "4", "6", "8", "10", "12", "14", "16", "Unico"
+)
 
 /**
  * AddProductScreen con:
@@ -97,7 +105,6 @@ fun AddProductScreen(
     var barcode by remember { mutableStateOf(prefill?.barcode ?: prefillBarcode.orEmpty()) }
 
     // Precios y stock
-    var priceText by remember { mutableStateOf("") }          // legacy
     var purchasePriceText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
     var cashPriceText by remember { mutableStateOf("") }
@@ -109,7 +116,10 @@ fun AddProductScreen(
 
     // Extras
     var description by remember { mutableStateOf("") }
+    var selectedParentCategoryName by remember { mutableStateOf("") }
     var selectedCategoryName by remember { mutableStateOf("") }
+    var color by remember { mutableStateOf("") }
+    var selectedSizes by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedProviderName by remember { mutableStateOf("") }
     var providerSku by remember { mutableStateOf("") }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
@@ -153,7 +163,10 @@ fun AddProductScreen(
                 imageUrls.addAll(loadedImageUrls)
                 pendingImageUris.clear()
 
+                selectedParentCategoryName = p.parentCategory.orEmpty()
                 selectedCategoryName = p.category.orEmpty()
+                color = p.color.orEmpty()
+                selectedSizes = p.sizes
                 selectedProviderName = p.providerName.orEmpty()
                 providerSku = p.providerSku.orEmpty()
                 minStockText = p.minStock?.toString() ?: ""
@@ -292,13 +305,6 @@ fun AddProductScreen(
             )
 
             // --- Precios ---
-            OutlinedTextField(
-                value = priceText,
-                onValueChange = { priceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                label = { Text("Precio (legacy)") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = listPriceText,
@@ -401,7 +407,7 @@ fun AddProductScreen(
                 OutlinedTextField(
                     value = selectedCategoryName,
                     onValueChange = { selectedCategoryName = it },
-                    label = { Text("Categoría") },
+                    label = { Text("Subcategoría") },
                     trailingIcon = {
                         Icon(
                             Icons.Default.ArrowDropDown,
@@ -425,6 +431,33 @@ fun AddProductScreen(
                         )
                     }
                 }
+            }
+
+            // Categoría padre
+            OutlinedTextField(
+                value = selectedParentCategoryName,
+                onValueChange = { selectedParentCategoryName = it },
+                label = { Text("Categoría padre") },
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = { Text("Si es Indumentaria se habilitan color y talle/s.") }
+            )
+
+            if (selectedParentCategoryName.trim().equals(INDUMENTARIA_PARENT_CATEGORY, ignoreCase = true)) {
+                OutlinedTextField(
+                    value = color,
+                    onValueChange = { color = it },
+                    label = { Text("Color") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                MultiSelectChipPicker(
+                    title = "Talle/s",
+                    options = INDUMENTARIA_SIZE_OPTIONS,
+                    selectedOptions = selectedSizes,
+                    onSelectionChange = { selectedSizes = it },
+                    allowCustomAdd = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             // Proveedor
@@ -485,7 +518,6 @@ fun AddProductScreen(
                             infoMessage = "Ingresá un costo de adquisición válido."
                             return@Button
                         }
-                        val legacy = priceText.replace(',', '.').toDoubleOrNull()
                         val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
                         val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
                         val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
@@ -503,7 +535,6 @@ fun AddProductScreen(
                                 name = name,
                                 barcode = barcode.ifBlank { null },
                                 purchasePrice = purchase,
-                                legacyPrice = legacy,
                                 listPrice = listPrice,
                                 cashPrice = cashPrice,
                                 transferPrice = transferPrice,
@@ -515,9 +546,13 @@ fun AddProductScreen(
                                 code = code.ifBlank { null },
                                 description = description.ifBlank { null },
                                 imageUrls = normalizedImages,
+                                parentCategoryName = selectedParentCategoryName.ifBlank { null },
                                 categoryName = selectedCategoryName.ifBlank { null },
                                 providerName = selectedProviderName.ifBlank { null },
                                 providerSku = providerSku.ifBlank { null },
+                                brand = brand.ifBlank { null },
+                                color = color.ifBlank { null },
+                                sizes = selectedSizes,
                                 minStock = minStock,
                                 pendingImageUris = pendingImageUris.toList()
                             ) { result ->
@@ -533,7 +568,6 @@ fun AddProductScreen(
                                 name = name,
                                 barcode = barcode.ifBlank { null },
                                 purchasePrice = purchase,
-                                legacyPrice = legacy,
                                 listPrice = listPrice,
                                 cashPrice = cashPrice,
                                 transferPrice = transferPrice,
@@ -545,9 +579,13 @@ fun AddProductScreen(
                                 code = code.ifBlank { null },
                                 description = description.ifBlank { null },
                                 imageUrls = normalizedImages,
+                                parentCategoryName = selectedParentCategoryName.ifBlank { null },
                                 categoryName = selectedCategoryName.ifBlank { null },
                                 providerName = selectedProviderName.ifBlank { null },
                                 providerSku = providerSku.ifBlank { null },
+                                brand = brand.ifBlank { null },
+                                color = color.ifBlank { null },
+                                sizes = selectedSizes,
                                 minStock = minStock
                             ) { result ->
                                 if (result.isSuccess) {

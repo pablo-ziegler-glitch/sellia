@@ -134,14 +134,33 @@ private fun PublicCatalogItem(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Lista: ${formatPrice(product.listPrice, currency)}",
+                    text = "PRECIO LISTA: ${formatPrice(product.listPrice, currency)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = "Efectivo: ${formatPrice(product.cashPrice, currency)}",
+                    text = "PRECIO EFECTIVO: ${formatPrice(product.cashPrice, currency)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Text(
+                    text = "PRECIO TRANSFERENCIA: ${formatPrice(product.transferPrice, currency)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (!product.brand.isNullOrBlank()) {
+                    Text(
+                        text = "Marca: ${product.brand}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (!product.category.isNullOrBlank()) {
+                    Text(
+                        text = "Subcategoría: ${product.category}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Text(

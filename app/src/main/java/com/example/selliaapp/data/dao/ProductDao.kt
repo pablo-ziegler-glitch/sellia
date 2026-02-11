@@ -143,7 +143,6 @@ interface ProductDao {
                 barcode     = incoming.barcode     ?: existing.barcode,
                 name        = if (incoming.name.isNotBlank()) incoming.name else existing.name,
                 purchasePrice = incoming.purchasePrice ?: existing.purchasePrice,
-                price       = incoming.price       ?: existing.price,
                 listPrice   = incoming.listPrice   ?: existing.listPrice,
                 cashPrice   = incoming.cashPrice   ?: existing.cashPrice,
                 transferPrice = incoming.transferPrice ?: existing.transferPrice,
@@ -160,7 +159,11 @@ interface ProductDao {
                 providerId  = incoming.providerId  ?: existing.providerId,
                 providerName= incoming.providerName?: existing.providerName,
                 providerSku = incoming.providerSku ?: existing.providerSku,
+                brand       = incoming.brand ?: existing.brand,
+                parentCategory = incoming.parentCategory ?: existing.parentCategory,
                 category    = incoming.category    ?: existing.category,
+                color       = incoming.color ?: existing.color,
+                sizes       = if (incoming.sizes.isNotEmpty()) incoming.sizes else existing.sizes,
                 minStock    = incoming.minStock    ?: existing.minStock,
                 updatedAt   = incoming.updatedAt   // no forzamos si viene null; si querés: incoming.updatedAt ?: existing.updatedAt
             )

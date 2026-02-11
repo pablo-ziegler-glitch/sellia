@@ -101,7 +101,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 39,
+    version = 40,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -378,34 +378,72 @@ abstract class AppDatabase : RoomDatabase() {
         @JvmField
         val MIGRATION_38_39 = object : Migration(38, 39) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE products ADD COLUMN brand TEXT")
+                db.execSQL("ALTER TABLE products ADD COLUMN parentCategory TEXT")
+                db.execSQL("ALTER TABLE products ADD COLUMN color TEXT")
+                db.execSQL("ALTER TABLE products ADD COLUMN sizes TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+
+        @JvmField
+        val MIGRATION_39_40 = object : Migration(39, 40) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
-                    CREATE TABLE IF NOT EXISTS `product_price_audit_log` (
+                    CREATE TABLE IF NOT EXISTS `products_new` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        `productId` INTEGER NOT NULL,
-                        `productName` TEXT NOT NULL,
+                        `code` TEXT,
+                        `barcode` TEXT,
+                        `name` TEXT NOT NULL,
                         `purchasePrice` REAL,
-                        `oldListPrice` REAL,
-                        `newListPrice` REAL,
-                        `oldCashPrice` REAL,
-                        `newCashPrice` REAL,
-                        `oldTransferPrice` REAL,
-                        `newTransferPrice` REAL,
-                        `oldMlPrice` REAL,
-                        `newMlPrice` REAL,
-                        `oldMl3cPrice` REAL,
-                        `newMl3cPrice` REAL,
-                        `oldMl6cPrice` REAL,
-                        `newMl6cPrice` REAL,
-                        `reason` TEXT NOT NULL,
-                        `changedBy` TEXT NOT NULL,
-                        `source` TEXT NOT NULL,
-                        `changedAt` INTEGER NOT NULL
+                        `listPrice` REAL,
+                        `cashPrice` REAL,
+                        `transferPrice` REAL,
+                        `transferNetPrice` REAL,
+                        `mlPrice` REAL,
+                        `ml3cPrice` REAL,
+                        `ml6cPrice` REAL,
+                        `autoPricing` INTEGER NOT NULL,
+                        `quantity` INTEGER NOT NULL,
+                        `description` TEXT,
+                        `imageUrl` TEXT,
+                        `imageUrls` TEXT NOT NULL,
+                        `categoryId` INTEGER,
+                        `providerId` INTEGER,
+                        `providerName` TEXT,
+                        `providerSku` TEXT,
+                        `brand` TEXT,
+                        `parentCategory` TEXT,
+                        `category` TEXT,
+                        `color` TEXT,
+                        `sizes` TEXT NOT NULL,
+                        `minStock` INTEGER,
+                        `updatedAt` INTEGER NOT NULL
                     )
                     """.trimIndent()
                 )
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_price_audit_log_productId` ON `product_price_audit_log` (`productId`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_price_audit_log_changedAt` ON `product_price_audit_log` (`changedAt`)")
+                db.execSQL(
+                    """
+                    INSERT INTO `products_new` (
+                        `id`,`code`,`barcode`,`name`,`purchasePrice`,`listPrice`,`cashPrice`,`transferPrice`,`transferNetPrice`,
+                        `mlPrice`,`ml3cPrice`,`ml6cPrice`,`autoPricing`,`quantity`,`description`,`imageUrl`,`imageUrls`,`categoryId`,
+                        `providerId`,`providerName`,`providerSku`,`brand`,`parentCategory`,`category`,`color`,`sizes`,`minStock`,`updatedAt`
+                    )
+                    SELECT
+                        `id`,`code`,`barcode`,`name`,`purchasePrice`,`listPrice`,`cashPrice`,`transferPrice`,`transferNetPrice`,
+                        `mlPrice`,`ml3cPrice`,`ml6cPrice`,`autoPricing`,`quantity`,`description`,`imageUrl`,COALESCE(`imageUrls`, '[]'),`categoryId`,
+                        `providerId`,`providerName`,`providerSku`,`brand`,`parentCategory`,`category`,`color`,COALESCE(`sizes`, '[]'),`minStock`,`updatedAt`
+                    FROM `products`
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE `products`")
+                db.execSQL("ALTER TABLE `products_new` RENAME TO `products`")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_products_barcode` ON `products` (`barcode`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_products_code` ON `products` (`code`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_name` ON `products` (`name`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_categoryId` ON `products` (`categoryId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_providerId` ON `products` (`providerId`)")
             }
         }
     }

@@ -50,9 +50,9 @@ fun ProductItem(product: ProductEntity) {
         .padding(16.dp)) {
         Text(text = product.name, style = MaterialTheme.typography.titleMedium)
         Text(
-            text = "Lista: ${product.listPrice ?: product.price ?: "-"} · " +
-                "Efectivo: ${product.cashPrice ?: product.listPrice ?: product.price ?: "-"} · " +
-                "Transferencia: ${product.transferPrice ?: product.listPrice ?: product.price ?: "-"}",
+            text = "Lista: ${product.listPrice ?: "-"} · " +
+                "Efectivo: ${product.cashPrice ?: product.listPrice ?: "-"} · " +
+                "Transferencia: ${product.transferPrice ?: product.listPrice ?: "-"}",
             style = MaterialTheme.typography.bodyMedium
         )
         Text(

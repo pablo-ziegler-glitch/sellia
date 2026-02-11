@@ -73,9 +73,9 @@ fun ProductListItem(
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text(
-                text = "Lista: ${product.listPrice ?: product.price ?: "-"} · " +
-                    "Efectivo: ${product.cashPrice ?: product.listPrice ?: product.price ?: "-"} · " +
-                    "Transferencia: ${product.transferPrice ?: product.listPrice ?: product.price ?: "-"}",
+                text = "Lista: ${product.listPrice ?: "-"} · " +
+                    "Efectivo: ${product.cashPrice ?: product.listPrice ?: "-"} · " +
+                    "Transferencia: ${product.transferPrice ?: product.listPrice ?: "-"}",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(

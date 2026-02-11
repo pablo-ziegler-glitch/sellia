@@ -30,7 +30,6 @@ fun ProductEditorDialog(
         name: String,
         barcode: String,
         purchasePrice: Double?,
-        price: Double,
         listPrice: Double?,
         cashPrice: Double?,
         transferPrice: Double?,
@@ -46,7 +45,6 @@ fun ProductEditorDialog(
     var name by remember { mutableStateOf(TextFieldValue(initial?.name.orEmpty())) }
     var barcode by remember { mutableStateOf(TextFieldValue(initial?.barcode.orEmpty())) }
     var purchasePrice by remember { mutableStateOf(TextFieldValue(initial?.purchasePrice?.toString() ?: "")) }
-    var price by remember { mutableStateOf(TextFieldValue(initial?.price?.toString() ?: "")) }
     var listPrice by remember { mutableStateOf(TextFieldValue(initial?.listPrice?.toString() ?: "")) }
     var cashPrice by remember { mutableStateOf(TextFieldValue(initial?.cashPrice?.toString() ?: "")) }
     var transferPrice by remember { mutableStateOf(TextFieldValue(initial?.transferPrice?.toString() ?: "")) }
@@ -108,7 +106,6 @@ fun ProductEditorDialog(
                     }
                 )
                 OutlinedTextField(barcode, { barcode = it }, label = { Text("Código QR público") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(price, { price = it }, label = { Text("Precio") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(listPrice, { listPrice = it }, label = { Text("Precio lista") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(cashPrice, { cashPrice = it }, label = { Text("Precio efectivo") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(transferPrice, { transferPrice = it }, label = { Text("Precio transferencia") }, modifier = Modifier.fillMaxWidth())
@@ -143,7 +140,6 @@ fun ProductEditorDialog(
                     purchasePriceError = true
                     return@TextButton
                 }
-                val p = price.text.toDoubleOrNull() ?: 0.0
                 val list = listPrice.text.toDoubleOrNull()
                 val cash = cashPrice.text.toDoubleOrNull()
                 val transfer = transferPrice.text.toDoubleOrNull()
@@ -161,7 +157,6 @@ fun ProductEditorDialog(
                     name.text.trim(),
                     barcode.text.trim(),
                     purchase,
-                    p,
                     list,
                     cash,
                     transfer,

@@ -71,10 +71,30 @@ function renderProduct(product) {
     sku.textContent = `SKU: ${product.sku}`;
     elements.productMeta.appendChild(sku);
   }
+  if (product.code) {
+    const code = document.createElement("span");
+    code.textContent = `Código: ${product.code}`;
+    elements.productMeta.appendChild(code);
+  }
+  if (product.brand) {
+    const brand = document.createElement("span");
+    brand.textContent = `Marca: ${product.brand}`;
+    elements.productMeta.appendChild(brand);
+  }
+  if (product.parentCategory) {
+    const parentCategory = document.createElement("span");
+    parentCategory.textContent = `Rubro: ${product.parentCategory}`;
+    elements.productMeta.appendChild(parentCategory);
+  }
   if (product.category) {
-    const category = document.createElement("span");
-    category.textContent = `Categoría: ${product.category}`;
-    elements.productMeta.appendChild(category);
+    const subCategory = document.createElement("span");
+    subCategory.textContent = `Subcategoría: ${product.category}`;
+    elements.productMeta.appendChild(subCategory);
+  }
+  if (product.parentCategory?.toLowerCase() === "indumentaria" && product.color) {
+    const color = document.createElement("span");
+    color.textContent = `Color: ${product.color}`;
+    elements.productMeta.appendChild(color);
   }
   if (product.updatedAt) {
     const updated = document.createElement("span");
@@ -97,14 +117,11 @@ function renderProduct(product) {
   });
 
   elements.priceGrid.innerHTML = "";
-  const basePrice = product.price ?? product.listPrice ?? product.cashPrice ?? null;
   const priceRows = [
-    { label: "Precio lista", value: formatCurrency(product.listPrice ?? basePrice) },
-    { label: "Precio efectivo", value: formatCurrency(product.cashPrice ?? basePrice) }
+    { label: "PRECIO LISTA", value: formatCurrency(product.listPrice) },
+    { label: "PRECIO EFECTIVO", value: formatCurrency(product.cashPrice) },
+    { label: "PRECIO TRANSFERENCIA", value: formatCurrency(product.transferPrice) }
   ];
-  if (product.transferPrice !== null && product.transferPrice !== undefined) {
-    priceRows.push({ label: "Precio transferencia", value: formatCurrency(product.transferPrice) });
-  }
   priceRows.forEach((row) => {
     const line = document.createElement("div");
     line.className = "price-row";
@@ -113,7 +130,7 @@ function renderProduct(product) {
   });
 
   elements.productSizes.innerHTML = "";
-  if (product.sizes?.length) {
+  if (product.parentCategory?.toLowerCase() === "indumentaria" && product.sizes?.length) {
     product.sizes.forEach((size) => {
       const pill = document.createElement("span");
       pill.className = "size-pill";
@@ -123,7 +140,9 @@ function renderProduct(product) {
   } else {
     const empty = document.createElement("span");
     empty.className = "muted";
-    empty.textContent = "Sin talles cargados.";
+    empty.textContent = product.parentCategory?.toLowerCase() === "indumentaria"
+      ? "Sin talle/s cargados."
+      : "No aplica talle/s para este rubro.";
     elements.productSizes.appendChild(empty);
   }
 
@@ -155,10 +174,13 @@ function parseFirestoreDocument(doc) {
   return {
     id: doc.name?.split("/").pop() || "",
     sku: getString("code") || getString("barcode"),
+    code: getString("code"),
     name: getString("name"),
     description: getString("description"),
+    brand: getString("brand"),
+    parentCategory: getString("parentCategory"),
     category: getString("category"),
-    price: getNumber("price"),
+    color: getString("color"),
     listPrice: getNumber("listPrice"),
     cashPrice: getNumber("cashPrice"),
     transferPrice: getNumber("transferPrice"),
@@ -200,8 +222,10 @@ async function fetchFirestoreByField(field, value) {
           { fieldPath: "barcode" },
           { fieldPath: "name" },
           { fieldPath: "description" },
+          { fieldPath: "brand" },
+          { fieldPath: "parentCategory" },
           { fieldPath: "category" },
-          { fieldPath: "price" },
+          { fieldPath: "color" },
           { fieldPath: "listPrice" },
           { fieldPath: "cashPrice" },
           { fieldPath: "transferPrice" },
@@ -251,8 +275,13 @@ async function fetchDemoProduct(sku) {
       sku: found.id,
       name: found.name,
       description: found.longDesc || found.desc,
+      brand: found.tag || "",
+      parentCategory: "Indumentaria",
+      category: found.tag || "General",
+      color: "",
       listPrice: "Consultar",
       cashPrice: "Consultar",
+      transferPrice: "Consultar",
       images: found.images?.length ? found.images : [found.image],
       sizes: ["S", "M", "L"]
     };
