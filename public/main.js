@@ -1,47 +1,57 @@
 const CONFIG_PLACEHOLDER = "REEMPLAZAR";
 
 const CONFIG = {
-  brandName: window.SELLIA_CONFIG?.brandName || "Sellia",
-  youtubeVideoId: window.SELLIA_CONFIG?.youtubeVideoId || CONFIG_PLACEHOLDER,
+  brand: {
+    name: window.SELLIA_CONFIG?.brandName?.trim() || "",
+    youtubeVideoId: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR"
+  },
+  siteBaseUrl: window.SELLIA_CONFIG?.siteBaseUrl || window.location.origin,
   contact: {
-    whatsapp: window.SELLIA_CONFIG?.contact?.whatsapp || CONFIG_PLACEHOLDER,
-    instagram: window.SELLIA_CONFIG?.contact?.instagram || CONFIG_PLACEHOLDER,
-    maps: window.SELLIA_CONFIG?.contact?.maps || CONFIG_PLACEHOLDER
+    whatsappUrl: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
+    instagramUrl: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
+    mapsUrl: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
   }
 };
 
-function isConfiguredValue(value) {
-  return Boolean(value) && !String(value).startsWith(CONFIG_PLACEHOLDER);
-}
-
-function validatePublicConfig(config) {
-  const requiredKeys = [
-    { path: "brandName", value: config.brandName },
-    { path: "youtubeVideoId", value: config.youtubeVideoId },
-    { path: "contact.whatsapp", value: config.contact?.whatsapp },
-    { path: "contact.instagram", value: config.contact?.instagram },
-    { path: "contact.maps", value: config.contact?.maps }
-  ];
-
-  const missingKeys = requiredKeys.filter(({ value }) => !isConfiguredValue(value)).map(({ path }) => path);
-
-  if (missingKeys.length > 0) {
-    console.warn(
-      `[config] Faltan valores válidos en SELLIA_CONFIG para: ${missingKeys.join(", ")}. Reemplazá los placeholders en public/config.js.`
-    );
-  }
-}
-
-validatePublicConfig(CONFIG);
+applySeoMetadata();
 
 const state = {
   products: []
 };
 
+function applySeoMetadata() {
+  const storeName = CONFIG.brand.name;
+  const baseUrl = (CONFIG.siteBaseUrl || window.location.origin).replace(/\/$/, "");
+  const canonicalUrl = `${baseUrl}/`;
+  const title = storeName ? `Historia real de Valkirja | ${storeName}` : "Historia real de Valkirja";
+  const description =
+    "Esto no es una campaña publicitaria. Es la historia real de una marca que quiere acompañarlos hacia la adolescencia.";
+
+  document.title = title;
+
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (canonical) canonical.setAttribute("href", canonicalUrl);
+
+  const setMeta = (selector, attribute, value) => {
+    const element = document.querySelector(selector);
+    if (!element) return;
+    element.setAttribute(attribute, value);
+  };
+
+  setMeta('meta[name="description"]', "content", description);
+  setMeta('meta[property="og:title"]', "content", title);
+  setMeta('meta[property="og:description"]', "content", description);
+  setMeta('meta[property="og:url"]', "content", canonicalUrl);
+  setMeta('meta[name="twitter:title"]', "content", title);
+  setMeta('meta[name="twitter:description"]', "content", description);
+}
+
 const brandTargets = document.querySelectorAll("[data-brand]");
-brandTargets.forEach((el) => {
-  el.textContent = CONFIG.brandName;
-});
+if (CONFIG.brand.name) {
+  brandTargets.forEach((el) => {
+    el.textContent = CONFIG.brand.name;
+  });
+}
 
 const yearEl = document.getElementById("year");
 if (yearEl) {

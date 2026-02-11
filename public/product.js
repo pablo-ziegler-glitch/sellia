@@ -1,5 +1,5 @@
 const config = window.SELLIA_CONFIG || {};
-const brandName = config.brandName || "Sellia";
+const brandName = config.brandName || "Tienda";
 const refreshIntervalMs = Number(config.refreshIntervalMs) || 300000;
 const tenantId = config.tenantId || "";
 const publicProductCollection = config.publicProductCollection || "public_products";
@@ -345,7 +345,8 @@ function stopPolling() {
 
 function maybeEnableOwnerAppRedirect() {
   if (!elements.ctaOpenApp || state.mode !== "owner" || !state.sku) return;
-  const deepLink = `sellia://product?q=${encodeURIComponent(state.sku)}`;
+  const deepLinkScheme = (config.deepLinkScheme || "store").replace(/:\/\/$/, "");
+  const deepLink = `${deepLinkScheme}://product?q=${encodeURIComponent(state.sku)}`;
   elements.ctaOpenApp.hidden = false;
   elements.ctaOpenApp.href = deepLink;
   elements.ctaOpenApp.addEventListener("click", (event) => {
