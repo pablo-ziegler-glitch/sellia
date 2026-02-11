@@ -100,4 +100,11 @@ class IProductRepositoryAdapter @Inject constructor(
 
     // ---------- Sync (pull) ----------
     override suspend fun syncDown(): Int = legacy.syncDown()
+
+    // ---------- Pricing ----------
+    override suspend fun recalculateAutoPricingForAll(
+        reason: String,
+        changedBy: String,
+        source: String
+    ): Int = legacy.recalculateAutoPricingForAll(reason, changedBy, source)
 }

@@ -76,4 +76,11 @@ interface IProductRepository {
 
     // ---------- Sync (pull) ----------
     suspend fun syncDown(): Int
+
+    // ---------- Pricing ----------
+    suspend fun recalculateAutoPricingForAll(
+        reason: String = "Pricing config updated",
+        changedBy: String = "System",
+        source: String = "PRICING_CONFIG"
+    ): Int
 }

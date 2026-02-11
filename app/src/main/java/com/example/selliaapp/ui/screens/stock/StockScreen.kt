@@ -217,11 +217,19 @@ fun StockScreen(
                                 )
                             }
                         } else {
-                            IconButton(onClick = onOpenPriceAudit) {
-                                Icon(
-                                    imageVector = Icons.Default.History,
-                                    contentDescription = "Auditoría de precios"
-                                )
+                            Row {
+                                IconButton(onClick = onForcePriceRefresh) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Forzar actualización de precios"
+                                    )
+                                }
+                                IconButton(onClick = onOpenPriceAudit) {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = "Auditoría de precios"
+                                    )
+                                }
                             }
                             IconButton(onClick = onOpenQrLabels) {
                                 Icon(
