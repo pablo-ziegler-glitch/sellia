@@ -1,6 +1,7 @@
 package com.example.selliaapp.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -115,17 +116,9 @@ fun HomeScreen(
                         showCashRequired = false
                         onCashOpen()
                     }
-                ) {
-                    Text("Abrir caja")
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCashRequired = false }) {
-                    Text("Seguir vendiendo")
-                }
-            }
-        )
-    }
+            )
+        }
 
     LazyColumn(
         modifier = Modifier
@@ -286,7 +279,72 @@ fun HomeScreen(
                     }
                 }
             }
+
+            KpiSection(
+                isCompactWidth = isCompactWidth,
+                dailySales = currency.format(state.dailySales),
+                tickets = state.cashSummary?.movements
+                    ?.count { it.type == "SALE_CASH" }
+                    ?.toString() ?: "0",
+                averageTicket = currency.format(state.averageTicket)
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null)
+                        Text("Alertas operativas", style = MaterialTheme.typography.titleMedium)
+                    }
+                    if (state.lowStockAlerts.isEmpty() && state.overdueProviderInvoices == 0) {
+                        Text(
+                            "Sin alertas por ahora.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        if (state.lowStockAlerts.isNotEmpty()) {
+                            Text(
+                                "Stock bajo (${state.lowStockAlerts.size})",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            state.lowStockAlerts.take(3).forEach { alert ->
+                                Text(
+                                    "• ${alert.name} (${alert.quantity} u.)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        if (state.overdueProviderInvoices > 0) {
+                            Text(
+                                "Facturas vencidas: ${state.overdueProviderInvoices}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            }
+
+            ShortcutsSection(
+                isCompactWidth = isCompactWidth,
+                onNewSale = onNewSale,
+                onStock = onStock,
+                onClientes = onClientes,
+                onReports = onReports
+            )
         }
+    }
+}
 
         item {
             Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
@@ -311,6 +369,8 @@ fun HomeScreen(
                 )
             }
         }
+    }
+}
 
         item {
             Card(
@@ -348,6 +408,33 @@ fun HomeScreen(
                 }
             }
         }
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            kpis.forEach { item ->
+                KpiCard(
+                    title = item.title,
+                    value = item.value,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShortcutsSection(
+    isCompactWidth: Boolean,
+    onNewSale: () -> Unit,
+    onStock: () -> Unit,
+    onClientes: () -> Unit,
+    onReports: () -> Unit
+) {
+    val shortcuts = listOf(
+        ShortcutItem("Vender", Icons.Default.PointOfSale, onNewSale),
+        ShortcutItem("Stock", Icons.Default.Inventory2, onStock),
+        ShortcutItem("Clientes", Icons.Default.People, onClientes),
+        ShortcutItem("Reportes", Icons.Default.QueryStats, onReports)
+    )
 
         items(
             items = lowStockAlertPreview,
@@ -383,6 +470,17 @@ fun HomeScreen(
         }
     }
 }
+
+private data class KpiItem(
+    val title: String,
+    val value: String
+)
+
+private data class ShortcutItem(
+    val label: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit
+)
 
 @Composable
 private fun StoreLogo(
@@ -430,11 +528,11 @@ private fun KpiCard(title: String, value: String, modifier: Modifier = Modifier)
 @Composable
 private fun ShortcutButton(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    OutlinedButton(onClick = onClick, modifier = modifier) {
+    OutlinedButton(onClick = onClick, modifier = modifier.height(52.dp)) {
         Icon(icon, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(label)

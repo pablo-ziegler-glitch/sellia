@@ -1,10 +1,38 @@
+const CONFIG_PLACEHOLDER = "REEMPLAZAR";
+
 const CONFIG = {
-  BRAND_NAME: window.SELLIA_CONFIG?.brandName || "Sellia",
-  YOUTUBE_VIDEO_ID: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR",
-  WHATSAPP_URL: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
-  INSTAGRAM_URL: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
-  MAPS_URL: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
+  brandName: window.SELLIA_CONFIG?.brandName || "Sellia",
+  youtubeVideoId: window.SELLIA_CONFIG?.youtubeVideoId || CONFIG_PLACEHOLDER,
+  contact: {
+    whatsapp: window.SELLIA_CONFIG?.contact?.whatsapp || CONFIG_PLACEHOLDER,
+    instagram: window.SELLIA_CONFIG?.contact?.instagram || CONFIG_PLACEHOLDER,
+    maps: window.SELLIA_CONFIG?.contact?.maps || CONFIG_PLACEHOLDER
+  }
 };
+
+function isConfiguredValue(value) {
+  return Boolean(value) && !String(value).startsWith(CONFIG_PLACEHOLDER);
+}
+
+function validatePublicConfig(config) {
+  const requiredKeys = [
+    { path: "brandName", value: config.brandName },
+    { path: "youtubeVideoId", value: config.youtubeVideoId },
+    { path: "contact.whatsapp", value: config.contact?.whatsapp },
+    { path: "contact.instagram", value: config.contact?.instagram },
+    { path: "contact.maps", value: config.contact?.maps }
+  ];
+
+  const missingKeys = requiredKeys.filter(({ value }) => !isConfiguredValue(value)).map(({ path }) => path);
+
+  if (missingKeys.length > 0) {
+    console.warn(
+      `[config] Faltan valores válidos en SELLIA_CONFIG para: ${missingKeys.join(", ")}. Reemplazá los placeholders en public/config.js.`
+    );
+  }
+}
+
+validatePublicConfig(CONFIG);
 
 const state = {
   products: []
@@ -12,7 +40,7 @@ const state = {
 
 const brandTargets = document.querySelectorAll("[data-brand]");
 brandTargets.forEach((el) => {
-  el.textContent = CONFIG.brand?.name ?? "Valkirja";
+  el.textContent = CONFIG.brandName;
 });
 
 const yearEl = document.getElementById("year");
@@ -21,14 +49,14 @@ if (yearEl) {
 }
 
 const contactLinks = {
-  whatsapp: CONFIG.contact?.whatsappUrl,
-  instagram: CONFIG.contact?.instagramUrl,
-  maps: CONFIG.contact?.mapsUrl
+  whatsapp: CONFIG.contact.whatsapp,
+  instagram: CONFIG.contact.instagram,
+  maps: CONFIG.contact.maps
 };
 
 Object.entries(contactLinks).forEach(([key, url]) => {
   const link = document.querySelector(`[data-contact="${key}"]`);
-  if (link && url && !url.startsWith("REEMPLAZAR")) {
+  if (link && isConfiguredValue(url)) {
     link.href = url;
   }
 });
@@ -44,7 +72,7 @@ for (const [key, value] of utmParams.entries()) {
 if ([...utm.keys()].length) {
   document.querySelectorAll("[data-utm-link]").forEach((link) => {
     const href = link.getAttribute("href");
-    if (!href || href.startsWith("#") || href.startsWith("REEMPLAZAR")) {
+    if (!href || href.startsWith("#") || href.startsWith(CONFIG_PLACEHOLDER)) {
       return;
     }
     try {
@@ -63,9 +91,24 @@ const videoPlaceholder = document.getElementById("videoPlaceholder");
 const videoPoster = document.getElementById("videoPoster");
 const videoPlayButton = document.querySelector(".video-play");
 let lastFocusedElement = null;
+let modalFocusTrapEnabled = false;
 
-if (CONFIG.brand?.youtubeVideoId && CONFIG.brand.youtubeVideoId !== "REEMPLAZAR") {
-  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.brand.youtubeVideoId}/hqdefault.jpg`;
+const MODAL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "area[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "iframe",
+  "object",
+  "embed",
+  "[contenteditable]",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+if (isConfiguredValue(CONFIG.youtubeVideoId)) {
+  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.youtubeVideoId}/hqdefault.jpg`;
   videoPoster.src = posterUrl;
 }
 
@@ -79,9 +122,9 @@ function trackEvent(name, detail = {}) {
 
 if (videoPlayButton) {
   videoPlayButton.addEventListener("click", () => {
-    const videoId = CONFIG.brand?.youtubeVideoId;
-    if (!videoId || videoId === "REEMPLAZAR") {
-      console.warn("Configurar brand.youtubeVideoId en config.js para habilitar el video.");
+    const videoId = CONFIG.youtubeVideoId;
+    if (!isConfiguredValue(videoId)) {
+      console.warn("Configurá youtubeVideoId en config.js para habilitar el video.");
       return;
     }
 
@@ -160,11 +203,54 @@ const modalCarouselNext = modal?.querySelector("[data-carousel-next]");
 const modalTitle = document.getElementById("modalTitle");
 const modalDescription = document.getElementById("modalDescription");
 const modalTag = document.getElementById("modalTag");
+const appBackgroundElements = modal
+  ? Array.from(document.body.children).filter(
+      (element) => element !== modal && element.tagName !== "SCRIPT"
+    )
+  : [];
 const carouselState = {
   images: [],
   index: 0,
   productName: ""
 };
+
+function getModalFocusableElements() {
+  if (!modal) return [];
+
+  return Array.from(modal.querySelectorAll(MODAL_FOCUSABLE_SELECTOR)).filter((element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    if (element.hasAttribute("disabled")) return false;
+    if (element.getAttribute("aria-hidden") === "true") return false;
+    const isVisible = element.offsetParent !== null || element === document.activeElement;
+    return isVisible;
+  });
+}
+
+function setBackgroundInteractivity(isModalOpen) {
+  appBackgroundElements.forEach((element) => {
+    if ("inert" in element) {
+      element.inert = isModalOpen;
+      if (!isModalOpen) {
+        element.removeAttribute("inert");
+      }
+      return;
+    }
+
+    if (isModalOpen) {
+      element.setAttribute("aria-hidden", "true");
+    } else {
+      element.removeAttribute("aria-hidden");
+    }
+  });
+}
+
+function activateModalFocusTrap() {
+  modalFocusTrapEnabled = true;
+}
+
+function deactivateModalFocusTrap() {
+  modalFocusTrapEnabled = false;
+}
 
 function getProductImages(product) {
   if (Array.isArray(product.images) && product.images.length > 0) {
@@ -265,19 +351,33 @@ function openModal(id) {
   modalTag.textContent = product.tag || "Colección";
 
   modal.setAttribute("aria-hidden", "false");
+  setBackgroundInteractivity(true);
+  activateModalFocusTrap();
   document.body.style.overflow = "hidden";
 
   trackEvent("product_detail", { id: product.id });
-  modal.querySelector(".modal-close").focus();
+
+  const [firstFocusable] = getModalFocusableElements();
+  firstFocusable?.focus();
 }
 
 function closeModal() {
   if (!modal) return;
+
+  deactivateModalFocusTrap();
+  setBackgroundInteractivity(false);
   modal.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
-  if (lastFocusedElement) {
+
+  if (
+    lastFocusedElement instanceof HTMLElement &&
+    lastFocusedElement.isConnected &&
+    !lastFocusedElement.hasAttribute("disabled")
+  ) {
     lastFocusedElement.focus();
   }
+
+  lastFocusedElement = null;
 }
 
 if (modal) {
@@ -322,8 +422,30 @@ if (modal) {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && modal.getAttribute("aria-hidden") === "false") {
       closeModal();
+      return;
     }
+
     if (modal.getAttribute("aria-hidden") === "false") {
+      if (event.key === "Tab" && modalFocusTrapEnabled) {
+        const focusableElements = getModalFocusableElements();
+        if (focusableElements.length === 0) {
+          event.preventDefault();
+          return;
+        }
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        const activeElement = document.activeElement;
+
+        if (event.shiftKey && activeElement === firstElement) {
+          event.preventDefault();
+          lastElement.focus();
+        } else if (!event.shiftKey && activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
+      }
+
       if (event.key === "ArrowLeft") {
         stepCarousel(-1);
       }
