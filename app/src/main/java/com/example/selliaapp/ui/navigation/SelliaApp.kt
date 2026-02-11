@@ -529,10 +529,14 @@ fun SelliaApp(
                 StockScreen(
                     vm = vm,
                     onAddProduct = { navController.navigate(Routes.AddProduct.route) },
-                    onScan =  { navController.navigate(Routes.ScannerForStock.route) },
-                    onImportCsv =  { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
+                    onScan = { navController.navigate(Routes.ScannerForStock.route) },
+                    onImportCsv = { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
                     onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
                     onEditProduct = { product ->
+                        navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
+                    },
+                    onOpenQrLabels = { navController.navigate(Routes.ProductQr.route) },
+                    onProductClick = { product ->
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
                     },
                     onBack = { navController.popBackStack() }

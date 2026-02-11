@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
@@ -188,6 +189,11 @@ fun StockScreen(
     var fabExpanded by remember { mutableStateOf(false) }
     */
     var fabExpanded by rememberSaveable { mutableStateOf(false) } // [NUEVO]
+
+    val onForcePriceRefresh = {
+        vm.forceRecalculateAutoPricing()
+        importMessage = "Recalculando precios automáticos en segundo plano."
+    }
 
     Scaffold(
         /* [ANTERIOR]
