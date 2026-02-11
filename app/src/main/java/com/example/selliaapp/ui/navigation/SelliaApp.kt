@@ -96,6 +96,7 @@ import com.example.selliaapp.ui.screens.stock.StockScreen
 import com.example.selliaapp.viewmodel.ClientMetricsViewModel
 import com.example.selliaapp.viewmodel.ClientPurchasesViewModel
 import com.example.selliaapp.viewmodel.HomeViewModel
+import com.example.selliaapp.viewmodel.hasOpenCashSession
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
@@ -204,9 +205,25 @@ fun SelliaApp(
                         initialValue = MarketingSettings()
                     )
 
+                    val homeState by homeVm.state.collectAsStateWithLifecycle()
+                    val navigateToCashAudit = {
+                        if (homeState.hasOpenCashSession) {
+                            navController.navigate(Routes.CashAudit.route)
+                        } else {
+                            navController.navigate(Routes.CashOpen.route)
+                        }
+                    }
+                    val navigateToCashClose = {
+                        if (homeState.hasOpenCashSession) {
+                            navController.navigate(Routes.CashClose.route)
+                        } else {
+                            navController.navigate(Routes.CashOpen.route)
+                        }
+                    }
+
                     HomeScreen(
                         onNewSale = { navController.navigate(Routes.Pos.route) },
-                            onClientes = { navController.navigate(Routes.ClientsHub.route) },
+                        onClientes = { navController.navigate(Routes.ClientsHub.route) },
                         onConfig = { navController.navigate(Routes.Config.route) },
                         onReports = { navController.navigate(Routes.Reports.route) },
                         onProviders = { navController.navigate(Routes.ProvidersHub.route) },
@@ -223,6 +240,8 @@ fun SelliaApp(
                         onStock = { navController.navigate(Routes.Stock.route) },
                         onViewStockMovements = { navController.navigate(Routes.StockMovements.route) },
                         onCashOpen = { navController.navigate(Routes.CashOpen.route) },
+                        onCashAudit = navigateToCashAudit,
+                        onCashClose = navigateToCashClose,
                         onCashHub = { navController.navigate(Routes.Cash.route) },
                         vm = homeVm,
                         accountSummary = accountSummary,
