@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.QueryStats
@@ -75,6 +76,8 @@ fun HomeScreen(
     onAlertAdjustStock: (Int) -> Unit = {},
     onAlertCreatePurchase: (Int) -> Unit = {},
     onCashOpen: () -> Unit,
+    onCashAudit: () -> Unit,
+    onCashClose: () -> Unit,
     onCashHub: () -> Unit,
     accountSummary: AccountSummary,
     storeName: String,
@@ -181,12 +184,19 @@ fun HomeScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
-                            Text("Arqueo")
+                        OutlinedButton(onClick = onCashAudit, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Arqueo caja")
                         }
-                        FilledTonalButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
-                            Text("Cerrar caja")
+                        FilledTonalButton(onClick = onCashClose, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.Lock, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Cerrar ahora")
                         }
+                    }
+                    TextButton(onClick = onCashHub, modifier = Modifier.align(Alignment.End)) {
+                        Text("Ver panel de caja")
                     }
                 }
             }
