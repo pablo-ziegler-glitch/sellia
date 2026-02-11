@@ -3,20 +3,17 @@ package com.example.selliaapp.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.People
@@ -45,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,12 +52,10 @@ import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.ui.components.AccountAvatarMenu
 import com.example.selliaapp.ui.components.AccountSummary
 import com.example.selliaapp.viewmodel.HomeViewModel
-import com.example.selliaapp.viewmodel.hasOpenCashSession
 import java.text.NumberFormat
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.ceil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,45 +85,49 @@ fun HomeScreen(
     val dateFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
     var showCashRequired by remember { mutableStateOf(false) }
 
-    BoxWithConstraints {
-        val isCompactWidth = maxWidth < 600.dp
+    val cashSession = state.cashSummary?.session
+    val openedTime = remember(cashSession?.openedAt, dateFormatter) {
+        cashSession?.openedAt
+            ?.atZone(ZoneId.systemDefault())
+            ?.format(dateFormatter)
+            ?: "-"
+    }
+    val saleCashTickets = remember(state.cashSummary?.movements) {
+        state.cashSummary?.movements
+            ?.count { it.type == "SALE_CASH" }
+            ?.toString()
+            ?: "0"
+    }
+    val lowStockAlertPreview = remember(state.lowStockAlerts) { state.lowStockAlerts.take(3) }
 
-        if (showCashRequired) {
-            AlertDialog(
-                onDismissRequest = { showCashRequired = false },
-                title = { Text("Abrir caja") },
-                text = {
-                    Text(
-                        "Para cobrar en efectivo necesitás abrir la caja. " +
-                            "Podés continuar con transferencia o tarjeta si querés."
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showCashRequired = false
-                            onCashOpen()
-                        }
-                    ) {
-                        Text("Abrir caja")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showCashRequired = false }) {
-                        Text("Seguir vendiendo")
+    if (showCashRequired) {
+        AlertDialog(
+            onDismissRequest = { showCashRequired = false },
+            title = { Text("Abrir caja") },
+            text = {
+                Text(
+                    "Para cobrar en efectivo necesitás abrir la caja. " +
+                        "Podés continuar con transferencia o tarjeta si querés."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCashRequired = false
+                        onCashOpen()
                     }
                 }
             )
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -150,26 +148,9 @@ fun HomeScreen(
                 }
                 AccountAvatarMenu(accountSummary = accountSummary)
             }
+        }
 
-            CashStatusCard(
-                hasOpenCashSession = state.hasOpenCashSession,
-                openedBy = state.cashSummary?.session?.openedBy,
-                openedAtTime = state.cashSummary?.session?.openedAt
-                    ?.atZone(ZoneId.systemDefault())
-                    ?.format(dateFormatter),
-                expectedAmount = state.cashSummary?.expectedAmount ?: 0.0,
-                currencyFormatter = currency,
-                onCashOpen = onCashOpen,
-                onCashHub = onCashHub
-            )
-
-            PrimaryActionCard(
-                hasOpenCashSession = state.hasOpenCashSession,
-                overdueProviderInvoices = state.overdueProviderInvoices,
-                onNewSale = onNewSale,
-                onRequireCashOpen = { showCashRequired = true }
-            )
-
+        item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -178,10 +159,105 @@ fun HomeScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                        Text("Estado de caja", style = MaterialTheme.typography.titleMedium)
+                    }
+                    if (!state.hasOpenCashSession) {
+                        Text(
+                            "Caja cerrada",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Necesaria para vender con efectivo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(onClick = onCashOpen, modifier = Modifier.fillMaxWidth()) {
+                            Text("Abrir caja")
+                        }
+                    } else {
+                        Text(
+                            "Abierta $openedTime · ${cashSession?.openedBy ?: "Operador"}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            "Saldo teórico: ${currency.format(state.cashSummary?.expectedAmount ?: 0.0)}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
+                                Text("Arqueo")
+                            }
+                            FilledTonalButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
+                                Text("Cerrar caja")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        "Catálogo público",
-                        style = MaterialTheme.typography.titleMedium
+                        "Acción principal",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+                    Text(
+                        "Vender",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Text(
+                        "Abrí un nuevo ticket y cobrá rápido.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Button(
+                        onClick = {
+                            if (!state.hasOpenCashSession && BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS) {
+                                showCashRequired = true
+                            } else {
+                                onNewSale()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.PointOfSale, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Vender")
+                    }
+                }
+                if (state.overdueProviderInvoices > 0) {
+                    Text(
+                        "Facturas vencidas: ${state.overdueProviderInvoices}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Catálogo público", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "Mostrá productos sin pedir autenticación.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -270,150 +346,66 @@ fun HomeScreen(
     }
 }
 
-@Composable
-private fun CashStatusCard(
-    hasOpenCashSession: Boolean,
-    openedBy: String?,
-    openedAtTime: String?,
-    expectedAmount: Double,
-    currencyFormatter: NumberFormat,
-    onCashOpen: () -> Unit,
-    onCashHub: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(Icons.Default.ReceiptLong, contentDescription = null)
-                Text("Estado de caja", style = MaterialTheme.typography.titleMedium)
-            }
-            if (!hasOpenCashSession) {
-                Text(
-                    "Caja cerrada",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        item {
+            Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                KpiCard(
+                    title = "Ventas hoy",
+                    value = currency.format(state.dailySales),
+                    modifier = Modifier.weight(1f)
                 )
-                Text(
-                    "Necesaria para vender con efectivo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                KpiCard(
+                    title = "Tickets",
+                    value = saleCashTickets,
+                    modifier = Modifier.weight(1f)
                 )
-                Button(onClick = onCashOpen, modifier = Modifier.fillMaxWidth()) {
-                    Text("Abrir caja")
-                }
-            } else {
-                Text(
-                    "Abierta ${openedAtTime ?: "-"} · ${openedBy ?: "Operador"}",
-                    style = MaterialTheme.typography.bodyMedium
+                KpiCard(
+                    title = "Ticket promedio",
+                    value = currency.format(state.averageTicket),
+                    modifier = Modifier.weight(1f)
                 )
-                Text(
-                    "Saldo teórico: ${currencyFormatter.format(expectedAmount)}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
-                        Text("Arqueo")
-                    }
-                    FilledTonalButton(onClick = onCashHub, modifier = Modifier.weight(1f)) {
-                        Text("Cerrar caja")
-                    }
-                }
             }
         }
     }
 }
 
-@Composable
-private fun PrimaryActionCard(
-    hasOpenCashSession: Boolean,
-    overdueProviderInvoices: Int,
-    onNewSale: () -> Unit,
-    onRequireCashOpen: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                "Acción principal",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            Text(
-                "Vender",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            Text(
-                "Abrí un nuevo ticket y cobrá rápido.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            Button(
-                onClick = {
-                    if (!hasOpenCashSession && BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS) {
-                        onRequireCashOpen()
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Warning, contentDescription = null)
+                        Text("Alertas operativas", style = MaterialTheme.typography.titleMedium)
+                    }
+                    if (state.lowStockAlerts.isEmpty() && state.overdueProviderInvoices == 0) {
+                        Text(
+                            "Sin alertas por ahora.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     } else {
-                        onNewSale()
+                        if (state.lowStockAlerts.isNotEmpty()) {
+                            Text(
+                                "Stock bajo (${state.lowStockAlerts.size})",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        if (state.overdueProviderInvoices > 0) {
+                            Text(
+                                "Facturas vencidas: ${state.overdueProviderInvoices}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.PointOfSale, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Vender")
-            }
-        }
-        if (overdueProviderInvoices > 0) {
-            Text(
-                "Facturas vencidas: $overdueProviderInvoices",
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-@Composable
-private fun KpiSection(
-    isCompactWidth: Boolean,
-    dailySales: String,
-    tickets: String,
-    averageTicket: String
-) {
-    val kpis = listOf(
-        KpiItem(title = "Ventas hoy", value = dailySales),
-        KpiItem(title = "Tickets", value = tickets),
-        KpiItem(title = "Ticket promedio", value = averageTicket)
-    )
-
-    Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
-    if (isCompactWidth) {
-        val columns = 2
-        val rows = ceil(kpis.size / columns.toDouble()).toInt()
-        val gridHeight = (rows * 86).dp
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 160.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(gridHeight),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            userScrollEnabled = false
-        ) {
-            items(kpis) { item ->
-                KpiCard(title = item.title, value = item.value, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
     } else {
@@ -444,38 +436,36 @@ private fun ShortcutsSection(
         ShortcutItem("Reportes", Icons.Default.QueryStats, onReports)
     )
 
-    Text("Atajos", style = MaterialTheme.typography.titleMedium)
-    if (isCompactWidth) {
-        val columns = 2
-        val rows = ceil(shortcuts.size / columns.toDouble()).toInt()
-        val gridHeight = (rows * 64).dp
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(gridHeight),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            userScrollEnabled = false
-        ) {
-            items(shortcuts) { item ->
-                ShortcutButton(
-                    label = item.label,
-                    icon = item.icon,
-                    onClick = item.onClick,
-                    modifier = Modifier.fillMaxWidth()
-                )
+        items(
+            items = lowStockAlertPreview,
+            key = { alert -> alert.productId }
+        ) { alert ->
+            Text(
+                text = "• ${alert.name} (${alert.quantity} u.)",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+            )
+        }
+
+        item {
+            Text("Atajos", style = MaterialTheme.typography.titleMedium)
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                ShortcutButton("Ventas", Icons.Default.QueryStats, onReports, Modifier.weight(1f))
+                ShortcutButton("Stock", Icons.Default.Inventory2, onStock, Modifier.weight(1f))
             }
         }
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            shortcuts.take(2).forEach { item ->
-                ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            shortcuts.drop(2).forEach { item ->
-                ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                ShortcutButton("Clientes", Icons.Default.People, onClientes, Modifier.weight(1f))
+                ShortcutButton("Reportes", Icons.Default.QueryStats, onReports, Modifier.weight(1f))
             }
         }
     }
