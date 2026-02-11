@@ -70,6 +70,21 @@ class ProductViewModel @Inject constructor(
 
     fun search(q: String?): Flow<List<ProductEntity>> = repo.search(q)
 
+
+    fun forceRecalculateAutoPricing(
+        reason: String = "Recalculo manual desde Stock",
+        changedBy: String = "User",
+        source: String = "STOCK_SCREEN"
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.recalculateAutoPricingForAll(
+                reason = reason,
+                changedBy = changedBy,
+                source = source
+            )
+        }
+    }
+
     // ------- E1: pickers -------
     fun getAllCategoryNames(): Flow<List<String>> = repo.distinctCategories()
     fun getAllProviderNames(): Flow<List<String>> = repo.distinctProviders()

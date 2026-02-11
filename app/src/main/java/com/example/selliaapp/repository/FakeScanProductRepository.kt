@@ -150,6 +150,13 @@ class FakeScanProductRepository(
     override suspend fun addProduct(p: ProductEntity): Int = insert(p)
     override suspend fun updateProduct(p: ProductEntity): Int = update(p)
 
+    // ---------- Pricing ----------
+    override suspend fun recalculateAutoPricingForAll(
+        reason: String,
+        changedBy: String,
+        source: String
+    ): Int = 0
+
     // ---------- Sync ----------
     override suspend fun syncDown(): Int = 0
 

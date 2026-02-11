@@ -532,6 +532,9 @@ fun SelliaApp(
                     onScan =  { navController.navigate(Routes.ScannerForStock.route) },
                     onImportCsv =  { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
                     onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
+                    onForcePriceRefresh = {
+                        vm.forceRecalculateAutoPricing()
+                    },
                     onProductClick = { product ->
                         // EDICIÓN: ir a add_product/{id}
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
