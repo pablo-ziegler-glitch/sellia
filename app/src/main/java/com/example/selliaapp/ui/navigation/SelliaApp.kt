@@ -237,6 +237,7 @@ fun SelliaApp(
                         onAlertCreatePurchase = { productId ->
                             navController.navigate(Routes.QuickReorder.withProduct(productId))
                         },
+                        onStock = { navController.navigate(Routes.Stock.route) },
                         onViewStockMovements = { navController.navigate(Routes.StockMovements.route) },
                         onCashOpen = { navController.navigate(Routes.CashOpen.route) },
                         onCashAudit = navigateToCashAudit,

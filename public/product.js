@@ -1,8 +1,13 @@
-const config = window.SELLIA_CONFIG || {};
-const brandName = config.brandName || "Sellia";
-const refreshIntervalMs = Number(config.refreshIntervalMs) || 300000;
+const config = window.STORE_CONFIG || {};
+const brandName = config.brandName || "Tu tienda";
+const REFRESH_INTERVAL_DEFAULT_MS = 20 * 60 * 1000;
+const REFRESH_INTERVAL_MIN_MS = 15 * 60 * 1000;
+const REFRESH_INTERVAL_MAX_MS = 30 * 60 * 1000;
+const SESSION_CACHE_MAX_AGE_MS = 60 * 1000;
+const refreshIntervalMs = sanitizeRefreshInterval(config.refreshIntervalMs);
 const tenantId = config.tenantId || "";
 const publicProductCollection = config.publicProductCollection || "public_products";
+const sessionStorageKey = `store:product:${tenantId || "default"}`;
 
 const elements = {
   brandName: document.getElementById("brandName"),
@@ -13,7 +18,6 @@ const elements = {
   productDescription: document.getElementById("productDescription"),
   productSizes: document.getElementById("productSizes"),
   statusCard: document.getElementById("statusCard"),
-  syncMeta: document.getElementById("syncMeta"),
   ctaWhatsapp: document.getElementById("ctaWhatsapp"),
   ctaOpenApp: document.getElementById("ctaOpenApp")
 };
@@ -24,8 +28,62 @@ const state = {
   lastSync: null,
   timer: null,
   paused: false,
-  mode: "public"
+  mode: "public",
+  inFlightRequest: null
 };
+
+function sanitizeRefreshInterval(value) {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) {
+    return REFRESH_INTERVAL_DEFAULT_MS;
+  }
+  return Math.min(REFRESH_INTERVAL_MAX_MS, Math.max(REFRESH_INTERVAL_MIN_MS, parsedValue));
+}
+
+function safeReadCache() {
+  try {
+    const raw = window.sessionStorage.getItem(sessionStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch (error) {
+    console.warn("No se pudo leer la caché de sessionStorage", error);
+    return null;
+  }
+}
+
+function getCachedProduct(sku) {
+  if (!sku) return null;
+  const cache = safeReadCache();
+  const productCache = cache?.[sku];
+  if (!productCache?.payload || !Number.isFinite(productCache?.timestamp)) {
+    return null;
+  }
+  return productCache;
+}
+
+function setCachedProduct(sku, product) {
+  if (!sku || !product) return;
+  const cache = safeReadCache() || {};
+  cache[sku] = {
+    timestamp: Date.now(),
+    payload: product
+  };
+  try {
+    window.sessionStorage.setItem(sessionStorageKey, JSON.stringify(cache));
+  } catch (error) {
+    console.warn("No se pudo guardar la caché de sessionStorage", error);
+  }
+}
+
+function applyProduct(product, source = "network") {
+  if (!product) return;
+  state.product = product;
+  state.lastSync = new Date();
+  setStatus(source === "cache" ? "Mostrando precio guardado. Verificando novedades..." : "");
+  renderProduct(product);
+}
 
 function setStatus(message, isError = false) {
   if (!elements.statusCard) return;
@@ -43,21 +101,6 @@ function formatCurrency(value) {
     currency: "ARS",
     maximumFractionDigits: 0
   }).format(numberValue);
-}
-
-function updateSyncMeta() {
-  if (!elements.syncMeta) return;
-  if (!state.lastSync) {
-    elements.syncMeta.textContent = "";
-    return;
-  }
-  const time = state.lastSync.toLocaleTimeString("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-  elements.syncMeta.textContent = `Última actualización: ${time}. Se refresca cada ${
-    Math.round(refreshIntervalMs / 60000)
-  } min.`;
 }
 
 function renderProduct(product) {
@@ -131,9 +174,12 @@ function renderProduct(product) {
 
   elements.productSizes.innerHTML = "";
   if (product.parentCategory?.toLowerCase() === "indumentaria" && product.sizes?.length) {
+    elements.productSizes.setAttribute("role", "list");
     product.sizes.forEach((size) => {
       const pill = document.createElement("span");
       pill.className = "size-pill";
+      pill.setAttribute("role", "listitem");
+      pill.setAttribute("aria-label", `Talle ${size}`);
       pill.textContent = size;
       elements.productSizes.appendChild(pill);
     });
@@ -292,60 +338,96 @@ async function fetchDemoProduct(sku) {
 }
 
 async function loadProduct() {
+  return loadProductWithOptions({ useCache: false });
+}
+
+async function loadProductWithOptions(options = {}) {
+  const { useCache = false, force = false } = options;
   if (!state.sku) {
     setStatus("Falta el SKU en la URL. Usá ?q=SKU.", true);
     elements.productTitle.textContent = "Producto no encontrado";
     return;
   }
 
+  if (state.inFlightRequest && !force) {
+    return state.inFlightRequest;
+  }
+
+  if (useCache) {
+    const cached = getCachedProduct(state.sku);
+    if (cached) {
+      applyProduct(cached.payload, "cache");
+      if (Date.now() - cached.timestamp <= SESSION_CACHE_MAX_AGE_MS && !force) {
+        return;
+      }
+    }
+  }
+
   setStatus("Actualizando precios...", false);
-  elements.productTitle.textContent = "Buscando producto...";
+  if (!state.product) {
+    elements.productTitle.textContent = "Buscando producto...";
+  }
 
-  let product = null;
+  state.inFlightRequest = (async () => {
+    let product = null;
+    try {
+      product = await fetchFirestoreByField("code", state.sku);
+      if (!product) {
+        product = await fetchFirestoreByField("barcode", state.sku);
+      }
+      if (!product) {
+        product = await fetchFirestoreById(state.sku);
+      }
+    } catch (error) {
+      console.warn("No se pudo consultar Firestore", error);
+    }
+
+    if (!product) {
+      product = await fetchDemoProduct(state.sku);
+    }
+
+    if (!product) {
+      setStatus("No encontramos el producto. Verificá el SKU.", true);
+      elements.productTitle.textContent = "Producto no encontrado";
+      return;
+    }
+
+    setCachedProduct(state.sku, product);
+    applyProduct(product, "network");
+  })();
+
   try {
-    product = await fetchFirestoreByField("code", state.sku);
-    if (!product) {
-      product = await fetchFirestoreByField("barcode", state.sku);
-    }
-    if (!product) {
-      product = await fetchFirestoreById(state.sku);
-    }
-  } catch (error) {
-    console.warn("No se pudo consultar Firestore", error);
+    await state.inFlightRequest;
+  } finally {
+    state.inFlightRequest = null;
   }
-
-  if (!product) {
-    product = await fetchDemoProduct(state.sku);
-  }
-
-  if (!product) {
-    setStatus("No encontramos el producto. Verificá el SKU.", true);
-    elements.productTitle.textContent = "Producto no encontrado";
-    return;
-  }
-
-  state.product = product;
-  state.lastSync = new Date();
-  setStatus("");
-  updateSyncMeta();
-  renderProduct(product);
 }
 
-function startPolling() {
+function startPeriodicRefresh() {
   if (state.timer || state.paused) return;
-  state.timer = setInterval(loadProduct, refreshIntervalMs);
+  state.timer = setInterval(() => {
+    loadProductWithOptions({ force: true });
+  }, refreshIntervalMs);
 }
 
-function stopPolling() {
+function stopPeriodicRefresh() {
   if (!state.timer) return;
   clearInterval(state.timer);
   state.timer = null;
 }
 
+function refreshOnResume() {
+  if (!document.hidden) {
+    loadProductWithOptions({ force: true });
+    startPeriodicRefresh();
+  }
+}
+
 
 function maybeEnableOwnerAppRedirect() {
   if (!elements.ctaOpenApp || state.mode !== "owner" || !state.sku) return;
-  const deepLink = `sellia://product?q=${encodeURIComponent(state.sku)}`;
+  const appScheme = (config.appDeepLinkScheme || "tienda").replace("://", "");
+  const deepLink = `${appScheme}://product?q=${encodeURIComponent(state.sku)}`;
   elements.ctaOpenApp.hidden = false;
   elements.ctaOpenApp.href = deepLink;
   elements.ctaOpenApp.addEventListener("click", (event) => {
@@ -365,6 +447,7 @@ function maybeEnableOwnerAppRedirect() {
 }
 
 function init() {
+  document.title = `Ficha de producto | ${brandName}`;
   elements.brandName.textContent = brandName;
   const params = new URLSearchParams(window.location.search);
   state.sku = params.get("q")?.trim() || "";
@@ -373,17 +456,17 @@ function init() {
     setStatus("Falta configurar tenantId en config.js.", true);
   }
   maybeEnableOwnerAppRedirect();
-  loadProduct();
-  startPolling();
+  loadProductWithOptions({ useCache: true });
+  startPeriodicRefresh();
   document.addEventListener("visibilitychange", () => {
     state.paused = document.hidden;
     if (state.paused) {
-      stopPolling();
+      stopPeriodicRefresh();
     } else {
-      loadProduct();
-      startPolling();
+      refreshOnResume();
     }
   });
+  window.addEventListener("focus", refreshOnResume);
 }
 
 init();

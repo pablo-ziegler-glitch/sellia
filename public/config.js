@@ -1,5 +1,5 @@
-window.SELLIA_CONFIG = {
-  brandName: "Sellia",
+window.STORE_CONFIG = {
+  brandName: "Tu tienda",
   publicStoreUrl: "https://tu-proyecto.web.app/product.html",
   tenantId: "REEMPLAZAR_TENANT",
   productCollection: "products",

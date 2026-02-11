@@ -1,19 +1,55 @@
+const CONFIG_PLACEHOLDER = "REEMPLAZAR";
+
 const CONFIG = {
-  BRAND_NAME: window.SELLIA_CONFIG?.brandName || "Sellia",
-  YOUTUBE_VIDEO_ID: window.SELLIA_CONFIG?.youtubeVideoId || "REEMPLAZAR",
-  WHATSAPP_URL: window.SELLIA_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
-  INSTAGRAM_URL: window.SELLIA_CONFIG?.contact?.instagram || "REEMPLAZAR",
-  MAPS_URL: window.SELLIA_CONFIG?.contact?.maps || "REEMPLAZAR"
+  BRAND_NAME: window.STORE_CONFIG?.brandName || "Tu tienda",
+  YOUTUBE_VIDEO_ID: window.STORE_CONFIG?.youtubeVideoId || "REEMPLAZAR",
+  WHATSAPP_URL: window.STORE_CONFIG?.contact?.whatsapp || "REEMPLAZAR",
+  INSTAGRAM_URL: window.STORE_CONFIG?.contact?.instagram || "REEMPLAZAR",
+  MAPS_URL: window.STORE_CONFIG?.contact?.maps || "REEMPLAZAR"
 };
+
+applySeoMetadata();
 
 const state = {
   products: []
 };
 
+function applySeoMetadata() {
+  const storeName = CONFIG.brand.name;
+  const baseUrl = (CONFIG.siteBaseUrl || window.location.origin).replace(/\/$/, "");
+  const canonicalUrl = `${baseUrl}/`;
+  const title = storeName ? `Historia real de Valkirja | ${storeName}` : "Historia real de Valkirja";
+  const description =
+    "Esto no es una campaña publicitaria. Es la historia real de una marca que quiere acompañarlos hacia la adolescencia.";
+
+  document.title = title;
+
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (canonical) canonical.setAttribute("href", canonicalUrl);
+
+  const setMeta = (selector, attribute, value) => {
+    const element = document.querySelector(selector);
+    if (!element) return;
+    element.setAttribute(attribute, value);
+  };
+
+  setMeta('meta[name="description"]', "content", description);
+  setMeta('meta[property="og:title"]', "content", title);
+  setMeta('meta[property="og:description"]', "content", description);
+  setMeta('meta[property="og:url"]', "content", canonicalUrl);
+  setMeta('meta[name="twitter:title"]', "content", title);
+  setMeta('meta[name="twitter:description"]', "content", description);
+}
+
 const brandTargets = document.querySelectorAll("[data-brand]");
 brandTargets.forEach((el) => {
-  el.textContent = CONFIG.brand?.name ?? "Valkirja";
+  el.textContent = CONFIG.BRAND_NAME;
 });
+if (CONFIG.brand.name) {
+  brandTargets.forEach((el) => {
+    el.textContent = CONFIG.brand.name;
+  });
+}
 
 const yearEl = document.getElementById("year");
 if (yearEl) {
@@ -21,14 +57,17 @@ if (yearEl) {
 }
 
 const contactLinks = {
-  whatsapp: CONFIG.contact?.whatsappUrl,
-  instagram: CONFIG.contact?.instagramUrl,
-  maps: CONFIG.contact?.mapsUrl
+  whatsapp: CONFIG.WHATSAPP_URL,
+  instagram: CONFIG.INSTAGRAM_URL,
+  maps: CONFIG.MAPS_URL
+  whatsapp: CONFIG.contact.whatsapp,
+  instagram: CONFIG.contact.instagram,
+  maps: CONFIG.contact.maps
 };
 
 Object.entries(contactLinks).forEach(([key, url]) => {
   const link = document.querySelector(`[data-contact="${key}"]`);
-  if (link && url && !url.startsWith("REEMPLAZAR")) {
+  if (link && isConfiguredValue(url)) {
     link.href = url;
   }
 });
@@ -44,7 +83,7 @@ for (const [key, value] of utmParams.entries()) {
 if ([...utm.keys()].length) {
   document.querySelectorAll("[data-utm-link]").forEach((link) => {
     const href = link.getAttribute("href");
-    if (!href || href.startsWith("#") || href.startsWith("REEMPLAZAR")) {
+    if (!href || href.startsWith("#") || href.startsWith(CONFIG_PLACEHOLDER)) {
       return;
     }
     try {
@@ -64,8 +103,26 @@ const videoPoster = document.getElementById("videoPoster");
 const videoPlayButton = document.querySelector(".video-play");
 let lastFocusedElement = null;
 
-if (CONFIG.brand?.youtubeVideoId && CONFIG.brand.youtubeVideoId !== "REEMPLAZAR") {
-  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.brand.youtubeVideoId}/hqdefault.jpg`;
+if (CONFIG.YOUTUBE_VIDEO_ID && CONFIG.YOUTUBE_VIDEO_ID !== "REEMPLAZAR") {
+  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.YOUTUBE_VIDEO_ID}/hqdefault.jpg`;
+let modalFocusTrapEnabled = false;
+
+const MODAL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "area[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "iframe",
+  "object",
+  "embed",
+  "[contenteditable]",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+if (isConfiguredValue(CONFIG.youtubeVideoId)) {
+  const posterUrl = `https://i.ytimg.com/vi/${CONFIG.youtubeVideoId}/hqdefault.jpg`;
   videoPoster.src = posterUrl;
 }
 
@@ -79,15 +136,18 @@ function trackEvent(name, detail = {}) {
 
 if (videoPlayButton) {
   videoPlayButton.addEventListener("click", () => {
-    const videoId = CONFIG.brand?.youtubeVideoId;
+    const videoId = CONFIG.YOUTUBE_VIDEO_ID;
     if (!videoId || videoId === "REEMPLAZAR") {
-      console.warn("Configurar brand.youtubeVideoId en config.js para habilitar el video.");
+      console.warn("Configurar youtubeVideoId en config.js para habilitar el video.");
+    const videoId = CONFIG.youtubeVideoId;
+    if (!isConfiguredValue(videoId)) {
+      console.warn("Configurá youtubeVideoId en config.js para habilitar el video.");
       return;
     }
 
     const iframe = document.createElement("iframe");
     iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1`;
-    iframe.title = "Video de la historia de Valkirja";
+    iframe.title = `Video de ${CONFIG.BRAND_NAME}`;
     iframe.allow =
       "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
     iframe.allowFullscreen = true;
@@ -160,11 +220,54 @@ const modalCarouselNext = modal?.querySelector("[data-carousel-next]");
 const modalTitle = document.getElementById("modalTitle");
 const modalDescription = document.getElementById("modalDescription");
 const modalTag = document.getElementById("modalTag");
+const appBackgroundElements = modal
+  ? Array.from(document.body.children).filter(
+      (element) => element !== modal && element.tagName !== "SCRIPT"
+    )
+  : [];
 const carouselState = {
   images: [],
   index: 0,
   productName: ""
 };
+
+function getModalFocusableElements() {
+  if (!modal) return [];
+
+  return Array.from(modal.querySelectorAll(MODAL_FOCUSABLE_SELECTOR)).filter((element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    if (element.hasAttribute("disabled")) return false;
+    if (element.getAttribute("aria-hidden") === "true") return false;
+    const isVisible = element.offsetParent !== null || element === document.activeElement;
+    return isVisible;
+  });
+}
+
+function setBackgroundInteractivity(isModalOpen) {
+  appBackgroundElements.forEach((element) => {
+    if ("inert" in element) {
+      element.inert = isModalOpen;
+      if (!isModalOpen) {
+        element.removeAttribute("inert");
+      }
+      return;
+    }
+
+    if (isModalOpen) {
+      element.setAttribute("aria-hidden", "true");
+    } else {
+      element.removeAttribute("aria-hidden");
+    }
+  });
+}
+
+function activateModalFocusTrap() {
+  modalFocusTrapEnabled = true;
+}
+
+function deactivateModalFocusTrap() {
+  modalFocusTrapEnabled = false;
+}
 
 function getProductImages(product) {
   if (Array.isArray(product.images) && product.images.length > 0) {
@@ -265,19 +368,33 @@ function openModal(id) {
   modalTag.textContent = product.tag || "Colección";
 
   modal.setAttribute("aria-hidden", "false");
+  setBackgroundInteractivity(true);
+  activateModalFocusTrap();
   document.body.style.overflow = "hidden";
 
   trackEvent("product_detail", { id: product.id });
-  modal.querySelector(".modal-close").focus();
+
+  const [firstFocusable] = getModalFocusableElements();
+  firstFocusable?.focus();
 }
 
 function closeModal() {
   if (!modal) return;
+
+  deactivateModalFocusTrap();
+  setBackgroundInteractivity(false);
   modal.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
-  if (lastFocusedElement) {
+
+  if (
+    lastFocusedElement instanceof HTMLElement &&
+    lastFocusedElement.isConnected &&
+    !lastFocusedElement.hasAttribute("disabled")
+  ) {
     lastFocusedElement.focus();
   }
+
+  lastFocusedElement = null;
 }
 
 if (modal) {
@@ -322,8 +439,30 @@ if (modal) {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && modal.getAttribute("aria-hidden") === "false") {
       closeModal();
+      return;
     }
+
     if (modal.getAttribute("aria-hidden") === "false") {
+      if (event.key === "Tab" && modalFocusTrapEnabled) {
+        const focusableElements = getModalFocusableElements();
+        if (focusableElements.length === 0) {
+          event.preventDefault();
+          return;
+        }
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        const activeElement = document.activeElement;
+
+        if (event.shiftKey && activeElement === firstElement) {
+          event.preventDefault();
+          lastElement.focus();
+        } else if (!event.shiftKey && activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
+      }
+
       if (event.key === "ArrowLeft") {
         stepCarousel(-1);
       }
