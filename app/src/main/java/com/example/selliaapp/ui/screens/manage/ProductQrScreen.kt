@@ -30,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -82,7 +83,18 @@ fun ProductQrScreen(
     var selectedIds by remember { mutableStateOf(setOf<Int>()) }
     var qrAudience by remember { mutableStateOf(QrAudience.PUBLIC) }
     var includePrices by remember { mutableStateOf(false) }
+    var skuQuery by remember { mutableStateOf("") }
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    val filteredProducts = remember(products, skuQuery) {
+        val normalizedQuery = skuQuery.trim()
+        if (normalizedQuery.isBlank()) {
+            products
+        } else {
+            products.filter { product ->
+                resolveSkuValue(product).contains(normalizedQuery, ignoreCase = true)
+            }
+        }
+    }
     val currencyFormatter = remember {
         NumberFormat.getCurrencyInstance(Locale("es", "AR")).apply {
             maximumFractionDigits = 0
@@ -271,6 +283,13 @@ fun ProductQrScreen(
                     label = { Text("QR interno") }
                 )
             }
+            OutlinedTextField(
+                value = skuQuery,
+                onValueChange = { skuQuery = it },
+                label = { Text("Buscar por código SKU") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -278,7 +297,7 @@ fun ProductQrScreen(
             ) {
                 Text("Seleccionados: ${selectedIds.size}")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { selectedIds = products.map { it.id }.toSet() }) {
+                    TextButton(onClick = { selectedIds = filteredProducts.map { it.id }.toSet() }) {
                         Text("Seleccionar todo")
                     }
                     TextButton(onClick = { selectedIds = emptySet() }) {
@@ -300,7 +319,7 @@ fun ProductQrScreen(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(products, key = { it.id }) { product ->
+                items(filteredProducts, key = { it.id }) { product ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
