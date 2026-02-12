@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +43,7 @@ import com.example.selliaapp.domain.product.ProductSortOption
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.ui.components.ProductEditorDialog
 import com.example.selliaapp.ui.components.ProductQuickDetailDialog
+import com.example.selliaapp.ui.components.StockBySizeDialog
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -76,6 +78,9 @@ fun ManageProductsScreen(
     var editing by remember { mutableStateOf<ProductEntity?>(null) }
     var selectedProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var sortExpanded by remember { mutableStateOf(false) }
+    var showSizeEditor by remember { mutableStateOf(false) }
+    var editingSizeProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var sizeStocksDraft by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
 
     Scaffold(
         topBar = {
@@ -202,11 +207,12 @@ fun ManageProductsScreen(
                     ListItem(
                         headlineContent = { Text(p.name) },
                         supportingContent = {
+                            val sizesInfo = if (p.sizes.isEmpty()) "Talles: sin info por el momento" else "Talles: ${p.sizes.joinToString()}"
                             Text(
                                 "Lista: ${p.listPrice ?: 0.0} · " +
                                     "Efectivo: ${p.cashPrice ?: p.listPrice ?: 0.0} · " +
                                     "Transferencia: ${p.transferPrice ?: p.listPrice ?: 0.0} · " +
-                                    "Stock: ${p.quantity} · Código: ${p.barcode ?: "—"}"
+                                    "Stock: ${p.quantity} · Código: ${p.barcode ?: "—"} · $sizesInfo"
                             )
                         },
                         modifier = Modifier
@@ -280,10 +286,36 @@ fun ManageProductsScreen(
                 selectedProduct = null
                 editing = product
                 showEditor = true
+                editingSizeProduct = product
+                showSizeEditor = true
             },
             onDelete = {
                 selectedProduct = null
                 scope.launch { vm.deleteById(product.id) }
+            }
+        )
+    }
+
+
+    if (showSizeEditor && editingSizeProduct != null) {
+        val productForSizes = editingSizeProduct!!
+
+        LaunchedEffect(productForSizes.id) {
+            sizeStocksDraft = vm.getSizeStockMap(productForSizes.id)
+        }
+
+        StockBySizeDialog(
+            totalStock = productForSizes.quantity,
+            availableSizes = productForSizes.sizes,
+            initialQuantities = sizeStocksDraft,
+            onDismiss = {
+                showSizeEditor = false
+                editingSizeProduct = null
+            },
+            onSave = { sizeMap ->
+                vm.saveSizeStocks(productForSizes, sizeMap)
+                showSizeEditor = false
+                editingSizeProduct = null
             }
         )
     }
