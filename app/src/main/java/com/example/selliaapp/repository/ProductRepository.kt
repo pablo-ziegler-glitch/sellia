@@ -601,13 +601,24 @@ class ProductRepository(
         val remoteList = remote.listAll()
         var applied = 0
         db.withTransaction {
-            val localAll = productDao.getAllOnce().associateBy { it.id to (it.barcode ?: "") }
+            val localById = productDao.getAllOnce().associateByTo(mutableMapOf()) { it.id }
+            val localByBarcode = localById.values
+                .mapNotNull { product -> product.barcode?.takeIf { it.isNotBlank() }?.let { it to product } }
+                .toMap(mutableMapOf())
+            val localByCode = localById.values
+                .mapNotNull { product -> product.code?.takeIf { it.isNotBlank() }?.let { it to product } }
+                .toMap(mutableMapOf())
+
             for (remoteProduct in remoteList) {
-                val r = remoteProduct.entity
+                val r = remoteProduct.entity.copy(
+                    code = remoteProduct.entity.code?.trim()?.ifBlank { null },
+                    barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null }
+                )
                 val remoteImages = remoteProduct.imageUrls
                 val local = when {
-                    r.id != 0 -> localAll[r.id to (r.barcode ?: "")]
-                    !r.barcode.isNullOrBlank() -> localAll.entries.firstOrNull { it.key.second == r.barcode }?.value
+                    r.id != 0 -> localById[r.id]
+                    !r.barcode.isNullOrBlank() -> localByBarcode[r.barcode]
+                    !r.code.isNullOrBlank() -> localByCode[r.code]
                     else -> null
                 }
                 if (local == null) {
@@ -619,14 +630,41 @@ class ProductRepository(
                     applied++
                     // si el docId no coincide, subimos de vuelta con el id real para alinear
                     if (r.id != newId) remote.upsert(r.copy(id = newId), remoteImages)
+
+                    productDao.getById(newId)?.also { saved ->
+                        localById[saved.id] = saved
+                        saved.barcode?.let { localByBarcode[it] = saved }
+                        saved.code?.let { localByCode[it] = saved }
+                    }
                 } else {
                     // resolver por updatedAt
                     if (r.updatedAt >= local.updatedAt) {
-                        productDao.update(r.copy(id = local.id))
+                        val conflictingCode = r.code
+                            ?.let { remoteCode -> localByCode[remoteCode] }
+                            ?.takeIf { candidate -> candidate.id != local.id }
+                        val conflictingBarcode = r.barcode
+                            ?.let { remoteBarcode -> localByBarcode[remoteBarcode] }
+                            ?.takeIf { candidate -> candidate.id != local.id }
+
+                        val merged = r.copy(
+                            id = local.id,
+                            code = if (conflictingCode != null) local.code else r.code,
+                            barcode = if (conflictingBarcode != null) local.barcode else r.barcode
+                        )
+
+                        productDao.update(merged)
                         if (remoteImages.isNotEmpty()) {
                             replaceProductImages(local.id, remoteImages)
                         }
                         applied++
+
+                        productDao.getById(local.id)?.also { saved ->
+                            localById[saved.id] = saved
+                            localByBarcode.entries.removeAll { (_, value) -> value.id == saved.id }
+                            localByCode.entries.removeAll { (_, value) -> value.id == saved.id }
+                            saved.barcode?.let { localByBarcode[it] = saved }
+                            saved.code?.let { localByCode[it] = saved }
+                        }
                     } else {
                         // Local es más nuevo → subir local para ganar en remoto
                         remote.upsert(local, loadProductImages(local.id))
