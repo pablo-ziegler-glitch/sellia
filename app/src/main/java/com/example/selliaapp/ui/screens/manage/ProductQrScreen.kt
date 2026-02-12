@@ -56,6 +56,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.launch
 import java.io.OutputStream
 import java.net.URLEncoder
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -79,7 +80,11 @@ fun ProductQrScreen(
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(setOf<Int>()) }
     var qrAudience by remember { mutableStateOf(QrAudience.PUBLIC) }
+    var includePrices by remember { mutableStateOf(false) }
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    val currencyFormatter = remember {
+        NumberFormat.getCurrencyInstance(Locale("es", "AR"))
+    }
 
     fun resolveQrValue(product: ProductEntity): String {
         val queryValue = resolveSkuValue(product)
@@ -107,16 +112,21 @@ fun ProductQrScreen(
         }
         val labelWidthPoints = mmToPoints(30f)
         val labelHeightPoints = mmToPoints(15f)
-        val qrBlockWidth = labelWidthPoints / 2
+        val qrBlockWidth = minOf(labelHeightPoints, labelWidthPoints)
         val textBlockWidth = labelWidthPoints - qrBlockWidth
         val qrSize = minOf(labelHeightPoints, qrBlockWidth)
         val padding = mmToPoints(0.8f)
-        val skuTextSize = mmToPoints(2.7f).toFloat()
+        val skuTextSize = mmToPoints(2.2f).toFloat()
+        val priceTextSize = mmToPoints(1.8f).toFloat()
 
         val skuPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             textSize = skuTextSize
             isFakeBoldText = true
+        }
+        val pricePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = priceTextSize
         }
 
         val document = PdfDocument()
@@ -128,11 +138,39 @@ fun ProductQrScreen(
 
             val skuValue = resolveSkuValue(product)
 
-            val skuText = ellipsizeToWidth(skuValue, skuPaint, (textBlockWidth - (padding * 2)).toFloat())
-            val textBounds = Rect().also { skuPaint.getTextBounds(skuText, 0, skuText.length, it) }
-            val skuX = textBlockWidth / 2f - textBounds.exactCenterX()
-            val skuY = labelHeightPoints / 2f - textBounds.exactCenterY()
-            canvas.drawText(skuText, skuX, skuY, skuPaint)
+            val textMaxWidth = (textBlockWidth - (padding * 2)).toFloat()
+            val textLines = mutableListOf(
+                ellipsizeToWidth(skuValue, skuPaint, textMaxWidth)
+            )
+            if (includePrices) {
+                textLines += ellipsizeToWidth(
+                    "Lista: ${formatPrice(product.listPrice, currencyFormatter)}",
+                    pricePaint,
+                    textMaxWidth
+                )
+                textLines += ellipsizeToWidth(
+                    "Efectivo: ${formatPrice(product.cashPrice ?: product.listPrice, currencyFormatter)}",
+                    pricePaint,
+                    textMaxWidth
+                )
+            }
+
+            val spacing = mmToPoints(0.6f).toFloat()
+            val lineHeights = textLines.mapIndexed { index, _ ->
+                val paint = if (index == 0) skuPaint else pricePaint
+                paint.fontMetrics.run { descent - ascent }
+            }
+            val totalTextHeight = lineHeights.sum() + spacing * (textLines.size - 1)
+            var currentTop = (labelHeightPoints - totalTextHeight) / 2f
+
+            textLines.forEachIndexed { index, line ->
+                val paint = if (index == 0) skuPaint else pricePaint
+                val textBounds = Rect().also { paint.getTextBounds(line, 0, line.length, it) }
+                val textX = textBlockWidth / 2f - textBounds.exactCenterX()
+                val baseline = currentTop - paint.fontMetrics.ascent
+                canvas.drawText(line, textX, baseline, paint)
+                currentTop += lineHeights[index] + spacing
+            }
 
             val qrBitmap = generateQrBitmap(resolveQrValue(product), qrSize)
             val qrLeft = textBlockWidth + ((qrBlockWidth - qrSize) / 2)
@@ -196,6 +234,16 @@ fun ProductQrScreen(
             Text(
                 "Formato de descarga: etiqueta 30mm x 15mm (SKU centrado en su bloque y QR centrado al máximo tamaño posible)."
             )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Checkbox(
+                    checked = includePrices,
+                    onCheckedChange = { includePrices = it }
+                )
+                Text("Incluir precio lista y efectivo debajo del SKU")
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -305,6 +353,10 @@ fun ProductQrScreen(
             }
         )
     }
+}
+
+private fun formatPrice(value: Double?, currencyFormatter: NumberFormat): String {
+    return value?.let(currencyFormatter::format) ?: "-"
 }
 
 private fun generateQrBitmap(content: String, sizePx: Int): Bitmap {
