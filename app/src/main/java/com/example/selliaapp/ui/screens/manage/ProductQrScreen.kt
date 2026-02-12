@@ -107,8 +107,9 @@ fun ProductQrScreen(
         }
         val labelWidthPoints = mmToPoints(30f)
         val labelHeightPoints = mmToPoints(15f)
-        val qrSize = mmToPoints(15f)
-        val textBlockWidth = labelWidthPoints - qrSize
+        val qrBlockWidth = labelWidthPoints / 2
+        val textBlockWidth = labelWidthPoints - qrBlockWidth
+        val qrSize = minOf(labelHeightPoints, qrBlockWidth)
         val padding = mmToPoints(0.8f)
         val skuTextSize = mmToPoints(2.7f).toFloat()
 
@@ -127,12 +128,21 @@ fun ProductQrScreen(
 
             val skuValue = resolveSkuValue(product)
 
-            val skuY = padding + skuPaint.textSize
             val skuText = ellipsizeToWidth(skuValue, skuPaint, (textBlockWidth - (padding * 2)).toFloat())
-            canvas.drawText(skuText, padding.toFloat(), skuY, skuPaint)
+            val textBounds = Rect().also { skuPaint.getTextBounds(skuText, 0, skuText.length, it) }
+            val skuX = textBlockWidth / 2f - textBounds.exactCenterX()
+            val skuY = labelHeightPoints / 2f - textBounds.exactCenterY()
+            canvas.drawText(skuText, skuX, skuY, skuPaint)
 
             val qrBitmap = generateQrBitmap(resolveQrValue(product), qrSize)
-            canvas.drawBitmap(qrBitmap, null, Rect(textBlockWidth, 0, labelWidthPoints, labelHeightPoints), null)
+            val qrLeft = textBlockWidth + ((qrBlockWidth - qrSize) / 2)
+            val qrTop = (labelHeightPoints - qrSize) / 2
+            canvas.drawBitmap(
+                qrBitmap,
+                null,
+                Rect(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize),
+                null
+            )
             document.finishPage(page)
         }
 
@@ -184,7 +194,7 @@ fun ProductQrScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "Formato de descarga: etiqueta 30mm x 15mm (texto a la izquierda y QR 15x15mm a la derecha)."
+                "Formato de descarga: etiqueta 30mm x 15mm (SKU centrado en su bloque y QR centrado al máximo tamaño posible)."
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
