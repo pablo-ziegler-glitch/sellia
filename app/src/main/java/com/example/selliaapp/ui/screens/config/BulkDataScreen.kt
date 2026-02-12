@@ -58,6 +58,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun BulkDataScreen(
     onBack: () -> Unit,
+    onManageStock: () -> Unit,
     onManageProducts: () -> Unit,
     onManageCustomers: () -> Unit,
     onManageUsers: () -> Unit,
@@ -176,6 +177,12 @@ fun BulkDataScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            BulkSectionCard(
+                title = "Stock",
+                description = "Abrí el panel principal de stock con todas las opciones de gestión.",
+                onManage = onManageStock
+            )
+
             BulkSectionCard(
                 title = "Productos",
                 description = "Descargá una plantilla Excel/CSV y cargá productos en forma masiva.",

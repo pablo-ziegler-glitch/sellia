@@ -724,6 +724,7 @@ fun SelliaApp(
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
                 BulkDataScreen(
                     onBack = { navController.popBackStack() },
+                    onManageStock = { navController.navigate(Routes.Stock.route) },
                     onManageProducts = { navController.navigate(Routes.ManageProducts.route) },
                     onManageCustomers = { navController.navigate(Routes.ManageCustomers.route) },
                     onManageUsers = { navController.navigate(Routes.AddUser.route) },
