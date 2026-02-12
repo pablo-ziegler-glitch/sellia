@@ -52,6 +52,7 @@ import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.launch
 import java.io.OutputStream
@@ -83,7 +84,10 @@ fun ProductQrScreen(
     var includePrices by remember { mutableStateOf(false) }
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
     val currencyFormatter = remember {
-        NumberFormat.getCurrencyInstance(Locale("es", "AR"))
+        NumberFormat.getCurrencyInstance(Locale("es", "AR")).apply {
+            maximumFractionDigits = 0
+            minimumFractionDigits = 0
+        }
     }
 
     fun resolveQrValue(product: ProductEntity): String {
@@ -143,15 +147,21 @@ fun ProductQrScreen(
                 ellipsizeToWidth(skuValue, skuPaint, textMaxWidth)
             )
             if (includePrices) {
-                textLines += ellipsizeToWidth(
-                    "Lista: ${formatPrice(product.listPrice, currencyFormatter)}",
-                    pricePaint,
-                    textMaxWidth
+                textLines += buildPriceLine(
+                    fullLabel = "Lista",
+                    shortLabel = "Lista",
+                    value = product.listPrice,
+                    currencyFormatter = currencyFormatter,
+                    paint = pricePaint,
+                    maxWidthPx = textMaxWidth
                 )
-                textLines += ellipsizeToWidth(
-                    "Efectivo: ${formatPrice(product.cashPrice ?: product.listPrice, currencyFormatter)}",
-                    pricePaint,
-                    textMaxWidth
+                textLines += buildPriceLine(
+                    fullLabel = "Efectivo",
+                    shortLabel = "Efect",
+                    value = product.cashPrice ?: product.listPrice,
+                    currencyFormatter = currencyFormatter,
+                    paint = pricePaint,
+                    maxWidthPx = textMaxWidth
                 )
             }
 
@@ -355,13 +365,38 @@ fun ProductQrScreen(
     }
 }
 
+private fun buildPriceLine(
+    fullLabel: String,
+    shortLabel: String,
+    value: Double?,
+    currencyFormatter: NumberFormat,
+    paint: Paint,
+    maxWidthPx: Float
+): String {
+    val valueText = formatPrice(value, currencyFormatter)
+    val prioritizedWithShortLabel = "$shortLabel $valueText"
+
+    if (paint.measureText(prioritizedWithShortLabel) > maxWidthPx) {
+        return ellipsizeToWidth(valueText, paint, maxWidthPx)
+    }
+
+    val fullCandidate = "$fullLabel $valueText"
+    return if (paint.measureText(fullCandidate) <= maxWidthPx) {
+        fullCandidate
+    } else {
+        prioritizedWithShortLabel
+    }
+}
+
 private fun formatPrice(value: Double?, currencyFormatter: NumberFormat): String {
-    return value?.let(currencyFormatter::format) ?: "-"
+    val safeValue = value ?: return "-"
+    return currencyFormatter.format(safeValue)
 }
 
 private fun generateQrBitmap(content: String, sizePx: Int): Bitmap {
     val writer = QRCodeWriter()
-    val matrix = writer.encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx)
+    val hints = mapOf(EncodeHintType.MARGIN to 0)
+    val matrix = writer.encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
     val pixels = IntArray(sizePx * sizePx)
     for (y in 0 until sizePx) {
         val offset = y * sizePx
