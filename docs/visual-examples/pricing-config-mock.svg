@@ -1,0 +1,40 @@
+<svg width="900" height="1400" viewBox="0 0 900 1400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="1400" fill="#f3f4f6"/>
+  <text x="170" y="38" font-family="Arial" font-size="24" font-weight="700" fill="#111827">Mock visual de PricingConfigScreen (referencia UX)</text>
+  <rect x="200" y="80" width="500" height="1220" rx="30" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <rect x="200" y="80" width="500" height="70" fill="#fafafa"/>
+  <text x="224" y="124" font-family="Arial" font-size="24" font-weight="700" fill="#111827">Pricing y costos</text>
+
+  <text x="224" y="195" font-family="Arial" font-size="22" font-weight="700" fill="#111827">Configurá precios de forma guiada</text>
+
+  <rect x="224" y="220" width="95" height="36" rx="18" fill="#1d4ed8" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="242" y="244" font-family="Arial" font-size="14" fill="white">General</text>
+  <rect x="329" y="220" width="120" height="36" rx="18" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <text x="345" y="244" font-family="Arial" font-size="14" fill="#374151">Coeficientes</text>
+  <rect x="459" y="220" width="130" height="36" rx="18" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <text x="472" y="244" font-family="Arial" font-size="14" fill="#374151">Mercado Libre</text>
+  <rect x="224" y="266" width="145" height="36" rx="18" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <text x="242" y="290" font-family="Arial" font-size="14" fill="#374151">Costos y tramos</text>
+
+  <rect x="224" y="325" width="452" height="520" rx="16" fill="white" stroke="#e5e7eb" stroke-width="2"/>
+  <text x="248" y="358" font-family="Arial" font-size="20" font-weight="700" fill="#111827">Parámetros base</text>
+
+  <text x="248" y="402" font-family="Arial" font-size="14" fill="#6b7280">IVA terminal (%)</text>
+  <rect x="248" y="414" width="404" height="44" rx="10" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <text x="268" y="442" font-family="Arial" font-size="16" fill="#111827">21</text>
+
+  <text x="248" y="488" font-family="Arial" font-size="14" fill="#6b7280">Ventas mensuales estimadas</text>
+  <rect x="248" y="500" width="404" height="44" rx="10" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <text x="268" y="528" font-family="Arial" font-size="16" fill="#111827">500</text>
+
+  <text x="248" y="574" font-family="Arial" font-size="14" fill="#6b7280">Operativos local (%)</text>
+  <rect x="248" y="586" width="404" height="44" rx="10" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <text x="268" y="614" font-family="Arial" font-size="16" fill="#111827">3</text>
+
+  <text x="248" y="660" font-family="Arial" font-size="14" fill="#6b7280">Ganancia objetivo (%)</text>
+  <rect x="248" y="672" width="404" height="44" rx="10" fill="white" stroke="#d1d5db" stroke-width="2"/>
+  <text x="268" y="700" font-family="Arial" font-size="16" fill="#111827">50</text>
+
+  <rect x="224" y="878" width="452" height="52" rx="12" fill="#2563eb"/>
+  <text x="366" y="910" font-family="Arial" font-size="18" font-weight="700" fill="white">Guardar configuración</text>
+</svg>
