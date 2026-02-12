@@ -17,6 +17,7 @@ import com.example.selliaapp.data.remote.CustomerFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
 import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier real del ZIP está dentro de AppModule
 import com.example.selliaapp.repository.ProductRepository
+import com.example.selliaapp.repository.PricingConfigRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentSnapshot
@@ -40,6 +41,7 @@ class SyncRepositoryImpl @Inject constructor(
     private val customerDao: CustomerDao,
     private val syncOutboxDao: SyncOutboxDao,
     private val productRepository: ProductRepository,
+    private val pricingConfigRepository: PricingConfigRepository,
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
     private val tenantProvider: TenantProvider,
@@ -72,26 +74,27 @@ class SyncRepositoryImpl @Inject constructor(
             .document(tenantProvider.requireTenantId())
             .collection("invoices")
         val snapshot = invoicesCollection.get().await()
-        if (snapshot.isEmpty) return@withContext
+        if (!snapshot.isEmpty) {
+            val remoteInvoices = snapshot.documents.mapNotNull { doc ->
+                InvoiceFirestoreMappers.fromDocument(doc)
+            }
 
-        val remoteInvoices = snapshot.documents.mapNotNull { doc ->
-            InvoiceFirestoreMappers.fromDocument(doc)
-        }
-
-        if (remoteInvoices.isEmpty()) return@withContext
-
-        db.withTransaction {
-            remoteInvoices.forEach { remote ->
-                val invoice = remote.invoice
-                invoiceDao.insertInvoice(invoice)
-                invoiceItemDao.deleteByInvoiceId(invoice.id)
-                if (remote.items.isNotEmpty()) {
-                    invoiceItemDao.insertAll(remote.items)
+            if (remoteInvoices.isNotEmpty()) {
+                db.withTransaction {
+                    remoteInvoices.forEach { remote ->
+                        val invoice = remote.invoice
+                        invoiceDao.insertInvoice(invoice)
+                        invoiceItemDao.deleteByInvoiceId(invoice.id)
+                        if (remote.items.isNotEmpty()) {
+                            invoiceItemDao.insertAll(remote.items)
+                        }
+                    }
                 }
             }
         }
 
         syncCustomersFromRemote()
+        pricingConfigRepository.pullPricingConfigFromCloud()
     }
 
     override suspend fun runSync(includeBackup: Boolean) = withContext(io) {

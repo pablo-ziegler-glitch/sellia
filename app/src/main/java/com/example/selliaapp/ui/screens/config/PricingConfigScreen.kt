@@ -2,17 +2,27 @@ package com.example.selliaapp.ui.screens.config
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -20,10 +30,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,8 +37,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.data.local.entity.PricingFixedCostEntity
@@ -42,6 +50,13 @@ import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.sync.PricingScheduler
 import com.example.selliaapp.viewmodel.PricingConfigViewModel
 import java.time.Instant
+
+private enum class PricingSection(val label: String) {
+    GENERAL("General"),
+    COEFFICIENTS("Coeficientes"),
+    MERCADO_LIBRE("Mercado Libre"),
+    COSTS("Costos y tramos")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,6 +70,7 @@ fun PricingConfigScreen(
     val mlShippingTiers by viewModel.mlShippingTiers.collectAsState()
     val context = LocalContext.current
 
+    var activeSection by remember { mutableStateOf(PricingSection.GENERAL) }
     var showDialog by remember { mutableStateOf(false) }
     var editingCost by remember { mutableStateOf<PricingFixedCostEntity?>(null) }
     var showMlFixedDialog by remember { mutableStateOf(false) }
@@ -106,312 +122,201 @@ fun PricingConfigScreen(
         }
     }
 
+    val onSaveSettings: () -> Unit = onSaveSettings@ {
+        val current = settings ?: return@onSaveSettings
+        val updated = current.copy(
+            ivaTerminalPercent = ivaTerminalText.parseDecimal(current.ivaTerminalPercent),
+            monthlySalesEstimate = ventasMensualesText.toIntOrNull() ?: current.monthlySalesEstimate,
+            operativosLocalPercent = operativosLocalText.parseDecimal(current.operativosLocalPercent),
+            posnet3CuotasPercent = posnetText.parseDecimal(current.posnet3CuotasPercent),
+            transferenciaRetencionPercent = transferenciaText.parseDecimal(current.transferenciaRetencionPercent),
+            gainTargetPercent = gananciaText.parseDecimal(current.gainTargetPercent),
+            mlCommissionPercent = mlCommissionText.parseDecimal(current.mlCommissionPercent),
+            mlCuotas3Percent = mlCuotas3Text.parseDecimal(current.mlCuotas3Percent),
+            mlCuotas6Percent = mlCuotas6Text.parseDecimal(current.mlCuotas6Percent),
+            mlGainMinimum = mlGainMinimumText.parseDecimal(current.mlGainMinimum),
+            mlShippingThreshold = mlShippingThresholdText.parseDecimal(current.mlShippingThreshold),
+            mlDefaultWeightKg = mlWeightText.parseDecimal(current.mlDefaultWeightKg),
+            coefficient0To1500Percent = coef0To1500Text.parseDecimal(current.coefficient0To1500Percent),
+            coefficient1501To3000Percent = coef1501To3000Text.parseDecimal(current.coefficient1501To3000Percent),
+            coefficient3001To5000Percent = coef3001To5000Text.parseDecimal(current.coefficient3001To5000Percent),
+            coefficient5001To7500Percent = coef5001To7500Text.parseDecimal(current.coefficient5001To7500Percent),
+            coefficient7501To10000Percent = coef7501To10000Text.parseDecimal(current.coefficient7501To10000Percent),
+            coefficient10001PlusPercent = coef10001PlusText.parseDecimal(current.coefficient10001PlusPercent),
+            recalcIntervalMinutes = recalcIntervalText.toIntOrNull() ?: current.recalcIntervalMinutes,
+            updatedAt = Instant.now(),
+            updatedBy = current.updatedBy
+        )
+        viewModel.saveSettings(updated)
+        PricingScheduler.enqueuePeriodic(context, updated.recalcIntervalMinutes)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Pricing y costos") },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Volver") }
-                }
+                navigationIcon = { TextButton(onClick = onBack) { Text("Volver") } }
             )
         },
         floatingActionButton = {
-            IconButton(onClick = {
-                editingCost = null
-                showDialog = true
-            }) {
-                Icon(Icons.Default.Add, contentDescription = "Agregar costo")
+            if (activeSection == PricingSection.COSTS) {
+                FloatingActionButton(
+                    onClick = {
+                        editingCost = null
+                        showDialog = true
+                    }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Agregar costo fijo")
+                }
             }
         }
-    ) { padding ->
+    ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
-                .padding(padding)
-                .padding(16.dp),
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Text("Parámetros generales")
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = ivaTerminalText,
-                    onValueChange = { ivaTerminalText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("IVA terminal (%)") },
-                    modifier = Modifier.fillMaxWidth()
+                Text(
+                    text = "Configurá precios de forma guiada",
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
-                OutlinedTextField(
-                    value = ventasMensualesText,
-                    onValueChange = { ventasMensualesText = it.filter { ch -> ch.isDigit() } },
-                    label = { Text("Ventas mensuales estimadas") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = operativosLocalText,
-                    onValueChange = { operativosLocalText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Operativos local (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = posnetText,
-                    onValueChange = { posnetText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Posnet 3 cuotas (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = transferenciaText,
-                    onValueChange = { transferenciaText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Transferencia retención (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = gananciaText,
-                    onValueChange = { gananciaText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Ganancia objetivo (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(Modifier.height(6.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PricingSection.entries.forEach { section ->
+                        FilterChip(
+                            selected = activeSection == section,
+                            onClick = { activeSection = section },
+                            label = { Text(section.label) }
+                        )
+                    }
+                }
             }
 
-            item {
-                Text("Coeficientes por rango")
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = coef0To1500Text,
-                    onValueChange = { coef0To1500Text = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("0 a 1500 (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = coef1501To3000Text,
-                    onValueChange = { coef1501To3000Text = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("1501 a 3000 (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = coef3001To5000Text,
-                    onValueChange = { coef3001To5000Text = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("3001 a 5000 (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = coef5001To7500Text,
-                    onValueChange = { coef5001To7500Text = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("5001 a 7500 (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = coef7501To10000Text,
-                    onValueChange = { coef7501To10000Text = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("7501 a 10000 (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = coef10001PlusText,
-                    onValueChange = { coef10001PlusText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("10001+ (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = recalcIntervalText,
-                    onValueChange = { recalcIntervalText = it.filter { ch -> ch.isDigit() } },
-                    label = { Text("Recalcular cada (min)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            when (activeSection) {
+                PricingSection.GENERAL -> {
+                    item {
+                        SettingsCard("Parámetros base") {
+                            DecimalField("IVA terminal (%)", ivaTerminalText) { ivaTerminalText = it.cleanNumeric() }
+                            IntegerField("Ventas mensuales estimadas", ventasMensualesText) { ventasMensualesText = it.cleanInteger() }
+                            DecimalField("Operativos local (%)", operativosLocalText) { operativosLocalText = it.cleanNumeric() }
+                            DecimalField("Posnet 3 cuotas (%)", posnetText) { posnetText = it.cleanNumeric() }
+                            DecimalField("Retención transferencia (%)", transferenciaText) { transferenciaText = it.cleanNumeric() }
+                            DecimalField("Ganancia objetivo (%)", gananciaText) { gananciaText = it.cleanNumeric() }
+                        }
+                    }
+                }
 
-            item {
-                Text("Mercado Libre")
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = mlCommissionText,
-                    onValueChange = { mlCommissionText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Comisión ML (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = mlCuotas3Text,
-                    onValueChange = { mlCuotas3Text = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("ML 3 cuotas (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = mlCuotas6Text,
-                    onValueChange = { mlCuotas6Text = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("ML 6 cuotas (%)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = mlGainMinimumText,
-                    onValueChange = { mlGainMinimumText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Ganancia mínima ML") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = mlShippingThresholdText,
-                    onValueChange = { mlShippingThresholdText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Umbral envío ML") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = mlWeightText,
-                    onValueChange = { mlWeightText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Peso envío ML (kg)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                PricingSection.COEFFICIENTS -> {
+                    item {
+                        SettingsCard("Coeficientes por rango") {
+                            DecimalField("0 a 1.500 (%)", coef0To1500Text) { coef0To1500Text = it.cleanNumeric() }
+                            DecimalField("1.501 a 3.000 (%)", coef1501To3000Text) { coef1501To3000Text = it.cleanNumeric() }
+                            DecimalField("3.001 a 5.000 (%)", coef3001To5000Text) { coef3001To5000Text = it.cleanNumeric() }
+                            DecimalField("5.001 a 7.500 (%)", coef5001To7500Text) { coef5001To7500Text = it.cleanNumeric() }
+                            DecimalField("7.501 a 10.000 (%)", coef7501To10000Text) { coef7501To10000Text = it.cleanNumeric() }
+                            DecimalField("10.001+ (%)", coef10001PlusText) { coef10001PlusText = it.cleanNumeric() }
+                            IntegerField("Recalcular cada (min)", recalcIntervalText) { recalcIntervalText = it.cleanInteger() }
+                        }
+                    }
+                }
+
+                PricingSection.MERCADO_LIBRE -> {
+                    item {
+                        SettingsCard("Comisiones y envío") {
+                            DecimalField("Comisión ML (%)", mlCommissionText) { mlCommissionText = it.cleanNumeric() }
+                            DecimalField("ML 3 cuotas (%)", mlCuotas3Text) { mlCuotas3Text = it.cleanNumeric() }
+                            DecimalField("ML 6 cuotas (%)", mlCuotas6Text) { mlCuotas6Text = it.cleanNumeric() }
+                            DecimalField("Ganancia mínima ML", mlGainMinimumText) { mlGainMinimumText = it.cleanNumeric() }
+                            DecimalField("Umbral envío ML", mlShippingThresholdText) { mlShippingThresholdText = it.cleanNumeric() }
+                            DecimalField("Peso envío ML (kg)", mlWeightText) { mlWeightText = it.cleanNumeric() }
+                        }
+                    }
+                }
+
+                PricingSection.COSTS -> {
+                    item {
+                        SettingsCard("Costos fijos") {
+                            if (fixedCosts.isEmpty()) {
+                                Text("Aún no hay costos fijos configurados.")
+                            }
+                        }
+                    }
+                    items(fixedCosts) { cost ->
+                        EntityRowCard(
+                            title = cost.name,
+                            subtitle = "Monto: ${cost.amount}",
+                            note = cost.description,
+                            onEdit = {
+                                editingCost = cost
+                                showDialog = true
+                            },
+                            onDelete = { viewModel.deleteFixedCost(cost.id) }
+                        )
+                    }
+
+                    item {
+                        SettingsCard("Tramos ML - costo fijo") {
+                            Button(
+                                onClick = {
+                                    editingMlFixed = null
+                                    showMlFixedDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Agregar tramo") }
+                        }
+                    }
+                    items(mlFixedCostTiers) { tier ->
+                        EntityRowCard(
+                            title = "Hasta ${tier.maxPrice}",
+                            subtitle = "Costo fijo: ${tier.cost}",
+                            onEdit = {
+                                editingMlFixed = tier
+                                showMlFixedDialog = true
+                            },
+                            onDelete = { viewModel.deleteMlFixedCostTier(tier.id) }
+                        )
+                    }
+
+                    item {
+                        SettingsCard("Tramos ML - envío") {
+                            Button(
+                                onClick = {
+                                    editingMlShipping = null
+                                    showMlShippingDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Agregar tramo de envío") }
+                        }
+                    }
+                    items(mlShippingTiers) { tier ->
+                        EntityRowCard(
+                            title = "Hasta ${tier.maxWeightKg} kg",
+                            subtitle = "Costo envío: ${tier.cost}",
+                            onEdit = {
+                                editingMlShipping = tier
+                                showMlShippingDialog = true
+                            },
+                            onDelete = { viewModel.deleteMlShippingTier(tier.id) }
+                        )
+                    }
+                }
             }
 
             item {
                 Button(
-                    onClick = {
-                        val current = settings ?: return@Button
-                        val updated = current.copy(
-                            ivaTerminalPercent = ivaTerminalText.replace(',', '.').toDoubleOrNull() ?: current.ivaTerminalPercent,
-                            monthlySalesEstimate = ventasMensualesText.toIntOrNull() ?: current.monthlySalesEstimate,
-                            operativosLocalPercent = operativosLocalText.replace(',', '.').toDoubleOrNull()
-                                ?: current.operativosLocalPercent,
-                            posnet3CuotasPercent = posnetText.replace(',', '.').toDoubleOrNull()
-                                ?: current.posnet3CuotasPercent,
-                            transferenciaRetencionPercent = transferenciaText.replace(',', '.').toDoubleOrNull()
-                                ?: current.transferenciaRetencionPercent,
-                            gainTargetPercent = gananciaText.replace(',', '.').toDoubleOrNull()
-                                ?: current.gainTargetPercent,
-                            mlCommissionPercent = mlCommissionText.replace(',', '.').toDoubleOrNull()
-                                ?: current.mlCommissionPercent,
-                            mlCuotas3Percent = mlCuotas3Text.replace(',', '.').toDoubleOrNull()
-                                ?: current.mlCuotas3Percent,
-                            mlCuotas6Percent = mlCuotas6Text.replace(',', '.').toDoubleOrNull()
-                                ?: current.mlCuotas6Percent,
-                            mlGainMinimum = mlGainMinimumText.replace(',', '.').toDoubleOrNull()
-                                ?: current.mlGainMinimum,
-                            mlShippingThreshold = mlShippingThresholdText.replace(',', '.').toDoubleOrNull()
-                                ?: current.mlShippingThreshold,
-                            mlDefaultWeightKg = mlWeightText.replace(',', '.').toDoubleOrNull()
-                                ?: current.mlDefaultWeightKg,
-                            coefficient0To1500Percent = coef0To1500Text.replace(',', '.').toDoubleOrNull()
-                                ?: current.coefficient0To1500Percent,
-                            coefficient1501To3000Percent = coef1501To3000Text.replace(',', '.').toDoubleOrNull()
-                                ?: current.coefficient1501To3000Percent,
-                            coefficient3001To5000Percent = coef3001To5000Text.replace(',', '.').toDoubleOrNull()
-                                ?: current.coefficient3001To5000Percent,
-                            coefficient5001To7500Percent = coef5001To7500Text.replace(',', '.').toDoubleOrNull()
-                                ?: current.coefficient5001To7500Percent,
-                            coefficient7501To10000Percent = coef7501To10000Text.replace(',', '.').toDoubleOrNull()
-                                ?: current.coefficient7501To10000Percent,
-                            coefficient10001PlusPercent = coef10001PlusText.replace(',', '.').toDoubleOrNull()
-                                ?: current.coefficient10001PlusPercent,
-                            recalcIntervalMinutes = recalcIntervalText.toIntOrNull()
-                                ?: current.recalcIntervalMinutes,
-                            updatedAt = Instant.now(),
-                            updatedBy = current.updatedBy
-                        )
-                        viewModel.saveSettings(updated)
-                        PricingScheduler.enqueuePeriodic(context, updated.recalcIntervalMinutes)
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = onSaveSettings,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp)
                 ) {
                     Text("Guardar configuración")
-                }
-            }
-
-            item {
-                Text("Costos fijos")
-                Spacer(Modifier.height(8.dp))
-            }
-
-            items(fixedCosts) { cost ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(cost.name)
-                        Text("${cost.amount}")
-                        cost.description?.let { Text(it) }
-                    }
-                    Row {
-                        IconButton(onClick = {
-                            editingCost = cost
-                            showDialog = true
-                        }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Editar")
-                        }
-                        IconButton(onClick = { viewModel.deleteFixedCost(cost.id) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Eliminar")
-                        }
-                    }
-                }
-            }
-
-            item {
-                Text("ML costos fijos")
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        editingMlFixed = null
-                        showMlFixedDialog = true
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Agregar costo fijo ML")
-                }
-            }
-
-            items(mlFixedCostTiers) { tier ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Hasta ${tier.maxPrice}")
-                        Text("Costo ${tier.cost}")
-                    }
-                    Row {
-                        IconButton(onClick = {
-                            editingMlFixed = tier
-                            showMlFixedDialog = true
-                        }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Editar")
-                        }
-                        IconButton(onClick = { viewModel.deleteMlFixedCostTier(tier.id) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Eliminar")
-                        }
-                    }
-                }
-            }
-
-            item {
-                Text("ML envío por peso")
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        editingMlShipping = null
-                        showMlShippingDialog = true
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Agregar envío ML")
-                }
-            }
-
-            items(mlShippingTiers) { tier ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Hasta ${tier.maxWeightKg} kg")
-                        Text("Costo ${tier.cost}")
-                    }
-                    Row {
-                        IconButton(onClick = {
-                            editingMlShipping = tier
-                            showMlShippingDialog = true
-                        }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Editar")
-                        }
-                        IconButton(onClick = { viewModel.deleteMlShippingTier(tier.id) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Eliminar")
-                        }
-                    }
                 }
             }
         }
@@ -421,8 +326,8 @@ fun PricingConfigScreen(
         FixedCostDialog(
             initial = editingCost,
             onDismiss = { showDialog = false },
-            onSave = { item ->
-                viewModel.saveFixedCost(item)
+            onSave = {
+                viewModel.saveFixedCost(it)
                 showDialog = false
             }
         )
@@ -432,8 +337,8 @@ fun PricingConfigScreen(
         MlFixedCostDialog(
             initial = editingMlFixed,
             onDismiss = { showMlFixedDialog = false },
-            onSave = { item ->
-                viewModel.saveMlFixedCostTier(item)
+            onSave = {
+                viewModel.saveMlFixedCostTier(it)
                 showMlFixedDialog = false
             }
         )
@@ -443,13 +348,88 @@ fun PricingConfigScreen(
         MlShippingDialog(
             initial = editingMlShipping,
             onDismiss = { showMlShippingDialog = false },
-            onSave = { item ->
-                viewModel.saveMlShippingTier(item)
+            onSave = {
+                viewModel.saveMlShippingTier(it)
                 showMlShippingDialog = false
             }
         )
     }
 }
+
+@Composable
+private fun SettingsCard(title: String, content: @Composable Column.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(text = title, fontWeight = FontWeight.Medium)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun DecimalField(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun IntegerField(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun EntityRowCard(
+    title: String,
+    subtitle: String,
+    note: String? = null,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(subtitle)
+                if (!note.isNullOrBlank()) {
+                    Text(note)
+                }
+            }
+            Row {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = "Editar")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Eliminar")
+                }
+            }
+        }
+    }
+}
+
+private fun String.cleanNumeric(): String = filter { it.isDigit() || it == '.' || it == ',' }
+private fun String.cleanInteger(): String = filter { it.isDigit() }
+private fun String.parseDecimal(fallback: Double): Double = replace(',', '.').toDoubleOrNull() ?: fallback
 
 @Composable
 private fun FixedCostDialog(
@@ -481,11 +461,11 @@ private fun FixedCostDialog(
                 )
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    onValueChange = { amountText = it.cleanNumeric() },
                     label = { Text("Monto") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = applyIva, onCheckedChange = { applyIva = it })
                     Text("Aplicar IVA terminal")
                 }
@@ -494,7 +474,7 @@ private fun FixedCostDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val amount = amountText.replace(',', '.').toDoubleOrNull() ?: 0.0
+                    val amount = amountText.parseDecimal(0.0)
                     onSave(
                         PricingFixedCostEntity(
                             id = initial?.id ?: 0,
@@ -505,15 +485,9 @@ private fun FixedCostDialog(
                         )
                     )
                 }
-            ) {
-                Text("Guardar")
-            }
+            ) { Text("Guardar") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }
 
@@ -533,13 +507,13 @@ private fun MlFixedCostDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = maxPriceText,
-                    onValueChange = { maxPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    onValueChange = { maxPriceText = it.cleanNumeric() },
                     label = { Text("Precio máximo") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = costText,
-                    onValueChange = { costText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    onValueChange = { costText = it.cleanNumeric() },
                     label = { Text("Costo fijo") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -548,25 +522,17 @@ private fun MlFixedCostDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val maxPrice = maxPriceText.replace(',', '.').toDoubleOrNull() ?: 0.0
-                    val cost = costText.replace(',', '.').toDoubleOrNull() ?: 0.0
                     onSave(
                         PricingMlFixedCostTierEntity(
                             id = initial?.id ?: 0,
-                            maxPrice = maxPrice,
-                            cost = cost
+                            maxPrice = maxPriceText.parseDecimal(0.0),
+                            cost = costText.parseDecimal(0.0)
                         )
                     )
                 }
-            ) {
-                Text("Guardar")
-            }
+            ) { Text("Guardar") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }
 
@@ -586,13 +552,13 @@ private fun MlShippingDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = maxWeightText,
-                    onValueChange = { maxWeightText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    onValueChange = { maxWeightText = it.cleanNumeric() },
                     label = { Text("Peso máximo (kg)") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = costText,
-                    onValueChange = { costText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    onValueChange = { costText = it.cleanNumeric() },
                     label = { Text("Costo envío") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -601,24 +567,16 @@ private fun MlShippingDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val maxWeight = maxWeightText.replace(',', '.').toDoubleOrNull() ?: 0.0
-                    val cost = costText.replace(',', '.').toDoubleOrNull() ?: 0.0
                     onSave(
                         PricingMlShippingTierEntity(
                             id = initial?.id ?: 0,
-                            maxWeightKg = maxWeight,
-                            cost = cost
+                            maxWeightKg = maxWeightText.parseDecimal(0.0),
+                            cost = costText.parseDecimal(0.0)
                         )
                     )
                 }
-            ) {
-                Text("Guardar")
-            }
+            ) { Text("Guardar") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }

@@ -32,6 +32,64 @@ class PricingConfigRepository(
     private val tenantProvider: TenantProvider,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) {
+    suspend fun pullPricingConfigFromCloud(): Boolean = withContext(io) {
+        val tenantId = runCatching { tenantProvider.requireTenantId() }.getOrNull() ?: return@withContext false
+        val snapshot = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("config")
+            .document("pricing")
+            .get()
+            .await()
+
+        if (!snapshot.exists()) return@withContext false
+        val payload = snapshot.data.orEmpty()
+
+        val settingsMap = snapshot.get("settings") as? Map<*, *> ?: return@withContext false
+        val remoteSettings = settingsFromMap(settingsMap) ?: return@withContext false
+        pricingSettingsDao.upsert(remoteSettings)
+
+        if (payload.containsKey("fixedCosts")) {
+            val remoteFixedCosts = (snapshot.get("fixedCosts") as? List<*>)
+                .orEmpty()
+                .mapNotNull { row -> fixedCostFromMap(row as? Map<*, *>) }
+            val remoteFixedCostIds = remoteFixedCosts.map { it.id }.toSet()
+            pricingFixedCostDao.getAllOnce().forEach { local ->
+                if (local.id !in remoteFixedCostIds) {
+                    pricingFixedCostDao.deleteById(local.id)
+                }
+            }
+            remoteFixedCosts.forEach { pricingFixedCostDao.upsert(it) }
+        }
+
+        if (payload.containsKey("mlFixedCostTiers")) {
+            val remoteMlFixedTiers = (snapshot.get("mlFixedCostTiers") as? List<*>)
+                .orEmpty()
+                .mapNotNull { row -> mlFixedCostTierFromMap(row as? Map<*, *>) }
+            val remoteMlFixedTierIds = remoteMlFixedTiers.map { it.id }.toSet()
+            pricingMlFixedCostTierDao.getAllOnce().forEach { local ->
+                if (local.id !in remoteMlFixedTierIds) {
+                    pricingMlFixedCostTierDao.deleteById(local.id)
+                }
+            }
+            remoteMlFixedTiers.forEach { pricingMlFixedCostTierDao.upsert(it) }
+        }
+
+        if (payload.containsKey("mlShippingTiers")) {
+            val remoteMlShippingTiers = (snapshot.get("mlShippingTiers") as? List<*>)
+                .orEmpty()
+                .mapNotNull { row -> mlShippingTierFromMap(row as? Map<*, *>) }
+            val remoteMlShippingTierIds = remoteMlShippingTiers.map { it.id }.toSet()
+            pricingMlShippingTierDao.getAllOnce().forEach { local ->
+                if (local.id !in remoteMlShippingTierIds) {
+                    pricingMlShippingTierDao.deleteById(local.id)
+                }
+            }
+            remoteMlShippingTiers.forEach { pricingMlShippingTierDao.upsert(it) }
+        }
+
+        true
+    }
+
     fun observeFixedCosts(): Flow<List<PricingFixedCostEntity>> =
         pricingFixedCostDao.observeAll()
 
@@ -415,4 +473,88 @@ class PricingConfigRepository(
         PricingMlShippingTierEntity(maxWeightKg = 5.0, cost = 10952.39),
         PricingMlShippingTierEntity(maxWeightKg = 10.0, cost = 13007.99)
     )
+
+    private fun settingsFromMap(source: Map<*, *>): PricingSettingsEntity? {
+        val monthlySalesEstimate = source["monthlySalesEstimate"].asInt() ?: return null
+        return PricingSettingsEntity(
+            id = 1,
+            ivaTerminalPercent = source["ivaTerminalPercent"].asDouble() ?: 21.0,
+            monthlySalesEstimate = monthlySalesEstimate,
+            operativosLocalPercent = source["operativosLocalPercent"].asDouble() ?: 3.0,
+            posnet3CuotasPercent = source["posnet3CuotasPercent"].asDouble() ?: 12.22,
+            transferenciaRetencionPercent = source["transferenciaRetencionPercent"].asDouble() ?: 5.0,
+            gainTargetPercent = source["gainTargetPercent"].asDouble() ?: 50.0,
+            mlCommissionPercent = source["mlCommissionPercent"].asDouble() ?: 15.5,
+            mlCuotas3Percent = source["mlCuotas3Percent"].asDouble() ?: 8.2,
+            mlCuotas6Percent = source["mlCuotas6Percent"].asDouble() ?: 12.7,
+            mlGainMinimum = source["mlGainMinimum"].asDouble() ?: 0.0,
+            mlShippingThreshold = source["mlShippingThreshold"].asDouble() ?: 33000.0,
+            mlDefaultWeightKg = source["mlDefaultWeightKg"].asDouble() ?: 0.3,
+            coefficient0To1500Percent = source["coefficient0To1500Percent"].asDouble() ?: 15.0,
+            coefficient1501To3000Percent = source["coefficient1501To3000Percent"].asDouble() ?: 30.0,
+            coefficient3001To5000Percent = source["coefficient3001To5000Percent"].asDouble() ?: 40.0,
+            coefficient5001To7500Percent = source["coefficient5001To7500Percent"].asDouble() ?: 45.0,
+            coefficient7501To10000Percent = source["coefficient7501To10000Percent"].asDouble() ?: 65.0,
+            coefficient10001PlusPercent = source["coefficient10001PlusPercent"].asDouble() ?: 100.0,
+            recalcIntervalMinutes = source["recalcIntervalMinutes"].asInt() ?: 30,
+            updatedAt = Instant.now(),
+            updatedBy = (source["updatedBy"] as? String)?.trim().orEmpty().ifBlank { "Cloud Sync" }
+        )
+    }
+
+    private fun fixedCostFromMap(source: Map<*, *>?): PricingFixedCostEntity? {
+        if (source == null) return null
+        val id = source["id"].asInt() ?: return null
+        val name = (source["name"] as? String)?.trim().orEmpty()
+        val amount = source["amount"].asDouble() ?: return null
+        if (name.isBlank()) return null
+        return PricingFixedCostEntity(
+            id = id,
+            name = name,
+            description = source["description"] as? String,
+            amount = amount,
+            applyIva = source["applyIva"].asBoolean() ?: false
+        )
+    }
+
+    private fun mlFixedCostTierFromMap(source: Map<*, *>?): PricingMlFixedCostTierEntity? {
+        if (source == null) return null
+        return PricingMlFixedCostTierEntity(
+            id = source["id"].asInt() ?: return null,
+            maxPrice = source["maxPrice"].asDouble() ?: return null,
+            cost = source["cost"].asDouble() ?: return null
+        )
+    }
+
+    private fun mlShippingTierFromMap(source: Map<*, *>?): PricingMlShippingTierEntity? {
+        if (source == null) return null
+        return PricingMlShippingTierEntity(
+            id = source["id"].asInt() ?: return null,
+            maxWeightKg = source["maxWeightKg"].asDouble() ?: return null,
+            cost = source["cost"].asDouble() ?: return null
+        )
+    }
+
+    private fun Any?.asDouble(): Double? = when (this) {
+        is Number -> toDouble()
+        is String -> replace(',', '.').toDoubleOrNull()
+        else -> null
+    }
+
+    private fun Any?.asInt(): Int? = when (this) {
+        is Number -> toInt()
+        is String -> toIntOrNull()
+        else -> null
+    }
+
+    private fun Any?.asBoolean(): Boolean? = when (this) {
+        is Boolean -> this
+        is Number -> toInt() != 0
+        is String -> when (trim().lowercase()) {
+            "true", "1", "yes", "si" -> true
+            "false", "0", "no" -> false
+            else -> null
+        }
+        else -> null
+    }
 }
