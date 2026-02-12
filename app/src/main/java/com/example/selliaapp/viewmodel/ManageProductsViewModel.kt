@@ -2,7 +2,9 @@ package com.example.selliaapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.data.local.entity.VariantEntity
 import com.example.selliaapp.domain.product.ProductFilterParams
 import com.example.selliaapp.domain.product.ProductSortOption
 import com.example.selliaapp.domain.product.filterAndSortProducts
@@ -33,7 +35,8 @@ data class ManageProductsUiState(
 
 @HiltViewModel
 class ManageProductsViewModel @Inject constructor(
-    private val repo: IProductRepository
+    private val repo: IProductRepository,
+    private val variantDao: VariantDao
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ManageProductsUiState())
@@ -86,6 +89,53 @@ class ManageProductsViewModel @Inject constructor(
                 onDone(id)
             }.onFailure { error ->
                 _message.value = error.message ?: "No se pudo guardar el producto."
+            }
+        }
+    }
+
+
+    suspend fun getSizeStockMap(productId: Int): Map<String, Int> {
+        return variantDao.getSizeStocksByProductOnce(productId)
+            .mapNotNull { v ->
+                val size = v.option1?.trim().orEmpty()
+                if (size.isBlank()) null else size to v.quantity.coerceAtLeast(0)
+            }
+            .toMap()
+    }
+
+    fun saveSizeStocks(product: ProductEntity, quantitiesBySize: Map<String, Int>) {
+        val normalized = quantitiesBySize
+            .mapKeys { it.key.trim() }
+            .filterKeys { it.isNotBlank() }
+            .mapValues { it.value.coerceAtLeast(0) }
+            .filterValues { it > 0 }
+
+        viewModelScope.launch {
+            if (normalized.values.sum() > product.quantity) {
+                _message.value = "La suma de talles no puede superar el stock total del producto."
+                return@launch
+            }
+            if (normalized.isNotEmpty() && normalized.keys.any { size -> !product.sizes.contains(size) }) {
+                _message.value = "Hay talles cargados que no existen en la lista de talles del producto."
+                return@launch
+            }
+
+            runCatching {
+                variantDao.deleteSizeStocksByProduct(product.id)
+                if (normalized.isNotEmpty()) {
+                    val rows = normalized.map { (size, qty) ->
+                        VariantEntity(
+                            productId = product.id,
+                            sku = null,
+                            option1 = size,
+                            option2 = null,
+                            quantity = qty
+                        )
+                    }
+                    variantDao.insertAll(rows)
+                }
+            }.onFailure { error ->
+                _message.value = error.message ?: "No se pudo guardar el stock por talle."
             }
         }
     }

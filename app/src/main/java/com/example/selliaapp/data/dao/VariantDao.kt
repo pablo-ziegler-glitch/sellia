@@ -16,6 +16,9 @@ interface VariantDao {
     @Update
     suspend fun update(v: VariantEntity): Int
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAll(items: List<VariantEntity>)
+
     @Query("SELECT * FROM variants WHERE productId = :productId ORDER BY option1, option2")
     fun observeByProduct(productId: Int): Flow<List<VariantEntity>>
 
@@ -24,4 +27,24 @@ interface VariantDao {
 
     @Query("SELECT SUM(quantity) FROM variants WHERE productId = :productId")
     suspend fun sumQuantity(productId: Int): Int?
+
+    @Query(
+        """
+        SELECT * FROM variants
+        WHERE productId = :productId
+          AND option1 IS NOT NULL
+          AND option2 IS NULL
+        ORDER BY option1 ASC
+        """
+    )
+    suspend fun getSizeStocksByProductOnce(productId: Int): List<VariantEntity>
+
+    @Query(
+        """
+        DELETE FROM variants
+        WHERE productId = :productId
+          AND option2 IS NULL
+        """
+    )
+    suspend fun deleteSizeStocksByProduct(productId: Int)
 }
