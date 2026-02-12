@@ -119,6 +119,10 @@ interface ProductDao {
     @Query("DELETE FROM products WHERE id = :id")
     suspend fun deleteById(id: Int): Int
 
+    /** Borrado completo de productos (uso exclusivo en recuperaciones críticas). */
+    @Query("DELETE FROM products")
+    suspend fun deleteAll()
+
     // --------- Ayuda para importación/merge ---------
 
     /**
