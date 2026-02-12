@@ -82,9 +82,7 @@ fun ProductQrScreen(
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
     fun resolveQrValue(product: ProductEntity): String {
-        val queryValue = product.code?.takeIf { it.isNotBlank() }
-            ?: product.barcode?.takeIf { it.isNotBlank() }
-            ?: "PRODUCT-${product.id}"
+        val queryValue = resolveSkuValue(product)
         val baseUrl = marketingSettings.publicStoreUrl.trim().trimEnd('/')
 
         if (baseUrl.isNotBlank()) {
@@ -113,16 +111,11 @@ fun ProductQrScreen(
         val textBlockWidth = labelWidthPoints - qrSize
         val padding = mmToPoints(0.8f)
         val skuTextSize = mmToPoints(2.7f).toFloat()
-        val nameTextSize = mmToPoints(2.2f).toFloat()
 
         val skuPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             textSize = skuTextSize
             isFakeBoldText = true
-        }
-        val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = nameTextSize
         }
 
         val document = PdfDocument()
@@ -132,21 +125,11 @@ fun ProductQrScreen(
             val canvas = page.canvas
             canvas.drawColor(Color.WHITE)
 
-            val skuValue = product.code?.takeIf { it.isNotBlank() }
-                ?: product.barcode?.takeIf { it.isNotBlank() }
-                ?: "SKU-${product.id}"
-            val nameValue = product.name.trim()
+            val skuValue = resolveSkuValue(product)
 
             val skuY = padding + skuPaint.textSize
             val skuText = ellipsizeToWidth(skuValue, skuPaint, (textBlockWidth - (padding * 2)).toFloat())
             canvas.drawText(skuText, padding.toFloat(), skuY, skuPaint)
-
-            val maxNameY = labelHeightPoints - padding
-            val proposedNameY = skuY + namePaint.textSize + mmToPoints(0.8f)
-            if (nameValue.isNotBlank() && proposedNameY <= maxNameY) {
-                val nameText = ellipsizeToWidth(nameValue, namePaint, (textBlockWidth - (padding * 2)).toFloat())
-                canvas.drawText(nameText, padding.toFloat(), proposedNameY, namePaint)
-            }
 
             val qrBitmap = generateQrBitmap(resolveQrValue(product), qrSize)
             canvas.drawBitmap(qrBitmap, null, Rect(textBlockWidth, 0, labelWidthPoints, labelHeightPoints), null)
@@ -270,7 +253,7 @@ fun ProductQrScreen(
                                 }
                             )
                             Column(modifier = Modifier.padding(start = 8.dp)) {
-                                Text(product.name)
+                                Text(resolveSkuValue(product))
                                 Text(resolveQrValue(product))
                             }
                         }
@@ -295,7 +278,7 @@ fun ProductQrScreen(
         val bitmap = remember(product) { generateQrBitmap(resolveQrValue(product), sizePx) }
         AlertDialog(
             onDismissRequest = { previewProduct = null },
-            title = { Text(product.name) },
+            title = { Text(resolveSkuValue(product)) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Image(
@@ -325,6 +308,12 @@ private fun generateQrBitmap(content: String, sizePx: Int): Bitmap {
         }
     }
     return Bitmap.createBitmap(pixels, sizePx, sizePx, Bitmap.Config.ARGB_8888)
+}
+
+private fun resolveSkuValue(product: ProductEntity): String {
+    return product.code?.takeIf { it.isNotBlank() }
+        ?: product.barcode?.takeIf { it.isNotBlank() }
+        ?: "SKU-${product.id}"
 }
 
 
