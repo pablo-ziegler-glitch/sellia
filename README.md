@@ -80,6 +80,9 @@ Para publicar el catálogo estático en Firebase Hosting:
    firebase deploy
    ```
 
+Guía recomendada para producción con QR público (web + app):
+- `docs/produccion-qr-web-app.md`
+
 ## 🖼️ Reemplazo de assets
 - Para reemplazar imágenes, agregalas dentro de `public/assets/` en formato `.webp`.
 - Actualizá las rutas en `public/index.html` o `public/data/products.json` según corresponda.
