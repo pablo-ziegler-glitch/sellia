@@ -1,6 +1,7 @@
 package com.example.selliaapp.repository
 
 import android.content.ContentResolver
+import android.database.sqlite.SQLiteConstraintException
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -599,6 +600,25 @@ class ProductRepository(
      */
     suspend fun syncDown(): Int = withContext(io) {
         val remoteList = remote.listAll()
+        if (remoteList.isEmpty()) {
+            return@withContext 0
+        }
+        try {
+            syncDownIncremental(remoteList)
+        } catch (t: Throwable) {
+            val mustRestoreFromBackup = t is SQLiteConstraintException ||
+                t.message?.contains("SQLITE_CONSTRAINT", ignoreCase = true) == true
+            if (!mustRestoreFromBackup) {
+                throw t
+            }
+            Log.e("ProductRepository", "Conflicto de unicidad detectado en syncDown. Se ejecuta restauración completa de stock.", t)
+            restoreStockFromBackup(remoteList)
+        }
+    }
+
+    private suspend fun syncDownIncremental(
+        remoteList: List<com.example.selliaapp.data.remote.ProductFirestoreMappers.RemoteProduct>
+    ): Int {
         var applied = 0
         db.withTransaction {
             val localById = productDao.getAllOnce().associateByTo(mutableMapOf()) { it.id }
@@ -622,13 +642,11 @@ class ProductRepository(
                     else -> null
                 }
                 if (local == null) {
-                    // insertar
                     val newId = productDao.upsert(r.copy(id = 0))
                     if (remoteImages.isNotEmpty()) {
                         replaceProductImages(newId, remoteImages)
                     }
                     applied++
-                    // si el docId no coincide, subimos de vuelta con el id real para alinear
                     if (r.id != newId) remote.upsert(r.copy(id = newId), remoteImages)
 
                     productDao.getById(newId)?.also { saved ->
@@ -637,7 +655,6 @@ class ProductRepository(
                         saved.code?.let { localByCode[it] = saved }
                     }
                 } else {
-                    // resolver por updatedAt
                     if (r.updatedAt >= local.updatedAt) {
                         val conflictingCode = r.code
                             ?.let { remoteCode -> localByCode[remoteCode] }
@@ -666,13 +683,56 @@ class ProductRepository(
                             saved.code?.let { localByCode[it] = saved }
                         }
                     } else {
-                        // Local es más nuevo → subir local para ganar en remoto
                         remote.upsert(local, loadProductImages(local.id))
                     }
                 }
             }
         }
-        applied
+        return applied
+    }
+
+    private suspend fun restoreStockFromBackup(
+        remoteList: List<com.example.selliaapp.data.remote.ProductFirestoreMappers.RemoteProduct>
+    ): Int {
+        require(remoteList.isNotEmpty()) {
+            "No existe backup remoto de productos para restaurar el stock."
+        }
+        val uniqueBackup = remoteList
+            .asSequence()
+            .map { remoteProduct ->
+                remoteProduct.copy(
+                    entity = remoteProduct.entity.copy(
+                        code = remoteProduct.entity.code?.trim()?.ifBlank { null },
+                        barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null }
+                    )
+                )
+            }
+            .sortedByDescending { it.entity.updatedAt }
+            .distinctBy { item ->
+                when {
+                    !item.entity.code.isNullOrBlank() -> "code:${item.entity.code}"
+                    !item.entity.barcode.isNullOrBlank() -> "barcode:${item.entity.barcode}"
+                    item.entity.id != 0 -> "id:${item.entity.id}"
+                    else -> "name:${item.entity.name.lowercase()}"
+                }
+            }
+            .toList()
+
+        db.withTransaction {
+            productDao.deleteAll()
+            syncOutboxDao.deleteByTypeAndIds(
+                SyncEntityType.PRODUCT.storageKey,
+                syncOutboxDao.getByType(SyncEntityType.PRODUCT.storageKey).map { it.entityId }
+            )
+            uniqueBackup.forEach { remoteProduct ->
+                val restoredId = productDao.insert(remoteProduct.entity.copy(id = 0)).toInt()
+                if (remoteProduct.imageUrls.isNotEmpty()) {
+                    replaceProductImages(restoredId, remoteProduct.imageUrls)
+                }
+            }
+            lastCache = productDao.getAllOnce()
+        }
+        return uniqueBackup.size
     }
     // ---------- WRAPPERS que espera la UI / ViewModel ----------
 
