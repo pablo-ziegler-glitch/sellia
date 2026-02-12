@@ -116,12 +116,15 @@ fun ProductQrScreen(
         }
         val labelWidthPoints = mmToPoints(30f)
         val labelHeightPoints = mmToPoints(15f)
-        val qrBlockWidth = minOf(labelHeightPoints, labelWidthPoints)
-        val textBlockWidth = labelWidthPoints - qrBlockWidth
-        val qrSize = minOf(labelHeightPoints, qrBlockWidth)
+        val qrRightMargin = mmToPoints(0.6f)
+        val qrVerticalMargin = mmToPoints(1.0f)
+        val qrTextGap = mmToPoints(0.8f)
+        val qrSize = minOf(mmToPoints(11f), labelHeightPoints - (qrVerticalMargin * 2))
+        val qrLeft = labelWidthPoints - qrRightMargin - qrSize
+        val textBlockWidth = (qrLeft - qrTextGap).coerceAtLeast(mmToPoints(11f))
         val padding = mmToPoints(0.8f)
-        val skuTextSize = mmToPoints(2.2f).toFloat()
-        val priceTextSize = mmToPoints(1.8f).toFloat()
+        val skuTextSize = mmToPoints(2.8f).toFloat()
+        val priceTextSize = mmToPoints(2.0f).toFloat()
 
         val skuPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
@@ -183,7 +186,6 @@ fun ProductQrScreen(
             }
 
             val qrBitmap = generateQrBitmap(resolveQrValue(product), qrSize)
-            val qrLeft = textBlockWidth + ((qrBlockWidth - qrSize) / 2)
             val qrTop = (labelHeightPoints - qrSize) / 2
             canvas.drawBitmap(
                 qrBitmap,
@@ -242,7 +244,7 @@ fun ProductQrScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "Formato de descarga: etiqueta 30mm x 15mm (SKU centrado en su bloque y QR centrado al máximo tamaño posible)."
+                "Formato de descarga: etiqueta 30mm x 15mm (SKU más legible y QR más chico/alineado hacia el margen derecho)."
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
