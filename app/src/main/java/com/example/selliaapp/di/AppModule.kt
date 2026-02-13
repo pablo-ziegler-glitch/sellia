@@ -43,6 +43,7 @@ import com.example.selliaapp.data.dao.PricingSettingsDao
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
+import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.repository.CloudServiceConfigRepository
@@ -121,7 +122,8 @@ object AppModule {
                 AppDatabase.MIGRATION_36_37,
                 AppDatabase.MIGRATION_37_38,
                 AppDatabase.MIGRATION_38_39,
-                AppDatabase.MIGRATION_39_40
+                AppDatabase.MIGRATION_39_40,
+                AppDatabase.MIGRATION_40_41
             )
             .addCallback(object : RoomDatabase.Callback() {
                 /**
@@ -170,6 +172,8 @@ object AppModule {
         db.cloudServiceConfigDao()
     @Provides @Singleton fun provideDevelopmentOptionsDao(db: AppDatabase): DevelopmentOptionsDao =
         db.developmentOptionsDao()
+    @Provides @Singleton fun provideTenantSkuConfigDao(db: AppDatabase): TenantSkuConfigDao =
+        db.tenantSkuConfigDao()
 
     // -----------------------------
     // REPOSITORIES
@@ -190,6 +194,7 @@ object AppModule {
         pricingConfigRepository: PricingConfigRepository,
         firestore: FirebaseFirestore,
         tenantProvider: TenantProvider,
+        tenantSkuConfigDao: TenantSkuConfigDao,
         // [NUEVO] Qualifier global (CoroutinesModule)
         @IoDispatcher io: CoroutineDispatcher
     ): ProductRepository = ProductRepository(
@@ -202,6 +207,7 @@ object AppModule {
         pricingConfigRepository = pricingConfigRepository,
         firestore = firestore,
         tenantProvider = tenantProvider,
+        tenantSkuConfigDao = tenantSkuConfigDao,
         io = io
     )
 

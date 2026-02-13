@@ -49,6 +49,7 @@ class RegisterViewModel @Inject constructor(
         storeName: String,
         storeAddress: String,
         storePhone: String,
+        skuPrefix: String,
         selectedTenantId: String?,
         selectedTenantName: String?,
         customerName: String,
@@ -62,6 +63,13 @@ class RegisterViewModel @Inject constructor(
         if (mode == RegisterMode.STORE_OWNER && storeName.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Indicá el nombre de la tienda") }
             return
+        }
+        if (mode == RegisterMode.STORE_OWNER && skuPrefix.isNotBlank()) {
+            val normalizedPrefix = skuPrefix.trim().uppercase().replace("[^A-Z0-9]".toRegex(), "")
+            if (normalizedPrefix.length < 3) {
+                _uiState.update { it.copy(errorMessage = "El prefijo SKU debe tener al menos 3 caracteres alfanuméricos") }
+                return
+            }
         }
         if (mode == RegisterMode.STORE_OWNER && storeAddress.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Indicá la dirección comercial") }
@@ -87,7 +95,8 @@ class RegisterViewModel @Inject constructor(
                     password = password,
                     storeName = storeName.trim(),
                     storeAddress = storeAddress.trim(),
-                    storePhone = storePhone.trim()
+                    storePhone = storePhone.trim(),
+                    skuPrefix = skuPrefix.trim().ifBlank { null }
                 )
                 RegisterMode.FINAL_CUSTOMER -> onboardingRepository.registerViewer(
                     email = email.trim(),

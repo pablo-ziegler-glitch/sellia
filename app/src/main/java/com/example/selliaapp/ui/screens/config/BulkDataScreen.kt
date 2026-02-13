@@ -47,6 +47,7 @@ import com.example.selliaapp.data.csv.CustomerCsvImporter
 import com.example.selliaapp.data.csv.ProductImportTemplate
 import com.example.selliaapp.data.csv.UserCsvImporter
 import com.example.selliaapp.repository.ProductRepository
+import com.example.selliaapp.ui.util.ImportErrorReportStore
 import com.example.selliaapp.ui.util.exportContentToDownloads
 import com.example.selliaapp.ui.util.exportTemplateToDownloads
 import com.example.selliaapp.ui.util.shareExportedFile
@@ -83,6 +84,32 @@ fun BulkDataScreen(
                 val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (idx != -1 && cursor.moveToFirst()) cursor.getString(idx) else null
             }
+    }
+
+    fun downloadErrorReport(scope: ImportErrorReportStore.Scope) {
+        val report = ImportErrorReportStore.read(context, scope)
+        if (report == null) {
+            showMessage("No hay errores guardados para ${scope.title}.")
+            return
+        }
+        val fileName = "errores_importacion_${scope.key}_${System.currentTimeMillis()}.csv"
+        val uri = exportContentToDownloads(
+            context = context,
+            fileName = fileName,
+            mimeType = "text/csv",
+            content = ImportErrorReportStore.buildCsv(report)
+        )
+        if (uri != null) {
+            shareExportedFile(
+                context = context,
+                uri = uri,
+                mimeType = "text/csv",
+                title = "Compartir errores de importación"
+            )
+            showMessage("Reporte de errores descargado en Descargas.")
+        } else {
+            showMessage("No se pudo descargar el reporte de errores.")
+        }
     }
 
     fun handleExport(
@@ -122,6 +149,7 @@ fun BulkDataScreen(
             uri = uri,
             strategy = ProductRepository.ImportStrategy.Append
         ) { result ->
+            ImportErrorReportStore.save(context, ImportErrorReportStore.Scope.PRODUCTS, fileName, result.errors)
             showMessage(result.toUserMessage(fileName))
         }
     }
@@ -129,6 +157,7 @@ fun BulkDataScreen(
     val customerPicker = rememberImportLauncher(context) { uri ->
         val fileName = queryDisplayName(uri)
         bulkViewModel.importCustomers(context, uri) { result ->
+            ImportErrorReportStore.save(context, ImportErrorReportStore.Scope.CUSTOMERS, fileName, result.errors)
             showMessage(result.toUserMessage(fileName))
         }
     }
@@ -136,6 +165,7 @@ fun BulkDataScreen(
     val userPicker = rememberImportLauncher(context) { uri ->
         val fileName = queryDisplayName(uri)
         bulkViewModel.importUsers(context, uri) { result ->
+            ImportErrorReportStore.save(context, ImportErrorReportStore.Scope.USERS, fileName, result.errors)
             showMessage(result.toUserMessage(fileName))
         }
     }
@@ -144,9 +174,10 @@ fun BulkDataScreen(
         bulkViewModel.importAll(context, uri) { result ->
             result.fold(
                 onSuccess = { summary ->
+                    ImportErrorReportStore.save(context, ImportErrorReportStore.Scope.TOTAL, queryDisplayName(uri), summary.errors)
                     showMessage(summary.message)
                     if (summary.errors.isNotEmpty()) {
-                        showMessage("Importación con errores: ${summary.errors.first()}")
+                        showMessage("Se detectaron ${summary.errors.size} errores en la importación total.")
                     }
                 },
                 onFailure = {
@@ -213,7 +244,8 @@ fun BulkDataScreen(
                             "application/vnd.google-apps.spreadsheet"
                         )
                     )
-                }
+                },
+                onViewErrors = { downloadErrorReport(ImportErrorReportStore.Scope.PRODUCTS) }
             )
 
             BulkSectionCard(
@@ -246,7 +278,8 @@ fun BulkDataScreen(
                             "application/vnd.google-apps.spreadsheet"
                         )
                     )
-                }
+                },
+                onViewErrors = { downloadErrorReport(ImportErrorReportStore.Scope.CUSTOMERS) }
             )
 
             BulkSectionCard(
@@ -275,6 +308,7 @@ fun BulkDataScreen(
                         )
                     )
                 },
+                onViewErrors = { downloadErrorReport(ImportErrorReportStore.Scope.USERS) },
                 enabled = canManageUsers,
                 disabledMessage = "Tu rol no tiene permiso para gestionar usuarios."
             )
@@ -314,7 +348,8 @@ fun BulkDataScreen(
                             "text/csv"
                         )
                     )
-                }
+                },
+                onViewErrors = { downloadErrorReport(ImportErrorReportStore.Scope.TOTAL) }
             )
         }
     }
@@ -328,6 +363,7 @@ private fun BulkSectionCard(
     onDownloadTemplate: (() -> Unit)? = null,
     onImport: (() -> Unit)? = null,
     onExport: (() -> Unit)? = null,
+    onViewErrors: (() -> Unit)? = null,
     enabled: Boolean = true,
     disabledMessage: String? = null
 ) {
@@ -354,6 +390,9 @@ private fun BulkSectionCard(
                 }
                 onManage?.let { action ->
                     add(BulkAction("Gestionar", Icons.Default.ChevronRight, action))
+                }
+                onViewErrors?.let { action ->
+                    add(BulkAction("Errores", null, action))
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

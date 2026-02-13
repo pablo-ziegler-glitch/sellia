@@ -53,6 +53,7 @@ class ProductCsvImporter(
         val color: String?,
         val sizes: List<String>,
         val minStock: Int?,
+        val markedAsUpdate: Boolean,
         val updatedAt: LocalDate?
     )
 
@@ -322,7 +323,11 @@ class ProductCsvImporter(
                 ) ?: 0
 
                 val description = idx.get(row, "description", aliases = listOf("descripcion", "desc"))?.ifBlank { null }
-                val imageUrl = idx.get(row, "imageUrl", aliases = listOf("imagen", "url"))?.ifBlank { null }
+                val imageUrl = idx.get(
+                    row,
+                    "imageUrl",
+                    aliases = listOf("image_url", "imagen", "url")
+                )?.ifBlank { null }
                 val rawImageUrls = idx.get(
                     row,
                     "image_urls",
@@ -360,6 +365,14 @@ class ProductCsvImporter(
                     idx.get(row, "min_stock", aliases = listOf("minimo", "minstock", "stockmin"))
                 )?.let { if (it < 0) 0 else it }
 
+                val markedAsUpdate = parseUpdateMarker(
+                    idx.get(
+                        row,
+                        "actualizacion",
+                        aliases = listOf("actualización", "update", "is_update", "actualizar")
+                    )
+                )
+
                 val updatedAt = idx.get(row, "updated_at", aliases = listOf("actualizado", "fecha"))
                     ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
@@ -387,10 +400,16 @@ class ProductCsvImporter(
                     color = color,
                     sizes = sizes,
                     minStock = minStock,
+                    markedAsUpdate = markedAsUpdate,
                     updatedAt = updatedAt
                 )
             }
             return rows
+        }
+
+        private fun parseUpdateMarker(raw: String?): Boolean {
+            val value = raw?.trim()?.lowercase() ?: return false
+            return value == "x" || value == "1" || value == "si" || value == "sí" || value == "true"
         }
 
         private fun parseDecimal(raw: String?): Double? {

@@ -46,6 +46,7 @@ fun RegisterScreen(
         String,
         String,
         String,
+        String,
         String?,
         String?,
         String,
@@ -58,6 +59,7 @@ fun RegisterScreen(
     var storeName by remember { mutableStateOf("") }
     var storeAddress by remember { mutableStateOf("") }
     var storePhone by remember { mutableStateOf("") }
+    var skuPrefix by remember { mutableStateOf("") }
     var customerName by remember { mutableStateOf("") }
     var customerPhone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -113,6 +115,17 @@ fun RegisterScreen(
                 value = storeName,
                 onValueChange = { storeName = it },
                 label = { Text("Nombre de la tienda") },
+                enabled = !isLoading,
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = skuPrefix,
+                onValueChange = { raw ->
+                    skuPrefix = raw.uppercase().replace("[^A-Z0-9]".toRegex(), "").take(6)
+                },
+                label = { Text("Prefijo SKU (opcional, fijo)") },
+                supportingText = { Text("Si lo dejás vacío, se usarán las primeras 3 letras de la tienda.") },
                 enabled = !isLoading,
                 singleLine = true
             )
@@ -229,6 +242,7 @@ fun RegisterScreen(
                     storeName.trim(),
                     storeAddress.trim(),
                     storePhone.trim(),
+                    skuPrefix.trim(),
                     selectedTenantId,
                     selectedTenant?.name,
                     customerName.trim(),
@@ -242,7 +256,8 @@ fun RegisterScreen(
                 (mode == RegisterMode.STORE_OWNER &&
                     storeName.isNotBlank() &&
                     storeAddress.isNotBlank() &&
-                    storePhone.isNotBlank() ||
+                    storePhone.isNotBlank() &&
+                    (skuPrefix.isBlank() || skuPrefix.length >= 3) ||
                     mode == RegisterMode.FINAL_CUSTOMER &&
                     customerName.isNotBlank() &&
                     !selectedTenantId.isNullOrBlank())

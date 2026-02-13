@@ -30,7 +30,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         password: String,
         storeName: String,
         storeAddress: String,
-        storePhone: String
+        storePhone: String,
+        skuPrefix: String?
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
             val result = auth.createUserWithEmailAndPassword(email, password).await()
@@ -38,6 +39,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             val tenantId = UUID.randomUUID().toString()
             val batch = firestore.batch()
             val createdAt = FieldValue.serverTimestamp()
+            val resolvedSkuPrefix = normalizeSkuPrefix(skuPrefix) ?: deriveSkuPrefix(storeName)
 
             val userRef = firestore.collection("users").document(user.uid)
             batch.set(
@@ -64,6 +66,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "ownerEmail" to email,
                     "status" to "pending",
                     "enabledModules" to defaultEnabledModules(),
+                    "skuPrefix" to resolvedSkuPrefix,
                     "createdAt" to createdAt
                 )
             )
@@ -75,6 +78,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "id" to tenantId,
                     "name" to storeName,
                     "ownerUid" to user.uid,
+                    "skuPrefix" to resolvedSkuPrefix,
                     "createdAt" to createdAt
                 )
             )
@@ -92,6 +96,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "storeAddress" to storeAddress,
                     "storePhone" to storePhone,
                     "enabledModules" to defaultEnabledModules(),
+                    "skuPrefix" to resolvedSkuPrefix,
                     "createdAt" to createdAt
                 )
             )
@@ -271,6 +276,16 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         }.onFailure { error ->
             Log.w("AuthOnboarding", "No se pudo enviar el email de verificación al registrar", error)
         }
+    }
+
+    private fun normalizeSkuPrefix(raw: String?): String? {
+        val normalized = raw?.trim()?.uppercase()?.replace("[^A-Z0-9]".toRegex(), "")?.take(6).orEmpty()
+        return normalized.takeIf { it.length >= 3 }
+    }
+
+    private fun deriveSkuPrefix(storeName: String): String {
+        val normalized = storeName.uppercase().replace("[^A-Z0-9]".toRegex(), "")
+        return normalized.take(3).padEnd(3, 'X')
     }
 
     private fun defaultEnabledModules(): Map<String, Boolean> = mapOf(

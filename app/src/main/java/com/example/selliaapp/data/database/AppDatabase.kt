@@ -30,6 +30,7 @@ import com.example.selliaapp.data.dao.PricingSettingsDao
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.StockMovementDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
+import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.dao.UserDao
 import com.example.selliaapp.data.dao.VariantDao
 import com.example.selliaapp.data.local.converters.Converters
@@ -52,6 +53,7 @@ import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.data.local.entity.ReportDataEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
+import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.data.local.entity.VariantEntity
 import com.example.selliaapp.data.model.ExpenseCategoryBudget
 import com.example.selliaapp.data.model.ExpenseRecord
@@ -90,6 +92,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         CashAuditEntity::class,
         CloudServiceConfigEntity::class,
         DevelopmentOptionsEntity::class,
+        TenantSkuConfigEntity::class,
 
         // Tablas de negocio basadas en modelos (ya tienen @Entity)
         Invoice::class,
@@ -101,7 +104,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 40,
+    version = 41,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -134,6 +137,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cashAuditDao(): CashAuditDao
     abstract fun cloudServiceConfigDao(): CloudServiceConfigDao
     abstract fun developmentOptionsDao(): DevelopmentOptionsDao
+    abstract fun tenantSkuConfigDao(): TenantSkuConfigDao
 
 
     companion object {
@@ -446,5 +450,22 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_providerId` ON `products` (`providerId`)")
             }
         }
+
+        val MIGRATION_40_41 = object : Migration(40, 41) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `tenant_sku_config` (
+                        `tenantId` TEXT NOT NULL,
+                        `storeName` TEXT NOT NULL,
+                        `skuPrefix` TEXT NOT NULL,
+                        `updatedAtEpochMs` INTEGER NOT NULL,
+                        PRIMARY KEY(`tenantId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
     }
 }
