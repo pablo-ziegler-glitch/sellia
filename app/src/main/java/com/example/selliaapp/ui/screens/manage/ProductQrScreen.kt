@@ -54,15 +54,16 @@ import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
+import com.google.zxing.WriterException
 import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.launch
 import java.io.OutputStream
 import java.net.URLEncoder
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
+import java.nio.charset.StandardCharsets
 import java.util.Date
 import java.util.Locale
-import java.nio.charset.StandardCharsets
 import kotlin.math.roundToInt
 
 private enum class QrAudience { PUBLIC, OWNER }
@@ -149,7 +150,27 @@ fun ProductQrScreen(
         }
 
         val document = PdfDocument()
-        items.forEachIndexed { index, product ->
+        val exportableItems = items.mapNotNull { product ->
+            runCatching {
+                val qrValue = resolveQrValue(product)
+                if (qrValue.isBlank()) {
+                    error("QR vacío para ${resolveSkuValue(product)}")
+                }
+                product to generateQrBitmap(qrValue, qrSize)
+            }.getOrNull()
+        }
+
+        if (exportableItems.isEmpty()) {
+            document.close()
+            Toast.makeText(
+                context,
+                "No se pudieron generar QRs válidos para exportar.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        exportableItems.forEachIndexed { index, (product, qrBitmap) ->
             val pageInfo = PdfDocument.PageInfo.Builder(labelWidthPoints, labelHeightPoints, index + 1).create()
             val page = document.startPage(pageInfo)
             val canvas = page.canvas
@@ -197,7 +218,6 @@ fun ProductQrScreen(
                 currentTop += lineHeights[index] + spacing
             }
 
-            val qrBitmap = generateQrBitmap(resolveQrValue(product), qrSize)
             val qrTop = (labelHeightPoints - qrSize) / 2
             canvas.drawBitmap(
                 qrBitmap,
@@ -216,21 +236,29 @@ fun ProductQrScreen(
             put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
             put(MediaStore.Downloads.RELATIVE_PATH, "Download/Sellia")
         }
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) {
-            document.close()
-            Toast.makeText(context, "No se pudo crear el archivo.", Toast.LENGTH_SHORT).show()
-            return
+        runCatching {
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("No se pudo crear el archivo")
+            val outputStream: OutputStream = resolver.openOutputStream(uri)
+                ?: error("No se pudo escribir el archivo")
+            outputStream.use { document.writeTo(it) }
+        }.onSuccess {
+            val skippedCount = items.size - exportableItems.size
+            val message = if (skippedCount > 0) {
+                "PDF guardado en Descargas/Sellia. Omitidos: $skippedCount QR inválidos."
+            } else {
+                "PDF guardado en Descargas/Sellia"
+            }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }.onFailure {
+            Toast.makeText(
+                context,
+                "No se pudo exportar el PDF. Revisá el contenido de los códigos QR.",
+                Toast.LENGTH_LONG
+            ).show()
         }
-        val outputStream: OutputStream? = resolver.openOutputStream(uri)
-        if (outputStream == null) {
-            document.close()
-            Toast.makeText(context, "No se pudo escribir el archivo.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        outputStream.use { document.writeTo(it) }
+
         document.close()
-        Toast.makeText(context, "PDF guardado en Descargas/Sellia", Toast.LENGTH_SHORT).show()
     }
 
     Scaffold(
@@ -415,6 +443,9 @@ private fun formatPrice(value: Double?, currencyFormatter: NumberFormat): String
 }
 
 private fun generateQrBitmap(content: String, sizePx: Int): Bitmap {
+    if (content.isBlank()) {
+        throw WriterException("QR content is blank")
+    }
     val writer = QRCodeWriter()
     val hints = mapOf(EncodeHintType.MARGIN to 0)
     val matrix = writer.encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
