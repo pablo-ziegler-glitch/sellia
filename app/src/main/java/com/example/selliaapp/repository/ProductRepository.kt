@@ -19,12 +19,14 @@ import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.ProductPriceAuditDao
 import com.example.selliaapp.data.dao.ProviderDao
+import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
 import com.example.selliaapp.data.local.entity.ProductPriceAuditEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
+import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.data.mappers.toModel
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.model.Product
@@ -40,10 +42,12 @@ import com.example.selliaapp.di.IoDispatcher
 import com.example.selliaapp.pricing.PricingCalculator
 import com.example.selliaapp.sync.CsvImportWorker
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.math.max
@@ -65,11 +69,13 @@ class ProductRepository(
     private val pricingConfigRepository: PricingConfigRepository,
     private val firestore: FirebaseFirestore,
     private val tenantProvider: TenantProvider,
+    private val tenantSkuConfigDao: TenantSkuConfigDao,
     @IoDispatcher private val io: CoroutineDispatcher   // <-- igual que en el VM
 ) {
 
     // ---------- Cache simple en memoria ----------
     @Volatile private var lastCache: List<ProductEntity> = emptyList()
+    @Volatile private var cachedSkuPrefix: String? = null
 
     private val stockMovementDao = db.stockMovementDao()
     private val syncOutboxDao = db.syncOutboxDao()
@@ -192,6 +198,7 @@ class ProductRepository(
     suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) = withContext(io) {
         if (rows.isEmpty()) return@withContext
         val now = System.currentTimeMillis()
+        val skuPrefix = resolveSkuPrefix()
         val touchedIds = mutableSetOf<Int>()
         val interactionEvents = mutableListOf<StockInteractionEvent>()
 
@@ -235,7 +242,7 @@ class ProductRepository(
                 )
 
                 val priced = applyAutoPricing(incoming, existing)
-                val prepared = if (existing == null) ensureAutoCodes(priced) else priced
+                val prepared = if (existing == null) ensureAutoCodes(priced, prefix = skuPrefix) else priced
                 val id = productDao.upsertByKeys(prepared)
                 touchedIds += id
                 if (r.imageUrls.isNotEmpty()) {
@@ -350,6 +357,7 @@ class ProductRepository(
         val errors = mutableListOf<String>()
         val touchedIds = mutableSetOf<Int>()
         val now = System.currentTimeMillis()
+        val skuPrefix = resolveSkuPrefix()
         val seenCodes = mutableSetOf<String>()
         val interactionEvents = mutableListOf<StockInteractionEvent>()
 
@@ -405,7 +413,7 @@ class ProductRepository(
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
                         val priced = applyAutoPricing(p, existing)
-                        val prepared = ensureAutoCodes(priced)
+                        val prepared = ensureAutoCodes(priced, prefix = skuPrefix)
                         assertCodeAvailable(prepared.code, currentId = null)
                         val id = productDao.insert(prepared).toInt()
                         touchedIds += id
@@ -442,10 +450,7 @@ class ProductRepository(
                             occurredAtEpochMs = now
                         )
                     } else {
-                        val newQty = when (strategy) {
-                            ImportStrategy.Append  -> existing.quantity + max(0, r.quantity)
-                            ImportStrategy.Replace -> max(0, r.quantity)
-                        }
+                        val newQty = existing.quantity + max(0, r.quantity)
                         val merged = existing.copy(
                             code        = normalizedCode ?: existing.code,
                             barcode     = r.barcode ?: existing.barcode,
@@ -488,7 +493,7 @@ class ProductRepository(
                                     delta = delta,
                                     reason = StockMovementReasons.CSV_IMPORT,
                                     ts = Instant.ofEpochMilli(now),
-                                    note = "Importación CSV (${strategy.name.lowercase()})"
+                                    note = if (r.markedAsUpdate) "Importación CSV (actualización marcada)" else "Importación CSV (actualización automática)"
                                 )
                             )
                         }
@@ -506,7 +511,7 @@ class ProductRepository(
                             productName = priced.name,
                             delta = newQty - existing.quantity,
                             reason = StockMovementReasons.CSV_IMPORT,
-                            note = "Importación CSV (${strategy.name.lowercase()})",
+                            note = if (r.markedAsUpdate) "Importación CSV (actualización marcada)" else "Importación CSV (actualización automática)",
                             source = "CSV_IMPORT",
                             occurredAtEpochMs = now
                         )
@@ -894,11 +899,12 @@ class ProductRepository(
     private suspend fun persistProduct(entity: ProductEntity, reason: String): Int {
         val normalized = entity.copy(id = 0, updatedAt = LocalDate.now())
         val now = System.currentTimeMillis()
+        val skuPrefix = resolveSkuPrefix()
         var newId = 0
         db.withTransaction {
             assertCodeAvailable(normalized.code, currentId = null)
             val priced = applyAutoPricing(normalized)
-            val prepared = ensureAutoCodes(priced)
+            val prepared = ensureAutoCodes(priced, prefix = skuPrefix)
             assertCodeAvailable(prepared.code, currentId = null)
             newId = productDao.upsert(prepared)
             replaceProductImages(newId, prepared.imageUrls)
@@ -940,16 +946,15 @@ class ProductRepository(
         return newId
     }
 
-    private suspend fun ensureAutoCodes(entity: ProductEntity): ProductEntity {
+    private suspend fun ensureAutoCodes(entity: ProductEntity, prefix: String): ProductEntity {
         val existingCode = entity.code?.trim()?.takeIf { it.isNotBlank() }
         val existingBarcode = entity.barcode?.trim()?.takeIf { it.isNotBlank() }
         var code = existingCode
         if (code == null) {
-            val prefix = "VLK"
             val offset = prefix.length + 1
             var next = (productDao.getMaxSequenceForCode(prefix, offset) ?: 0) + 1
             while (true) {
-                val candidate = "$prefix$next"
+                val candidate = "$prefix${next.toString().padStart(6, '0')}"
                 if (productDao.getByCodeOnce(candidate) == null) {
                     code = candidate
                     break
@@ -959,6 +964,56 @@ class ProductRepository(
         }
         val barcode = existingBarcode ?: code
         return entity.copy(code = code, barcode = barcode)
+    }
+
+    private suspend fun resolveSkuPrefix(): String {
+        cachedSkuPrefix?.let { return it }
+        val tenantId = runCatching { tenantProvider.requireTenantId() }.getOrNull()
+        if (tenantId.isNullOrBlank()) {
+            cachedSkuPrefix = "VLK"
+            return "VLK"
+        }
+
+        tenantSkuConfigDao.getByTenantId(tenantId)?.let { cached ->
+            cachedSkuPrefix = cached.skuPrefix
+            return cached.skuPrefix
+        }
+
+        val now = System.currentTimeMillis()
+        val tenantRef = firestore.collection("tenants").document(tenantId)
+        val snapshot = runCatching { tenantRef.get().await() }.getOrNull()
+        val remoteName = snapshot?.getString("name").orEmpty()
+        val existingRemotePrefix = snapshot?.getString("skuPrefix")?.normalizeSkuPrefixOrNull()
+        val prefix = existingRemotePrefix ?: deriveSkuPrefixFromStoreName(remoteName)
+
+        if (existingRemotePrefix == null) {
+            runCatching {
+                tenantRef.set(mapOf("skuPrefix" to prefix), SetOptions.merge()).await()
+            }
+        }
+
+        tenantSkuConfigDao.upsert(
+            TenantSkuConfigEntity(
+                tenantId = tenantId,
+                storeName = remoteName.ifBlank { "Tienda" },
+                skuPrefix = prefix,
+                updatedAtEpochMs = now
+            )
+        )
+        cachedSkuPrefix = prefix
+        return prefix
+    }
+
+    private fun deriveSkuPrefixFromStoreName(storeName: String): String {
+        val normalized = storeName
+            .uppercase()
+            .replace("[^A-Z0-9]".toRegex(), "")
+        return normalized.take(3).padEnd(3, 'X')
+    }
+
+    private fun String.normalizeSkuPrefixOrNull(): String? {
+        val normalized = uppercase().replace("[^A-Z0-9]".toRegex(), "").take(6)
+        return normalized.takeIf { it.length >= 3 }
     }
 
     private suspend fun updateProductInternal(entity: ProductEntity, reason: String): Int {

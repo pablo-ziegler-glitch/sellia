@@ -11,7 +11,8 @@ interface AuthOnboardingRepository {
         password: String,
         storeName: String,
         storeAddress: String,
-        storePhone: String
+        storePhone: String,
+        skuPrefix: String?
     ): Result<OnboardingResult>
 
     suspend fun registerViewer(

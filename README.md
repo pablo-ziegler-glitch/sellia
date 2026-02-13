@@ -87,6 +87,19 @@ Guía recomendada para producción con QR público (web + app):
 - Para reemplazar imágenes, agregalas dentro de `public/assets/` en formato `.webp`.
 - Actualizá las rutas en `public/index.html` o `public/data/products.json` según corresponda.
 
+## 🖼️ URLs públicas de imágenes para importación masiva
+Para que las imágenes funcionen en la carga masiva de **Productos**, las columnas `imageUrl` / `image_urls` deben apuntar a una URL pública.
+
+Ruta recomendada en Firebase Storage (la misma que usa la app al subir imágenes):
+- `tenants/{tenantId}/products/{productId}/images/{archivo}`
+
+Flujo recomendado:
+1. Subí la imagen con la app (gestión de producto) o consola Firebase Storage.
+2. Obtené el **Download URL** público.
+3. Pegá esa URL en `imageUrl` (principal) o en `image_urls` (múltiples separadas por `|`) dentro del CSV.
+
+> `public/assets/` se usa para la web estática; para productos administrados en la app usá Firebase Storage.
+
 ## 🧪 Testing
 Ejecutar los tests del módulo app:
 ```bash
