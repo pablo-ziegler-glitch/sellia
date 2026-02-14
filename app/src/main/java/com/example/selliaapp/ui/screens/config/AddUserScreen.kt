@@ -94,7 +94,7 @@ fun AddUserScreen(
                 OutlinedTextField(
                     value = role,
                     onValueChange = { role = it },
-                    label = { Text("Rol o perfil") },
+                    label = { Text("Rol (Vendedor o Encargado)") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = canManageUsers
                 )
