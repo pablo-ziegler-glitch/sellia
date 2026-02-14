@@ -11,6 +11,9 @@ data class AuthSession(
 sealed interface AuthState {
     data object Loading : AuthState
     data object Unauthenticated : AuthState
-    data class Authenticated(val session: AuthSession) : AuthState
+    data class Authenticated(
+        val session: AuthSession,
+        val refreshedAtMs: Long
+    ) : AuthState
     data class Error(val message: String) : AuthState
 }
