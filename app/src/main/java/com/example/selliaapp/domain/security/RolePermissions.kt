@@ -10,7 +10,6 @@ object RolePermissions {
             Permission.CASH_MOVEMENT,
             Permission.CASH_CLOSE,
             Permission.VIEW_CASH_REPORT,
-            Permission.MANAGE_USERS,
             Permission.VIEW_USAGE_DASHBOARD
         )
         AppRole.CASHIER -> setOf(

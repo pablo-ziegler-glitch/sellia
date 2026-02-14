@@ -4,7 +4,7 @@ enum class AppRole(val raw: String, val label: String) {
     ADMIN("admin", "Administrador/a"),
     OWNER("owner", "Dueño/a"),
     MANAGER("manager", "Encargado/a"),
-    CASHIER("cashier", "Cajero/a"),
+    CASHIER("cashier", "Vendedor/a"),
     VIEWER("viewer", "Cliente final");
 
     companion object {

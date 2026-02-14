@@ -80,14 +80,15 @@ fun ManageUsersScreen(
             canManageUsers = canManageUsers,
             onDismiss = { showEditor = false },
             onSave = { name, email, role, isActive ->
+                val normalizedRole = normalizeAssignableRole(role)
                 if (editorUser == null) {
-                    vm.addUser(name, email, role.raw, isActive)
+                    vm.addUser(name, email, normalizedRole.raw, isActive)
                 } else {
                     vm.updateUser(
                         editorUser!!.copy(
                             name = name,
                             email = email,
-                            role = role.raw,
+                            role = normalizedRole.raw,
                             isActive = isActive
                         )
                     )
@@ -201,6 +202,14 @@ fun ManageUsersScreen(
             }
         }
     }
+}
+
+
+private fun normalizeAssignableRole(role: AppRole): AppRole = when (role) {
+    AppRole.MANAGER,
+    AppRole.CASHIER -> role
+
+    else -> AppRole.CASHIER
 }
 
 @Composable
@@ -544,7 +553,9 @@ private fun UserEditorDialog(
     var selectedRole by remember(user) { mutableStateOf(AppRole.fromRaw(user?.role)) }
     var isActive by remember(user) { mutableStateOf(user?.isActive ?: true) }
     var roleExpanded by remember { mutableStateOf(false) }
-    val roleOptions = remember { AppRole.entries }
+    val roleOptions = remember(user) {
+        (listOf(AppRole.MANAGER, AppRole.CASHIER) + AppRole.fromRaw(user?.role)).distinct()
+    }
     val canSave = name.isNotBlank() && email.isNotBlank() && canManageUsers
 
     AlertDialog(
