@@ -111,6 +111,7 @@ fun SellScreen(
     var askFor by remember { mutableStateOf<ProductEntity?>(null) }
     var detailFor by remember { mutableStateOf<ProductEntity?>(null) }
     var showCustomerPicker by remember { mutableStateOf(false) }
+    var showCancelPreSaleDialog by remember { mutableStateOf(false) }
 
     val currentEntry = navController.currentBackStackEntry
     val pendingProductId by currentEntry
@@ -188,6 +189,32 @@ fun SellScreen(
                 sellVm.setCustomer(null, name)
             },
             onDismiss = { showCustomerPicker = false }
+        )
+    }
+
+    if (showCancelPreSaleDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelPreSaleDialog = false },
+            title = { Text("Cancelar preventa") },
+            text = { Text("Se eliminará el carrito actual y no podrás recuperarlo.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        sellVm.clear()
+                        showCancelPreSaleDialog = false
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Preventa cancelada.")
+                        }
+                    }
+                ) {
+                    Text("Cancelar preventa")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelPreSaleDialog = false }) {
+                    Text("Volver")
+                }
+            }
         )
     }
 
@@ -394,6 +421,18 @@ fun SellScreen(
                                 Spacer(Modifier.width(12.dp))
                                 Text("Scanear producto", style = MaterialTheme.typography.titleMedium)
                             }
+                        }
+                    }
+
+                    item {
+                        OutlinedButton(
+                            onClick = { showCancelPreSaleDialog = true },
+                            enabled = ui.items.isNotEmpty(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Text("Cancelar preventa")
                         }
                     }
 
