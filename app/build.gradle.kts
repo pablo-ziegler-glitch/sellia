@@ -27,6 +27,7 @@ android {
             "REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS",
             "true"
         )
+        buildConfigField("String", "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID", "\"\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {

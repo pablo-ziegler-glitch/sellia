@@ -26,7 +26,8 @@ data class RegisterUiState(
     val successMessage: String? = null,
     val tenants: List<TenantSummary> = emptyList(),
     val selectedTenantId: String? = null,
-    val mode: RegisterMode = RegisterMode.FINAL_CUSTOMER
+    val mode: RegisterMode = RegisterMode.FINAL_CUSTOMER,
+    val requiresTenantSelectionOnboarding: Boolean = false
 )
 
 @HiltViewModel
@@ -41,6 +42,39 @@ class RegisterViewModel @Inject constructor(
 
     init {
         loadTenants()
+    }
+
+    fun setRequiresTenantSelectionOnboarding(required: Boolean) {
+        _uiState.update {
+            it.copy(
+                requiresTenantSelectionOnboarding = required,
+                mode = if (required) RegisterMode.FINAL_CUSTOMER else it.mode,
+                errorMessage = null,
+                successMessage = null
+            )
+        }
+    }
+
+    fun completeTenantSelectionOnboarding(tenantId: String?, tenantName: String?) {
+        if (tenantId.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "Seleccioná una tienda") }
+            return
+        }
+        _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+        viewModelScope.launch {
+            authManager.completePublicCustomerOnboarding(tenantId, tenantName)
+                .onSuccess {
+                    _uiState.update { it.copy(isLoading = false, requiresTenantSelectionOnboarding = false) }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = AuthErrorMapper.toUserMessage(error, "No se pudo completar el onboarding")
+                        )
+                    }
+                }
+        }
     }
 
     fun register(

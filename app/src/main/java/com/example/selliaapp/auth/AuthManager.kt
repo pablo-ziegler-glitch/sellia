@@ -1,22 +1,22 @@
 package com.example.selliaapp.auth
 
+import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.di.AppModule
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -54,18 +54,91 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión"))
     }
 
-    suspend fun signInWithGoogle(idToken: String): Result<AuthSession> = runCatching {
+    suspend fun signInWithGoogle(idToken: String): Result<AuthSession> {
         _state.value = AuthState.Loading
-        val credential = GoogleAuthProvider.getCredential(idToken, null)
-        val result = firebaseAuth.signInWithCredential(credential).await()
-        val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
-        val session = runCatching { fetchSession(user) }
-            .getOrElse { ensurePublicCustomerSession(user) }
-        _state.value = AuthState.Authenticated(session)
-        session
-    }.onFailure { error ->
-        _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión con Google"))
+        return runCatching {
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            val result = firebaseAuth.signInWithCredential(credential).await()
+            val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
+            val session = ensurePublicCustomerSession(user)
+            _state.value = AuthState.Authenticated(session)
+            session
+        }.onFailure { error ->
+            if (error !is MissingTenantContextException) {
+                _state.value = AuthState.Error(
+                    AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión con Google")
+                )
+            }
+        }
     }
+
+    suspend fun completePublicCustomerOnboarding(tenantId: String, tenantName: String?): Result<AuthSession> =
+        runCatching {
+            val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
+            val tenantSnapshot = firestore.collection("tenants").document(tenantId).get().await()
+            if (!tenantSnapshot.exists()) {
+                throw IllegalArgumentException("La tienda seleccionada no existe")
+            }
+            val createdAt = FieldValue.serverTimestamp()
+            val normalizedEmail = (user.email ?: "").trim().lowercase()
+            val displayName = (user.displayName ?: "").trim()
+
+            firestore.collection("users").document(user.uid)
+                .set(
+                    mapOf(
+                        "tenantId" to tenantId,
+                        "email" to normalizedEmail,
+                        "role" to "viewer",
+                        "accountType" to "final_customer",
+                        "status" to "active",
+                        "displayName" to displayName,
+                        "updatedAt" to createdAt
+                    ),
+                    SetOptions.merge()
+                )
+                .await()
+
+            firestore.collection("tenant_users")
+                .document("${tenantId}_${normalizedEmail}")
+                .set(
+                    mapOf(
+                        "tenantId" to tenantId,
+                        "name" to displayName,
+                        "email" to normalizedEmail,
+                        "role" to "viewer",
+                        "isActive" to true,
+                        "updatedAt" to createdAt
+                    ),
+                    SetOptions.merge()
+                )
+                .await()
+
+            firestore.collection("account_requests")
+                .document(user.uid)
+                .set(
+                    mapOf(
+                        "uid" to user.uid,
+                        "email" to (user.email ?: ""),
+                        "accountType" to "final_customer",
+                        "status" to "active",
+                        "tenantId" to tenantId,
+                        "tenantName" to tenantName.orEmpty(),
+                        "contactName" to displayName,
+                        "updatedAt" to createdAt
+                    ),
+                    SetOptions.merge()
+                )
+                .await()
+
+            val session = fetchSession(user)
+            _state.value = AuthState.Authenticated(session)
+            session
+        }.onFailure {
+            _state.value = AuthState.PartiallyAuthenticated(
+                session = pendingSessionFromCurrentUser(),
+                requiredAction = RequiredAuthAction.SELECT_TENANT
+            )
+        }
 
     fun reportAuthError(message: String) {
         _state.value = AuthState.Error(message)
@@ -124,9 +197,21 @@ class AuthManager @Inject constructor(
                     _state.value = AuthState.Authenticated(session)
                 }
                 .onFailure { error ->
-                    _state.value = AuthState.Error(
-                        error.message ?: "No se pudo resolver el tenantId"
-                    )
+                    if (error is MissingTenantContextException) {
+                        _state.value = AuthState.PartiallyAuthenticated(
+                            session = PendingAuthSession(
+                                uid = user.uid,
+                                email = user.email,
+                                displayName = user.displayName,
+                                photoUrl = user.photoUrl?.toString()
+                            ),
+                            requiredAction = RequiredAuthAction.SELECT_TENANT
+                        )
+                    } else {
+                        _state.value = AuthState.Error(
+                            error.message ?: "No se pudo resolver el tenantId"
+                        )
+                    }
                 }
         }
     }
@@ -142,7 +227,7 @@ class AuthManager @Inject constructor(
                 delay(300)
             }
         }
-        throw lastError ?: IllegalStateException("El usuario no tiene tenantId/storeId asignado")
+        throw lastError ?: MissingTenantContextException()
     }
 
     private suspend fun fetchSession(user: FirebaseUser): AuthSession {
@@ -153,7 +238,7 @@ class AuthManager @Inject constructor(
         }
         val tenantId = snapshot.getString("tenantId")
             ?: snapshot.getString("storeId")
-            ?: throw IllegalStateException("El usuario no tiene tenantId/storeId asignado")
+            ?: throw MissingTenantContextException()
         return AuthSession(
             uid = user.uid,
             tenantId = tenantId,
@@ -164,51 +249,57 @@ class AuthManager @Inject constructor(
     }
 
     private suspend fun ensurePublicCustomerSession(user: FirebaseUser): AuthSession {
-        val userRef = firestore.collection("users").document(user.uid)
-        val snapshot = userRef.get().await()
-        val existingTenant = snapshot.getString("tenantId") ?: snapshot.getString("storeId")
-        if (!existingTenant.isNullOrBlank()) {
-            return AuthSession(
-                uid = user.uid,
-                tenantId = existingTenant,
-                email = user.email,
-                displayName = user.displayName,
-                photoUrl = user.photoUrl?.toString()
+        val existing = runCatching { fetchSession(user) }.getOrNull()
+        if (existing != null) return existing
+
+        val globalPublicTenantId = BuildConfig.GLOBAL_PUBLIC_CUSTOMER_TENANT_ID.trim()
+        if (globalPublicTenantId.isBlank()) {
+            _state.value = AuthState.PartiallyAuthenticated(
+                session = PendingAuthSession(
+                    uid = user.uid,
+                    email = user.email,
+                    displayName = user.displayName,
+                    photoUrl = user.photoUrl?.toString()
+                ),
+                requiredAction = RequiredAuthAction.SELECT_TENANT
+            )
+            throw MissingTenantContextException()
+        }
+
+        val tenantSnapshot = firestore.collection("tenants").document(globalPublicTenantId).get().await()
+        if (!tenantSnapshot.exists()) {
+            throw IllegalStateException(
+                "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID apunta a un tenant inexistente. Configuralo correctamente."
             )
         }
-        val tenantId = UUID.randomUUID().toString()
-        val createdAt = FieldValue.serverTimestamp()
-        val batch = firestore.batch()
-        batch.set(
-            userRef,
-            mapOf(
-                "tenantId" to tenantId,
-                "email" to (user.email ?: ""),
-                "accountType" to "public_customer",
-                "createdAt" to createdAt
-            ),
-            SetOptions.merge()
-        )
-        val tenantRef = firestore.collection("tenants").document(tenantId)
-        batch.set(
-            tenantRef,
-            mapOf(
-                "id" to tenantId,
-                "name" to "Cliente público",
-                "ownerUid" to user.uid,
-                "ownerEmail" to (user.email ?: ""),
-                "accountType" to "public_customer",
-                "createdAt" to createdAt
-            ),
-            SetOptions.merge()
-        )
-        batch.commit().await()
-        return AuthSession(
-            uid = user.uid,
-            tenantId = tenantId,
-            email = user.email,
-            displayName = user.displayName,
-            photoUrl = user.photoUrl?.toString()
+
+        firestore.collection("users").document(user.uid)
+            .set(
+                mapOf(
+                    "tenantId" to globalPublicTenantId,
+                    "email" to (user.email ?: ""),
+                    "accountType" to "public_customer",
+                    "status" to "active",
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            )
+            .await()
+
+        return fetchSession(user)
+    }
+
+    private fun pendingSessionFromCurrentUser(): PendingAuthSession {
+        val user = firebaseAuth.currentUser
+        return PendingAuthSession(
+            uid = user?.uid.orEmpty(),
+            email = user?.email,
+            displayName = user?.displayName,
+            photoUrl = user?.photoUrl?.toString()
         )
     }
 }
+
+private class MissingTenantContextException : IllegalStateException(
+    "Falta contexto de tenant. Seleccioná una tienda para continuar."
+)

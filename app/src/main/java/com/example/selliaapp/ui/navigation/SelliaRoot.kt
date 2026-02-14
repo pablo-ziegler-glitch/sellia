@@ -24,9 +24,11 @@ import androidx.navigation.compose.rememberNavController
 import com.example.selliaapp.R
 import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.auth.RequiredAuthAction
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.auth.LoginScreen
 import com.example.selliaapp.ui.screens.auth.RegisterScreen
+import com.example.selliaapp.ui.screens.auth.TenantOnboardingRequiredScreen
 import com.example.selliaapp.viewmodel.AuthViewModel
 import com.example.selliaapp.viewmodel.RegisterViewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -124,6 +126,25 @@ fun SelliaRoot(
             SelliaApp(
                 navController = navController,
                 customerRepo = customerRepo
+            )
+        }
+
+        is AuthState.PartiallyAuthenticated -> {
+            val partialState = authState as AuthState.PartiallyAuthenticated
+            LaunchedEffect(partialState.requiredAction) {
+                if (partialState.requiredAction == RequiredAuthAction.SELECT_TENANT) {
+                    registerViewModel.setRequiresTenantSelectionOnboarding(true)
+                }
+            }
+            TenantOnboardingRequiredScreen(
+                isLoading = registerState.isLoading,
+                isLoadingTenants = registerState.isLoadingTenants,
+                errorMessage = registerState.errorMessage,
+                tenants = registerState.tenants,
+                selectedTenantId = registerState.selectedTenantId,
+                onTenantChange = registerViewModel::selectTenant,
+                onSubmit = registerViewModel::completeTenantSelectionOnboarding,
+                onSignOut = authViewModel::signOut
             )
         }
 
