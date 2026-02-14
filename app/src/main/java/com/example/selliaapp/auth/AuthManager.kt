@@ -4,17 +4,22 @@ import com.example.selliaapp.di.AppModule
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.BufferOverflow
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
 import javax.inject.Inject
@@ -31,15 +36,21 @@ class AuthManager @Inject constructor(
     private val _state = MutableStateFlow<AuthState>(AuthState.Loading)
     val state: StateFlow<AuthState> = _state
 
+    private val _lastSessionRefreshAtMs = MutableStateFlow<Long?>(null)
+    val lastSessionRefreshAtMs: StateFlow<Long?> = _lastSessionRefreshAtMs
+
+    private val refreshSignals = MutableSharedFlow<FirebaseUser?>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    private var authStateListener: FirebaseAuth.AuthStateListener? = null
+    private var idTokenListener: FirebaseAuth.IdTokenListener? = null
+
     init {
-        firebaseAuth.addAuthStateListener { auth ->
-            val user = auth.currentUser
-            if (user == null) {
-                _state.value = AuthState.Unauthenticated
-            } else {
-                loadSession(user)
-            }
-        }
+        observeRefreshSignals()
+        registerAuthListeners()
     }
 
     suspend fun signIn(email: String, password: String): Result<AuthSession> = runCatching {
@@ -48,7 +59,7 @@ class AuthManager @Inject constructor(
         val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
         enforceEmailVerification(user)
         val session = fetchSession(user)
-        _state.value = AuthState.Authenticated(session)
+        publishAuthenticatedState(session)
         session
     }.onFailure { error ->
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión"))
@@ -61,7 +72,7 @@ class AuthManager @Inject constructor(
         val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
         val session = runCatching { fetchSession(user) }
             .getOrElse { ensurePublicCustomerSession(user) }
-        _state.value = AuthState.Authenticated(session)
+        publishAuthenticatedState(session)
         session
     }.onFailure { error ->
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión con Google"))
@@ -75,7 +86,7 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Loading
         val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
         val session = fetchSession(user)
-        _state.value = AuthState.Authenticated(session)
+        publishAuthenticatedState(session)
         session
     }.onFailure { error ->
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo actualizar la sesión"))
@@ -84,11 +95,20 @@ class AuthManager @Inject constructor(
     fun signOut() {
         firebaseAuth.signOut()
         _state.value = AuthState.Unauthenticated
+        _lastSessionRefreshAtMs.value = null
     }
 
     suspend fun updatePassword(newPassword: String): Result<Unit> = runCatching {
         val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
         user.updatePassword(newPassword).await()
+    }
+
+    fun clear() {
+        authStateListener?.let(firebaseAuth::removeAuthStateListener)
+        authStateListener = null
+        idTokenListener?.let(firebaseAuth::removeIdTokenListener)
+        idTokenListener = null
+        scope.cancel("AuthManager fue liberado")
     }
 
     override fun currentTenantId(): String? =
@@ -106,6 +126,50 @@ class AuthManager @Inject constructor(
         return resolved ?: throw IllegalStateException("Sesión no disponible para obtener tenantId")
     }
 
+    private fun observeRefreshSignals() {
+        scope.launch {
+            refreshSignals
+                .debounce(500)
+                .collectLatest { user -> resolveSession(user) }
+        }
+    }
+
+    private fun registerAuthListeners() {
+        authStateListener = FirebaseAuth.AuthStateListener { auth ->
+            refreshSignals.tryEmit(auth.currentUser)
+        }.also(firebaseAuth::addAuthStateListener)
+
+        idTokenListener = FirebaseAuth.IdTokenListener { auth ->
+            refreshSignals.tryEmit(auth.currentUser)
+        }.also(firebaseAuth::addIdTokenListener)
+    }
+
+    private suspend fun resolveSession(user: FirebaseUser?) {
+        if (user == null) {
+            _state.value = AuthState.Unauthenticated
+            _lastSessionRefreshAtMs.value = null
+            return
+        }
+
+        _state.value = AuthState.Loading
+        runCatching { fetchSessionWithRetry(user) }
+            .onSuccess { session -> publishAuthenticatedState(session) }
+            .onFailure { error ->
+                _state.value = AuthState.Error(
+                    error.message ?: "No se pudo resolver el tenantId"
+                )
+            }
+    }
+
+    private fun publishAuthenticatedState(session: AuthSession) {
+        val refreshedAtMs = System.currentTimeMillis()
+        _lastSessionRefreshAtMs.value = refreshedAtMs
+        _state.value = AuthState.Authenticated(
+            session = session,
+            refreshedAtMs = refreshedAtMs
+        )
+    }
+
     private suspend fun enforceEmailVerification(user: FirebaseUser) {
         user.reload().await()
         if (!user.isEmailVerified) {
@@ -113,21 +177,6 @@ class AuthManager @Inject constructor(
             throw IllegalStateException(
                 "Necesitás verificar tu email antes de ingresar. Revisá tu bandeja y correo no deseado."
             )
-        }
-    }
-
-    private fun loadSession(user: FirebaseUser) {
-        _state.value = AuthState.Loading
-        scope.launch {
-            runCatching { fetchSessionWithRetry(user) }
-                .onSuccess { session ->
-                    _state.value = AuthState.Authenticated(session)
-                }
-                .onFailure { error ->
-                    _state.value = AuthState.Error(
-                        error.message ?: "No se pudo resolver el tenantId"
-                    )
-                }
         }
     }
 
