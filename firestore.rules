@@ -24,9 +24,27 @@ service cloud.firestore {
       return userData().tenantId;
     }
 
+    function isUserActive() {
+      return userData().status == 'active'
+        || userData().isActive == true;
+    }
+
+    function hasTenantWriteRole() {
+      return isFixedSuperAdmin()
+        || userData().role in ['owner', 'manager', 'cashier', 'admin']
+        || userData().isAdmin == true
+        || userData().isSuperAdmin == true;
+    }
+
     function isTenantUser(tenantId) {
       return isAuthenticated()
-        && (userTenantId() == tenantId || isFixedSuperAdmin());
+        && (
+          isFixedSuperAdmin()
+          || (
+            userTenantId() == tenantId
+            && isUserActive()
+          )
+        );
     }
 
     function isBackend() {
@@ -219,7 +237,8 @@ service cloud.firestore {
     }
 
     match /tenants/{tenantId}/{document=**} {
-      allow read, write: if isTenantUser(tenantId);
+      allow read: if isTenantUser(tenantId);
+      allow write: if isTenantUser(tenantId) && hasTenantWriteRole();
     }
   }
 }
