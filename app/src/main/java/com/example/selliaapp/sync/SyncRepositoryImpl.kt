@@ -11,6 +11,7 @@ import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.SyncEntityType
+import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.CustomerFirestoreMappers
@@ -45,6 +46,7 @@ class SyncRepositoryImpl @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
     private val tenantProvider: TenantProvider,
+    private val sessionCoordinator: FirebaseSessionCoordinator,
     /* [ANTERIOR]
     import com.example.selliaapp.di.IoDispatcher
     @IoDispatcher private val io: CoroutineDispatcher
@@ -53,22 +55,25 @@ class SyncRepositoryImpl @Inject constructor(
 ) : SyncRepository {
 
     override suspend fun pushPending() = withContext(io) {
-        if (!hasPrivilegedSyncAccess()) {
+        sessionCoordinator.runWithFreshSession {
+            if (!hasPrivilegedSyncAccess()) {
             Log.i(TAG, "Sincronización omitida: rol sin permisos.")
-            return@withContext
+                return@runWithFreshSession
+            }
+            val now = System.currentTimeMillis()
+            pushPendingProducts(now)
+            pushPendingInvoices(now)
+            pushPendingCustomers(now)
         }
-        val now = System.currentTimeMillis()
-        pushPendingProducts(now)
-        pushPendingInvoices(now)
-        pushPendingCustomers(now)
     }
 
     override suspend fun pullRemote() = withContext(io) {
-        if (!hasReadSyncAccess()) {
+        sessionCoordinator.runWithFreshSession {
+            if (!hasReadSyncAccess()) {
             Log.i(TAG, "Sincronización omitida: rol sin permisos.")
-            return@withContext
-        }
-        productRepository.syncDown()
+                return@runWithFreshSession
+            }
+            productRepository.syncDown()
 
         val invoicesCollection = firestore.collection("tenants")
             .document(tenantProvider.requireTenantId())
@@ -93,8 +98,9 @@ class SyncRepositoryImpl @Inject constructor(
             }
         }
 
-        syncCustomersFromRemote()
-        pricingConfigRepository.pullPricingConfigFromCloud()
+            syncCustomersFromRemote()
+            pricingConfigRepository.pullPricingConfigFromCloud()
+        }
     }
 
     override suspend fun runSync(includeBackup: Boolean) = withContext(io) {
