@@ -8,6 +8,17 @@ data class AuthSession(
     val photoUrl: String?
 )
 
+data class PendingAuthSession(
+    val uid: String,
+    val email: String?,
+    val displayName: String?,
+    val photoUrl: String?
+)
+
+enum class RequiredAuthAction {
+    SELECT_TENANT
+}
+
 sealed interface AuthState {
     data object Loading : AuthState
     data object Unauthenticated : AuthState

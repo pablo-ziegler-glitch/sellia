@@ -70,3 +70,30 @@ En `tenants/{tenantId}/customers`:
 - Permite CRM multi-sucursal real sin romper aislamiento por tenant.
 - Reduce inconsistencias de datos de clientes repetidos.
 - Mejora costo Firestore al consultar por subcolección tenant en vez de escanear global.
+
+## Cambio aplicado: onboarding explícito para clientes públicos
+
+Se eliminó la creación silenciosa de tenants `Cliente público` por UUID desde login Google.
+
+Nuevo comportamiento en `AuthManager.ensurePublicCustomerSession`:
+
+1. Si el usuario ya tiene `tenantId/storeId`, entra normal.
+2. Si **no** tiene tenant:
+   - usa `GLOBAL_PUBLIC_CUSTOMER_TENANT_ID` (BuildConfig) **solo si está configurado** y existe en `tenants/{id}`.
+   - caso contrario, deja la sesión en estado parcial y exige seleccionar tienda para completar onboarding.
+
+Esto evita generar tenants huérfanos y reduce costo/ruido operativo en Firestore.
+
+### Operación recomendada en producción
+
+- Definir `GLOBAL_PUBLIC_CUSTOMER_TENANT_ID` solo si querés un tenant público global controlado.
+- Si no, forzar selección de tienda desde onboarding (flujo por catálogo público).
+
+### Limpieza de tenants huérfanos históricos
+
+Se agregó script administrativo:
+
+- `npm run cleanup:public-customers:dry`
+- `npm run cleanup:public-customers:apply`
+
+Ubicación: `functions/scripts/cleanup-orphan-public-customers.js`.
