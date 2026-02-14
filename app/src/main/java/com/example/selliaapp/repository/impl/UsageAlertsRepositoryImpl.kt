@@ -1,5 +1,6 @@
 package com.example.selliaapp.repository.impl
 
+import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.model.AlertSeverity
 import com.example.selliaapp.data.model.UsageAlert
@@ -20,10 +21,12 @@ class UsageAlertsRepositoryImpl @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val tenantProvider: TenantProvider,
     private val auth: FirebaseAuth,
+    private val sessionCoordinator: FirebaseSessionCoordinator,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : UsageAlertsRepository {
 
     override suspend fun fetchAlerts(limit: Int): List<UsageAlert> = withContext(io) {
+        sessionCoordinator.runWithFreshSession {
         val tenantId = tenantProvider.requireTenantId()
         val currentUserId = auth.currentUser?.uid
         val snapshot = firestore.collection("tenants")
@@ -34,7 +37,7 @@ class UsageAlertsRepositoryImpl @Inject constructor(
             .get()
             .await()
 
-        snapshot.documents.mapNotNull { doc ->
+            snapshot.documents.mapNotNull { doc ->
             val data = doc.data ?: return@mapNotNull null
             val createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time
                 ?: (data["createdAtMillis"] as? Number)?.toLong()
@@ -56,11 +59,13 @@ class UsageAlertsRepositoryImpl @Inject constructor(
                 isRead = currentUserId != null && readBy.contains(currentUserId),
                 periodKey = data["periodKey"] as? String
             )
+            }
         }
     }
 
 
     override suspend fun fetchCurrentUsageMetrics(): Map<String, Double> = withContext(io) {
+        sessionCoordinator.runWithFreshSession {
         val tenantId = tenantProvider.requireTenantId()
         val currentSnapshot = firestore.collection("tenants")
             .document(tenantId)
@@ -69,7 +74,7 @@ class UsageAlertsRepositoryImpl @Inject constructor(
             .get()
             .await()
 
-        val data = currentSnapshot.data ?: return@withContext emptyMap()
+            val data = currentSnapshot.data ?: return@runWithFreshSession emptyMap()
         val candidateMaps = listOf(
             data["metrics"],
             data["usage"],
@@ -81,18 +86,20 @@ class UsageAlertsRepositoryImpl @Inject constructor(
             }?.filterValues { it.isFinite() }
         }
 
-        val resolved = candidateMaps.firstOrNull { it.isNotEmpty() }
-        if (resolved != null) return@withContext resolved
+            val resolved = candidateMaps.firstOrNull { it.isNotEmpty() }
+            if (resolved != null) return@runWithFreshSession resolved
 
-        data.mapNotNull { (key, value) ->
+            data.mapNotNull { (key, value) ->
             val numericValue = (value as? Number)?.toDouble() ?: return@mapNotNull null
             key to numericValue
-        }.toMap()
+            }.toMap()
+        }
     }
 
     override suspend fun markAlertRead(alertId: String) = withContext(io) {
+        sessionCoordinator.runWithFreshSession {
         val tenantId = tenantProvider.requireTenantId()
-        val userId = auth.currentUser?.uid ?: return@withContext
+            val userId = auth.currentUser?.uid ?: return@runWithFreshSession
         firestore.collection("tenants")
             .document(tenantId)
             .collection("alerts")
@@ -103,13 +110,15 @@ class UsageAlertsRepositoryImpl @Inject constructor(
                     "readAt" to FieldValue.serverTimestamp()
                 )
             )
-            .await()
+                .await()
+        }
     }
 
     override suspend fun markAlertsRead(alertIds: List<String>) = withContext(io) {
-        if (alertIds.isEmpty()) return@withContext
+        sessionCoordinator.runWithFreshSession {
+            if (alertIds.isEmpty()) return@runWithFreshSession
         val tenantId = tenantProvider.requireTenantId()
-        val userId = auth.currentUser?.uid ?: return@withContext
+            val userId = auth.currentUser?.uid ?: return@runWithFreshSession
         val batch = firestore.batch()
         alertIds.forEach { alertId ->
             val ref = firestore.collection("tenants")
@@ -124,6 +133,7 @@ class UsageAlertsRepositoryImpl @Inject constructor(
                 )
             )
         }
-        batch.commit().await()
+            batch.commit().await()
+        }
     }
 }

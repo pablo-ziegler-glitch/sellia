@@ -1,6 +1,7 @@
 package com.example.selliaapp.repository.impl
 
 import android.net.Uri
+import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.repository.StorageRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
@@ -14,6 +15,7 @@ import javax.inject.Singleton
 @Singleton
 class StorageRepositoryImpl @Inject constructor(
     private val storage: FirebaseStorage,
+    private val sessionCoordinator: FirebaseSessionCoordinator
     private val auth: FirebaseAuth
 ) : StorageRepository {
 

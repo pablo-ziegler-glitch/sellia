@@ -3,6 +3,7 @@ package com.example.selliaapp.repository
 
 import android.content.Context
 import android.net.Uri
+import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.csv.UserCsvImporter
 import com.example.selliaapp.data.dao.UserDao
@@ -22,6 +23,7 @@ class UserRepository(
     private val userDao: UserDao,
     private val firestore: FirebaseFirestore,
     private val tenantProvider: TenantProvider,
+    private val sessionCoordinator: FirebaseSessionCoordinator,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) {
 
@@ -70,43 +72,45 @@ class UserRepository(
 
     suspend fun syncFromCloud(): Result<Unit> = withContext(io) {
         runCatching {
-            val tenantId = tenantProvider.requireTenantId()
-            val snapshot = firestore.collection("tenant_users")
-                .whereEqualTo("tenantId", tenantId)
-                .get()
-                .await()
+            sessionCoordinator.runWithFreshSession {
+                val tenantId = tenantProvider.requireTenantId()
+                val snapshot = firestore.collection("tenant_users")
+                    .whereEqualTo("tenantId", tenantId)
+                    .get()
+                    .await()
 
-            val cloudUsers = snapshot.documents.mapNotNull { doc ->
-                val email = doc.getString("email")?.trim().orEmpty().lowercase()
-                val name = doc.getString("name")?.trim().orEmpty()
-                val role = doc.getString("role")?.trim().orEmpty()
-                val isActive = doc.getBoolean("isActive") ?: true
-                if (email.isBlank() || name.isBlank() || role.isBlank()) return@mapNotNull null
-                User(name = name, email = email, role = role, isActive = isActive)
-            }
-
-            val cloudEmails = cloudUsers.map { it.email }
-            if (cloudEmails.isEmpty()) {
-                userDao.deleteAll()
-                return@runCatching
-            }
-
-            cloudUsers.forEach { cloudUser ->
-                val existing = userDao.getByEmail(cloudUser.email)
-                if (existing == null) {
-                    userDao.insert(cloudUser)
-                } else {
-                    userDao.update(
-                        existing.copy(
-                            name = cloudUser.name,
-                            role = cloudUser.role,
-                            isActive = cloudUser.isActive
-                        )
-                    )
+                val cloudUsers = snapshot.documents.mapNotNull { doc ->
+                    val email = doc.getString("email")?.trim().orEmpty().lowercase()
+                    val name = doc.getString("name")?.trim().orEmpty()
+                    val role = doc.getString("role")?.trim().orEmpty()
+                    val isActive = doc.getBoolean("isActive") ?: true
+                    if (email.isBlank() || name.isBlank() || role.isBlank()) return@mapNotNull null
+                    User(name = name, email = email, role = role, isActive = isActive)
                 }
-            }
 
-            userDao.deleteByEmailsNotIn(cloudEmails)
+                val cloudEmails = cloudUsers.map { it.email }
+                if (cloudEmails.isEmpty()) {
+                    userDao.deleteAll()
+                    return@runWithFreshSession
+                }
+
+                cloudUsers.forEach { cloudUser ->
+                    val existing = userDao.getByEmail(cloudUser.email)
+                    if (existing == null) {
+                        userDao.insert(cloudUser)
+                    } else {
+                        userDao.update(
+                            existing.copy(
+                                name = cloudUser.name,
+                                role = cloudUser.role,
+                                isActive = cloudUser.isActive
+                            )
+                        )
+                    }
+                }
+
+                userDao.deleteByEmailsNotIn(cloudEmails)
+            }
         }
     }
 
@@ -156,7 +160,7 @@ class UserRepository(
         email = email.trim().lowercase(),
         role = role.trim()
     )
-    private suspend fun upsertCloudUser(user: User) {
+    private suspend fun upsertCloudUser(user: User) = sessionCoordinator.runWithFreshSession {
         val tenantId = tenantProvider.requireTenantId()
         val docId = "${tenantId}_${user.email.trim().lowercase()}"
         firestore.collection("tenant_users")
@@ -175,7 +179,7 @@ class UserRepository(
             .await()
     }
 
-    private suspend fun deleteCloudUser(user: User) {
+    private suspend fun deleteCloudUser(user: User) = sessionCoordinator.runWithFreshSession {
         val tenantId = tenantProvider.requireTenantId()
         val docId = "${tenantId}_${user.email.trim().lowercase()}"
         firestore.collection("tenant_users")

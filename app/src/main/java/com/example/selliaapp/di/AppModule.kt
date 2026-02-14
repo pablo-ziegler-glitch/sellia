@@ -40,6 +40,7 @@ import com.example.selliaapp.data.dao.PricingFixedCostDao
 import com.example.selliaapp.data.dao.PricingMlFixedCostTierDao
 import com.example.selliaapp.data.dao.PricingMlShippingTierDao
 import com.example.selliaapp.data.dao.PricingSettingsDao
+import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.dao.ReportDataDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
@@ -252,11 +253,13 @@ object AppModule {
         dao: UserDao,
         firestore: FirebaseFirestore,
         tenantProvider: TenantProvider,
+        sessionCoordinator: FirebaseSessionCoordinator,
         @IoDispatcher io: CoroutineDispatcher
     ): UserRepository = UserRepository(
         userDao = dao,
         firestore = firestore,
         tenantProvider = tenantProvider,
+        sessionCoordinator = sessionCoordinator,
         io = io
     )
     @Provides
@@ -332,9 +335,11 @@ object AppModule {
     @Singleton
     fun provideUsageRepository(
         firestore: FirebaseFirestore,
+        sessionCoordinator: FirebaseSessionCoordinator,
         @IoDispatcher io: CoroutineDispatcher
     ): UsageRepository = UsageRepositoryImpl(
         firestore = firestore,
+        sessionCoordinator = sessionCoordinator,
         ioDispatcher = io
     )
 
@@ -366,8 +371,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideStorageRepository(
-        storage: FirebaseStorage
-    ): StorageRepository = StorageRepositoryImpl(storage)
+        storage: FirebaseStorage,
+        sessionCoordinator: FirebaseSessionCoordinator
+    ): StorageRepository = StorageRepositoryImpl(
+        storage = storage,
+        sessionCoordinator = sessionCoordinator
+    )
 
     @Provides
     @Singleton
