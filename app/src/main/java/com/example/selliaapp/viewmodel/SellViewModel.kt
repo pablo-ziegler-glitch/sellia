@@ -10,6 +10,9 @@ import com.example.selliaapp.data.local.entity.CashMovementType
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.InvoiceRepository
+import com.example.selliaapp.repository.SellDraft
+import com.example.selliaapp.repository.SellDraftItem
+import com.example.selliaapp.repository.SellDraftRepository
 import com.example.selliaapp.ui.state.CartItemUi
 import com.example.selliaapp.ui.state.CustomerSummaryUi
 import com.example.selliaapp.ui.state.OrderType
@@ -22,7 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -31,12 +33,17 @@ import javax.inject.Inject
 class SellViewModel @Inject constructor(
     private val repo: IProductRepository,
     private val invoiceRepo: InvoiceRepository,
-    private val cashRepository: CashRepository
+    private val cashRepository: CashRepository,
+    private val sellDraftRepository: SellDraftRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SellUiState())
     val state: StateFlow<SellUiState> = _state.asStateFlow()
     private var customerSummaryJob: Job? = null
+
+    init {
+        restoreDraft()
+    }
 
     // ----- Escaneo: helper de resultado -----
     data class ScanResult(val foundId: Int?, val prefillBarcode: String)
@@ -83,7 +90,7 @@ class SellViewModel @Inject constructor(
 
     /** Agrega un producto acumulando, respetando stock (clamp 1..max). */
     fun addToCart(product: ProductEntity, qty: Int = 1) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val max = (product.quantity ?: 0).coerceAtLeast(0)
             val listPrice = product.listPrice ?: 0.0
             val cashPrice = product.cashPrice ?: listPrice
@@ -116,7 +123,7 @@ class SellViewModel @Inject constructor(
 
     /** Incrementa de a 1 (máximo: stock). */
     fun increment(productId: Int) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val nuevosItems = ui.items.map { item ->
                 if (item.productId == productId)
                     item.copy(qty = (item.qty + 1).coerceAtMost(item.maxStock.coerceAtLeast(1)))
@@ -128,7 +135,7 @@ class SellViewModel @Inject constructor(
 
     /** Decrementa de a 1 (mínimo 1). */
     fun decrement(productId: Int) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val nuevosItems = ui.items.map { item ->
                 if (item.productId == productId)
                     item.copy(qty = (item.qty - 1).coerceAtLeast(1))
@@ -140,7 +147,7 @@ class SellViewModel @Inject constructor(
 
     /** Fija una cantidad concreta (clamp 1..max). */
     fun updateQty(productId: Int, qty: Int) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val nuevosItems = ui.items.map { item ->
                 if (item.productId == productId) {
                     val max = item.maxStock.coerceAtLeast(1)
@@ -153,7 +160,7 @@ class SellViewModel @Inject constructor(
 
     /** Quita un ítem del carrito. */
     fun remove(productId: Int) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val nuevosItems = ui.items.filterNot { it.productId == productId }
             recalc(ui, nuevosItems)
         }
@@ -162,6 +169,7 @@ class SellViewModel @Inject constructor(
     /** Limpia el carrito y totales. */
     fun clear() {
         _state.value = SellUiState()
+        sellDraftRepository.clear()
     }
 
     // --- Recalcula totales/validaciones y retorna nuevo estado (inmutable) ---
@@ -192,21 +200,21 @@ class SellViewModel @Inject constructor(
     }
 
     fun setDiscountPercent(percent: Int) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val nuevoValor = percent.coerceIn(0, 100)
             recalc(ui.copy(discountPercent = nuevoValor))
         }
     }
 
     fun setSurchargePercent(percent: Int) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val nuevoValor = percent.coerceIn(0, 100)
             recalc(ui.copy(surchargePercent = nuevoValor))
         }
     }
 
     fun updatePaymentMethod(method: PaymentMethod) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val updatedItems = ui.items.map { item ->
                 val unit = resolveUnitPrice(method, item.listPrice, item.cashPrice, item.transferPrice)
                 item.copy(unitPrice = unit)
@@ -216,13 +224,13 @@ class SellViewModel @Inject constructor(
     }
 
     fun updatePaymentNotes(notes: String) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             ui.copy(paymentNotes = notes.take(280))
         }
     }
 
     fun updateOrderType(orderType: OrderType) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             ui.copy(orderType = orderType)
         }
     }
@@ -242,7 +250,7 @@ class SellViewModel @Inject constructor(
 
     fun setCustomer(customerId: Int?, customerName: String?) {
         customerSummaryJob?.cancel()
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val next = ui.copy(
                 selectedCustomerId = customerId,
                 selectedCustomerName = customerName,
@@ -260,23 +268,21 @@ class SellViewModel @Inject constructor(
                     val totalSpent = invoices.sumOf { it.invoice.total }
                     val purchaseCount = invoices.size
                     val lastPurchaseMillis = invoices.maxOfOrNull { it.invoice.dateMillis }
-                    _state.update { ui ->
-                        recalc(
-                            ui.copy(
-                                customerSummary = CustomerSummaryUi(
-                                    totalSpent = totalSpent,
-                                    purchaseCount = purchaseCount,
-                                    lastPurchaseMillis = lastPurchaseMillis
-                                )
+                    _state.value = recalc(
+                        _state.value.copy(
+                            customerSummary = CustomerSummaryUi(
+                                totalSpent = totalSpent,
+                                purchaseCount = purchaseCount,
+                                lastPurchaseMillis = lastPurchaseMillis
                             )
                         )
-                    }
+                    )
                 }
         }
     }
 
     fun setCustomerDiscountPercent(percent: Int) {
-        _state.update { ui ->
+        updateAndPersist { ui ->
             val sanitized = percent.coerceIn(0, 100)
             recalc(ui.copy(customerDiscountPercent = sanitized))
         }
@@ -356,6 +362,71 @@ class SellViewModel @Inject constructor(
                 onError(t)
             }
         }
+    }
+
+    private fun restoreDraft() {
+        val draft = sellDraftRepository.load() ?: return
+        val restoredState = SellUiState(
+            items = draft.items.map { item ->
+                CartItemUi(
+                    productId = item.productId,
+                    name = item.name,
+                    barcode = item.barcode,
+                    unitPrice = item.unitPrice,
+                    listPrice = item.listPrice,
+                    cashPrice = item.cashPrice,
+                    transferPrice = item.transferPrice,
+                    qty = item.qty.coerceAtLeast(1),
+                    maxStock = item.maxStock.coerceAtLeast(0)
+                )
+            },
+            discountPercent = draft.discountPercent.coerceIn(0, 100),
+            customerDiscountPercent = draft.customerDiscountPercent.coerceIn(0, 100),
+            surchargePercent = draft.surchargePercent.coerceIn(0, 100),
+            paymentMethod = runCatching { PaymentMethod.valueOf(draft.paymentMethod) }.getOrDefault(PaymentMethod.LISTA),
+            paymentNotes = draft.paymentNotes,
+            orderType = runCatching { OrderType.valueOf(draft.orderType) }.getOrDefault(OrderType.INMEDIATA),
+            selectedCustomerId = draft.selectedCustomerId,
+            selectedCustomerName = draft.selectedCustomerName
+        )
+        _state.value = recalc(restoredState)
+    }
+
+    private fun updateAndPersist(transform: (SellUiState) -> SellUiState) {
+        val next = transform(_state.value)
+        _state.value = next
+        persistDraft(next)
+    }
+
+    private fun persistDraft(state: SellUiState) {
+        if (state.items.isEmpty()) {
+            sellDraftRepository.clear()
+            return
+        }
+        val draft = SellDraft(
+            items = state.items.map { item ->
+                SellDraftItem(
+                    productId = item.productId,
+                    name = item.name,
+                    barcode = item.barcode,
+                    unitPrice = item.unitPrice,
+                    listPrice = item.listPrice,
+                    cashPrice = item.cashPrice,
+                    transferPrice = item.transferPrice,
+                    qty = item.qty,
+                    maxStock = item.maxStock
+                )
+            },
+            discountPercent = state.discountPercent,
+            customerDiscountPercent = state.customerDiscountPercent,
+            surchargePercent = state.surchargePercent,
+            paymentMethod = state.paymentMethod.name,
+            paymentNotes = state.paymentNotes,
+            orderType = state.orderType.name,
+            selectedCustomerId = state.selectedCustomerId,
+            selectedCustomerName = state.selectedCustomerName
+        )
+        sellDraftRepository.save(draft)
     }
 }
 

@@ -36,12 +36,12 @@ class UserViewModel  @Inject constructor(
 
     fun addUser(name: String, email: String, role: String, isActive: Boolean = true) {
         viewModelScope.launch {
-            val sanitizedRole = role.trim().ifBlank { AppRole.VIEWER.raw }
+            val requestedRole = AppRole.fromRaw(role)
             val totalUsers = repository.countUsers()
             val effectiveRole = if (totalUsers == 0) {
                 AppRole.ADMIN.raw
             } else {
-                sanitizedRole
+                normalizeAssignableRole(requestedRole).raw
             }
             repository.insert(
                 User(
@@ -59,6 +59,19 @@ class UserViewModel  @Inject constructor(
     }
 
     fun updateUser(user: User) {
-        viewModelScope.launch { repository.update(user) }
+        viewModelScope.launch {
+            repository.update(
+                user.copy(
+                    role = normalizeAssignableRole(AppRole.fromRaw(user.role)).raw
+                )
+            )
+        }
+    }
+
+    private fun normalizeAssignableRole(role: AppRole): AppRole = when (role) {
+        AppRole.MANAGER,
+        AppRole.CASHIER -> role
+
+        else -> AppRole.CASHIER
     }
 }

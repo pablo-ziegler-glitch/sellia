@@ -1,26 +1,40 @@
-# Reglas de seguridad y tenantId
+# Reglas de seguridad Firestore (multi-tenant)
 
-## Regla aplicada en `users/{userId}`
+## Política vigente para gestión de usuarios
 
-La colección `users` queda restringida de la siguiente forma:
+La política final de negocio queda definida así:
 
-- **Create**: solo si el usuario autenticado coincide con el `userId` del documento y el `tenantId` existe como documento en `tenants/{tenantId}`.
-- **Update**: solo si el usuario autenticado coincide con el `userId` y **no cambia** el `tenantId` (se compara el valor almacenado con el enviado).
-- **Read/Delete**: solo si el usuario autenticado coincide con el `userId`.
+- **Solo `owner` y `admin`** pueden gestionar usuarios de su tenant.
+- `manager`, `cashier` y `viewer` **no** pueden hacer escrituras administrativas.
+- `isAdmin` / `isSuperAdmin` y claims administrativos siguen habilitando acceso administrativo global.
 
-Esto evita que un usuario se asigne o migre de tenant manualmente desde el cliente.
+En `firestore.rules`, esto se implementa removiendo `manager` de `hasManageUsersRole()` y centralizando las validaciones por tenant en `isAdminForTenant(tenantId)`.
 
-## Recomendación de seguridad avanzada (opcional)
+## Matriz de permisos (usuarios autenticados del mismo tenant)
 
-Si se requiere máxima seguridad y trazabilidad, mover la asignación inicial de `tenantId` a:
+| Rol | `/tenant_users` create/update/delete | `/users` create/update/delete (administrativo) | `/account_requests` update/delete |
+|---|---|---|---|
+| `owner` | ✅ Permitido | ✅ Permitido | ✅ Permitido |
+| `admin` | ✅ Permitido | ✅ Permitido | ✅ Permitido |
+| `manager` | ❌ Denegado | ❌ Denegado | ❌ Denegado |
+| `cashier` | ❌ Denegado | ❌ Denegado | ❌ Denegado |
+| `viewer` | ❌ Denegado | ❌ Denegado | ❌ Denegado |
 
-- **Cloud Functions** (trigger post-Auth o endpoint administrativo), o
-- **Custom Claims** con validación en reglas.
+> Nota: existen excepciones explícitas de autoservicio en `users` y `account_requests` (ej. bootstrap de owner, alta de final customer, o lectura/escritura sobre su propio request), que no constituyen gestión administrativa de usuarios.
 
-Esto evita cualquier dependencia del cliente para asignar pertenencia de tenant.
+## Endpoints revisados con `isAdminForTenant`
 
-## Validación en el cliente (Android)
+Se revisaron y dejaron consistentes los `match` administrativos que dependen de `isAdminForTenant(tenantId)`:
 
-El cliente **no debe intentar modificar** `tenantId` en documentos de `users`. Actualmente el cliente solo lee `tenantId` desde Firestore para construir la sesión, sin realizar escrituras en `users`.
+- `match /tenant_users/{tenantUserId}`
+- `match /users/{userId}` (paths administrativos)
+- `match /account_requests/{requestId}`
 
-Si en el futuro se implementan pantallas de perfil o edición de usuario, se debe excluir `tenantId` del payload de actualización.
+Con esta consolidación, cualquier cambio futuro de política por rol debe tocar una sola fuente de verdad (`hasManageUsersRole`).
+
+## Validación con Emulator
+
+La validación objetivo para Emulator contempla:
+
+- `owner` / `admin` → permitidos para gestión de usuarios.
+- `manager` / `cashier` / `viewer` → denegados en escrituras administrativas de `tenant_users` y `users`.

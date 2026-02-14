@@ -46,7 +46,7 @@ service cloud.firestore {
     }
 
     function hasManageUsersRole() {
-      return userData().role in ['admin', 'owner', 'manager']
+      return userData().role in ['admin', 'owner']
         || userData().isAdmin == true
         || userData().isSuperAdmin == true;
     }

@@ -1,15 +1,20 @@
 package com.example.selliaapp.ui.navigation
 
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,7 +23,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -105,6 +112,7 @@ import com.example.selliaapp.viewmodel.QuickReorderViewModel
 import com.example.selliaapp.viewmodel.QuickStockAdjustViewModel
 import com.example.selliaapp.viewmodel.ReportsViewModel
 import com.example.selliaapp.viewmodel.SellViewModel
+import com.example.selliaapp.viewmodel.SellDraftFabViewModel
 import com.example.selliaapp.viewmodel.StockImportViewModel
 import com.example.selliaapp.viewmodel.UserViewModel
 import com.example.selliaapp.viewmodel.StockMovementsViewModel
@@ -161,6 +169,12 @@ fun SelliaApp(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val currentRoute = currentDestination?.route.orEmpty()
+    val draftFabVm: SellDraftFabViewModel = hiltViewModel()
+    val hasActiveDraft by draftFabVm.hasActiveDraft.collectAsStateWithLifecycle()
+    val isInsideCart = currentRoute == Routes.Pos.route ||
+        currentRoute == Routes.PosCheckout.route ||
+        currentRoute == Routes.ScannerForSell.route
 
     AppScaffold(
         currentDestination = currentDestination,
@@ -184,11 +198,11 @@ fun SelliaApp(
         snackbarHostState = snackbarHostState,
         navigationItems = navigationItems
     ) { paddingValues ->
-        NavHost(
-            navController = navController,
-            startDestination = Routes.Home.route,
-            modifier = Modifier.padding(paddingValues)
-        ) {
+        Box(modifier = Modifier.padding(paddingValues)) {
+            NavHost(
+                navController = navController,
+                startDestination = Routes.Home.route
+            ) {
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {
                 if (isClientFinal) {
@@ -949,6 +963,22 @@ fun SelliaApp(
 
 
 
+            }
+
+            if (hasActiveDraft && !isInsideCart) {
+                FloatingActionButton(
+                    onClick = { navController.navigate(Routes.Pos.route) { launchSingleTop = true } },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(top = 20.dp, end = 16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ShoppingCart,
+                        contentDescription = "Volver al carrito"
+                    )
+                }
+            }
         }
     }
 }

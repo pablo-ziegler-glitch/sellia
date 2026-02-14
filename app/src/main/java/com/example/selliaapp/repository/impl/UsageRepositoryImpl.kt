@@ -1,5 +1,6 @@
 package com.example.selliaapp.repository.impl
 
+import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.data.model.usage.UsageDashboardSnapshot
 import com.example.selliaapp.data.model.usage.UsageSeriesPoint
 import com.example.selliaapp.data.model.usage.UsageServiceSummary
@@ -26,6 +27,7 @@ import javax.inject.Singleton
 @Singleton
 class UsageRepositoryImpl @Inject constructor(
     private val firestore: FirebaseFirestore,
+    private val sessionCoordinator: FirebaseSessionCoordinator,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : UsageRepository {
 
@@ -36,44 +38,49 @@ class UsageRepositoryImpl @Inject constructor(
         periodId: String,
         scope: UsageScope
     ): FirebaseServiceUsage? = withContext(ioDispatcher) {
-        val resolvedScope = resolveScope(scope = scope, appId = appId)
-        val docRef = usageSnapshotRef(
-            tenantId = tenantId,
-            appId = appId,
-            serviceId = serviceId,
-            periodId = periodId,
-            scope = resolvedScope
-        )
-        val snapshot = docRef.get().await()
-        if (!snapshot.exists()) return@withContext null
-        val document = snapshot.toObject(UsageSnapshotDocument::class.java)
-            ?: return@withContext null
-        document.toDomain(defaultTenantId = tenantId, defaultAppId = appId)
+        sessionCoordinator.runWithFreshSession {
+            val resolvedScope = resolveScope(scope = scope, appId = appId)
+            val docRef = usageSnapshotRef(
+                tenantId = tenantId,
+                appId = appId,
+                serviceId = serviceId,
+                periodId = periodId,
+                scope = resolvedScope
+            )
+            val snapshot = docRef.get().await()
+            if (!snapshot.exists()) return@runWithFreshSession null
+            val document = snapshot.toObject(UsageSnapshotDocument::class.java)
+                ?: return@runWithFreshSession null
+            document.toDomain(defaultTenantId = tenantId, defaultAppId = appId)
+        }
     }
 
     override suspend fun upsertUsageSnapshot(usage: FirebaseServiceUsage) {
         withContext(ioDispatcher) {
-            val docRef = usageSnapshotRef(
-                tenantId = usage.tenantId,
-                appId = usage.appId,
-                serviceId = usage.serviceId,
-                periodId = usage.snapshot.periodId,
-                scope = usage.scope
-            )
-            val data = usage.toDocument().toMutableMap().apply {
-                put("updatedAt", FieldValue.serverTimestamp())
+            sessionCoordinator.runWithFreshSession {
+                val docRef = usageSnapshotRef(
+                    tenantId = usage.tenantId,
+                    appId = usage.appId,
+                    serviceId = usage.serviceId,
+                    periodId = usage.snapshot.periodId,
+                    scope = usage.scope
+                )
+                val data = usage.toDocument().toMutableMap().apply {
+                    put("updatedAt", FieldValue.serverTimestamp())
+                }
+                docRef.set(data).await()
             }
-            docRef.set(data).await()
         }
     }
 
     override suspend fun getUsageDashboard(from: LocalDate, to: LocalDate): UsageDashboardSnapshot =
         withContext(ioDispatcher) {
-            val zone = ZoneId.systemDefault()
-            val startTimestamp = from.atStartOfDay(zone).toInstant().let { Timestamp(Date.from(it)) }
-            val endTimestamp = to.plusDays(1).atStartOfDay(zone).minusNanos(1)
-                .toInstant()
-                .let { Timestamp(Date.from(it)) }
+            sessionCoordinator.runWithFreshSession {
+                val zone = ZoneId.systemDefault()
+                val startTimestamp = from.atStartOfDay(zone).toInstant().let { Timestamp(Date.from(it)) }
+                val endTimestamp = to.plusDays(1).atStartOfDay(zone).minusNanos(1)
+                    .toInstant()
+                    .let { Timestamp(Date.from(it)) }
 
             val seriesSnapshot = firestore.collection(COLLECTION_USAGE_SERIES)
                 .whereGreaterThanOrEqualTo(FIELD_DATE, startTimestamp)
@@ -123,23 +130,25 @@ class UsageRepositoryImpl @Inject constructor(
             val total = services.sumOf { it.total }.takeIf { it > 0.0 }
                 ?: series.sumOf { it.value }
 
-            UsageDashboardSnapshot(
-                from = from,
-                to = to,
-                total = total,
-                series = series,
-                services = services,
-                lastUpdated = Instant.now()
-            )
+                UsageDashboardSnapshot(
+                    from = from,
+                    to = to,
+                    total = total,
+                    series = series,
+                    services = services,
+                    lastUpdated = Instant.now()
+                )
+            }
         }
 
 
-    private suspend fun fetchTenantUsageBreakdown(): List<UsageServiceSummary> {
-        val tenantDirectorySnapshot = firestore.collection(COLLECTION_TENANT_DIRECTORY)
-            .orderBy(FIELD_TENANT_NAME)
-            .limit(MAX_TENANTS_FOR_BREAKDOWN)
-            .get()
-            .await()
+    private suspend fun fetchTenantUsageBreakdown(): List<UsageServiceSummary> =
+        sessionCoordinator.runWithFreshSession {
+            val tenantDirectorySnapshot = firestore.collection(COLLECTION_TENANT_DIRECTORY)
+                .orderBy(FIELD_TENANT_NAME)
+                .limit(MAX_TENANTS_FOR_BREAKDOWN)
+                .get()
+                .await()
 
         val tenantRows = tenantDirectorySnapshot.documents.mapNotNull { doc ->
             val tenantName = doc.getString(FIELD_TENANT_NAME)?.trim().orEmpty()
@@ -164,8 +173,8 @@ class UsageRepositoryImpl @Inject constructor(
             )
         }
 
-        return tenantRows.sortedByDescending { it.total }.take(MAX_SERVICES.toInt())
-    }
+            tenantRows.sortedByDescending { it.total }.take(MAX_SERVICES.toInt())
+        }
 
     private fun extractUsageMetrics(data: Map<String, Any>): Map<String, Double> {
         val nested = listOf("metrics", "usage", "counts")
