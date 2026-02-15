@@ -22,9 +22,9 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun signInWithGoogle(idToken: String) {
+    fun signInWithGoogle(idToken: String, allowOnboardingFallback: Boolean = true) {
         viewModelScope.launch {
-            authManager.signInWithGoogle(idToken)
+            authManager.signInWithGoogle(idToken, allowOnboardingFallback)
         }
     }
 
