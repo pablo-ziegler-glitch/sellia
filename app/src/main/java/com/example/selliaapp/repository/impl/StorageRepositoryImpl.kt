@@ -15,7 +15,7 @@ import javax.inject.Singleton
 @Singleton
 class StorageRepositoryImpl @Inject constructor(
     private val storage: FirebaseStorage,
-    private val sessionCoordinator: FirebaseSessionCoordinator
+    private val sessionCoordinator: FirebaseSessionCoordinator,
     private val auth: FirebaseAuth
 ) : StorageRepository {
 
