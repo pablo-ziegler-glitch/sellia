@@ -180,7 +180,7 @@ fun RegisterScreen(
             if (tenants.isEmpty() && !isLoadingTenants) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "No hay tiendas cargadas todavía. Creá una nueva tienda.",
+                    text = "No hay tiendas cargadas todavía. Podés crear la cuenta igual y adherirte luego desde Inicio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -98,6 +98,8 @@ class AuthManager @Inject constructor(
                         "accountType" to "final_customer",
                         "status" to "active",
                         "displayName" to displayName,
+                        "selectedCatalogTenantId" to tenantId,
+                        "followedTenantIds" to listOf(tenantId),
                         "updatedAt" to createdAt
                     ),
                     SetOptions.merge()
@@ -270,7 +272,22 @@ class AuthManager @Inject constructor(
         }
         val tenantId = snapshot.getString("tenantId")
             ?: snapshot.getString("storeId")
-            ?: throw MissingTenantContextException()
+            ?: run {
+                val role = snapshot.getString("role")?.lowercase()
+                val accountType = snapshot.getString("accountType")?.lowercase()
+                if (role == "viewer" || accountType == "final_customer" || accountType == "public_customer") {
+                    _state.value = AuthState.PartiallyAuthenticated(
+                        session = PendingAuthSession(
+                            uid = user.uid,
+                            email = user.email,
+                            displayName = user.displayName,
+                            photoUrl = user.photoUrl?.toString()
+                        ),
+                        requiredAction = RequiredAuthAction.SELECT_TENANT
+                    )
+                }
+                throw MissingTenantContextException()
+            }
         return AuthSession(
             uid = user.uid,
             tenantId = tenantId,

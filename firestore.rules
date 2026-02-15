@@ -138,9 +138,11 @@ service cloud.firestore {
       return request.auth.uid == userId
         && request.resource.data.role == 'viewer'
         && request.resource.data.accountType == 'final_customer'
-        && request.resource.data.tenantId is string
         && request.resource.data.status == 'active'
-        && exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId));
+        && (
+          !(request.resource.data.tenantId is string)
+          || exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
+        );
     }
 
     function keepsSelfRoleDataImmutable() {
@@ -165,12 +167,18 @@ service cloud.firestore {
           || isAdminForTenant(request.resource.data.tenantId)
         );
       allow update: if isAuthenticated()
-        && request.resource.data.tenantId is string
         && (
           (
             request.auth.uid == userId
-            && request.resource.data.tenantId == resource.data.tenantId
             && keepsSelfRoleDataImmutable()
+            && (
+              request.resource.data.tenantId == resource.data.tenantId
+              || (
+                !(resource.data.tenantId is string)
+                && request.resource.data.tenantId is string
+                && exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
+              )
+            )
           )
           || (
             request.resource.data.tenantId == resource.data.tenantId

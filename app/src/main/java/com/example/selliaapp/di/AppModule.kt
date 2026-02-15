@@ -66,6 +66,7 @@ import com.example.selliaapp.repository.StorageRepository
 import com.example.selliaapp.repository.TenantDirectoryRepository
 import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
+import com.example.selliaapp.repository.ViewerStoreRepository
 import com.example.selliaapp.repository.impl.AccountRequestsRepositoryImpl
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
@@ -73,6 +74,7 @@ import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.example.selliaapp.repository.impl.TenantDirectoryRepositoryImpl
 import com.example.selliaapp.repository.impl.StorageRepositoryImpl
 import com.example.selliaapp.repository.impl.UsageRepositoryImpl
+import com.example.selliaapp.repository.impl.ViewerStoreRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
@@ -310,6 +312,19 @@ object AppModule {
         firestore: FirebaseFirestore,
         @IoDispatcher io: CoroutineDispatcher
     ): AccountRequestsRepository = AccountRequestsRepositoryImpl(
+        firestore = firestore,
+        io = io
+    )
+
+
+    @Provides
+    @Singleton
+    fun provideViewerStoreRepository(
+        auth: FirebaseAuth,
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): ViewerStoreRepository = ViewerStoreRepositoryImpl(
+        auth = auth,
         firestore = firestore,
         io = io
     )

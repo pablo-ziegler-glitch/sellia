@@ -18,8 +18,8 @@ interface AuthOnboardingRepository {
     suspend fun registerViewer(
         email: String,
         password: String,
-        tenantId: String,
-        tenantName: String,
+        tenantId: String?,
+        tenantName: String?,
         customerName: String,
         customerPhone: String?
     ): Result<OnboardingResult>

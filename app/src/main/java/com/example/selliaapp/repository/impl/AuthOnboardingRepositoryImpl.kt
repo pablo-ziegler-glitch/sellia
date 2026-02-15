@@ -141,8 +141,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
     override suspend fun registerViewer(
         email: String,
         password: String,
-        tenantId: String,
-        tenantName: String,
+        tenantId: String?,
+        tenantName: String?,
         customerName: String,
         customerPhone: String?
     ): Result<OnboardingResult> = withContext(io) {
@@ -195,8 +195,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                         "email" to email,
                         "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
-                        "tenantId" to tenantId,
-                        "tenantName" to tenantName,
+                        "tenantId" to normalizedTenantId,
+                        "tenantName" to tenantName.orEmpty(),
                         "contactName" to customerName,
                         "contactPhone" to customerPhone,
                         "createdAt" to createdAt,
@@ -206,7 +206,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
                 .await()
             sendEmailVerificationSafely(user)
-            OnboardingResult(uid = user.uid, tenantId = tenantId)
+            OnboardingResult(uid = user.uid, tenantId = normalizedTenantId.ifBlank { "UNASSIGNED" })
         }.onFailure {
             val currentUser = auth.currentUser
             if (currentUser != null && currentUser.email == email) {

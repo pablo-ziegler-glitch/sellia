@@ -118,10 +118,6 @@ class RegisterViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Indicá el teléfono comercial") }
             return
         }
-        if (mode == RegisterMode.FINAL_CUSTOMER && selectedTenantId.isNullOrBlank()) {
-            _uiState.update { it.copy(errorMessage = "Seleccioná una tienda") }
-            return
-        }
         if (mode == RegisterMode.FINAL_CUSTOMER && customerName.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Ingresá tu nombre") }
             return
@@ -140,8 +136,8 @@ class RegisterViewModel @Inject constructor(
                 RegisterMode.FINAL_CUSTOMER -> onboardingRepository.registerViewer(
                     email = email.trim(),
                     password = password,
-                    tenantId = selectedTenantId.orEmpty(),
-                    tenantName = selectedTenantName.orEmpty(),
+                    tenantId = selectedTenantId,
+                    tenantName = selectedTenantName,
                     customerName = customerName.trim(),
                     customerPhone = customerPhone?.trim()
                 )
@@ -152,7 +148,7 @@ class RegisterViewModel @Inject constructor(
                 val successMessage = if (mode == RegisterMode.STORE_OWNER) {
                     "Cuenta creada. Verificá tu email para continuar; además un administrador debe habilitar tu tienda."
                 } else {
-                    "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
+                    if (selectedTenantId.isNullOrBlank()) "Cuenta creada sin tienda asociada. Podrás adherirte desde tu inicio." else "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
                 }
                 _uiState.update { state ->
                     state.copy(

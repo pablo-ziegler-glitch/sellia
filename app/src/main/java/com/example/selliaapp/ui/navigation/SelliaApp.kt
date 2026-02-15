@@ -78,6 +78,7 @@ import com.example.selliaapp.ui.screens.manage.ManageProductsScreen
 import com.example.selliaapp.ui.screens.manage.ProductQrScreen
 import com.example.selliaapp.ui.screens.manage.SyncScreen
 import com.example.selliaapp.ui.screens.public.PublicProductCatalogScreen
+import com.example.selliaapp.ui.screens.public.ViewerPublicCatalogScreen
 import com.example.selliaapp.ui.screens.public.PublicProductCardScreen
 import com.example.selliaapp.ui.screens.providers.ManageProvidersScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
@@ -478,14 +479,18 @@ fun SelliaApp(
             }
 
             composable(Routes.PublicProductCatalog.route) {
-                val productVm: ProductViewModel = hiltViewModel()
-                PublicProductCatalogScreen(
-                    onBack = { navController.popBackStack() },
-                    onProductSelected = { productId ->
-                        navController.navigate(Routes.PublicProductDetail.withId(productId))
-                    },
-                    vm = productVm
-                )
+                if (isClientFinal) {
+                    ViewerPublicCatalogScreen(onBack = { navController.popBackStack() })
+                } else {
+                    val productVm: ProductViewModel = hiltViewModel()
+                    PublicProductCatalogScreen(
+                        onBack = { navController.popBackStack() },
+                        onProductSelected = { productId ->
+                            navController.navigate(Routes.PublicProductDetail.withId(productId))
+                        },
+                        vm = productVm
+                    )
+                }
             }
 
             composable(
