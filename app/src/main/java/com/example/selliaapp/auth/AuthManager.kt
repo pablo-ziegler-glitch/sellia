@@ -65,18 +65,19 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión"))
     }
 
-    suspend fun signInWithGoogle(idToken: String, allowOnboardingFallback: Boolean = true): Result<AuthSession> {
-        _state.value = AuthState.Loading
-        val credential = GoogleAuthProvider.getCredential(idToken, null)
-        val result = firebaseAuth.signInWithCredential(credential).await()
-        val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
-        val session = runCatching { fetchSession(user) }
-            .getOrElse { ensurePublicCustomerSession(user, allowOnboardingFallback) }
-        publishAuthenticatedState(session)
-        session
-    }.onFailure { error ->
-        _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión con Google"))
-    }
+    suspend fun signInWithGoogle(idToken: String, allowOnboardingFallback: Boolean = true): Result<AuthSession> =
+        runCatching {
+            _state.value = AuthState.Loading
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            val result = firebaseAuth.signInWithCredential(credential).await()
+            val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
+            val session = runCatching { fetchSession(user) }
+                .getOrElse { ensurePublicCustomerSession(user, allowOnboardingFallback) }
+            publishAuthenticatedState(session)
+            session
+        }.onFailure { error ->
+            _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión con Google"))
+        }
 
     suspend fun completePublicCustomerOnboarding(tenantId: String, tenantName: String?): Result<AuthSession> =
         runCatching {
