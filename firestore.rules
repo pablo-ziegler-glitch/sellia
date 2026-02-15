@@ -21,6 +21,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    function hasUserProfile() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function userData() {
       return userDoc().data;
     }
@@ -29,13 +33,36 @@ service cloud.firestore {
       return userData().tenantId;
     }
 
-    function userTenantIdMatches(tenantId) {
-      return hasUserDoc() && userTenantId() == tenantId;
+    function isUserActive() {
+      return hasUserProfile()
+        && (
+          userData().status == 'active'
+          || userData().isActive == true
+        );
+    }
+
+    function hasTenantWriteRole() {
+      return isFixedSuperAdmin()
+        || (
+          hasUserProfile()
+          && (
+            userData().role in ['owner', 'manager', 'cashier', 'admin']
+            || userData().isAdmin == true
+            || userData().isSuperAdmin == true
+          )
+        );
     }
 
     function isTenantUser(tenantId) {
       return isAuthenticated()
-        && (isFixedSuperAdmin() || userTenantIdMatches(tenantId));
+        && (
+          isFixedSuperAdmin()
+          || (
+            hasUserProfile()
+            && userTenantId() == tenantId
+            && isUserActive()
+          )
+        );
     }
 
     function isBackend() {
@@ -122,9 +149,11 @@ service cloud.firestore {
       return request.auth.uid == userId
         && request.resource.data.role == 'viewer'
         && request.resource.data.accountType == 'final_customer'
-        && request.resource.data.tenantId is string
         && request.resource.data.status == 'active'
-        && exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId));
+        && (
+          !(request.resource.data.tenantId is string)
+          || exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
+        );
     }
 
     function keepsSelfRoleDataImmutable() {
@@ -142,18 +171,25 @@ service cloud.firestore {
         );
       allow create: if isAuthenticated()
         && request.resource.data.tenantId is string
+        && request.resource.data.accountType in ['store_owner', 'final_customer']
         && (
           isOwnerBootstrapWrite(userId)
           || isFinalCustomerSelfWrite(userId)
           || isAdminForTenant(request.resource.data.tenantId)
         );
       allow update: if isAuthenticated()
-        && request.resource.data.tenantId is string
         && (
           (
             request.auth.uid == userId
-            && request.resource.data.tenantId == resource.data.tenantId
             && keepsSelfRoleDataImmutable()
+            && (
+              request.resource.data.tenantId == resource.data.tenantId
+              || (
+                !(resource.data.tenantId is string)
+                && request.resource.data.tenantId is string
+                && exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
+              )
+            )
           )
           || (
             request.resource.data.tenantId == resource.data.tenantId
@@ -234,7 +270,8 @@ service cloud.firestore {
     }
 
     match /tenants/{tenantId}/{document=**} {
-      allow read, write: if isTenantUser(tenantId);
+      allow read: if isTenantUser(tenantId);
+      allow write: if isTenantUser(tenantId) && hasTenantWriteRole();
     }
   }
 }

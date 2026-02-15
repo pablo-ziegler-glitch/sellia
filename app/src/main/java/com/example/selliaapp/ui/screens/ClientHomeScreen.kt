@@ -58,13 +58,13 @@ fun ClientHomeScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    text = "Podés ver el catálogo público, escanear productos y gestionar tu perfil.",
+                    text = "Podés adherirte a tiendas, ver catálogos públicos, escanear productos y gestionar tu perfil.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(onClick = onOpenPublicCatalog, modifier = Modifier.fillMaxWidth()) {
                     androidx.compose.material3.Icon(Icons.Default.Storefront, contentDescription = null)
-                    Text("  Ver catálogo público")
+                    Text("  Seguir / ver tiendas y catálogo")
                 }
                 Button(onClick = onScanPublicProduct, modifier = Modifier.fillMaxWidth()) {
                     androidx.compose.material3.Icon(Icons.Default.QrCodeScanner, contentDescription = null)

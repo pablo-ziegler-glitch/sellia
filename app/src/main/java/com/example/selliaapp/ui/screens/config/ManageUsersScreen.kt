@@ -343,6 +343,12 @@ private fun AccountRequestItem(
     var selectedStatus by remember(request.id) { mutableStateOf(request.status) }
     var enabledModules by remember(request.id) { mutableStateOf(request.enabledModules) }
     val moduleOptions = remember { BusinessModule.entries }
+    val isPendingSelection = selectedStatus == AccountRequestStatus.PENDING
+    val hasStatusChanged = selectedStatus != request.status
+    val hasModulesChanged = enabledModules != request.enabledModules
+    val hasChanges = hasStatusChanged || hasModulesChanged
+    val canPersistChanges = !isLoading && hasChanges && !isPendingSelection
+    val loginWillBeEnabled = selectedStatus == AccountRequestStatus.ACTIVE
 
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(
@@ -429,6 +435,29 @@ private fun AccountRequestItem(
                 }
             }
 
+            Text(
+                text = if (loginWillBeEnabled) {
+                    "Acceso al login: habilitado al guardar cambios"
+                } else {
+                    "Acceso al login: bloqueado al guardar cambios"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (loginWillBeEnabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+                fontWeight = FontWeight.Medium
+            )
+
+            if (isPendingSelection) {
+                Text(
+                    text = "Para evitar estados ambiguos, elegí Habilitado, Rechazado o Deshabilitado antes de guardar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
             if (request.accountType == AccountRequestType.STORE_OWNER) {
                 Text(
                     text = "Módulos habilitados",
@@ -459,7 +488,7 @@ private fun AccountRequestItem(
 
             Button(
                 onClick = { onUpdate(request.id, selectedStatus, enabledModules) },
-                enabled = !isLoading
+                enabled = canPersistChanges
             ) {
                 Text("Guardar cambios")
             }
