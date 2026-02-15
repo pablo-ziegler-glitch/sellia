@@ -140,6 +140,7 @@ class AccountRequestsRepositoryImpl @Inject constructor(
             }
 
             writeBatch.commit().await()
+            Unit
         }
     }
 }

@@ -22,6 +22,10 @@ enum class RequiredAuthAction {
 sealed interface AuthState {
     data object Loading : AuthState
     data object Unauthenticated : AuthState
+    data class PartiallyAuthenticated(
+        val session: PendingAuthSession,
+        val requiredAction: RequiredAuthAction
+    ) : AuthState
     data class Authenticated(
         val session: AuthSession,
         val refreshedAtMs: Long

@@ -17,7 +17,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -193,7 +192,7 @@ fun ExpenseEntriesScreen(
                             )
                             .fillMaxWidth()
                     )
-                    ExposedDropdownMenu(
+                    DropdownMenu(
                         expanded = statusExpanded,
                         onDismissRequest = { statusExpanded = false }
                     ) {
@@ -228,7 +227,7 @@ fun ExpenseEntriesScreen(
                             )
                             .fillMaxWidth()
                     )
-                    ExposedDropdownMenu(
+                    DropdownMenu(
                         expanded = orderExpanded,
                         onDismissRequest = { orderExpanded = false }
                     ) {
@@ -333,7 +332,7 @@ private fun NewExpenseDialog(
                             enabled = true
                         )
                     )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         templates.forEach { template ->
                             DropdownMenuItem(
                                 text = { Text(template.name) },
@@ -379,7 +378,7 @@ private fun NewExpenseDialog(
                             enabled = true
                         )
                     )
-                    ExposedDropdownMenu(
+                    DropdownMenu(
                         expanded = statusExpanded,
                         onDismissRequest = { statusExpanded = false }
                     ) {

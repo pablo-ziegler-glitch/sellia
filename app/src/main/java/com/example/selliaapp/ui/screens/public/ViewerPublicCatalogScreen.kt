@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -70,7 +70,7 @@ fun ViewerPublicCatalogScreen(
                     modifier = Modifier.menuAnchor().fillMaxWidth(),
                     enabled = state.followedStores.isNotEmpty() && !state.isLoading
                 )
-                ExposedDropdownMenu(
+                DropdownMenu(
                     expanded = selectedCatalogExpanded,
                     onDismissRequest = { selectedCatalogExpanded = false }
                 ) {
@@ -105,7 +105,7 @@ fun ViewerPublicCatalogScreen(
                             modifier = Modifier.menuAnchor().fillMaxWidth(),
                             enabled = state.hasStoresToFollow && !state.isLoadingStores
                         )
-                        ExposedDropdownMenu(
+                        DropdownMenu(
                             expanded = followExpanded,
                             onDismissRequest = { followExpanded = false }
                         ) {

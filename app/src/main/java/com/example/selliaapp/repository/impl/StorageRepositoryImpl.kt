@@ -5,7 +5,7 @@ import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.repository.StorageRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.FirebaseStorageException
+import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
@@ -53,8 +53,8 @@ class StorageRepositoryImpl @Inject constructor(
                 metadata = metadata
             )
         }.recoverCatching { initialError ->
-            val storageError = initialError as? FirebaseStorageException
-            if (storageError?.errorCode == FirebaseStorageException.ERROR_NOT_AUTHENTICATED) {
+            val storageError = initialError as? StorageException
+            if (storageError?.errorCode == StorageException.ERROR_NOT_AUTHENTICATED) {
                 // Fuerza refresh de credenciales y reintenta una sola vez.
                 currentUser.getIdToken(true).await()
                 uploadAndResolveDownloadUrl(
@@ -84,21 +84,21 @@ class StorageRepositoryImpl @Inject constructor(
     }
 
     private fun mapStorageError(error: Throwable): Throwable {
-        val storageError = error as? FirebaseStorageException ?: return error
+        val storageError = error as? StorageException ?: return error
         return when (storageError.errorCode) {
-            FirebaseStorageException.ERROR_NOT_AUTHENTICATED -> {
+            StorageException.ERROR_NOT_AUTHENTICATED -> {
                 IllegalStateException(
                     "Tu sesión venció o no está iniciada. Cerrá sesión y volvé a ingresar para subir imágenes."
                 )
             }
 
-            FirebaseStorageException.ERROR_NOT_AUTHORIZED -> {
+            StorageException.ERROR_NOT_AUTHORIZED -> {
                 IllegalStateException(
                     "Tu usuario no tiene permisos para subir imágenes en este negocio."
                 )
             }
 
-            FirebaseStorageException.ERROR_RETRY_LIMIT_EXCEEDED -> {
+            StorageException.ERROR_RETRY_LIMIT_EXCEEDED -> {
                 IllegalStateException(
                     "No se pudo subir la imagen por conexión inestable. Intentá nuevamente."
                 )

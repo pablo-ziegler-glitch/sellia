@@ -387,10 +387,12 @@ object AppModule {
     @Singleton
     fun provideStorageRepository(
         storage: FirebaseStorage,
-        sessionCoordinator: FirebaseSessionCoordinator
+        sessionCoordinator: FirebaseSessionCoordinator,
+        auth: FirebaseAuth
     ): StorageRepository = StorageRepositoryImpl(
         storage = storage,
-        sessionCoordinator = sessionCoordinator
+        sessionCoordinator = sessionCoordinator,
+        auth = auth
     )
 
     @Provides
