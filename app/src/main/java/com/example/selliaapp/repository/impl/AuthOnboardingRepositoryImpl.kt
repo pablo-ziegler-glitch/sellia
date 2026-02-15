@@ -1,6 +1,5 @@
 package com.example.selliaapp.repository.impl
 
-import android.util.Log
 import com.example.selliaapp.di.AppModule
 import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.repository.AuthOnboardingRepository
@@ -132,7 +131,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             )
 
             batch.commit().await()
-            sendEmailVerificationSafely(user)
+            sendEmailVerification(user)
             OnboardingResult(uid = user.uid, tenantId = tenantId)
         }.onFailure {
             val currentUser = auth.currentUser
@@ -293,13 +292,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         user.sendEmailVerification().await()
     }
 
-    private suspend fun sendEmailVerificationSafely(user: FirebaseUser) {
-        runCatching {
-            sendEmailVerification(user)
-        }.onFailure { error ->
-            Log.w("AuthOnboarding", "No se pudo enviar el email de verificación al registrar", error)
-        }
-    }
 
     private fun normalizeSkuPrefix(raw: String?): String? {
         val normalized = raw?.trim()?.uppercase()?.replace("[^A-Z0-9]".toRegex(), "")?.take(6).orEmpty()

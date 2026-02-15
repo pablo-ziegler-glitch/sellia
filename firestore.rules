@@ -12,6 +12,11 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid != null;
     }
 
+    function hasUserDoc() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function userDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -71,15 +76,21 @@ service cloud.firestore {
     }
 
     function hasAdminField() {
-      return userData().role == 'admin'
-        || userData().isAdmin == true
-        || userData().isSuperAdmin == true;
+      return hasUserDoc()
+        && (
+          userData().role == 'admin'
+          || userData().isAdmin == true
+          || userData().isSuperAdmin == true
+        );
     }
 
     function hasManageUsersRole() {
-      return userData().role in ['admin', 'owner']
-        || userData().isAdmin == true
-        || userData().isSuperAdmin == true;
+      return hasUserDoc()
+        && (
+          userData().role in ['admin', 'owner', 'manager']
+          || userData().isAdmin == true
+          || userData().isSuperAdmin == true
+        );
     }
 
     function isAdminUser() {
@@ -90,7 +101,7 @@ service cloud.firestore {
       return isAdminUser()
         || (
           isAuthenticated()
-          && userTenantId() == tenantId
+          && userTenantIdMatches(tenantId)
           && hasManageUsersRole()
         );
     }
