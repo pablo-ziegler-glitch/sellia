@@ -50,6 +50,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "role" to AppRole.OWNER.raw,
                     "accountType" to "store_owner",
                     "status" to "pending",
+                    "activationPolicy" to "manual_admin_approval",
+                    "loginEnabled" to false,
                     "createdAt" to createdAt
                 )
             )
@@ -65,6 +67,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "ownerUid" to user.uid,
                     "ownerEmail" to email,
                     "status" to "pending",
+                    "activationPolicy" to "manual_admin_approval",
+                    "loginEnabled" to false,
                     "enabledModules" to defaultEnabledModules(),
                     "skuPrefix" to resolvedSkuPrefix,
                     "createdAt" to createdAt
@@ -91,6 +95,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "email" to email,
                     "accountType" to "store_owner",
                     "status" to "pending",
+                    "activationPolicy" to "manual_admin_approval",
+                    "loginEnabled" to false,
                     "tenantId" to tenantId,
                     "storeName" to storeName,
                     "storeAddress" to storeAddress,

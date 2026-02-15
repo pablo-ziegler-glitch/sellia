@@ -7,6 +7,7 @@ import com.example.selliaapp.di.AppModule
 import com.example.selliaapp.repository.AccountRequestsRepository
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -63,33 +64,49 @@ class AccountRequestsRepositoryImpl @Inject constructor(
             }
             val tenantId = requestSnapshot.getString("tenantId")
             val accountType = AccountRequestType.fromRaw(requestSnapshot.getString("accountType"))
+            val isApproval = status == AccountRequestStatus.ACTIVE
+            val resolvedStatus = if (isApproval) AccountRequestStatus.ACTIVE.raw else status.raw
+            val loginEnabled = isApproval
+
+            val updatedAt = FieldValue.serverTimestamp()
+            val writeBatch = firestore.batch()
             val updates = mapOf(
-                "status" to status.raw,
+                "status" to resolvedStatus,
+                "loginEnabled" to loginEnabled,
                 "enabledModules" to enabledModules,
-                "updatedAt" to FieldValue.serverTimestamp()
+                "updatedAt" to updatedAt
             )
-            requestRef.set(updates, com.google.firebase.firestore.SetOptions.merge()).await()
+            writeBatch.set(requestRef, updates, SetOptions.merge())
 
             val userRef = firestore.collection("users").document(requestId)
-            userRef.set(
+            writeBatch.set(
+                userRef,
                 mapOf(
-                    "status" to status.raw,
-                    "enabledModules" to enabledModules
+                    "status" to resolvedStatus,
+                    "activationPolicy" to "manual_admin_approval",
+                    "loginEnabled" to loginEnabled,
+                    "enabledModules" to enabledModules,
+                    "updatedAt" to updatedAt
                 ),
-                com.google.firebase.firestore.SetOptions.merge()
-            ).await()
+                SetOptions.merge()
+            )
 
-            if (accountType == AccountRequestType.STORE_OWNER && !tenantId.isNullOrBlank()) {
-                firestore.collection("tenants").document(tenantId)
-                    .set(
-                        mapOf(
-                            "status" to status.raw,
-                            "enabledModules" to enabledModules
-                        ),
-                        com.google.firebase.firestore.SetOptions.merge()
-                    )
-                    .await()
+            if (!tenantId.isNullOrBlank() && (accountType == AccountRequestType.STORE_OWNER || isApproval)) {
+                val tenantRef = firestore.collection("tenants").document(tenantId)
+                writeBatch.set(
+                    tenantRef,
+                    mapOf(
+                        "status" to resolvedStatus,
+                        "activationPolicy" to "manual_admin_approval",
+                        "loginEnabled" to loginEnabled,
+                        "enabledModules" to enabledModules,
+                        "updatedAt" to updatedAt
+                    ),
+                    SetOptions.merge()
+                )
             }
+
+            writeBatch.commit().await()
         }
     }
 }
