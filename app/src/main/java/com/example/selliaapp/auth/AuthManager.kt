@@ -8,7 +8,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import kotlinx.coroutines.BufferOverflow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -141,7 +141,7 @@ class AuthManager @Inject constructor(
                 .await()
 
             val session = fetchSession(user)
-            _state.value = AuthState.Authenticated(session)
+            publishAuthenticatedState(session)
             session
         }.onFailure {
             _state.value = AuthState.PartiallyAuthenticated(

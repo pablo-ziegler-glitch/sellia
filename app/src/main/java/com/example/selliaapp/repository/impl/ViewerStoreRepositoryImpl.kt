@@ -62,6 +62,7 @@ class ViewerStoreRepositoryImpl @Inject constructor(
                 ),
                 SetOptions.merge()
             ).await()
+            Unit
         }
     }
 
@@ -77,6 +78,7 @@ class ViewerStoreRepositoryImpl @Inject constructor(
                     SetOptions.merge()
                 )
                 .await()
+            Unit
         }
     }
 

@@ -151,8 +151,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
             // El alta pública siempre debe crear un cliente final (viewer).
+            val normalizedTenantId = tenantId?.trim().orEmpty()
+                .ifBlank { throw IllegalArgumentException("Debés seleccionar una tienda válida") }
             val tenantSnapshot = firestore.collection("tenants")
-                .document(tenantId)
+                .document(normalizedTenantId)
                 .get()
                 .await()
             if (!tenantSnapshot.exists()) {
@@ -164,7 +166,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             val userRef = firestore.collection("users").document(user.uid)
             userRef.set(
                 mapOf(
-                    "tenantId" to tenantId,
+                    "tenantId" to normalizedTenantId,
                     "email" to email,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
@@ -176,10 +178,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
             ).await()
             firestore.collection("tenant_users")
-                .document("${tenantId}_${email.trim().lowercase()}")
+                .document("${normalizedTenantId}_${email.trim().lowercase()}")
                 .set(
                     mapOf(
-                        "tenantId" to tenantId,
+                        "tenantId" to normalizedTenantId,
                         "name" to customerName,
                         "email" to email.trim().lowercase(),
                         "role" to AppRole.VIEWER.raw,
@@ -208,8 +210,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     SetOptions.merge()
                 )
                 .await()
-            sendEmailVerificationSafely(user)
-            OnboardingResult(uid = user.uid, tenantId = normalizedTenantId.ifBlank { "UNASSIGNED" })
+            sendEmailVerification(user)
+            OnboardingResult(uid = user.uid, tenantId = normalizedTenantId)
         }.onFailure {
             val currentUser = auth.currentUser
             if (currentUser != null && currentUser.email == email) {

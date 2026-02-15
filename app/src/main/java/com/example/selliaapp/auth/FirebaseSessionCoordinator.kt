@@ -6,7 +6,7 @@ import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.storage.FirebaseStorageException
+import com.google.firebase.storage.StorageException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -67,9 +67,9 @@ class FirebaseSessionCoordinator @Inject constructor(
                 error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
         }
 
-        is FirebaseStorageException -> {
-            error.errorCode == FirebaseStorageException.ERROR_NOT_AUTHENTICATED ||
-                error.errorCode == FirebaseStorageException.ERROR_NOT_AUTHORIZED
+        is StorageException -> {
+            error.errorCode == StorageException.ERROR_NOT_AUTHENTICATED ||
+                error.errorCode == StorageException.ERROR_NOT_AUTHORIZED
         }
 
         else -> false
@@ -98,14 +98,14 @@ class FirebaseSessionCoordinator @Inject constructor(
                 else -> "No se pudo sincronizar tu información. Intentá nuevamente en unos segundos."
             }
 
-            is FirebaseStorageException -> when (error.errorCode) {
-                FirebaseStorageException.ERROR_NOT_AUTHENTICATED,
-                FirebaseStorageException.ERROR_NOT_AUTHORIZED -> {
+            is StorageException -> when (error.errorCode) {
+                StorageException.ERROR_NOT_AUTHENTICATED,
+                StorageException.ERROR_NOT_AUTHORIZED -> {
                     "No tenés una sesión válida para subir archivos. Iniciá sesión nuevamente."
                 }
 
-                FirebaseStorageException.ERROR_RETRY_LIMIT_EXCEEDED,
-                FirebaseStorageException.ERROR_QUOTA_EXCEEDED -> {
+                StorageException.ERROR_RETRY_LIMIT_EXCEEDED,
+                StorageException.ERROR_QUOTA_EXCEEDED -> {
                     "No se pudo subir el archivo en este momento. Reintentá en unos minutos."
                 }
 
