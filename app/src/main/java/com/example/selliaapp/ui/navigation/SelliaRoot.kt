@@ -47,6 +47,7 @@ fun SelliaRoot(
 
     var isRegistering by rememberSaveable { mutableStateOf(false) }
     var loginEmail by rememberSaveable { mutableStateOf("") }
+    var googleAuthFlow by rememberSaveable { mutableStateOf(GoogleAuthFlow.LOGIN) }
 
     val context = LocalContext.current
 
@@ -79,7 +80,7 @@ fun SelliaRoot(
                 if (token.isNullOrBlank()) {
                     authViewModel.reportAuthError("No se pudo obtener el token de Google.")
                 } else {
-                    if (isRegistering && registerState.mode == com.example.selliaapp.viewmodel.RegisterMode.FINAL_CUSTOMER) {
+                    if (googleAuthFlow == GoogleAuthFlow.REGISTER_FINAL_CUSTOMER) {
                         val tenantName = registerState.tenants.firstOrNull {
                             it.id == registerState.selectedTenantId
                         }?.name
@@ -89,7 +90,7 @@ fun SelliaRoot(
                             tenantName = tenantName
                         )
                     } else {
-                        authViewModel.signInWithGoogle(token)
+                        authViewModel.signInWithGoogle(token, allowOnboardingFallback = false)
                     }
                 }
             }
@@ -99,7 +100,8 @@ fun SelliaRoot(
     }
 
     // ✅ Callback NORMAL (no @Composable)
-    val onGoogleSignInClick: () -> Unit = {
+    val onGoogleSignInClick: (GoogleAuthFlow) -> Unit = { flow ->
+        googleAuthFlow = flow
         if (webClientId.isBlank()) {
             authViewModel.reportAuthError("Falta configurar el web client id de Google.")
         } else {
@@ -167,7 +169,7 @@ fun SelliaRoot(
                             registerViewModel.clearError()
                             authViewModel.reportAuthError("Seleccioná una tienda para continuar.")
                         } else {
-                            onGoogleSignInClick()
+                            onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER)
                         }
                     },
                     onLoginClick = {
@@ -182,7 +184,7 @@ fun SelliaRoot(
                     email = loginEmail,
                     onEmailChange = { loginEmail = it },
                     onSubmit = authViewModel::signIn,
-                    onGoogleSignInClick = onGoogleSignInClick,
+                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.LOGIN) },
                     onRegisterClick = { isRegistering = true }
                 )
             }
@@ -206,7 +208,7 @@ fun SelliaRoot(
                             registerViewModel.clearError()
                             authViewModel.reportAuthError("Seleccioná una tienda para continuar.")
                         } else {
-                            onGoogleSignInClick()
+                            onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER)
                         }
                     },
                     onLoginClick = {
@@ -221,10 +223,15 @@ fun SelliaRoot(
                     email = loginEmail,
                     onEmailChange = { loginEmail = it },
                     onSubmit = authViewModel::signIn,
-                    onGoogleSignInClick = onGoogleSignInClick,
+                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.LOGIN) },
                     onRegisterClick = { isRegistering = true }
                 )
             }
         }
     }
+}
+
+private enum class GoogleAuthFlow {
+    LOGIN,
+    REGISTER_FINAL_CUSTOMER
 }
