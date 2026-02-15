@@ -23,10 +23,15 @@ class AccountRequestsRepositoryImpl @Inject constructor(
     override suspend fun fetchRequests(): Result<List<AccountRequest>> = withContext(io) {
         runCatching {
             val snapshot = firestore.collection("account_requests")
-                .orderBy("createdAt")
                 .get()
                 .await()
-            snapshot.documents.mapNotNull { doc ->
+            snapshot.documents
+                .sortedByDescending { doc ->
+                    doc.getTimestamp("createdAt")?.toDate()?.time
+                        ?: doc.getTimestamp("updatedAt")?.toDate()?.time
+                        ?: 0L
+                }
+                .mapNotNull { doc ->
                 val email = doc.getString("email")?.trim().orEmpty()
                 if (email.isBlank()) return@mapNotNull null
                 val accountType = AccountRequestType.fromRaw(doc.getString("accountType"))
@@ -104,6 +109,34 @@ class AccountRequestsRepositoryImpl @Inject constructor(
                     ),
                     SetOptions.merge()
                 )
+            }
+
+            if (
+                accountType == AccountRequestType.STORE_OWNER
+                && isApproval
+                && !tenantId.isNullOrBlank()
+            ) {
+                val ownerEmail = requestSnapshot.getString("email")?.trim()?.lowercase().orEmpty()
+                if (ownerEmail.isNotBlank()) {
+                    val ownerName = requestSnapshot.getString("storeName")
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?: ownerEmail.substringBefore("@")
+                    val tenantOwnerRef = firestore.collection("tenant_users")
+                        .document("${tenantId}_${ownerEmail}")
+                    writeBatch.set(
+                        tenantOwnerRef,
+                        mapOf(
+                            "tenantId" to tenantId,
+                            "name" to ownerName,
+                            "email" to ownerEmail,
+                            "role" to "owner",
+                            "isActive" to true,
+                            "updatedAt" to updatedAt
+                        ),
+                        SetOptions.merge()
+                    )
+                }
             }
 
             writeBatch.commit().await()

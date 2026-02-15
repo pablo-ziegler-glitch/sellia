@@ -107,21 +107,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
             )
 
-            val tenantUserRef = firestore.collection("tenant_users")
-                .document("${tenantId}_${email.trim().lowercase()}")
-            batch.set(
-                tenantUserRef,
-                mapOf(
-                    "tenantId" to tenantId,
-                    "name" to storeName,
-                    "email" to email.trim().lowercase(),
-                    "role" to AppRole.OWNER.raw,
-                    "isActive" to true,
-                    "updatedAt" to createdAt
-                ),
-                SetOptions.merge()
-            )
-
             batch.commit().await()
             sendEmailVerificationSafely(user)
             OnboardingResult(uid = user.uid, tenantId = tenantId)
