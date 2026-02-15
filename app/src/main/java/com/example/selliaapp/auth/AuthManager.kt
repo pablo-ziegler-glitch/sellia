@@ -132,6 +132,7 @@ class AuthManager @Inject constructor(
                         "tenantId" to tenantId,
                         "tenantName" to tenantName.orEmpty(),
                         "contactName" to displayName,
+                        "createdAt" to createdAt,
                         "updatedAt" to createdAt
                     ),
                     SetOptions.merge()
