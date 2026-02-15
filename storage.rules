@@ -6,13 +6,58 @@ service firebase.storage {
       return request.auth != null && request.auth.uid != null;
     }
 
+    function isFixedSuperAdmin() {
+      return isAuthenticated()
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'pabloz18ezeiza@gmail.com';
+    }
+
+    function hasUserProfile() {
+      return firestore.exists(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function userDocData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isUserActive() {
+      return hasUserProfile()
+        && (
+          userDocData().status == 'active'
+          || userDocData().isActive == true
+        );
+    }
+
+    function hasTenantWriteRole() {
+      return isFixedSuperAdmin()
+        || (
+          hasUserProfile()
+          && (
+            userDocData().role in ['owner', 'manager', 'cashier', 'admin']
+            || userDocData().isAdmin == true
+            || userDocData().isSuperAdmin == true
+          )
+        );
+    }
+
     function isTenantUser(tenantId) {
       return isAuthenticated()
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.tenantId == tenantId;
+        && (
+          isFixedSuperAdmin()
+          || (
+            userDocData().tenantId == tenantId
+            && isUserActive()
+          )
+        );
+    }
+
+    function canWriteTenantStorage(tenantId) {
+      return isTenantUser(tenantId) && hasTenantWriteRole();
     }
 
     match /tenants/{tenantId}/products/{productId}/{allPaths=**} {
-      allow read, write: if isTenantUser(tenantId);
+      allow read: if isTenantUser(tenantId);
+      allow write: if canWriteTenantStorage(tenantId);
     }
   }
 }
