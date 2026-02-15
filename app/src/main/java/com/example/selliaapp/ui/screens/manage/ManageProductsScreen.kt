@@ -36,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.data.local.entity.ProductEntity
@@ -46,6 +47,8 @@ import com.example.selliaapp.ui.components.ProductQuickDetailDialog
 import com.example.selliaapp.ui.components.StockBySizeDialog
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
+import java.util.Locale
 import java.time.LocalDate
 
 @Composable
@@ -70,6 +73,7 @@ fun ManageProductsScreen(
     onBulkImport: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val state by vm.state.collectAsState()
     val message by vm.message.collectAsState()
     val products by vm.filteredProducts.collectAsState(initial = emptyList())
@@ -81,6 +85,24 @@ fun ManageProductsScreen(
     var showSizeEditor by remember { mutableStateOf(false) }
     var editingSizeProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var sizeStocksDraft by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    val currencyFormatter = remember {
+        NumberFormat.getCurrencyInstance(Locale("es", "AR")).apply {
+            maximumFractionDigits = 0
+            minimumFractionDigits = 0
+        }
+    }
+
+    fun downloadProductQrFromDetail(product: ProductEntity) {
+        exportQrPdf(
+            context = context,
+            items = listOf(product),
+            fileName = "qr_${product.id}_detalle",
+            includePrices = true,
+            currencyFormatter = currencyFormatter,
+            resolveQrValue = ::resolveSkuValue,
+            resolveSkuValue = ::resolveSkuValue
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -292,6 +314,9 @@ fun ManageProductsScreen(
             onDelete = {
                 selectedProduct = null
                 scope.launch { vm.deleteById(product.id) }
+            },
+            onPrintQr = {
+                downloadProductQrFromDetail(product)
             }
         )
     }
