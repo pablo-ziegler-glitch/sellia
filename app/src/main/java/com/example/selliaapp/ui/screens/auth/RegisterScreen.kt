@@ -98,7 +98,9 @@ fun RegisterScreen(
                 expanded = modeExpanded,
                 onDismissRequest = { modeExpanded = false }
             ) {
-                RegisterMode.entries.forEach { entry ->
+                RegisterMode.entries
+                    .filterNot { it == RegisterMode.UNSELECTED }
+                    .forEach { entry ->
                     DropdownMenuItem(
                         text = { Text(entry.label) },
                         onClick = {
@@ -146,7 +148,7 @@ fun RegisterScreen(
                 singleLine = true
             )
             Spacer(modifier = Modifier.height(12.dp))
-        } else {
+        } else if (mode == RegisterMode.FINAL_CUSTOMER) {
             ExposedDropdownMenuBox(
                 expanded = tenantExpanded,
                 onExpandedChange = { tenantExpanded = !tenantExpanded }
@@ -178,7 +180,7 @@ fun RegisterScreen(
             if (tenants.isEmpty() && !isLoadingTenants) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "No hay tiendas cargadas todavía. Creá una nueva tienda.",
+                    text = "No hay tiendas cargadas todavía. Podés crear la cuenta igual y adherirte luego desde Inicio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -234,6 +236,20 @@ fun RegisterScreen(
             )
         }
         Spacer(modifier = Modifier.height(16.dp))
+        val canSubmit = when (mode) {
+            RegisterMode.STORE_OWNER ->
+                storeName.isNotBlank() &&
+                    storeAddress.isNotBlank() &&
+                    storePhone.isNotBlank() &&
+                    (skuPrefix.isBlank() || skuPrefix.length >= 3)
+
+            RegisterMode.FINAL_CUSTOMER ->
+                customerName.isNotBlank() &&
+                    !selectedTenantId.isNullOrBlank()
+
+            RegisterMode.UNSELECTED -> false
+        }
+
         Button(
             onClick = {
                 onSubmit(
@@ -253,14 +269,7 @@ fun RegisterScreen(
             enabled = !isLoading &&
                 email.isNotBlank() &&
                 password.isNotBlank() &&
-                (mode == RegisterMode.STORE_OWNER &&
-                    storeName.isNotBlank() &&
-                    storeAddress.isNotBlank() &&
-                    storePhone.isNotBlank() &&
-                    (skuPrefix.isBlank() || skuPrefix.length >= 3) ||
-                    mode == RegisterMode.FINAL_CUSTOMER &&
-                    customerName.isNotBlank() &&
-                    !selectedTenantId.isNullOrBlank())
+                canSubmit
         ) {
             Text(if (isLoading) "Creando..." else "Crear cuenta")
         }

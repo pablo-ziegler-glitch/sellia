@@ -25,6 +25,13 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) : AuthOnboardingRepository {
 
+    private companion object {
+        const val ACCOUNT_TYPE_STORE_OWNER = "store_owner"
+        const val ACCOUNT_TYPE_FINAL_CUSTOMER = "final_customer"
+        const val ACCOUNT_ORIGIN_PUBLIC_SIGN_UP = "public_sign_up"
+        const val ACCOUNT_ORIGIN_ADMIN_FLOW = "admin_flow"
+    }
+
     override suspend fun registerStore(
         email: String,
         password: String,
@@ -48,11 +55,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "tenantId" to tenantId,
                     "email" to email,
                     "role" to AppRole.OWNER.raw,
-                    "accountType" to "store_owner",
+                    "accountType" to ACCOUNT_TYPE_STORE_OWNER,
                     "status" to "pending",
-                    "activationPolicy" to "manual_admin_approval",
-                    "loginEnabled" to false,
-                    "createdAt" to createdAt
+                    "createdAt" to createdAt,
+                    "accountOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW
                 )
             )
 
@@ -71,7 +77,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "loginEnabled" to false,
                     "enabledModules" to defaultEnabledModules(),
                     "skuPrefix" to resolvedSkuPrefix,
-                    "createdAt" to createdAt
+                    "createdAt" to createdAt,
+                    "requestOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW
                 )
             )
 
@@ -93,7 +100,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 mapOf(
                     "uid" to user.uid,
                     "email" to email,
-                    "accountType" to "store_owner",
+                    "accountType" to ACCOUNT_TYPE_STORE_OWNER,
                     "status" to "pending",
                     "activationPolicy" to "manual_admin_approval",
                     "loginEnabled" to false,
@@ -103,8 +110,25 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "storePhone" to storePhone,
                     "enabledModules" to defaultEnabledModules(),
                     "skuPrefix" to resolvedSkuPrefix,
-                    "createdAt" to createdAt
+                    "createdAt" to createdAt,
+                    "requestOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW
                 )
+            )
+
+            val tenantUserRef = firestore.collection("tenant_users")
+                .document("${tenantId}_${email.trim().lowercase()}")
+            batch.set(
+                tenantUserRef,
+                mapOf(
+                    "tenantId" to tenantId,
+                    "name" to storeName,
+                    "email" to email.trim().lowercase(),
+                    "role" to AppRole.OWNER.raw,
+                    "isActive" to true,
+                    "updatedAt" to createdAt,
+                    "provisioningFlow" to ACCOUNT_ORIGIN_ADMIN_FLOW
+                ),
+                SetOptions.merge()
             )
 
             batch.commit().await()
@@ -121,12 +145,13 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
     override suspend fun registerViewer(
         email: String,
         password: String,
-        tenantId: String,
-        tenantName: String,
+        tenantId: String?,
+        tenantName: String?,
         customerName: String,
         customerPhone: String?
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
+            // El alta pública siempre debe crear un cliente final (viewer).
             val tenantSnapshot = firestore.collection("tenants")
                 .document(tenantId)
                 .get()
@@ -143,11 +168,12 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "tenantId" to tenantId,
                     "email" to email,
                     "role" to AppRole.VIEWER.raw,
-                    "accountType" to "final_customer",
+                    "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                     "status" to "active",
                     "displayName" to customerName,
                     "phone" to customerPhone,
-                    "createdAt" to createdAt
+                    "createdAt" to createdAt,
+                    "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                 )
             ).await()
             firestore.collection("tenant_users")
@@ -159,7 +185,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                         "email" to email.trim().lowercase(),
                         "role" to AppRole.VIEWER.raw,
                         "isActive" to true,
-                        "updatedAt" to createdAt
+                        "updatedAt" to createdAt,
+                        "provisioningFlow" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                     ),
                     SetOptions.merge()
                 )
@@ -170,19 +197,20 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     mapOf(
                         "uid" to user.uid,
                         "email" to email,
-                        "accountType" to "final_customer",
+                        "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
-                        "tenantId" to tenantId,
-                        "tenantName" to tenantName,
+                        "tenantId" to normalizedTenantId,
+                        "tenantName" to tenantName.orEmpty(),
                         "contactName" to customerName,
                         "contactPhone" to customerPhone,
-                        "createdAt" to createdAt
+                        "createdAt" to createdAt,
+                        "requestOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                     ),
                     SetOptions.merge()
                 )
                 .await()
             sendEmailVerificationSafely(user)
-            OnboardingResult(uid = user.uid, tenantId = tenantId)
+            OnboardingResult(uid = user.uid, tenantId = normalizedTenantId.ifBlank { "UNASSIGNED" })
         }.onFailure {
             val currentUser = auth.currentUser
             if (currentUser != null && currentUser.email == email) {
@@ -197,6 +225,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         tenantName: String
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
+            // Google Sign-In público: restringido a cliente final (viewer).
             val tenantSnapshot = firestore.collection("tenants")
                 .document(tenantId)
                 .get()
@@ -216,10 +245,11 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "tenantId" to tenantId,
                     "email" to normalizedEmail,
                     "role" to AppRole.VIEWER.raw,
-                    "accountType" to "final_customer",
+                    "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                     "status" to "active",
                     "displayName" to displayName,
-                    "createdAt" to createdAt
+                    "createdAt" to createdAt,
+                    "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                 ),
                 SetOptions.merge()
             ).await()
@@ -232,7 +262,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                         "email" to normalizedEmail,
                         "role" to AppRole.VIEWER.raw,
                         "isActive" to true,
-                        "updatedAt" to createdAt
+                        "updatedAt" to createdAt,
+                        "provisioningFlow" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                     ),
                     SetOptions.merge()
                 )
@@ -243,12 +274,13 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     mapOf(
                         "uid" to user.uid,
                         "email" to (user.email ?: ""),
-                        "accountType" to "final_customer",
+                        "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
                         "tenantId" to tenantId,
                         "tenantName" to tenantName,
                         "contactName" to (user.displayName ?: ""),
-                        "createdAt" to createdAt
+                        "createdAt" to createdAt,
+                        "requestOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                     ),
                     SetOptions.merge()
                 )

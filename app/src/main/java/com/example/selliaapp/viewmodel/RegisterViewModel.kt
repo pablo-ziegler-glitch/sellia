@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class RegisterMode(val label: String) {
+    UNSELECTED("Seleccioná tipo de cuenta"),
     FINAL_CUSTOMER("Cliente final"),
     STORE_OWNER("Dueño tienda")
 }
@@ -26,7 +27,7 @@ data class RegisterUiState(
     val successMessage: String? = null,
     val tenants: List<TenantSummary> = emptyList(),
     val selectedTenantId: String? = null,
-    val mode: RegisterMode = RegisterMode.FINAL_CUSTOMER,
+    val mode: RegisterMode = RegisterMode.UNSELECTED,
     val requiresTenantSelectionOnboarding: Boolean = false
 )
 
@@ -90,6 +91,10 @@ class RegisterViewModel @Inject constructor(
         customerPhone: String?,
         mode: RegisterMode
     ) {
+        if (mode == RegisterMode.UNSELECTED) {
+            _uiState.update { it.copy(errorMessage = "Seleccioná el tipo de cuenta para continuar") }
+            return
+        }
         if (email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Completá email y contraseña") }
             return
@@ -113,10 +118,6 @@ class RegisterViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Indicá el teléfono comercial") }
             return
         }
-        if (mode == RegisterMode.FINAL_CUSTOMER && selectedTenantId.isNullOrBlank()) {
-            _uiState.update { it.copy(errorMessage = "Seleccioná una tienda") }
-            return
-        }
         if (mode == RegisterMode.FINAL_CUSTOMER && customerName.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Ingresá tu nombre") }
             return
@@ -135,18 +136,19 @@ class RegisterViewModel @Inject constructor(
                 RegisterMode.FINAL_CUSTOMER -> onboardingRepository.registerViewer(
                     email = email.trim(),
                     password = password,
-                    tenantId = selectedTenantId.orEmpty(),
-                    tenantName = selectedTenantName.orEmpty(),
+                    tenantId = selectedTenantId,
+                    tenantName = selectedTenantName,
                     customerName = customerName.trim(),
                     customerPhone = customerPhone?.trim()
                 )
+                RegisterMode.UNSELECTED -> Result.failure(IllegalStateException("Seleccioná el tipo de cuenta"))
             }
             result.onSuccess {
                 authManager.signOut()
                 val successMessage = if (mode == RegisterMode.STORE_OWNER) {
                     "Cuenta creada. Verificá tu email para continuar; además un administrador debe habilitar tu tienda."
                 } else {
-                    "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
+                    if (selectedTenantId.isNullOrBlank()) "Cuenta creada sin tienda asociada. Podrás adherirte desde tu inicio." else "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
                 }
                 _uiState.update { state ->
                     state.copy(
