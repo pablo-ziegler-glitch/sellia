@@ -455,6 +455,35 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
+                    CREATE TABLE IF NOT EXISTS `product_price_audit_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productId` INTEGER NOT NULL,
+                        `productName` TEXT NOT NULL,
+                        `purchasePrice` REAL,
+                        `oldListPrice` REAL,
+                        `newListPrice` REAL,
+                        `oldCashPrice` REAL,
+                        `newCashPrice` REAL,
+                        `oldTransferPrice` REAL,
+                        `newTransferPrice` REAL,
+                        `oldMlPrice` REAL,
+                        `newMlPrice` REAL,
+                        `oldMl3cPrice` REAL,
+                        `newMl3cPrice` REAL,
+                        `oldMl6cPrice` REAL,
+                        `newMl6cPrice` REAL,
+                        `reason` TEXT NOT NULL,
+                        `changedBy` TEXT NOT NULL,
+                        `source` TEXT NOT NULL,
+                        `changedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_price_audit_log_productId` ON `product_price_audit_log` (`productId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_price_audit_log_changedAt` ON `product_price_audit_log` (`changedAt`)")
+
+                db.execSQL(
+                    """
                     CREATE TABLE IF NOT EXISTS `tenant_sku_config` (
                         `tenantId` TEXT NOT NULL,
                         `storeName` TEXT NOT NULL,
