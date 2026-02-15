@@ -16,6 +16,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    function hasUserProfile() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function userData() {
       return userDoc().data;
     }
@@ -25,15 +29,23 @@ service cloud.firestore {
     }
 
     function isUserActive() {
-      return userData().status == 'active'
-        || userData().isActive == true;
+      return hasUserProfile()
+        && (
+          userData().status == 'active'
+          || userData().isActive == true
+        );
     }
 
     function hasTenantWriteRole() {
       return isFixedSuperAdmin()
-        || userData().role in ['owner', 'manager', 'cashier', 'admin']
-        || userData().isAdmin == true
-        || userData().isSuperAdmin == true;
+        || (
+          hasUserProfile()
+          && (
+            userData().role in ['owner', 'manager', 'cashier', 'admin']
+            || userData().isAdmin == true
+            || userData().isSuperAdmin == true
+          )
+        );
     }
 
     function isTenantUser(tenantId) {
@@ -41,7 +53,8 @@ service cloud.firestore {
         && (
           isFixedSuperAdmin()
           || (
-            userTenantId() == tenantId
+            hasUserProfile()
+            && userTenantId() == tenantId
             && isUserActive()
           )
         );

@@ -12,20 +12,32 @@ service firebase.storage {
         && request.auth.token.email.lower() == 'pabloz18ezeiza@gmail.com';
     }
 
+    function hasUserProfile() {
+      return firestore.exists(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
     function userDocData() {
       return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
     }
 
     function isUserActive() {
-      return userDocData().status == 'active'
-        || userDocData().isActive == true;
+      return hasUserProfile()
+        && (
+          userDocData().status == 'active'
+          || userDocData().isActive == true
+        );
     }
 
     function hasTenantWriteRole() {
       return isFixedSuperAdmin()
-        || userDocData().role in ['owner', 'manager', 'cashier', 'admin']
-        || userDocData().isAdmin == true
-        || userDocData().isSuperAdmin == true;
+        || (
+          hasUserProfile()
+          && (
+            userDocData().role in ['owner', 'manager', 'cashier', 'admin']
+            || userDocData().isAdmin == true
+            || userDocData().isSuperAdmin == true
+          )
+        );
     }
 
     function isTenantUser(tenantId) {
