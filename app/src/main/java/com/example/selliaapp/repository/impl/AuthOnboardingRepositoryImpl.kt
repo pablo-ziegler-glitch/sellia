@@ -130,49 +130,61 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
     override suspend fun registerViewer(
         email: String,
         password: String,
-        tenantId: String,
-        tenantName: String,
+        tenantId: String?,
+        tenantName: String?,
         customerName: String,
         customerPhone: String?
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
-            val tenantSnapshot = firestore.collection("tenants")
-                .document(tenantId)
-                .get()
-                .await()
-            if (!tenantSnapshot.exists()) {
-                throw IllegalArgumentException("La tienda seleccionada no existe")
+            val normalizedTenantId = tenantId?.trim().orEmpty()
+            val hasTenantSelection = normalizedTenantId.isNotBlank()
+            if (hasTenantSelection) {
+                val tenantSnapshot = firestore.collection("tenants")
+                    .document(normalizedTenantId)
+                    .get()
+                    .await()
+                if (!tenantSnapshot.exists()) {
+                    throw IllegalArgumentException("La tienda seleccionada no existe")
+                }
             }
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
             val createdAt = FieldValue.serverTimestamp()
             val userRef = firestore.collection("users").document(user.uid)
-            userRef.set(
-                mapOf(
-                    "tenantId" to tenantId,
-                    "email" to email,
-                    "role" to AppRole.VIEWER.raw,
-                    "accountType" to "final_customer",
-                    "status" to "active",
-                    "displayName" to customerName,
-                    "phone" to customerPhone,
-                    "createdAt" to createdAt
-                )
-            ).await()
-            firestore.collection("tenant_users")
-                .document("${tenantId}_${email.trim().lowercase()}")
-                .set(
-                    mapOf(
-                        "tenantId" to tenantId,
-                        "name" to customerName,
-                        "email" to email.trim().lowercase(),
-                        "role" to AppRole.VIEWER.raw,
-                        "isActive" to true,
-                        "updatedAt" to createdAt
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
+            val userData = mutableMapOf<String, Any?>(
+                "email" to email,
+                "role" to AppRole.VIEWER.raw,
+                "accountType" to "final_customer",
+                "status" to "active",
+                "displayName" to customerName,
+                "phone" to customerPhone,
+                "createdAt" to createdAt,
+                "updatedAt" to createdAt,
+                "followedTenantIds" to if (hasTenantSelection) listOf(normalizedTenantId) else emptyList<String>()
+            )
+            if (hasTenantSelection) {
+                userData["tenantId"] = normalizedTenantId
+                userData["selectedCatalogTenantId"] = normalizedTenantId
+            }
+            userRef.set(userData, SetOptions.merge()).await()
+
+            if (hasTenantSelection) {
+                firestore.collection("tenant_users")
+                    .document("${normalizedTenantId}_${email.trim().lowercase()}")
+                    .set(
+                        mapOf(
+                            "tenantId" to normalizedTenantId,
+                            "name" to customerName,
+                            "email" to email.trim().lowercase(),
+                            "role" to AppRole.VIEWER.raw,
+                            "isActive" to true,
+                            "updatedAt" to createdAt
+                        ),
+                        SetOptions.merge()
+                    )
+                    .await()
+            }
+
             firestore.collection("account_requests")
                 .document(user.uid)
                 .set(
@@ -181,8 +193,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                         "email" to email,
                         "accountType" to "final_customer",
                         "status" to "active",
-                        "tenantId" to tenantId,
-                        "tenantName" to tenantName,
+                        "tenantId" to normalizedTenantId,
+                        "tenantName" to tenantName.orEmpty(),
                         "contactName" to customerName,
                         "contactPhone" to customerPhone,
                         "createdAt" to createdAt
@@ -191,7 +203,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
                 .await()
             sendEmailVerificationSafely(user)
-            OnboardingResult(uid = user.uid, tenantId = tenantId)
+            OnboardingResult(uid = user.uid, tenantId = normalizedTenantId.ifBlank { "UNASSIGNED" })
         }.onFailure {
             val currentUser = auth.currentUser
             if (currentUser != null && currentUser.email == email) {

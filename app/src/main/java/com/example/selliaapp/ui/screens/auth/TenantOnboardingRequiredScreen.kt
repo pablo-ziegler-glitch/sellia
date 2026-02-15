@@ -39,6 +39,7 @@ fun TenantOnboardingRequiredScreen(
 ) {
     var tenantExpanded by remember { mutableStateOf(false) }
     val selectedTenant = tenants.firstOrNull { it.id == selectedTenantId }
+    val hasTenants = tenants.isNotEmpty()
 
     Column(
         modifier = Modifier
@@ -59,33 +60,41 @@ fun TenantOnboardingRequiredScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        ExposedDropdownMenuBox(
-            expanded = tenantExpanded,
-            onExpandedChange = { tenantExpanded = !tenantExpanded }
-        ) {
-            OutlinedTextField(
-                value = selectedTenant?.name.orEmpty(),
-                onValueChange = {},
-                label = { Text("Tienda") },
-                readOnly = true,
-                enabled = !isLoading && !isLoadingTenants,
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tenantExpanded) },
-                modifier = Modifier.menuAnchor().width(280.dp)
-            )
-            ExposedDropdownMenu(
+        if (hasTenants) {
+            ExposedDropdownMenuBox(
                 expanded = tenantExpanded,
-                onDismissRequest = { tenantExpanded = false }
+                onExpandedChange = { tenantExpanded = !tenantExpanded }
             ) {
-                tenants.forEach { tenant ->
-                    DropdownMenuItem(
-                        text = { Text(tenant.name) },
-                        onClick = {
-                            onTenantChange(tenant.id)
-                            tenantExpanded = false
-                        }
-                    )
+                OutlinedTextField(
+                    value = selectedTenant?.name.orEmpty(),
+                    onValueChange = {},
+                    label = { Text("Tienda") },
+                    readOnly = true,
+                    enabled = !isLoading && !isLoadingTenants,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tenantExpanded) },
+                    modifier = Modifier.menuAnchor().width(280.dp)
+                )
+                ExposedDropdownMenu(
+                    expanded = tenantExpanded,
+                    onDismissRequest = { tenantExpanded = false }
+                ) {
+                    tenants.forEach { tenant ->
+                        DropdownMenuItem(
+                            text = { Text(tenant.name) },
+                            onClick = {
+                                onTenantChange(tenant.id)
+                                tenantExpanded = false
+                            }
+                        )
+                    }
                 }
             }
+        } else {
+            Text(
+                text = "Todavía no hay tiendas publicadas para visualizar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         if (!errorMessage.isNullOrBlank()) {
@@ -98,15 +107,17 @@ fun TenantOnboardingRequiredScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { onSubmit(selectedTenant?.id, selectedTenant?.name) },
-            enabled = !isLoading && !selectedTenantId.isNullOrBlank()
-        ) {
-            Text(if (isLoading) "Guardando..." else "Continuar")
+        if (hasTenants) {
+            Button(
+                onClick = { onSubmit(selectedTenant?.id, selectedTenant?.name) },
+                enabled = !isLoading && !selectedTenantId.isNullOrBlank()
+            ) {
+                Text(if (isLoading) "Guardando..." else "Continuar")
+            }
+            Spacer(modifier = Modifier.height(12.dp))
         }
-        Spacer(modifier = Modifier.height(12.dp))
         Button(onClick = onSignOut, enabled = !isLoading) {
-            Text("Salir")
+            Text(if (hasTenants) "Salir" else "Cerrar sesión")
         }
     }
 }
