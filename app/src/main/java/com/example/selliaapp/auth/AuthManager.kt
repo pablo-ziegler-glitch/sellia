@@ -65,13 +65,13 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión"))
     }
 
-    suspend fun signInWithGoogle(idToken: String): Result<AuthSession> {
+    suspend fun signInWithGoogle(idToken: String, allowOnboardingFallback: Boolean = true): Result<AuthSession> {
         _state.value = AuthState.Loading
         val credential = GoogleAuthProvider.getCredential(idToken, null)
         val result = firebaseAuth.signInWithCredential(credential).await()
         val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
         val session = runCatching { fetchSession(user) }
-            .getOrElse { ensurePublicCustomerSession(user) }
+            .getOrElse { ensurePublicCustomerSession(user, allowOnboardingFallback) }
         publishAuthenticatedState(session)
         session
     }.onFailure { error ->
@@ -297,45 +297,35 @@ class AuthManager @Inject constructor(
         )
     }
 
-    private suspend fun ensurePublicCustomerSession(user: FirebaseUser): AuthSession {
+    private suspend fun ensurePublicCustomerSession(user: FirebaseUser, allowOnboardingFallback: Boolean): AuthSession {
         val existing = runCatching { fetchSession(user) }.getOrNull()
         if (existing != null) return existing
 
+        if (!allowOnboardingFallback) {
+            firebaseAuth.signOut()
+            throw IllegalStateException("No encontramos tu perfil. Registrate con Google para crear tu cuenta.")
+        }
+
         val globalPublicTenantId = BuildConfig.GLOBAL_PUBLIC_CUSTOMER_TENANT_ID.trim()
-        if (globalPublicTenantId.isBlank()) {
-            _state.value = AuthState.PartiallyAuthenticated(
-                session = PendingAuthSession(
-                    uid = user.uid,
-                    email = user.email,
-                    displayName = user.displayName,
-                    photoUrl = user.photoUrl?.toString()
-                ),
-                requiredAction = RequiredAuthAction.SELECT_TENANT
-            )
-            throw MissingTenantContextException()
+        if (globalPublicTenantId.isNotBlank()) {
+            val tenantSnapshot = firestore.collection("tenants").document(globalPublicTenantId).get().await()
+            if (!tenantSnapshot.exists()) {
+                throw IllegalStateException(
+                    "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID apunta a un tenant inexistente. Configuralo correctamente."
+                )
+            }
         }
 
-        val tenantSnapshot = firestore.collection("tenants").document(globalPublicTenantId).get().await()
-        if (!tenantSnapshot.exists()) {
-            throw IllegalStateException(
-                "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID apunta a un tenant inexistente. Configuralo correctamente."
-            )
-        }
-
-        firestore.collection("users").document(user.uid)
-            .set(
-                mapOf(
-                    "tenantId" to globalPublicTenantId,
-                    "email" to (user.email ?: ""),
-                    "accountType" to "public_customer",
-                    "status" to "active",
-                    "updatedAt" to FieldValue.serverTimestamp()
-                ),
-                SetOptions.merge()
-            )
-            .await()
-
-        return fetchSession(user)
+        _state.value = AuthState.PartiallyAuthenticated(
+            session = PendingAuthSession(
+                uid = user.uid,
+                email = user.email,
+                displayName = user.displayName,
+                photoUrl = user.photoUrl?.toString()
+            ),
+            requiredAction = RequiredAuthAction.SELECT_TENANT
+        )
+        throw MissingTenantContextException()
     }
 
     private fun pendingSessionFromCurrentUser(): PendingAuthSession {

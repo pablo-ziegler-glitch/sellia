@@ -159,6 +159,8 @@ service cloud.firestore {
           || isAdminForTenant(resource.data.tenantId)
         );
       allow create: if isAuthenticated()
+        && request.resource.data.tenantId is string
+        && request.resource.data.accountType in ['store_owner', 'final_customer']
         && (
           isOwnerBootstrapWrite(userId)
           || isFinalCustomerSelfWrite(userId)

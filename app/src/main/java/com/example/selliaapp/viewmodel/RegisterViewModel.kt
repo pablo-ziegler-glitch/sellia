@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class RegisterMode(val label: String) {
+    UNSELECTED("Seleccioná tipo de cuenta"),
     FINAL_CUSTOMER("Cliente final"),
     STORE_OWNER("Dueño tienda")
 }
@@ -26,7 +27,7 @@ data class RegisterUiState(
     val successMessage: String? = null,
     val tenants: List<TenantSummary> = emptyList(),
     val selectedTenantId: String? = null,
-    val mode: RegisterMode = RegisterMode.FINAL_CUSTOMER,
+    val mode: RegisterMode = RegisterMode.UNSELECTED,
     val requiresTenantSelectionOnboarding: Boolean = false
 )
 
@@ -90,6 +91,10 @@ class RegisterViewModel @Inject constructor(
         customerPhone: String?,
         mode: RegisterMode
     ) {
+        if (mode == RegisterMode.UNSELECTED) {
+            _uiState.update { it.copy(errorMessage = "Seleccioná el tipo de cuenta para continuar") }
+            return
+        }
         if (email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Completá email y contraseña") }
             return
@@ -136,6 +141,7 @@ class RegisterViewModel @Inject constructor(
                     customerName = customerName.trim(),
                     customerPhone = customerPhone?.trim()
                 )
+                RegisterMode.UNSELECTED -> Result.failure(IllegalStateException("Seleccioná el tipo de cuenta"))
             }
             result.onSuccess {
                 authManager.signOut()
