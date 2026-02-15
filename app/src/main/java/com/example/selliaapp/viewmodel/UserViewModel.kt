@@ -8,6 +8,8 @@ import com.example.selliaapp.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -16,6 +18,9 @@ import javax.inject.Inject
 class UserViewModel  @Inject constructor(
     private val repository: UserRepository
 ) : ViewModel() {
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     val user: StateFlow<List<User>> =
         repository.observeUsers().stateIn(
@@ -31,40 +36,56 @@ class UserViewModel  @Inject constructor(
     fun refreshFromCloud() {
         viewModelScope.launch {
             repository.syncFromCloud()
+                .onFailure { throwable ->
+                    _errorMessage.value = throwable.message ?: "No se pudo sincronizar usuarios"
+                }
         }
     }
 
     fun addUser(name: String, email: String, role: String, isActive: Boolean = true) {
         viewModelScope.launch {
-            val requestedRole = AppRole.fromRaw(role)
-            val totalUsers = repository.countUsers()
-            val effectiveRole = if (totalUsers == 0) {
-                AppRole.ADMIN.raw
-            } else {
-                normalizeAssignableRole(requestedRole).raw
-            }
-            repository.insert(
-                User(
-                    name = name.trim(),
-                    email = email.trim(),
-                    role = effectiveRole,
-                    isActive = isActive
+            runCatching {
+                val requestedRole = AppRole.fromRaw(role)
+                val totalUsers = repository.countUsers()
+                val effectiveRole = if (totalUsers == 0) {
+                    AppRole.ADMIN.raw
+                } else {
+                    normalizeAssignableRole(requestedRole).raw
+                }
+                repository.insert(
+                    User(
+                        name = name.trim(),
+                        email = email.trim(),
+                        role = effectiveRole,
+                        isActive = isActive
+                    )
                 )
-            )
+            }.onFailure { throwable ->
+                _errorMessage.value = throwable.message ?: "No se pudo crear el usuario"
+            }
         }
     }
 
     fun deleteUser(user: User) {
-        viewModelScope.launch { repository.delete(user) }
+        viewModelScope.launch {
+            runCatching { repository.delete(user) }
+                .onFailure { throwable ->
+                    _errorMessage.value = throwable.message ?: "No se pudo eliminar el usuario"
+                }
+        }
     }
 
     fun updateUser(user: User) {
         viewModelScope.launch {
-            repository.update(
-                user.copy(
-                    role = normalizeAssignableRole(AppRole.fromRaw(user.role)).raw
+            runCatching {
+                repository.update(
+                    user.copy(
+                        role = normalizeAssignableRole(AppRole.fromRaw(user.role)).raw
+                    )
                 )
-            )
+            }.onFailure { throwable ->
+                _errorMessage.value = throwable.message ?: "No se pudo actualizar el usuario"
+            }
         }
     }
 
