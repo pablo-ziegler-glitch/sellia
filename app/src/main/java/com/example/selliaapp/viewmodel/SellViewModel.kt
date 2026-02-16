@@ -1,5 +1,6 @@
 package com.example.selliaapp.viewmodel
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.BuildConfig
@@ -49,13 +50,15 @@ class SellViewModel @Inject constructor(
     data class ScanResult(val foundId: Int?, val prefillBarcode: String)
 
     /**
-     * Consulta si un barcode existe. Si existe -> foundId != null.
-     * Si no existe -> devolvemos el mismo barcode para precargar en alta.
+     * Consulta si un valor escaneado corresponde a un producto existente.
+     * Soporta barcode plano y QR público/interno (URL, código interno o PRODUCT-<id>).
+     * Si no existe -> devolvemos el valor normalizado para precargar en alta.
      */
-    suspend fun onScanBarcode(barcode: String): ScanResult = withContext(Dispatchers.IO) {
-        val p = repo.getByBarcodeOrNull(barcode)
-        if (p != null) ScanResult(foundId = p.id, prefillBarcode = barcode)
-        else ScanResult(foundId = null, prefillBarcode = barcode)
+    suspend fun onScanBarcode(rawScanValue: String): ScanResult = withContext(Dispatchers.IO) {
+        val normalizedValue = normalizeScanValue(rawScanValue)
+        val product = resolveProductByScan(rawScanValue)
+        if (product != null) ScanResult(foundId = product.id, prefillBarcode = normalizedValue)
+        else ScanResult(foundId = null, prefillBarcode = normalizedValue)
     }
 
 
@@ -75,7 +78,7 @@ class SellViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                val p = withContext(Dispatchers.IO) { repo.getByBarcodeOrNull(barcode) }
+                val p = withContext(Dispatchers.IO) { resolveProductByScan(barcode) }
                 if (p == null) {
                     onNotFound()
                 } else {
@@ -86,6 +89,54 @@ class SellViewModel @Inject constructor(
                 onError(t)
             }
         }
+    }
+
+    private suspend fun resolveProductByScan(rawValue: String): ProductEntity? {
+        val normalizedValue = normalizeScanValue(rawValue)
+        val candidates = linkedSetOf(
+            normalizedValue,
+            rawValue.trim(),
+            extractPathLastSegment(normalizedValue),
+            extractPathLastSegment(rawValue)
+        ).filter { it.isNotBlank() }
+
+        candidates.forEach { candidate ->
+            repo.getByBarcodeOrNull(candidate)?.let { return it }
+            repo.getByCodeOrNull(candidate)?.let { return it }
+            parseProductId(candidate)?.let { id ->
+                repo.getById(id)?.let { return it }
+            }
+        }
+
+        return null
+    }
+
+    private fun normalizeScanValue(rawValue: String): String {
+        val value = rawValue.trim()
+        if (value.isBlank()) return value
+        val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return value
+
+        val queryCandidate = listOf("q", "qr", "barcode", "code", "productId", "product_id", "id")
+            .firstNotNullOfOrNull { key -> parsed.getQueryParameter(key)?.takeIf { it.isNotBlank() } }
+
+        return queryCandidate?.trim()
+            ?: extractPathLastSegment(value)
+            ?: value
+    }
+
+    private fun extractPathLastSegment(rawValue: String): String? {
+        val parsed = runCatching { Uri.parse(rawValue) }.getOrNull() ?: return null
+        return parsed.lastPathSegment?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun parseProductId(value: String): Int? {
+        val normalized = value.trim()
+        if (normalized.isBlank()) return null
+        if (normalized.all(Char::isDigit)) return normalized.toIntOrNull()
+        if (normalized.startsWith("PRODUCT-", ignoreCase = true)) {
+            return normalized.removePrefix("PRODUCT-").toIntOrNull()
+        }
+        return null
     }
 
     /** Agrega un producto acumulando, respetando stock (clamp 1..max). */

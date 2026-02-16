@@ -421,11 +421,11 @@ fun SelliaApp(
 
                     LaunchedEffect(scannedCode) {
                         scannedCode?.let { code ->
-                            val product = productVm.getByBarcode(code)
+                            val product = productVm.getByQrValue(code)
                             if (product != null) {
                                 currentEntry?.savedStateHandle?.set("pending_product_id", product.id)
                             } else {
-                                navController.navigate(Routes.AddProduct.build(prefillBarcode = code))
+                                navController.navigate(Routes.AddProduct.build(prefillBarcode = code.trim()))
                             }
                             currentEntry?.savedStateHandle?.set("scanned_code", null)
                         }

@@ -374,14 +374,19 @@ class ProductViewModel @Inject constructor(
         val value = rawValue.trim()
         if (value.isBlank()) return value
         val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return value
-        return parsed.getQueryParameter("q")
-            ?.takeIf { it.isNotBlank() }
-            ?: parsed.getQueryParameter("qr")?.takeIf { it.isNotBlank() }
+
+        val queryCandidate = listOf("q", "qr", "barcode", "code", "productId", "product_id", "id")
+            .firstNotNullOfOrNull { key -> parsed.getQueryParameter(key)?.takeIf { it.isNotBlank() } }
+
+        return queryCandidate?.trim()
+            ?: parsed.lastPathSegment?.trim()?.takeIf { it.isNotBlank() }
             ?: value
     }
 
     private fun parseProductId(value: String): Int? {
         val normalized = value.trim()
+        if (normalized.isBlank()) return null
+        if (normalized.all(Char::isDigit)) return normalized.toIntOrNull()
         if (!normalized.startsWith("PRODUCT-", ignoreCase = true)) return null
         return normalized.removePrefix("PRODUCT-").toIntOrNull()
     }
