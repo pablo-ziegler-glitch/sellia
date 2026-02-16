@@ -3,13 +3,6 @@ import * as admin from "firebase-admin";
 import axios from "axios";
 import * as crypto from "crypto";
 import { google, monitoring_v3 } from "googleapis";
-import {
-  extractTenantId,
-  mapPaymentStatus,
-  normalizeString,
-  resolveTenantId,
-  type PaymentStatus,
-} from "./mercadopago.helpers";
 import { getPointValue } from "./monitoring.helpers";
 
 admin.initializeApp();
@@ -1069,8 +1062,6 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     const metadataOrderId = normalizeString(payment?.metadata?.orderId);
     const orderId = externalReferenceData.orderId || metadataOrderId;
     const tenantIdFromMetadata = extractTenantId(payment);
-    const tenantId = await resolveTenantId(db, {
-      tenantIdFromMetadata,
     const tenantIdFromReference =
       externalReferenceData.tenantId || tenantIdFromMetadata;
     const tenantId = await resolveTenantId({
