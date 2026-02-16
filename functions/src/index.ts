@@ -1217,8 +1217,10 @@ const createPreferenceHandler = async (data: unknown) => {
 };
 
 export const createPaymentPreference =
-  functions.https.onCall(createPreferenceHandler);
-export const createPreference = functions.https.onCall(createPreferenceHandler);
+  functions.runWith({ enforceAppCheck: false }).https.onCall(createPreferenceHandler);
+export const createPreference = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(createPreferenceHandler);
 
 export const collectUsageMetrics = functions.pubsub
   .schedule("every 24 hours")
