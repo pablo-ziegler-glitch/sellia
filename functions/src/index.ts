@@ -34,9 +34,25 @@ type UsageMetricResult = {
   unit: string;
 };
 
+type UsageCollectionError = {
+  metricType: string;
+  message: string;
+};
+
 type UsageServiceMetrics = {
   metrics: UsageMetricResult[];
   totalsByUnit: Record<string, number>;
+};
+
+type UsageCollectionOutcome = {
+  services: Record<UsageServiceKey, UsageServiceMetrics>;
+  errors: UsageCollectionError[];
+  sourceStatus: "success" | "partial_success";
+};
+
+type UsageErrorsBlock = {
+  count: number;
+  items: UsageCollectionError[];
 };
 
 type BillingConfig = {
@@ -466,7 +482,7 @@ const collectMonitoringUsage = async (
   config: BillingConfig,
   startTime: Date,
   endTime: Date
-): Promise<Record<UsageServiceKey, UsageServiceMetrics>> => {
+): Promise<UsageCollectionOutcome> => {
   const auth = await google.auth.getClient({
     scopes: ["https://www.googleapis.com/auth/monitoring.read"],
   });
@@ -481,7 +497,7 @@ const collectMonitoringUsage = async (
     other: { metrics: [], totalsByUnit: {} },
   };
 
-  const results = await Promise.all(
+  const results = await Promise.allSettled(
     USAGE_METRICS.map((metric) =>
       sumMonitoringMetric(config.projectId, metric, startTime, endTime).then(
         (result) => ({
@@ -492,11 +508,33 @@ const collectMonitoringUsage = async (
     )
   );
 
-  results.forEach(({ result, service }) => {
-    accumulateServiceMetrics(services[service], result);
+  const errors: UsageCollectionError[] = [];
+
+  results.forEach((result, index) => {
+    const metricDefinition = USAGE_METRICS[index];
+
+    if (result.status === "fulfilled") {
+      accumulateServiceMetrics(services[result.value.service], result.value.result);
+      return;
+    }
+
+    const errorMessage = summarizeError(result.reason);
+    errors.push({
+      metricType: metricDefinition.metricType,
+      message: errorMessage,
+    });
+
+    console.error("Monitoring metric collection failed", {
+      metricType: metricDefinition.metricType,
+      error: errorMessage,
+    });
   });
 
-  return services;
+  return {
+    services,
+    errors,
+    sourceStatus: errors.length > 0 ? "partial_success" : "success",
+  };
 };
 
 const mapBigQueryService = (serviceDescription: string): UsageServiceKey => {
@@ -517,7 +555,7 @@ const collectBigQueryUsage = async (
   config: BillingConfig,
   startTime: Date,
   endTime: Date
-): Promise<Record<UsageServiceKey, UsageServiceMetrics>> => {
+): Promise<UsageCollectionOutcome> => {
   if (!config.bigqueryProjectId || !config.bigqueryDataset || !config.bigqueryTable) {
     throw new functions.https.HttpsError(
       "failed-precondition",
@@ -590,7 +628,11 @@ const collectBigQueryUsage = async (
     accumulateServiceMetrics(services[serviceKey], metricResult);
   });
 
-  return services;
+  return {
+    services,
+    errors: [],
+    sourceStatus: "success",
+  };
 };
 
 const getDataId = (req: functions.https.Request): string => {
@@ -666,6 +708,8 @@ type UsageSnapshot = {
   counts?: Record<string, number>;
   periodKey?: string;
   period?: string;
+  sourceStatus?: "success" | "partial_success";
+  errors?: UsageCollectionError[] | UsageErrorsBlock;
   snapshotAt?: admin.firestore.Timestamp;
   createdAt?: admin.firestore.Timestamp;
 };
@@ -750,6 +794,28 @@ const resolvePeriodKey = (snapshot: UsageSnapshot | null): string => {
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}${month}${day}`;
+};
+
+const extractSnapshotErrors = (snapshot: UsageSnapshot | null): UsageCollectionError[] => {
+  if (!snapshot?.errors) {
+    return [];
+  }
+
+  if (Array.isArray(snapshot.errors)) {
+    return snapshot.errors;
+  }
+
+  return Array.isArray(snapshot.errors.items) ? snapshot.errors.items : [];
+};
+
+const isPartialUsageSnapshot = (snapshot: UsageSnapshot | null): boolean => {
+  if (!snapshot) {
+    return false;
+  }
+  if (snapshot.sourceStatus === "partial_success") {
+    return true;
+  }
+  return extractSnapshotErrors(snapshot).length > 0;
 };
 
 const severityForThreshold = (threshold: number): string => {
@@ -1000,22 +1066,25 @@ export const collectUsageMetrics = functions.pubsub
     const { start, end } = getMonthRange(now);
     const monthKey = getMonthKey(now);
 
-    let services: Record<UsageServiceKey, UsageServiceMetrics>;
-    if (config.source === "bigquery") {
-      services = await collectBigQueryUsage(config, start, end);
-    } else {
-      services = await collectMonitoringUsage(config, start, end);
-    }
+    const usageCollection =
+      config.source === "bigquery"
+        ? await collectBigQueryUsage(config, start, end)
+        : await collectMonitoringUsage(config, start, end);
 
     await db.collection(USAGE_COLLECTION).doc(monthKey).set(
       {
         monthKey,
         source: config.source,
+        sourceStatus: usageCollection.sourceStatus,
+        errors: {
+          count: usageCollection.errors.length,
+          items: usageCollection.errors,
+        },
         period: {
           start: start.toISOString(),
           end: end.toISOString(),
         },
-        services,
+        services: usageCollection.services,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       },
@@ -1025,6 +1094,8 @@ export const collectUsageMetrics = functions.pubsub
     console.info("Usage metrics collected", {
       monthKey,
       source: config.source,
+      sourceStatus: usageCollection.sourceStatus,
+      errors: usageCollection.errors.length,
     });
   });
 
@@ -1257,6 +1328,16 @@ export const evaluateUsageAlerts = functions.pubsub
 
       if (!usageSnapshot || Object.keys(usageMetrics).length === 0) {
         console.info("No usage snapshot available for tenant", { tenantId });
+        continue;
+      }
+      if (isPartialUsageSnapshot(usageSnapshot)) {
+        const snapshotErrors = extractSnapshotErrors(usageSnapshot);
+        console.info("Skipping usage alerts for partial snapshot", {
+          tenantId,
+          periodKey,
+          errors: snapshotErrors.length,
+          sourceStatus: usageSnapshot.sourceStatus ?? "unknown",
+        });
         continue;
       }
       if (!freeTierLimit || Object.keys(limitMetrics).length === 0) {
