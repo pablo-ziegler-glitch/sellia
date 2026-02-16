@@ -77,6 +77,11 @@ type PreferenceItemInput = {
 
 type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
 
+type PaymentWebhookTransactionResult = {
+  ignoredDuplicate: boolean;
+  transitionApplied: boolean;
+};
+
 type ResolveTenantInput = {
   tenantIdFromReference: string;
   orderId: string;
@@ -90,6 +95,17 @@ type ExternalReferenceData = {
 
 const MERCADOPAGO_API = "https://api.mercadopago.com";
 const USAGE_COLLECTION = "usageMetricsMonthly";
+const PAYMENT_STATUS_PRIORITY: Record<PaymentStatus, number> = {
+  PENDING: 10,
+  REJECTED: 20,
+  FAILED: 20,
+  APPROVED: 30,
+};
+const TERMINAL_PAYMENT_STATUSES = new Set<PaymentStatus>([
+  "APPROVED",
+  "REJECTED",
+  "FAILED",
+]);
 
 const USAGE_METRICS: UsageMetricDefinition[] = [
   {
@@ -396,6 +412,39 @@ const mapPaymentStatus = (status: unknown): PaymentStatus => {
     return "REJECTED";
   }
   return "FAILED";
+};
+
+const parseStoredPaymentStatus = (status: unknown): PaymentStatus | null => {
+  if (status === "PENDING" || status === "APPROVED" || status === "REJECTED" || status === "FAILED") {
+    return status;
+  }
+  return null;
+};
+
+const canApplyPaymentTransition = (
+  currentStatus: PaymentStatus | null,
+  incomingStatus: PaymentStatus
+): boolean => {
+  if (!currentStatus) {
+    return true;
+  }
+  if (currentStatus === incomingStatus) {
+    return true;
+  }
+  if (TERMINAL_PAYMENT_STATUSES.has(currentStatus)) {
+    return false;
+  }
+  return PAYMENT_STATUS_PRIORITY[incomingStatus] >= PAYMENT_STATUS_PRIORITY[currentStatus];
+};
+
+const buildPaymentEventKey = (input: {
+  paymentId: string;
+  paymentStatus: PaymentStatus;
+  requestId: string;
+  signatureTs: string;
+}): string => {
+  const payload = `${input.paymentId}|${input.paymentStatus}|${input.requestId}|${input.signatureTs}`;
+  return crypto.createHash("sha256").update(payload).digest("hex");
 };
 
 const getMonthRange = (referenceDate: Date): { start: Date; end: Date } => {
@@ -1053,6 +1102,13 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       createdAt: payment?.date_created ?? null,
     };
 
+    const eventKey = buildPaymentEventKey({
+      paymentId,
+      paymentStatus,
+      requestId,
+      signatureTs: ts,
+    });
+
     const createdAtValue =
       payment?.date_created && !Number.isNaN(Date.parse(payment.date_created))
         ? admin.firestore.Timestamp.fromDate(new Date(payment.date_created))
@@ -1067,19 +1123,72 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await db
-      .collection("tenants")
-      .doc(tenantId)
-      .collection("payments")
-      .doc(paymentId)
-      .set(paymentUpdate, {
-        merge: true,
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const paymentRef = tenantRef.collection("payments").doc(paymentId);
+    const paymentEventRef = tenantRef.collection("paymentEvents").doc(eventKey);
+
+    const transactionResult = await db.runTransaction<PaymentWebhookTransactionResult>(
+      async (transaction) => {
+        const eventSnapshot = await transaction.get(paymentEventRef);
+        if (eventSnapshot.exists) {
+          return {
+            ignoredDuplicate: true,
+            transitionApplied: false,
+          };
+        }
+
+        transaction.set(paymentEventRef, {
+          eventKey,
+          tenantId,
+          paymentId,
+          orderId: orderId || null,
+          requestId,
+          signatureTs: ts,
+          status: paymentStatus,
+          provider: "mercado_pago",
+          receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+          raw: rawPayment,
+        });
+
+        const paymentSnapshot = await transaction.get(paymentRef);
+        const currentStatus = parseStoredPaymentStatus(paymentSnapshot.get("status"));
+        const transitionApplied = canApplyPaymentTransition(currentStatus, paymentStatus);
+
+        transaction.set(
+          paymentRef,
+          {
+            lastWebhookAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastWebhookRequestId: requestId,
+            lastWebhookSignatureTs: ts,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (transitionApplied) {
+          transaction.set(paymentRef, paymentUpdate, { merge: true });
+        }
+
+        return {
+          ignoredDuplicate: false,
+          transitionApplied,
+        };
+      }
+    );
+
+    if (transactionResult.ignoredDuplicate) {
+      console.info("Mercado Pago webhook duplicate ignored", {
+        tenantId,
+        paymentId,
+        transitionApplied: false,
+        ignoredDuplicate: true,
       });
+      res.status(200).send("ok");
+      return;
+    }
 
     if (orderId) {
-      await db
-        .collection("tenants")
-        .doc(tenantId)
+      await tenantRef
         .collection("orders")
         .doc(orderId)
         .set(
@@ -1095,6 +1204,8 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       paymentId,
       orderId: orderId || "n/a",
       tenantId,
+      transitionApplied: transactionResult.transitionApplied,
+      ignoredDuplicate: transactionResult.ignoredDuplicate,
     });
 
     res.status(200).send("ok");
