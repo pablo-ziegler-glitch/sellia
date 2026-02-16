@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -38,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.selliaapp.ui.navigation.Routes
+import com.example.selliaapp.repository.StockValuationReport
+import com.example.selliaapp.repository.StockValuationScenario
 import com.example.selliaapp.viewmodel.ReportsFilter
 import com.example.selliaapp.viewmodel.ReportsViewModel
 import java.text.NumberFormat
@@ -88,10 +89,7 @@ fun ReportsScreen(
                     .fillMaxWidth()
             ) {
                 when {
-                    state.loading -> {
-                        CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    }
-
+                    state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     state.error != null -> {
                         Text(
                             text = state.error ?: "",
@@ -101,74 +99,27 @@ fun ReportsScreen(
                         )
                     }
 
-                    state.points.isEmpty() -> {
-                        Text(
-                            text = "Sin ventas registradas hoy.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-
                     else -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize(),
-                            verticalArrangement = Arrangement.Top
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(bottom = 8.dp)
                         ) {
-                            Text(
-                                text = "Ventas de hoy",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            val primerosTres = state.points.take(3)
-                            val restantes = state.points.drop(3)
-
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                primerosTres.forEach { (label, value) ->
-                                    ReportRow(label = label, value = value, currency = currency)
-                                }
-                            }
-
-                            if (restantes.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Más días",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            item {
+                                SalesSummarySection(
+                                    points = state.points,
+                                    total = state.total,
+                                    currency = currency,
+                                    filter = state.filter
                                 )
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .weight(1f, fill = true)
-                                        .padding(top = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    contentPadding = PaddingValues(bottom = 8.dp)
-                                ) {
-                                    items(restantes) { (label, value) ->
-                                        ReportRow(label = label, value = value, currency = currency)
-                                    }
-                                }
-                            } else {
-                                Spacer(modifier = Modifier.weight(1f, fill = true))
                             }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-                            HorizontalDivider()
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Total diario",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = currency.format(state.total),
-                                    style = MaterialTheme.typography.titleMedium
+                            item {
+                                HorizontalDivider()
+                            }
+                            item {
+                                StockValuationSection(
+                                    report = state.stockValuation,
+                                    currency = currency
                                 )
                             }
                         }
@@ -194,6 +145,114 @@ fun ReportsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SalesSummarySection(
+    points: List<Pair<String, Double>>,
+    total: Double,
+    currency: NumberFormat,
+    filter: ReportsFilter
+) {
+    val title = when (filter) {
+        ReportsFilter.DAY -> "Ventas de hoy"
+        ReportsFilter.WEEK -> "Ventas de la semana"
+        ReportsFilter.MONTH -> "Ventas del mes"
+    }
+    Text(text = title, style = MaterialTheme.typography.titleMedium)
+    Spacer(modifier = Modifier.height(8.dp))
+    if (points.isEmpty()) {
+        Text(
+            text = "Sin ventas registradas en este período.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            points.take(6).forEach { (label, value) ->
+                ReportRow(label = label, value = value, currency = currency)
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Total período",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = currency.format(total),
+            style = MaterialTheme.typography.titleMedium
+        )
+    }
+}
+
+@Composable
+private fun StockValuationSection(
+    report: StockValuationReport?,
+    currency: NumberFormat
+) {
+    Text(
+        text = "Stock valorizado y ganancias esperadas",
+        style = MaterialTheme.typography.titleMedium
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    if (report == null || report.totalUnitsWithStock == 0) {
+        Text(
+            text = "No hay stock cargado para calcular valorización.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+
+    Text(
+        text = "${report.totalProductsWithStock} productos • ${report.totalUnitsWithStock} unidades",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Text(
+        text = "Costo de adquisición total: ${currency.format(report.totalAcquisitionCost)}",
+        style = MaterialTheme.typography.bodyMedium
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+
+    report.scenarios.forEachIndexed { index, scenario ->
+        ScenarioCard(scenario = scenario, currency = currency)
+        if (index != report.scenarios.lastIndex) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun ScenarioCard(scenario: StockValuationScenario, currency: NumberFormat) {
+    Text(
+        text = scenario.label,
+        style = MaterialTheme.typography.titleSmall
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = "Venta potencial (si se vende todo): ${currency.format(scenario.potentialRevenue)}",
+        style = MaterialTheme.typography.bodyMedium
+    )
+    Text(
+        text = "Ganancia esperada sobre costo conocido: ${currency.format(scenario.expectedProfit)}",
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (scenario.expectedProfit < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    )
+    Text(
+        text = "Cobertura: ${scenario.unitsWithKnownCost}/${scenario.unitsWithPrice} unidades con costo de adquisición",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable
