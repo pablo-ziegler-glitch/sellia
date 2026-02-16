@@ -10,7 +10,7 @@ const WEBHOOK_SECRET = "secret_test";
 const REQUEST_ID = "request-123";
 const DATA_ID = "payment-456";
 
-const buildSignatureHeader = (ts: number, secret = WEBHOOK_SECRET): string => {
+const buildSignatureHeader = (ts: number | string, secret = WEBHOOK_SECRET): string => {
   const signature = crypto
     .createHmac("sha256", secret)
     .update(`${ts}.${REQUEST_ID}.${DATA_ID}`)
@@ -32,7 +32,6 @@ test("validateMpSignature acepta firma válida dentro de la ventana", () => {
   });
 
   assert.equal(result.isValid, true);
-  assert.equal(result.reason, undefined);
   assert.equal(result.ts, ts);
 });
 
@@ -56,6 +55,39 @@ test("validateMpSignature rechaza firma con digest inválido", () => {
 test("validateMpSignature rechaza firma expirada fuera de 5 minutos", () => {
   const nowMs = Date.now();
   const ts = Math.floor((nowMs - MP_SIGNATURE_WINDOW_MS - 1000) / 1000);
+  const signatureHeader = buildSignatureHeader(ts);
+
+  const result = validateMpSignature({
+    signatureHeader,
+    requestId: REQUEST_ID,
+    dataId: DATA_ID,
+    webhookSecret: WEBHOOK_SECRET,
+    nowMs,
+  });
+
+  assert.equal(result.isValid, false);
+  assert.equal(result.reason, "signature_expired");
+});
+
+test("validateMpSignature rechaza ts no numérico", () => {
+  const nowMs = Date.now();
+  const signatureHeader = buildSignatureHeader("abc");
+
+  const result = validateMpSignature({
+    signatureHeader,
+    requestId: REQUEST_ID,
+    dataId: DATA_ID,
+    webhookSecret: WEBHOOK_SECRET,
+    nowMs,
+  });
+
+  assert.equal(result.isValid, false);
+  assert.equal(result.reason, "invalid_ts");
+});
+
+test("validateMpSignature rechaza firmas con ts en el futuro", () => {
+  const nowMs = Date.now();
+  const ts = Math.floor((nowMs + 60_000) / 1000);
   const signatureHeader = buildSignatureHeader(ts);
 
   const result = validateMpSignature({

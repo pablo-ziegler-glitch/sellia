@@ -11,15 +11,26 @@ export type ValidateMpSignatureInput = {
   maxAgeMs?: number;
 };
 
-export type MpSignatureValidationResult = {
-  isValid: boolean;
-  reason?: "missing_signature" | "invalid_ts" | "signature_expired" | "signature_mismatch";
+type MpSignatureValidationSuccess = {
+  isValid: true;
+  ts: number;
+  signature: string;
+};
+
+type MpSignatureValidationFailure = {
+  isValid: false;
+  reason: "missing_signature" | "invalid_ts" | "signature_expired" | "signature_mismatch";
   ts?: number;
   signature?: string;
 };
 
+export type MpSignatureValidationResult =
+  | MpSignatureValidationSuccess
+  | MpSignatureValidationFailure;
+
 type ParsedSignature = {
   ts?: number;
+  hasTs: boolean;
   v1: string;
 };
 
@@ -48,6 +59,7 @@ const parseSignature = (signatureHeader: string): ParsedSignature => {
   const ts = Number(rawTs);
   return {
     ts: Number.isFinite(ts) ? ts : undefined,
+    hasTs: rawTs.length > 0,
     v1,
   };
 };
@@ -69,18 +81,18 @@ export const validateMpSignature = ({
   nowMs = Date.now(),
   maxAgeMs = MP_SIGNATURE_WINDOW_MS,
 }: ValidateMpSignatureInput): MpSignatureValidationResult => {
-  const { ts, v1 } = parseSignature(signatureHeader);
+  const { ts, hasTs, v1 } = parseSignature(signatureHeader);
 
-  if (!requestId || !dataId || !v1 || ts === undefined) {
+  if (!requestId || !dataId || !v1) {
     return { isValid: false, reason: "missing_signature" };
   }
 
-  if (!Number.isInteger(ts) || ts <= 0) {
+  if (!hasTs || ts === undefined || !Number.isInteger(ts) || ts <= 0) {
     return { isValid: false, reason: "invalid_ts" };
   }
 
-  const requestAgeMs = Math.abs(nowMs - ts * 1000);
-  if (requestAgeMs > maxAgeMs) {
+  const requestAgeMs = nowMs - ts * 1000;
+  if (requestAgeMs < 0 || requestAgeMs > maxAgeMs) {
     return { isValid: false, reason: "signature_expired", ts, signature: v1 };
   }
 

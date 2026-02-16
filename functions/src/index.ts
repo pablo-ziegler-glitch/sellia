@@ -969,13 +969,11 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
   });
 
   if (!signatureValidation.isValid) {
-    if (signatureValidation.reason === "signature_expired") {
-      console.info("Mercado Pago webhook rejected", {
-        reason: "signature_expired",
-        requestId,
-        paymentId: dataId || "n/a",
-      });
-    }
+    console.info("Mercado Pago webhook rejected", {
+      reason: signatureValidation.reason ?? "invalid_signature",
+      requestId: requestId || "n/a",
+      paymentId: dataId || "n/a",
+    });
     res.status(401).send("Invalid signature");
     return;
   }
@@ -1017,7 +1015,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       tenantId,
       paymentId,
       requestId,
-      ts: signatureValidation.ts ?? 0,
+      ts: signatureValidation.ts,
     });
 
     if (!nonceAccepted) {
