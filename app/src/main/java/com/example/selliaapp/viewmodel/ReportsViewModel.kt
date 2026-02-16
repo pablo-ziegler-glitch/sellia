@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.model.ReportPoint
 import com.example.selliaapp.repository.ReportsRepository
+import com.example.selliaapp.repository.StockValuationReport
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +20,7 @@ data class ReportsUiState(
     val filter: ReportsFilter = ReportsFilter.DAY,
     val total: Double = 0.0,
     val points: List<Pair<String, Double>> = emptyList(),
+    val stockValuation: StockValuationReport? = null,
     val loading: Boolean = false,
     val error: String? = null   // <-- AGREGADO: para poder hacer copy(error = ...)
 
@@ -69,12 +71,14 @@ class ReportsViewModel @Inject constructor(
                 val series = reportsRepository.getSalesSeries(from, to, filter)
                 val total  = series.sumOf { it.amount }
                 val pairs  = series.map { it.label to it.amount }
+                val stockValuation = reportsRepository.getStockValuationReport()
 
                 _reportData.value = series
                 _state.value = _state.value.copy(
                     loading = false,
                     total = total,
-                    points = pairs
+                    points = pairs,
+                    stockValuation = stockValuation
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(

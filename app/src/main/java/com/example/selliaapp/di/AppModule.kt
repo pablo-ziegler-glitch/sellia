@@ -340,11 +340,16 @@ object AppModule {
     )
 
     /**
-     * ⚠️ Baseline actual (04/09/2025): ReportsRepository SOLO con InvoiceDao.
+     * Reportes de ventas + valorización de stock.
      */
     @Provides @Singleton
-    fun provideReportsRepository(invoiceDao: InvoiceDao): ReportsRepository =
-        ReportsRepository(invoiceDao)
+    fun provideReportsRepository(
+        invoiceDao: InvoiceDao,
+        productDao: ProductDao
+    ): ReportsRepository = ReportsRepository(
+        invoiceDao = invoiceDao,
+        productDao = productDao
+    )
 
     @Provides
     @Singleton
