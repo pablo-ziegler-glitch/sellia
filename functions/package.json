@@ -11,7 +11,8 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "cleanup:public-customers:dry": "node scripts/cleanup-orphan-public-customers.js --dry-run",
-    "cleanup:public-customers:apply": "node scripts/cleanup-orphan-public-customers.js --apply"
+    "cleanup:public-customers:apply": "node scripts/cleanup-orphan-public-customers.js --apply",
+    "test": "npm run build && node --test lib/mpSignature.test.js"
   },
   "dependencies": {
     "axios": "^1.6.7",
