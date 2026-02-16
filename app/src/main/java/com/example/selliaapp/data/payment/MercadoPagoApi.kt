@@ -1,7 +1,9 @@
 package com.example.selliaapp.data.payment
 
 import com.google.android.gms.tasks.Task
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.HttpsCallableResult
 import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
@@ -9,14 +11,12 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class MercadoPagoApi @Inject constructor(
-    private val functions: FirebaseFunctions
+    private val functions: FirebaseFunctions,
+    private val auth: FirebaseAuth
 ) {
     suspend fun createPaymentPreference(request: PaymentPreferenceRequest): PaymentPreferenceResult {
         val payload = buildPayload(request)
-        val result = functions
-            .getHttpsCallable(FUNCTION_NAME)
-            .call(payload)
-            .awaitResult()
+        val result = callCreatePreferenceWithAuthRecovery(payload)
 
         val data = result.data as? Map<*, *>
             ?: throw IllegalStateException("Respuesta inválida de la Cloud Function de pagos.")
@@ -31,6 +31,26 @@ class MercadoPagoApi @Inject constructor(
             sandboxInitPoint = data["sandbox_init_point"] as? String
                 ?: data["sandboxInitPoint"] as? String
         )
+    }
+
+    private suspend fun callCreatePreferenceWithAuthRecovery(payload: Map<String, Any>): HttpsCallableResult {
+        return try {
+            callCreatePreference(payload)
+        } catch (exception: FirebaseFunctionsException) {
+            if (exception.code != FirebaseFunctionsException.Code.UNAUTHENTICATED) {
+                throw exception
+            }
+
+            refreshCallableAuthentication()
+            callCreatePreference(payload)
+        }
+    }
+
+    private suspend fun callCreatePreference(payload: Map<String, Any>): HttpsCallableResult {
+        return functions
+            .getHttpsCallable(FUNCTION_NAME)
+            .call(payload)
+            .awaitResult()
     }
 
     private fun buildPayload(request: PaymentPreferenceRequest): Map<String, Any> {
@@ -74,6 +94,15 @@ class MercadoPagoApi @Inject constructor(
                 continuation.resumeWithException(exception)
             }
         }
+    }
+
+    private suspend fun refreshCallableAuthentication() {
+        val currentUser = auth.currentUser
+        if (currentUser == null) {
+            auth.signInAnonymously().awaitResult()
+            return
+        }
+        currentUser.getIdToken(true).awaitResult()
     }
 
     private companion object {
