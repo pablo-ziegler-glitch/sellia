@@ -2,7 +2,6 @@ package com.example.selliaapp.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -44,7 +44,8 @@ fun ProductQuickDetailDialog(
     product: ProductEntity,
     onDismiss: () -> Unit,
     onEdit: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onPrintQr: (() -> Unit)? = null
 ) {
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
     val images: List<Any> = product.imageUrls.takeIf { it.isNotEmpty() }
@@ -76,6 +77,11 @@ fun ProductQuickDetailDialog(
                     if (onDelete != null) {
                         IconButton(onClick = onDelete) {
                             Icon(Icons.Default.Delete, contentDescription = "Eliminar")
+                        }
+                    }
+                    if (onPrintQr != null) {
+                        IconButton(onClick = onPrintQr) {
+                            Icon(Icons.Default.Print, contentDescription = "Imprimir QR")
                         }
                     }
                 }
