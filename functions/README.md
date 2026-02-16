@@ -121,3 +121,46 @@ npm install
 npm run build
 firebase deploy --only functions
 ```
+
+### ¿Qué sigue después de `npm --prefix functions run build`?
+
+
+> ⚠️ **Runtime requerido (deploy):** Cloud Functions con Node.js 18 fue decommissioned.
+> Este proyecto debe desplegarse con **Node.js 20** (definido en `functions/package.json`).
+
+Si el build terminó sin errores (como en tu captura), ya tenés el código TypeScript compilado y listo para subir.
+
+1. Verificá que estés logueado en Firebase y en el proyecto correcto:
+
+   ```bash
+   firebase login
+   firebase use <tu_project_id>
+   ```
+
+2. Confirmá que tu Firebase CLI esté actualizado (recomendado):
+
+   ```bash
+   firebase --version
+   npm i -g firebase-tools@latest
+   ```
+
+3. Desplegá únicamente las Cloud Functions:
+
+   ```bash
+   firebase deploy --only functions
+   ```
+
+4. Probá que respondan:
+   - HTTP Functions: abrí la URL que te devuelve el deploy.
+   - Scheduler/cron (`collectUsageMetrics`): podés ejecutarla manualmente desde Firebase Console para validar logs y escrituras.
+
+### ¿Para qué eran las `functions` en este proyecto?
+
+Este módulo se usa para mover lógica sensible del cliente al backend de Firebase, principalmente:
+
+- ejecutar tareas programadas (como `collectUsageMetrics`),
+- centralizar integraciones externas (por ejemplo Mercado Pago/webhooks),
+- proteger secretos y validaciones del lado servidor,
+- reducir riesgo de manipulación desde la app/web cliente.
+
+En resumen: **la app Android/web consume datos; `functions` hace la lógica de backend segura y automatizada**.
