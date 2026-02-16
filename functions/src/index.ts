@@ -1,8 +1,8 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
-import * as crypto from "crypto";
 import { google, monitoring_v3 } from "googleapis";
+import { getPointValue } from "./monitoring.helpers";
 
 admin.initializeApp();
 
@@ -68,11 +68,6 @@ type MpConfig = {
   webhookSecret: string;
 };
 
-type MpSignature = {
-  ts: string;
-  v1: string;
-};
-
 type PreferenceItemInput = {
   title?: string;
   name?: string;
@@ -85,14 +80,35 @@ type PreferenceItemInput = {
 
 type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
 
+type PaymentWebhookTransactionResult = {
+  ignoredDuplicate: boolean;
+  transitionApplied: boolean;
+};
+
 type ResolveTenantInput = {
-  tenantIdFromMetadata: string;
+  tenantIdFromReference: string;
   orderId: string;
   paymentId: string;
 };
 
+type ExternalReferenceData = {
+  tenantId: string;
+  orderId: string;
+};
+
 const MERCADOPAGO_API = "https://api.mercadopago.com";
 const USAGE_COLLECTION = "usageMetricsMonthly";
+const PAYMENT_STATUS_PRIORITY: Record<PaymentStatus, number> = {
+  PENDING: 10,
+  REJECTED: 20,
+  FAILED: 20,
+  APPROVED: 30,
+};
+const TERMINAL_PAYMENT_STATUSES = new Set<PaymentStatus>([
+  "APPROVED",
+  "REJECTED",
+  "FAILED",
+]);
 
 const USAGE_METRICS: UsageMetricDefinition[] = [
   {
@@ -168,6 +184,8 @@ type PublicProductPayload = {
   code?: string | null;
   barcode?: string | null;
   name: string;
+  sku?: string | null;
+  storeName?: string | null;
   description?: string | null;
   brand?: string | null;
   parentCategory?: string | null;
@@ -200,6 +218,8 @@ const buildPublicProductPayload = (
     code: data.code ?? null,
     barcode: data.barcode ?? null,
     name: data.name ?? "Producto",
+    sku: data.sku ?? data.code ?? data.barcode ?? null,
+    storeName: data.storeName ?? data.tenantName ?? null,
     description: data.description ?? null,
     brand: data.brand ?? null,
     parentCategory: data.parentCategory ?? null,
@@ -261,39 +281,6 @@ const getBillingConfig = (): BillingConfig => {
   };
 };
 
-const parseSignature = (signatureHeader: string): MpSignature => {
-  const parts = signatureHeader
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const signature: MpSignature = { ts: "", v1: "" };
-
-  for (const part of parts) {
-    const [key, value] = part.split("=");
-    if (!key || !value) {
-      continue;
-    }
-    if (key === "ts") {
-      signature.ts = value;
-    }
-    if (key === "v1") {
-      signature.v1 = value;
-    }
-  }
-
-  return signature;
-};
-
-const timingSafeEqual = (a: string, b: string): boolean => {
-  const bufferA = Buffer.from(a, "utf8");
-  const bufferB = Buffer.from(b, "utf8");
-  if (bufferA.length !== bufferB.length) {
-    return false;
-  }
-  return crypto.timingSafeEqual(bufferA, bufferB);
-};
-
 const normalizeString = (value: unknown): string => {
   if (typeof value === "string") {
     return value.trim();
@@ -319,16 +306,45 @@ const extractTenantId = (payment: unknown): string => {
   );
 };
 
+const buildExternalReference = (tenantId: string, orderId: string): string =>
+  `tenant:${tenantId}|order:${orderId}`;
+
+const parseExternalReference = (externalReference: unknown): ExternalReferenceData => {
+  const raw = normalizeString(externalReference);
+  if (!raw) {
+    return { tenantId: "", orderId: "" };
+  }
+
+  const segments = raw
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const tenantSegment = segments.find((segment) => segment.startsWith("tenant:"));
+  const orderSegment = segments.find((segment) => segment.startsWith("order:"));
+
+  return {
+    tenantId: tenantSegment ? normalizeString(tenantSegment.slice("tenant:".length)) : "",
+    orderId: orderSegment ? normalizeString(orderSegment.slice("order:".length)) : "",
+  };
+};
+
 const resolveTenantId = async ({
-  tenantIdFromMetadata,
+  tenantIdFromReference,
   orderId,
   paymentId,
 }: ResolveTenantInput): Promise<string> => {
-  if (tenantIdFromMetadata) {
-    return tenantIdFromMetadata;
+  if (tenantIdFromReference) {
+    return tenantIdFromReference;
   }
 
   if (orderId) {
+    console.info("Mercado Pago tenant fallback started", {
+      paymentId,
+      orderId,
+      strategy: "orders_collection_group",
+    });
+
     const orderLookup = await db
       .collectionGroup("orders")
       .where(admin.firestore.FieldPath.documentId(), "==", orderId)
@@ -336,18 +352,19 @@ const resolveTenantId = async ({
       .get();
 
     if (!orderLookup.empty) {
+      console.info("Mercado Pago tenant fallback resolved", {
+        paymentId,
+        orderId,
+        strategy: "orders_collection_group",
+      });
       return orderLookup.docs[0].ref.parent.parent?.id ?? "";
     }
-  }
 
-  const paymentLookup = await db
-    .collectionGroup("payments")
-    .where(admin.firestore.FieldPath.documentId(), "==", paymentId)
-    .limit(1)
-    .get();
-
-  if (!paymentLookup.empty) {
-    return paymentLookup.docs[0].ref.parent.parent?.id ?? "";
+    console.info("Mercado Pago tenant fallback unresolved", {
+      paymentId,
+      orderId,
+      strategy: "orders_collection_group",
+    });
   }
 
   return "";
@@ -367,6 +384,39 @@ const mapPaymentStatus = (status: unknown): PaymentStatus => {
   return "FAILED";
 };
 
+const parseStoredPaymentStatus = (status: unknown): PaymentStatus | null => {
+  if (status === "PENDING" || status === "APPROVED" || status === "REJECTED" || status === "FAILED") {
+    return status;
+  }
+  return null;
+};
+
+const canApplyPaymentTransition = (
+  currentStatus: PaymentStatus | null,
+  incomingStatus: PaymentStatus
+): boolean => {
+  if (!currentStatus) {
+    return true;
+  }
+  if (currentStatus === incomingStatus) {
+    return true;
+  }
+  if (TERMINAL_PAYMENT_STATUSES.has(currentStatus)) {
+    return false;
+  }
+  return PAYMENT_STATUS_PRIORITY[incomingStatus] >= PAYMENT_STATUS_PRIORITY[currentStatus];
+};
+
+const buildPaymentEventKey = (input: {
+  paymentId: string;
+  paymentStatus: PaymentStatus;
+  requestId: string;
+  signatureTs: string;
+}): string => {
+  const payload = `${input.paymentId}|${input.paymentStatus}|${input.requestId}|${input.signatureTs}`;
+  return crypto.createHash("sha256").update(payload).digest("hex");
+};
+
 const getMonthRange = (referenceDate: Date): { start: Date; end: Date } => {
   const start = new Date(
     Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1, 0, 0, 0)
@@ -379,28 +429,6 @@ const getMonthKey = (referenceDate: Date): string => {
   const year = referenceDate.getUTCFullYear();
   const month = String(referenceDate.getUTCMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
-};
-
-const summarizeError = (error: unknown): string => {
-  const rawMessage = error instanceof Error ? error.message : String(error);
-  const trimmed = rawMessage.trim();
-  if (!trimmed) {
-    return "Unknown error";
-  }
-  return trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed;
-};
-
-const getPointValue = (point: monitoring_v3.Schema$Point): number => {
-  if (!point?.value) {
-    return 0;
-  }
-  if (typeof point.value.doubleValue === "number") {
-    return point.value.doubleValue;
-  }
-  if (point.value.int64Value !== undefined && point.value.int64Value !== null) {
-    return Number(point.value.int64Value);
-  }
-  return 0;
 };
 
 const sumMonitoringMetric = async (
@@ -614,6 +642,64 @@ const getDataId = (req: functions.https.Request): string => {
     req.query?.["data[id]"] ??
     req.query?.["id"]; // fallback for test calls
   return dataId ? String(dataId) : "";
+};
+
+const consumeWebhookNonce = async ({
+  tenantId,
+  paymentId,
+  requestId,
+  ts,
+}: {
+  tenantId: string;
+  paymentId: string;
+  requestId: string;
+  ts: number;
+}): Promise<boolean> => {
+  const nonceId = `${requestId}.${ts}`;
+  const nonceRef = db
+    .collection("tenants")
+    .doc(tenantId)
+    .collection("payments")
+    .doc(paymentId)
+    .collection("webhookNonces")
+    .doc(nonceId);
+
+  const nowMs = Date.now();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    nowMs + MP_SIGNATURE_WINDOW_MS
+  );
+
+  return db.runTransaction(async (transaction) => {
+    const nonceDoc = await transaction.get(nonceRef);
+    const existingExpiresAt = nonceDoc.get(
+      "expiresAt"
+    ) as admin.firestore.Timestamp | undefined;
+
+    if (
+      nonceDoc.exists &&
+      existingExpiresAt &&
+      existingExpiresAt.toMillis() > nowMs
+    ) {
+      return false;
+    }
+
+    transaction.set(
+      nonceRef,
+      {
+        requestId,
+        ts,
+        nonceId,
+        expiresAt,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: nonceDoc.exists
+          ? nonceDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return true;
+  });
 };
 
 type UsageSnapshot = {
@@ -881,6 +967,14 @@ const createPreferenceHandler = async (data: unknown) => {
   );
   const description = normalizeString(payload.description);
   const tenantId = normalizeString(payload.tenantId);
+  const metadataInput =
+    typeof payload.metadata === "object" && payload.metadata !== null
+      ? (payload.metadata as Record<string, unknown>)
+      : {};
+  const metadataTenantId = normalizeString(
+    metadataInput.tenantId ?? metadataInput.tenant_id
+  );
+  const requiredTenantId = tenantId || metadataTenantId;
   const payerEmail = normalizeString(payload.payer_email ?? payload.payerEmail);
 
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -894,6 +988,13 @@ const createPreferenceHandler = async (data: unknown) => {
     throw new functions.https.HttpsError(
       "invalid-argument",
       "items must contain at least one entry."
+    );
+  }
+
+  if (!requiredTenantId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId is required to create a payment preference."
     );
   }
 
@@ -916,18 +1017,17 @@ const createPreferenceHandler = async (data: unknown) => {
   });
 
   const metadata = {
+    ...metadataInput,
     orderId: orderId || undefined,
-    tenantId: tenantId || undefined,
-    ...(typeof payload.metadata === "object" && payload.metadata !== null
-      ? payload.metadata
-      : {}),
+    tenantId: requiredTenantId,
   };
+  const externalReference = buildExternalReference(requiredTenantId, orderId);
 
   const response = await axios.post(
     `${MERCADOPAGO_API}/checkout/preferences`,
     {
       items: preferenceItems,
-      external_reference: orderId || undefined,
+      external_reference: externalReference,
       metadata,
       payer: payerEmail ? { email: payerEmail } : undefined,
     },
@@ -1016,21 +1116,21 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
 
   const signatureHeader = req.get("x-signature") ?? "";
   const requestId = req.get("x-request-id") ?? "";
-  const { ts, v1 } = parseSignature(signatureHeader);
   const dataId = getDataId(req);
 
-  if (!ts || !v1 || !requestId || !dataId) {
-    res.status(401).send("Invalid signature");
-    return;
-  }
+  const signatureValidation = validateMpSignature({
+    signatureHeader,
+    requestId,
+    dataId,
+    webhookSecret: config.webhookSecret,
+  });
 
-  const manifest = `${ts}.${requestId}.${dataId}`;
-  const expectedSignature = crypto
-    .createHmac("sha256", config.webhookSecret)
-    .update(manifest)
-    .digest("hex");
-
-  if (!timingSafeEqual(expectedSignature, v1)) {
+  if (!signatureValidation.isValid) {
+    console.info("Mercado Pago webhook rejected", {
+      reason: signatureValidation.reason ?? "invalid_signature",
+      requestId: requestId || "n/a",
+      paymentId: dataId || "n/a",
+    });
     res.status(401).send("Invalid signature");
     return;
   }
@@ -1048,13 +1148,14 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     );
 
     const payment = paymentResponse.data;
+    const externalReferenceData = parseExternalReference(payment?.external_reference);
     const metadataOrderId = normalizeString(payment?.metadata?.orderId);
-    const orderId = payment?.external_reference
-      ? String(payment.external_reference)
-      : metadataOrderId;
+    const orderId = externalReferenceData.orderId || metadataOrderId;
     const tenantIdFromMetadata = extractTenantId(payment);
+    const tenantIdFromReference =
+      externalReferenceData.tenantId || tenantIdFromMetadata;
     const tenantId = await resolveTenantId({
-      tenantIdFromMetadata,
+      tenantIdFromReference,
       orderId,
       paymentId,
     });
@@ -1065,6 +1166,24 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
         orderId: orderId || "n/a",
       });
       res.status(200).send("ok");
+      return;
+    }
+
+    const nonceAccepted = await consumeWebhookNonce({
+      tenantId,
+      paymentId,
+      requestId,
+      ts: signatureValidation.ts,
+    });
+
+    if (!nonceAccepted) {
+      console.info("Mercado Pago webhook rejected", {
+        reason: "signature_reused",
+        tenantId,
+        paymentId,
+        requestId,
+      });
+      res.status(401).send("Invalid signature");
       return;
     }
 
@@ -1082,6 +1201,13 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       createdAt: payment?.date_created ?? null,
     };
 
+    const eventKey = buildPaymentEventKey({
+      paymentId,
+      paymentStatus,
+      requestId,
+      signatureTs: ts,
+    });
+
     const createdAtValue =
       payment?.date_created && !Number.isNaN(Date.parse(payment.date_created))
         ? admin.firestore.Timestamp.fromDate(new Date(payment.date_created))
@@ -1096,19 +1222,72 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await db
-      .collection("tenants")
-      .doc(tenantId)
-      .collection("payments")
-      .doc(paymentId)
-      .set(paymentUpdate, {
-        merge: true,
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const paymentRef = tenantRef.collection("payments").doc(paymentId);
+    const paymentEventRef = tenantRef.collection("paymentEvents").doc(eventKey);
+
+    const transactionResult = await db.runTransaction<PaymentWebhookTransactionResult>(
+      async (transaction) => {
+        const eventSnapshot = await transaction.get(paymentEventRef);
+        if (eventSnapshot.exists) {
+          return {
+            ignoredDuplicate: true,
+            transitionApplied: false,
+          };
+        }
+
+        transaction.set(paymentEventRef, {
+          eventKey,
+          tenantId,
+          paymentId,
+          orderId: orderId || null,
+          requestId,
+          signatureTs: ts,
+          status: paymentStatus,
+          provider: "mercado_pago",
+          receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+          raw: rawPayment,
+        });
+
+        const paymentSnapshot = await transaction.get(paymentRef);
+        const currentStatus = parseStoredPaymentStatus(paymentSnapshot.get("status"));
+        const transitionApplied = canApplyPaymentTransition(currentStatus, paymentStatus);
+
+        transaction.set(
+          paymentRef,
+          {
+            lastWebhookAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastWebhookRequestId: requestId,
+            lastWebhookSignatureTs: ts,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (transitionApplied) {
+          transaction.set(paymentRef, paymentUpdate, { merge: true });
+        }
+
+        return {
+          ignoredDuplicate: false,
+          transitionApplied,
+        };
+      }
+    );
+
+    if (transactionResult.ignoredDuplicate) {
+      console.info("Mercado Pago webhook duplicate ignored", {
+        tenantId,
+        paymentId,
+        transitionApplied: false,
+        ignoredDuplicate: true,
       });
+      res.status(200).send("ok");
+      return;
+    }
 
     if (orderId) {
-      await db
-        .collection("tenants")
-        .doc(tenantId)
+      await tenantRef
         .collection("orders")
         .doc(orderId)
         .set(
@@ -1124,6 +1303,8 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       paymentId,
       orderId: orderId || "n/a",
       tenantId,
+      transitionApplied: transactionResult.transitionApplied,
+      ignoredDuplicate: transactionResult.ignoredDuplicate,
     });
 
     res.status(200).send("ok");

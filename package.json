@@ -1,0 +1,12 @@
+{
+  "name": "sellia-apphosting-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servidor Node.js para Firebase App Hosting que publica el sitio estático de /public",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node apphosting-server.js"
+  }
+}
