@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions";
+import { defineString } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import axios from "axios";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
@@ -111,6 +112,29 @@ const TERMINAL_PAYMENT_STATUSES = new Set<PaymentStatus>([
   "FAILED",
 ]);
 const MP_SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
+
+const MP_ACCESS_TOKEN_PARAM = defineString("MP_ACCESS_TOKEN");
+const MP_WEBHOOK_SECRET_PARAM = defineString("MP_WEBHOOK_SECRET");
+const BILLING_SOURCE_PARAM = defineString("BILLING_SOURCE", {
+  default: "monitoring",
+});
+const BILLING_PROJECT_ID_PARAM = defineString("BILLING_PROJECT_ID");
+const BILLING_BIGQUERY_PROJECT_PARAM = defineString("BILLING_BIGQUERY_PROJECT");
+const BILLING_BIGQUERY_DATASET_PARAM = defineString("BILLING_BIGQUERY_DATASET");
+const BILLING_BIGQUERY_TABLE_PARAM = defineString("BILLING_BIGQUERY_TABLE");
+
+const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
+  try {
+    const value = param.value();
+    if (typeof value !== "string") {
+      return undefined;
+    }
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : undefined;
+  } catch (_error) {
+    return undefined;
+  }
+};
 
 const USAGE_METRICS: UsageMetricDefinition[] = [
   {
@@ -242,9 +266,12 @@ const buildPublicProductPayload = (
 };
 
 const getMpConfig = (): MpConfig => {
-  const config = functions.config()?.mercadopago ?? {};
-  const accessToken = process.env.MP_ACCESS_TOKEN ?? config.access_token;
-  const webhookSecret = process.env.MP_WEBHOOK_SECRET ?? config.webhook_secret;
+  const accessToken =
+    process.env.MP_ACCESS_TOKEN?.trim() ??
+    getOptionalParam(MP_ACCESS_TOKEN_PARAM);
+  const webhookSecret =
+    process.env.MP_WEBHOOK_SECRET?.trim() ??
+    getOptionalParam(MP_WEBHOOK_SECRET_PARAM);
 
   if (!accessToken || !webhookSecret) {
     throw new functions.https.HttpsError(
@@ -257,11 +284,11 @@ const getMpConfig = (): MpConfig => {
 };
 
 const getBillingConfig = (): BillingConfig => {
-  const config = functions.config()?.billing ?? {};
   const projectId =
     process.env.GCP_PROJECT ??
     process.env.GCLOUD_PROJECT ??
-    config.project_id ??
+    process.env.BILLING_PROJECT_ID ??
+    getOptionalParam(BILLING_PROJECT_ID_PARAM) ??
     "";
   if (!projectId) {
     throw new functions.https.HttpsError(
@@ -269,17 +296,24 @@ const getBillingConfig = (): BillingConfig => {
       "Billing projectId is missing."
     );
   }
-  const source = (process.env.BILLING_SOURCE ??
-    config.source ??
-    "monitoring") as UsageSource;
+  const rawSource =
+    process.env.BILLING_SOURCE ??
+    getOptionalParam(BILLING_SOURCE_PARAM) ??
+    "monitoring";
+  const source: UsageSource = rawSource === "bigquery" ? "bigquery" : "monitoring";
+
   return {
     source,
     projectId,
     bigqueryProjectId:
-      process.env.BILLING_BIGQUERY_PROJECT ?? config.bigquery_project_id,
+      process.env.BILLING_BIGQUERY_PROJECT ??
+      getOptionalParam(BILLING_BIGQUERY_PROJECT_PARAM),
     bigqueryDataset:
-      process.env.BILLING_BIGQUERY_DATASET ?? config.bigquery_dataset,
-    bigqueryTable: process.env.BILLING_BIGQUERY_TABLE ?? config.bigquery_table,
+      process.env.BILLING_BIGQUERY_DATASET ??
+      getOptionalParam(BILLING_BIGQUERY_DATASET_PARAM),
+    bigqueryTable:
+      process.env.BILLING_BIGQUERY_TABLE ??
+      getOptionalParam(BILLING_BIGQUERY_TABLE_PARAM),
   };
 };
 

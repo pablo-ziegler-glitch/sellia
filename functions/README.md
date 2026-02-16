@@ -62,23 +62,25 @@ Asignar roles al **service account** que ejecuta la función (por defecto, `PROJ
 - **Firestore (escritura)**
   - `roles/datastore.user`
 
-### 3) Configuración por variables (Functions Config)
+### 3) Configuración por variables (params + env vars, sin `functions.config()` deprecado)
+
+Definí variables en `functions/.env.<projectId>` (ej. `functions/.env.sellia1993`) o inyectalas vía CI/CD.
 
 #### Opción A: Cloud Monitoring (default)
 
 ```bash
-firebase functions:config:set billing.source="monitoring" billing.project_id="TU_PROJECT_ID"
+BILLING_SOURCE=monitoring
+BILLING_PROJECT_ID=TU_PROJECT_ID
 ```
 
 #### Opción B: BigQuery Billing Export
 
 ```bash
-firebase functions:config:set \
-  billing.source="bigquery" \
-  billing.project_id="TU_PROJECT_ID" \
-  billing.bigquery_project_id="BQ_PROJECT_ID" \
-  billing.bigquery_dataset="DATASET" \
-  billing.bigquery_table="gcp_billing_export_v1"
+BILLING_SOURCE=bigquery
+BILLING_PROJECT_ID=TU_PROJECT_ID
+BILLING_BIGQUERY_PROJECT=BQ_PROJECT_ID
+BILLING_BIGQUERY_DATASET=DATASET
+BILLING_BIGQUERY_TABLE=gcp_billing_export_v1
 ```
 
 > **Tip:** Para Billing Export, el dataset y table se crean al habilitar el export en Cloud Billing.
