@@ -22,6 +22,38 @@ Checklist mínimo antes de pasar a producción:
 - Confirmar que la Cloud Function `createPaymentPreference` responde con `init_point` y la app puede abrir el link de pago sin errores.
 - Validar que `external_reference` viaja con el `orderId`/referencia interna y aparece en el detalle del pago en Mercado Pago.
 
+## Contrato de payload: frontend/app → Cloud Function `createPreference`
+
+A partir de esta versión, el payload de creación de preferencia debe cumplir este contrato mínimo:
+
+- `tenantId` (**obligatorio**): identificador del tenant. Si falta, la function responde `HttpsError("invalid-argument")`.
+- `orderId` (recomendado): referencia interna de la orden.
+- `items` (**obligatorio**): listado de ítems para Mercado Pago.
+- `amount` (**obligatorio**): monto total positivo.
+
+Además, backend envía siempre:
+
+- `metadata.tenantId` con el tenant efectivo.
+- `external_reference` con formato estable: `tenant:{tenantId}|order:{orderId}`.
+
+Ejemplo de request desde frontend/app:
+
+```json
+{
+  "tenantId": "tenant_abc123",
+  "orderId": "order_987",
+  "amount": 15999,
+  "items": [
+    {
+      "title": "Zapatilla Running",
+      "quantity": 1,
+      "unit_price": 15999,
+      "currency_id": "ARS"
+    }
+  ]
+}
+```
+
 ## Bricks (mejora opcional)
 
 **Bricks** queda como **mejora opcional** para una segunda etapa. Permite embebido directo en el checkout propio, optimizando la continuidad visual del flujo.
