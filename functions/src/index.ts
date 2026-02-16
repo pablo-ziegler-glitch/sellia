@@ -480,6 +480,27 @@ const accumulateServiceMetrics = (
   serviceMetrics.totalsByUnit[metric.unit] = current + metric.value;
 };
 
+const summarizeError = (error: unknown): string => {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  try {
+    const serialized = JSON.stringify(error);
+    if (serialized && serialized !== "{}") {
+      return serialized;
+    }
+  } catch {
+    // Ignore serialization failures and fall back to a stable message.
+  }
+
+  return "Unknown error";
+};
+
 const collectMonitoringUsage = async (
   config: BillingConfig,
   startTime: Date,
