@@ -288,15 +288,6 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Reintentar OFF manual
-            Button(
-                onClick = { if (barcode.isNotBlank()) offVm.fetch(barcode) },
-                enabled = barcode.isNotBlank() && offState != UiState.Loading,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (offState == UiState.Loading) "Consultando OFF..." else "Autocompletar con OFF")
-            }
-
             OutlinedTextField(
                 value = brand,
                 onValueChange = { brand = it },
