@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
 import * as crypto from "crypto";
-import { google } from "googleapis";
+import { google, monitoring_v3 } from "googleapis";
 
 admin.initializeApp();
 
@@ -68,6 +68,12 @@ type PreferenceItemInput = {
 };
 
 type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
+
+type ResolveTenantInput = {
+  tenantIdFromMetadata: string;
+  orderId: string;
+  paymentId: string;
+};
 
 const MERCADOPAGO_API = "https://api.mercadopago.com";
 const USAGE_COLLECTION = "usageMetricsMonthly";
@@ -282,6 +288,69 @@ const normalizeString = (value: unknown): string => {
   return "";
 };
 
+const extractTenantId = (payment: unknown): string => {
+  const source = (payment ?? {}) as Record<string, unknown>;
+  const metadata = (source.metadata ?? {}) as Record<string, unknown>;
+  const additionalInfo = (source.additional_info ?? {}) as Record<string, unknown>;
+
+  return normalizeString(
+    metadata.tenantId ??
+      metadata.tenant_id ??
+      source.tenantId ??
+      source.tenant_id ??
+      additionalInfo.tenantId ??
+      additionalInfo.tenant_id
+  );
+};
+
+const resolveTenantId = async ({
+  tenantIdFromMetadata,
+  orderId,
+  paymentId,
+}: ResolveTenantInput): Promise<string> => {
+  if (tenantIdFromMetadata) {
+    return tenantIdFromMetadata;
+  }
+
+  if (orderId) {
+    const orderLookup = await db
+      .collectionGroup("orders")
+      .where(admin.firestore.FieldPath.documentId(), "==", orderId)
+      .limit(1)
+      .get();
+
+    if (!orderLookup.empty) {
+      return orderLookup.docs[0].ref.parent.parent?.id ?? "";
+    }
+  }
+
+  const paymentLookup = await db
+    .collectionGroup("payments")
+    .where(admin.firestore.FieldPath.documentId(), "==", paymentId)
+    .limit(1)
+    .get();
+
+  if (!paymentLookup.empty) {
+    return paymentLookup.docs[0].ref.parent.parent?.id ?? "";
+  }
+
+  return "";
+};
+
+const mapPaymentStatus = (status: unknown): PaymentStatus => {
+  const normalized = normalizeString(status).toLowerCase();
+  if (normalized === "approved") {
+    return "APPROVED";
+  }
+  if (normalized === "pending" || normalized === "in_process") {
+    return "PENDING";
+  }
+  if (normalized === "rejected" || normalized === "cancelled" || normalized === "charged_back") {
+    return "REJECTED";
+  }
+  return "FAILED";
+};
+
 const getMonthRange = (referenceDate: Date): { start: Date; end: Date } => {
   const start = new Date(
     Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1, 0, 0, 0)
@@ -296,16 +365,14 @@ const getMonthKey = (referenceDate: Date): string => {
   return `${year}-${month}`;
 };
 
-const getPointValue = (
-  point: { value?: { doubleValue?: number; int64Value?: string | number } }
-): number => {
+const getPointValue = (point: monitoring_v3.Schema$Point): number => {
   if (!point?.value) {
     return 0;
   }
   if (typeof point.value.doubleValue === "number") {
     return point.value.doubleValue;
   }
-  if (point.value.int64Value !== undefined) {
+  if (point.value.int64Value !== undefined && point.value.int64Value !== null) {
     return Number(point.value.int64Value);
   }
   return 0;
@@ -321,24 +388,23 @@ const sumMonitoringMetric = async (
   const response = await monitoring.projects.timeSeries.list({
     name: `projects/${projectId}`,
     filter: `metric.type="${metric.metricType}"`,
-    interval: {
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-    },
-    aggregation: {
-      alignmentPeriod: "86400s",
-      perSeriesAligner: metric.perSeriesAligner ?? "ALIGN_SUM",
-      crossSeriesReducer: metric.crossSeriesReducer ?? "REDUCE_SUM",
-    },
+    "interval.startTime": startTime.toISOString(),
+    "interval.endTime": endTime.toISOString(),
+    "aggregation.alignmentPeriod": "86400s",
+    "aggregation.perSeriesAligner": metric.perSeriesAligner ?? "ALIGN_SUM",
+    "aggregation.crossSeriesReducer": metric.crossSeriesReducer ?? "REDUCE_SUM",
     view: "FULL",
   });
 
   const series = response.data.timeSeries ?? [];
-  const total = series.reduce((sum, item) => {
+  const total = series.reduce((sum: number, item: monitoring_v3.Schema$TimeSeries) => {
     const points = item.points ?? [];
     return (
       sum +
-      points.reduce((innerSum, point) => innerSum + getPointValue(point), 0)
+      points.reduce(
+        (innerSum: number, point: monitoring_v3.Schema$Point) => innerSum + getPointValue(point),
+        0
+      )
     );
   }, 0);
 
@@ -612,7 +678,7 @@ const sanitizeAlertId = (value: string): string =>
   value.replace(/[^a-zA-Z0-9_-]/g, "_");
 
 const fetchUsageSnapshot = async (tenantId: string): Promise<UsageSnapshot | null> => {
-  const col = db.collection("tenants").document(tenantId).collection("usageSnapshots");
+  const col = db.collection("tenants").doc(tenantId).collection("usageSnapshots");
   const currentDoc = await col.doc("current").get();
   if (currentDoc.exists) {
     return currentDoc.data() as UsageSnapshot;
@@ -625,7 +691,7 @@ const fetchUsageSnapshot = async (tenantId: string): Promise<UsageSnapshot | nul
 };
 
 const fetchFreeTierLimit = async (tenantId: string): Promise<FreeTierLimit | null> => {
-  const col = db.collection("tenants").document(tenantId).collection("freeTierLimits");
+  const col = db.collection("tenants").doc(tenantId).collection("freeTierLimits");
   const currentDoc = await col.doc("current").get();
   if (currentDoc.exists) {
     return currentDoc.data() as FreeTierLimit;
@@ -634,7 +700,7 @@ const fetchFreeTierLimit = async (tenantId: string): Promise<FreeTierLimit | nul
   if (fallbackDoc.exists) {
     return fallbackDoc.data() as FreeTierLimit;
   }
-  const tenantDoc = await db.collection("tenants").document(tenantId).get();
+  const tenantDoc = await db.collection("tenants").doc(tenantId).get();
   const fallback = tenantDoc.get("freeTierLimits");
   return fallback ? (fallback as FreeTierLimit) : null;
 };
@@ -1058,10 +1124,15 @@ export const syncPublicProductOnWrite = functions.firestore
       return null;
     }
 
+    const afterData = change.after.data();
+    if (!afterData) {
+      return null;
+    }
+
     const payload = buildPublicProductPayload(
       tenantId,
       productId,
-      change.after.data()
+      afterData
     );
     await publicRef.set(payload, { merge: true });
     return null;
