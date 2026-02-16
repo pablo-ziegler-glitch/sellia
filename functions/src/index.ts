@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 
@@ -109,6 +110,7 @@ const TERMINAL_PAYMENT_STATUSES = new Set<PaymentStatus>([
   "REJECTED",
   "FAILED",
 ]);
+const MP_SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
 
 const USAGE_METRICS: UsageMetricDefinition[] = [
   {
@@ -414,7 +416,7 @@ const buildPaymentEventKey = (input: {
   signatureTs: string;
 }): string => {
   const payload = `${input.paymentId}|${input.paymentStatus}|${input.requestId}|${input.signatureTs}`;
-  return crypto.createHash("sha256").update(payload).digest("hex");
+  return createHash("sha256").update(payload).digest("hex");
 };
 
 const getMonthRange = (referenceDate: Date): { start: Date; end: Date } => {
@@ -642,6 +644,112 @@ const getDataId = (req: functions.https.Request): string => {
     req.query?.["data[id]"] ??
     req.query?.["id"]; // fallback for test calls
   return dataId ? String(dataId) : "";
+};
+
+const parseMpSignatureHeader = (
+  signatureHeader: string
+): { ts: number; tsRaw: string; v1: string } | null => {
+  if (!signatureHeader) {
+    return null;
+  }
+
+  const segments = signatureHeader
+    .split(",")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  let tsRaw = "";
+  let v1 = "";
+
+  for (const segment of segments) {
+    const separatorIndex = segment.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const key = segment.slice(0, separatorIndex).trim().toLowerCase();
+    const value = segment.slice(separatorIndex + 1).trim();
+
+    if (key === "ts") {
+      tsRaw = value;
+      continue;
+    }
+    if (key === "v1") {
+      v1 = value.toLowerCase();
+    }
+  }
+
+  if (!tsRaw || !v1 || !/^\d+$/.test(tsRaw) || !/^[0-9a-f]{64}$/.test(v1)) {
+    return null;
+  }
+
+  const tsParsed = Number(tsRaw);
+  const ts = tsRaw.length >= 13 ? Math.floor(tsParsed / 1000) : tsParsed;
+  if (!Number.isFinite(ts) || ts <= 0) {
+    return null;
+  }
+
+  return {
+    ts,
+    tsRaw,
+    v1,
+  };
+};
+
+const validateMpSignature = (input: {
+  signatureHeader: string;
+  requestId: string;
+  dataId: string;
+  webhookSecret: string;
+}): { isValid: boolean; reason?: string; ts: number } => {
+  const parsedHeader = parseMpSignatureHeader(input.signatureHeader);
+  if (!parsedHeader) {
+    return {
+      isValid: false,
+      reason: "invalid_signature_header",
+      ts: 0,
+    };
+  }
+
+  const ageMs = Math.abs(Date.now() - parsedHeader.ts * 1000);
+  if (ageMs > MP_SIGNATURE_WINDOW_MS) {
+    return {
+      isValid: false,
+      reason: "signature_out_of_window",
+      ts: parsedHeader.ts,
+    };
+  }
+
+  if (!input.requestId || !input.dataId) {
+    return {
+      isValid: false,
+      reason: "missing_signature_context",
+      ts: parsedHeader.ts,
+    };
+  }
+
+  const manifest = `id:${input.dataId};request-id:${input.requestId};ts:${parsedHeader.tsRaw};`;
+  const expectedV1 = createHmac("sha256", input.webhookSecret)
+    .update(manifest)
+    .digest("hex");
+
+  const receivedBuffer = Buffer.from(parsedHeader.v1, "hex");
+  const expectedBuffer = Buffer.from(expectedV1, "hex");
+  const isMatch =
+    receivedBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(receivedBuffer, expectedBuffer);
+
+  if (!isMatch) {
+    return {
+      isValid: false,
+      reason: "signature_mismatch",
+      ts: parsedHeader.ts,
+    };
+  }
+
+  return {
+    isValid: true,
+    ts: parsedHeader.ts,
+  };
 };
 
 const consumeWebhookNonce = async ({
@@ -1205,7 +1313,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       paymentId,
       paymentStatus,
       requestId,
-      signatureTs: ts,
+      signatureTs: String(signatureValidation.ts),
     });
 
     const createdAtValue =
@@ -1242,7 +1350,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
           paymentId,
           orderId: orderId || null,
           requestId,
-          signatureTs: ts,
+          signatureTs: String(signatureValidation.ts),
           status: paymentStatus,
           provider: "mercado_pago",
           receivedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1258,7 +1366,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
           {
             lastWebhookAt: admin.firestore.FieldValue.serverTimestamp(),
             lastWebhookRequestId: requestId,
-            lastWebhookSignatureTs: ts,
+            lastWebhookSignatureTs: signatureValidation.ts,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
