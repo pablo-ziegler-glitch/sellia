@@ -13,20 +13,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +56,7 @@ import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.ProductViewModel
 import java.text.NumberFormat
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +77,8 @@ fun PublicProductCatalogScreen(
     var maxPrice by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf(ProductSortOption.UPDATED_DESC) }
     var sortExpanded by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val coroutineScope = rememberCoroutineScope()
 
     val filteredProducts = remember(
         products,
@@ -94,124 +106,161 @@ fun PublicProductCatalogScreen(
         )
     }
 
-    Scaffold(
-        topBar = { BackTopAppBar(title = "Catálogo público", onBack = onBack) }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Buscar por cualquier campo") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = parentCategory,
-                        onValueChange = { parentCategory = it },
-                        label = { Text("Categoría") },
-                        modifier = Modifier.weight(1f)
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Filtros",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
                     OutlinedTextField(
-                        value = category,
-                        onValueChange = { category = it },
-                        label = { Text("Subcategoría") },
-                        modifier = Modifier.weight(1f)
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("Buscar por cualquier campo") },
+                        modifier = Modifier.fillMaxWidth()
                     )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = color,
-                        onValueChange = { color = it },
-                        label = { Text("Color") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = size,
-                        onValueChange = { size = it },
-                        label = { Text("Talle") },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = minPrice,
-                        onValueChange = { minPrice = it },
-                        label = { Text("Precio mín") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = maxPrice,
-                        onValueChange = { maxPrice = it },
-                        label = { Text("Precio máx") },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = { sortExpanded = true }, modifier = Modifier.weight(1f)) {
-                        Text("Orden: ${sort.label}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = parentCategory,
+                            onValueChange = { parentCategory = it },
+                            label = { Text("Categoría") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = category,
+                            onValueChange = { category = it },
+                            label = { Text("Subcategoría") },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
-                    Button(onClick = {
-                        query = ""
-                        parentCategory = ""
-                        category = ""
-                        color = ""
-                        size = ""
-                        minPrice = ""
-                        maxPrice = ""
-                        sort = ProductSortOption.UPDATED_DESC
-                    }, modifier = Modifier.weight(1f)) {
-                        Text("Limpiar")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = color,
+                            onValueChange = { color = it },
+                            label = { Text("Color") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = size,
+                            onValueChange = { size = it },
+                            label = { Text("Talle") },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
-                    DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
-                        ProductSortOption.values().forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option.label) },
-                                onClick = {
-                                    sort = option
-                                    sortExpanded = false
-                                }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = minPrice,
+                            onValueChange = { minPrice = it },
+                            label = { Text("Precio mín") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = maxPrice,
+                            onValueChange = { maxPrice = it },
+                            label = { Text("Precio máx") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(onClick = { sortExpanded = true }, modifier = Modifier.weight(1f)) {
+                            Text("Orden: ${sort.label}")
+                        }
+                        Button(onClick = {
+                            query = ""
+                            parentCategory = ""
+                            category = ""
+                            color = ""
+                            size = ""
+                            minPrice = ""
+                            maxPrice = ""
+                            sort = ProductSortOption.UPDATED_DESC
+                        }, modifier = Modifier.weight(1f)) {
+                            Text("Limpiar")
+                        }
+                        DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                            ProductSortOption.values().forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    onClick = {
+                                        sort = option
+                                        sortExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Ver resultados")
+                    }
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                BackTopAppBar(
+                    title = "Catálogo público",
+                    onBack = onBack,
+                    actions = {
+                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "Abrir filtros"
                             )
                         }
                     }
-                }
-                Text("Resultados: ${filteredProducts.size}")
+                )
             }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                Text(
+                    "Resultados: ${filteredProducts.size}",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
 
-            if (filteredProducts.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "No hay productos que coincidan con los filtros.",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = "Probá ampliar la búsqueda o limpiar filtros.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(filteredProducts, key = { it.id }) { product ->
-                        PublicCatalogItem(
-                            product = product,
-                            currency = currency,
-                            onClick = { onProductSelected(product.id) }
+                if (filteredProducts.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "No hay productos que coincidan con los filtros.",
+                            style = MaterialTheme.typography.titleMedium
                         )
+                        Text(
+                            text = "Probá ampliar la búsqueda o limpiar filtros.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredProducts, key = { it.id }) { product ->
+                            PublicCatalogItem(
+                                product = product,
+                                currency = currency,
+                                onClick = { onProductSelected(product.id) }
+                            )
+                        }
                     }
                 }
             }
