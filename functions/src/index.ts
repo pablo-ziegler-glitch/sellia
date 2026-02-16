@@ -50,6 +50,11 @@ type UsageCollectionOutcome = {
   sourceStatus: "success" | "partial_success";
 };
 
+type UsageErrorsBlock = {
+  count: number;
+  items: UsageCollectionError[];
+};
+
 type BillingConfig = {
   source: UsageSource;
   projectId: string;
@@ -377,10 +382,12 @@ const getMonthKey = (referenceDate: Date): string => {
 };
 
 const summarizeError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const trimmed = rawMessage.trim();
+  if (!trimmed) {
+    return "Unknown error";
   }
-  return String(error);
+  return trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed;
 };
 
 const getPointValue = (point: monitoring_v3.Schema$Point): number => {
@@ -616,7 +623,7 @@ type UsageSnapshot = {
   periodKey?: string;
   period?: string;
   sourceStatus?: "success" | "partial_success";
-  errors?: UsageCollectionError[];
+  errors?: UsageCollectionError[] | UsageErrorsBlock;
   snapshotAt?: admin.firestore.Timestamp;
   createdAt?: admin.firestore.Timestamp;
 };
@@ -701,6 +708,28 @@ const resolvePeriodKey = (snapshot: UsageSnapshot | null): string => {
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}${month}${day}`;
+};
+
+const extractSnapshotErrors = (snapshot: UsageSnapshot | null): UsageCollectionError[] => {
+  if (!snapshot?.errors) {
+    return [];
+  }
+
+  if (Array.isArray(snapshot.errors)) {
+    return snapshot.errors;
+  }
+
+  return Array.isArray(snapshot.errors.items) ? snapshot.errors.items : [];
+};
+
+const isPartialUsageSnapshot = (snapshot: UsageSnapshot | null): boolean => {
+  if (!snapshot) {
+    return false;
+  }
+  if (snapshot.sourceStatus === "partial_success") {
+    return true;
+  }
+  return extractSnapshotErrors(snapshot).length > 0;
 };
 
 const severityForThreshold = (threshold: number): string => {
@@ -947,7 +976,10 @@ export const collectUsageMetrics = functions.pubsub
         monthKey,
         source: config.source,
         sourceStatus: usageCollection.sourceStatus,
-        errors: usageCollection.errors,
+        errors: {
+          count: usageCollection.errors.length,
+          items: usageCollection.errors,
+        },
         period: {
           start: start.toISOString(),
           end: end.toISOString(),
@@ -1117,11 +1149,13 @@ export const evaluateUsageAlerts = functions.pubsub
         console.info("No usage snapshot available for tenant", { tenantId });
         continue;
       }
-      if (usageSnapshot.sourceStatus === "partial_success") {
+      if (isPartialUsageSnapshot(usageSnapshot)) {
+        const snapshotErrors = extractSnapshotErrors(usageSnapshot);
         console.info("Skipping usage alerts for partial snapshot", {
           tenantId,
           periodKey,
-          errors: Array.isArray(usageSnapshot.errors) ? usageSnapshot.errors.length : 0,
+          errors: snapshotErrors.length,
+          sourceStatus: usageSnapshot.sourceStatus ?? "unknown",
         });
         continue;
       }
