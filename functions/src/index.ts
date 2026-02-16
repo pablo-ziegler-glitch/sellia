@@ -3,6 +3,14 @@ import * as admin from "firebase-admin";
 import axios from "axios";
 import * as crypto from "crypto";
 import { google, monitoring_v3 } from "googleapis";
+import {
+  extractTenantId,
+  mapPaymentStatus,
+  normalizeString,
+  resolveTenantId,
+  type PaymentStatus,
+} from "./mercadopago.helpers";
+import { getPointValue } from "./monitoring.helpers";
 
 admin.initializeApp();
 
@@ -65,14 +73,6 @@ type PreferenceItemInput = {
   unitPrice?: number;
   currency_id?: string;
   currencyId?: string;
-};
-
-type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
-
-type ResolveTenantInput = {
-  tenantIdFromMetadata: string;
-  orderId: string;
-  paymentId: string;
 };
 
 const MERCADOPAGO_API = "https://api.mercadopago.com";
@@ -278,78 +278,6 @@ const timingSafeEqual = (a: string, b: string): boolean => {
   return crypto.timingSafeEqual(bufferA, bufferB);
 };
 
-const normalizeString = (value: unknown): string => {
-  if (typeof value === "string") {
-    return value.trim();
-  }
-  if (typeof value === "number") {
-    return String(value);
-  }
-  return "";
-};
-
-const extractTenantId = (payment: unknown): string => {
-  const source = (payment ?? {}) as Record<string, unknown>;
-  const metadata = (source.metadata ?? {}) as Record<string, unknown>;
-  const additionalInfo = (source.additional_info ?? {}) as Record<string, unknown>;
-
-  return normalizeString(
-    metadata.tenantId ??
-      metadata.tenant_id ??
-      source.tenantId ??
-      source.tenant_id ??
-      additionalInfo.tenantId ??
-      additionalInfo.tenant_id
-  );
-};
-
-const resolveTenantId = async ({
-  tenantIdFromMetadata,
-  orderId,
-  paymentId,
-}: ResolveTenantInput): Promise<string> => {
-  if (tenantIdFromMetadata) {
-    return tenantIdFromMetadata;
-  }
-
-  if (orderId) {
-    const orderLookup = await db
-      .collectionGroup("orders")
-      .where(admin.firestore.FieldPath.documentId(), "==", orderId)
-      .limit(1)
-      .get();
-
-    if (!orderLookup.empty) {
-      return orderLookup.docs[0].ref.parent.parent?.id ?? "";
-    }
-  }
-
-  const paymentLookup = await db
-    .collectionGroup("payments")
-    .where(admin.firestore.FieldPath.documentId(), "==", paymentId)
-    .limit(1)
-    .get();
-
-  if (!paymentLookup.empty) {
-    return paymentLookup.docs[0].ref.parent.parent?.id ?? "";
-  }
-
-  return "";
-};
-
-const mapPaymentStatus = (status: unknown): PaymentStatus => {
-  const normalized = normalizeString(status).toLowerCase();
-  if (normalized === "approved") {
-    return "APPROVED";
-  }
-  if (normalized === "pending" || normalized === "in_process") {
-    return "PENDING";
-  }
-  if (normalized === "rejected" || normalized === "cancelled" || normalized === "charged_back") {
-    return "REJECTED";
-  }
-  return "FAILED";
-};
 
 const getMonthRange = (referenceDate: Date): { start: Date; end: Date } => {
   const start = new Date(
@@ -363,19 +291,6 @@ const getMonthKey = (referenceDate: Date): string => {
   const year = referenceDate.getUTCFullYear();
   const month = String(referenceDate.getUTCMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
-};
-
-const getPointValue = (point: monitoring_v3.Schema$Point): number => {
-  if (!point?.value) {
-    return 0;
-  }
-  if (typeof point.value.doubleValue === "number") {
-    return point.value.doubleValue;
-  }
-  if (point.value.int64Value !== undefined && point.value.int64Value !== null) {
-    return Number(point.value.int64Value);
-  }
-  return 0;
 };
 
 const sumMonitoringMetric = async (
@@ -973,7 +888,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
       ? String(payment.external_reference)
       : metadataOrderId;
     const tenantIdFromMetadata = extractTenantId(payment);
-    const tenantId = await resolveTenantId({
+    const tenantId = await resolveTenantId(db, {
       tenantIdFromMetadata,
       orderId,
       paymentId,
