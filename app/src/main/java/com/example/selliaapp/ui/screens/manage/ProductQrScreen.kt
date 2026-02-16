@@ -66,7 +66,7 @@ fun ProductQrScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(setOf<Int>()) }
-    var qrAudience by remember { mutableStateOf(QrAudience.PUBLIC) }
+    var qrAudience by remember { mutableStateOf(QrAudience.OWNER) }
     var includePrices by remember { mutableStateOf(true) }
     var skuQuery by remember { mutableStateOf("") }
     var previewProduct by remember { mutableStateOf<ProductEntity?>(null) }
@@ -91,17 +91,16 @@ fun ProductQrScreen(
         val queryValue = resolveSkuValue(product)
         val baseUrl = marketingSettings.publicStoreUrl.trim().trimEnd('/')
 
-        if (baseUrl.isNotBlank()) {
+        if (qrAudience == QrAudience.PUBLIC && baseUrl.isNotBlank()) {
             val encoded = URLEncoder.encode(queryValue, StandardCharsets.UTF_8.name())
             val separator = if (baseUrl.contains("?")) "&" else "?"
-            val mode = if (qrAudience == QrAudience.OWNER) "owner" else "public"
-            return "$baseUrl$separator" + "q=$encoded&mode=$mode"
+            return "$baseUrl$separator" + "q=$encoded"
         }
 
         return if (qrAudience == QrAudience.OWNER) {
-            "sellia://product?q=" + URLEncoder.encode(queryValue, StandardCharsets.UTF_8.name())
-        } else {
             queryValue
+        } else {
+            "sellia://product?q=" + URLEncoder.encode(queryValue, StandardCharsets.UTF_8.name())
         }
     }
 
