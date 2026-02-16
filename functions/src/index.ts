@@ -152,6 +152,8 @@ type PublicProductPayload = {
   code?: string | null;
   barcode?: string | null;
   name: string;
+  sku?: string | null;
+  storeName?: string | null;
   description?: string | null;
   brand?: string | null;
   parentCategory?: string | null;
@@ -184,6 +186,8 @@ const buildPublicProductPayload = (
     code: data.code ?? null,
     barcode: data.barcode ?? null,
     name: data.name ?? "Producto",
+    sku: data.sku ?? data.code ?? data.barcode ?? null,
+    storeName: data.storeName ?? data.tenantName ?? null,
     description: data.description ?? null,
     brand: data.brand ?? null,
     parentCategory: data.parentCategory ?? null,
