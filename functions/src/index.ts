@@ -70,9 +70,14 @@ type PreferenceItemInput = {
 type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
 
 type ResolveTenantInput = {
-  tenantIdFromMetadata: string;
+  tenantIdFromReference: string;
   orderId: string;
   paymentId: string;
+};
+
+type ExternalReferenceData = {
+  tenantId: string;
+  orderId: string;
 };
 
 const MERCADOPAGO_API = "https://api.mercadopago.com";
@@ -307,16 +312,45 @@ const extractTenantId = (payment: unknown): string => {
   );
 };
 
+const buildExternalReference = (tenantId: string, orderId: string): string =>
+  `tenant:${tenantId}|order:${orderId}`;
+
+const parseExternalReference = (externalReference: unknown): ExternalReferenceData => {
+  const raw = normalizeString(externalReference);
+  if (!raw) {
+    return { tenantId: "", orderId: "" };
+  }
+
+  const segments = raw
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const tenantSegment = segments.find((segment) => segment.startsWith("tenant:"));
+  const orderSegment = segments.find((segment) => segment.startsWith("order:"));
+
+  return {
+    tenantId: tenantSegment ? normalizeString(tenantSegment.slice("tenant:".length)) : "",
+    orderId: orderSegment ? normalizeString(orderSegment.slice("order:".length)) : "",
+  };
+};
+
 const resolveTenantId = async ({
-  tenantIdFromMetadata,
+  tenantIdFromReference,
   orderId,
   paymentId,
 }: ResolveTenantInput): Promise<string> => {
-  if (tenantIdFromMetadata) {
-    return tenantIdFromMetadata;
+  if (tenantIdFromReference) {
+    return tenantIdFromReference;
   }
 
   if (orderId) {
+    console.info("Mercado Pago tenant fallback started", {
+      paymentId,
+      orderId,
+      strategy: "orders_collection_group",
+    });
+
     const orderLookup = await db
       .collectionGroup("orders")
       .where(admin.firestore.FieldPath.documentId(), "==", orderId)
@@ -324,18 +358,19 @@ const resolveTenantId = async ({
       .get();
 
     if (!orderLookup.empty) {
+      console.info("Mercado Pago tenant fallback resolved", {
+        paymentId,
+        orderId,
+        strategy: "orders_collection_group",
+      });
       return orderLookup.docs[0].ref.parent.parent?.id ?? "";
     }
-  }
 
-  const paymentLookup = await db
-    .collectionGroup("payments")
-    .where(admin.firestore.FieldPath.documentId(), "==", paymentId)
-    .limit(1)
-    .get();
-
-  if (!paymentLookup.empty) {
-    return paymentLookup.docs[0].ref.parent.parent?.id ?? "";
+    console.info("Mercado Pago tenant fallback unresolved", {
+      paymentId,
+      orderId,
+      strategy: "orders_collection_group",
+    });
   }
 
   return "";
@@ -810,6 +845,14 @@ const createPreferenceHandler = async (data: unknown) => {
   );
   const description = normalizeString(payload.description);
   const tenantId = normalizeString(payload.tenantId);
+  const metadataInput =
+    typeof payload.metadata === "object" && payload.metadata !== null
+      ? (payload.metadata as Record<string, unknown>)
+      : {};
+  const metadataTenantId = normalizeString(
+    metadataInput.tenantId ?? metadataInput.tenant_id
+  );
+  const requiredTenantId = tenantId || metadataTenantId;
   const payerEmail = normalizeString(payload.payer_email ?? payload.payerEmail);
 
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -823,6 +866,13 @@ const createPreferenceHandler = async (data: unknown) => {
     throw new functions.https.HttpsError(
       "invalid-argument",
       "items must contain at least one entry."
+    );
+  }
+
+  if (!requiredTenantId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId is required to create a payment preference."
     );
   }
 
@@ -845,18 +895,17 @@ const createPreferenceHandler = async (data: unknown) => {
   });
 
   const metadata = {
+    ...metadataInput,
     orderId: orderId || undefined,
-    tenantId: tenantId || undefined,
-    ...(typeof payload.metadata === "object" && payload.metadata !== null
-      ? payload.metadata
-      : {}),
+    tenantId: requiredTenantId,
   };
+  const externalReference = buildExternalReference(requiredTenantId, orderId);
 
   const response = await axios.post(
     `${MERCADOPAGO_API}/checkout/preferences`,
     {
       items: preferenceItems,
-      external_reference: orderId || undefined,
+      external_reference: externalReference,
       metadata,
       payer: payerEmail ? { email: payerEmail } : undefined,
     },
@@ -972,13 +1021,14 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     );
 
     const payment = paymentResponse.data;
+    const externalReferenceData = parseExternalReference(payment?.external_reference);
     const metadataOrderId = normalizeString(payment?.metadata?.orderId);
-    const orderId = payment?.external_reference
-      ? String(payment.external_reference)
-      : metadataOrderId;
+    const orderId = externalReferenceData.orderId || metadataOrderId;
     const tenantIdFromMetadata = extractTenantId(payment);
+    const tenantIdFromReference =
+      externalReferenceData.tenantId || tenantIdFromMetadata;
     const tenantId = await resolveTenantId({
-      tenantIdFromMetadata,
+      tenantIdFromReference,
       orderId,
       paymentId,
     });
