@@ -77,8 +77,19 @@ Para publicar el catálogo estático en Firebase Hosting:
    Elegí **Hosting**, vinculá el proyecto y confirmá que el directorio público es `public`.
 2. Desplegar:
    ```bash
-   firebase deploy
+   firebase deploy --only hosting
    ```
+
+## ☁️ Firebase App Hosting (opcional)
+Si preferís desplegar la web con **Firebase App Hosting**, este repo incluye un servidor Node.js mínimo (`apphosting-server.js`) para evitar el error de detección de buildpacks (`No buildpack groups passed detection`).
+
+Comandos:
+```bash
+npm install
+npm run start
+```
+
+En App Hosting, configurá como raíz del servicio la carpeta del repositorio (`/workspace/sellia`) para que detecte `package.json` y use el script `start`.
 
 Guía recomendada para producción con QR público (web + app):
 - `docs/produccion-qr-web-app.md`
