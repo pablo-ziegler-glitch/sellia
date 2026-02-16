@@ -1,7 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
-import * as crypto from "crypto";
 import { google, monitoring_v3 } from "googleapis";
 import {
   extractTenantId,
@@ -58,11 +57,6 @@ type BillingConfig = {
 type MpConfig = {
   accessToken: string;
   webhookSecret: string;
-};
-
-type MpSignature = {
-  ts: string;
-  v1: string;
 };
 
 type PreferenceItemInput = {
@@ -276,39 +270,6 @@ const getBillingConfig = (): BillingConfig => {
       process.env.BILLING_BIGQUERY_DATASET ?? config.bigquery_dataset,
     bigqueryTable: process.env.BILLING_BIGQUERY_TABLE ?? config.bigquery_table,
   };
-};
-
-const parseSignature = (signatureHeader: string): MpSignature => {
-  const parts = signatureHeader
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const signature: MpSignature = { ts: "", v1: "" };
-
-  for (const part of parts) {
-    const [key, value] = part.split("=");
-    if (!key || !value) {
-      continue;
-    }
-    if (key === "ts") {
-      signature.ts = value;
-    }
-    if (key === "v1") {
-      signature.v1 = value;
-    }
-  }
-
-  return signature;
-};
-
-const timingSafeEqual = (a: string, b: string): boolean => {
-  const bufferA = Buffer.from(a, "utf8");
-  const bufferB = Buffer.from(b, "utf8");
-  if (bufferA.length !== bufferB.length) {
-    return false;
-  }
-  return crypto.timingSafeEqual(bufferA, bufferB);
 };
 
 const normalizeString = (value: unknown): string => {
@@ -646,6 +607,64 @@ const getDataId = (req: functions.https.Request): string => {
     req.query?.["data[id]"] ??
     req.query?.["id"]; // fallback for test calls
   return dataId ? String(dataId) : "";
+};
+
+const consumeWebhookNonce = async ({
+  tenantId,
+  paymentId,
+  requestId,
+  ts,
+}: {
+  tenantId: string;
+  paymentId: string;
+  requestId: string;
+  ts: number;
+}): Promise<boolean> => {
+  const nonceId = `${requestId}.${ts}`;
+  const nonceRef = db
+    .collection("tenants")
+    .doc(tenantId)
+    .collection("payments")
+    .doc(paymentId)
+    .collection("webhookNonces")
+    .doc(nonceId);
+
+  const nowMs = Date.now();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    nowMs + MP_SIGNATURE_WINDOW_MS
+  );
+
+  return db.runTransaction(async (transaction) => {
+    const nonceDoc = await transaction.get(nonceRef);
+    const existingExpiresAt = nonceDoc.get(
+      "expiresAt"
+    ) as admin.firestore.Timestamp | undefined;
+
+    if (
+      nonceDoc.exists &&
+      existingExpiresAt &&
+      existingExpiresAt.toMillis() > nowMs
+    ) {
+      return false;
+    }
+
+    transaction.set(
+      nonceRef,
+      {
+        requestId,
+        ts,
+        nonceId,
+        expiresAt,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: nonceDoc.exists
+          ? nonceDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return true;
+  });
 };
 
 type UsageSnapshot = {
@@ -1033,21 +1052,21 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
 
   const signatureHeader = req.get("x-signature") ?? "";
   const requestId = req.get("x-request-id") ?? "";
-  const { ts, v1 } = parseSignature(signatureHeader);
   const dataId = getDataId(req);
 
-  if (!ts || !v1 || !requestId || !dataId) {
-    res.status(401).send("Invalid signature");
-    return;
-  }
+  const signatureValidation = validateMpSignature({
+    signatureHeader,
+    requestId,
+    dataId,
+    webhookSecret: config.webhookSecret,
+  });
 
-  const manifest = `${ts}.${requestId}.${dataId}`;
-  const expectedSignature = crypto
-    .createHmac("sha256", config.webhookSecret)
-    .update(manifest)
-    .digest("hex");
-
-  if (!timingSafeEqual(expectedSignature, v1)) {
+  if (!signatureValidation.isValid) {
+    console.info("Mercado Pago webhook rejected", {
+      reason: signatureValidation.reason ?? "invalid_signature",
+      requestId: requestId || "n/a",
+      paymentId: dataId || "n/a",
+    });
     res.status(401).send("Invalid signature");
     return;
   }
@@ -1085,6 +1104,24 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
         orderId: orderId || "n/a",
       });
       res.status(200).send("ok");
+      return;
+    }
+
+    const nonceAccepted = await consumeWebhookNonce({
+      tenantId,
+      paymentId,
+      requestId,
+      ts: signatureValidation.ts,
+    });
+
+    if (!nonceAccepted) {
+      console.info("Mercado Pago webhook rejected", {
+        reason: "signature_reused",
+        tenantId,
+        paymentId,
+        requestId,
+      });
+      res.status(401).send("Invalid signature");
       return;
     }
 
