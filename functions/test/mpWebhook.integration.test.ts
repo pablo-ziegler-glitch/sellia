@@ -2,15 +2,36 @@ import crypto from "crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const axiosGetMock = vi.fn();
-const paymentsSetMock = vi.fn().mockResolvedValue(undefined);
-const paymentDocMock = vi.fn(() => ({ set: paymentsSetMock }));
+const transactionSetMock = vi.fn();
+const transactionGetMock = vi.fn(async () => ({
+  exists: false,
+  get: vi.fn(() => undefined),
+}));
+const runTransactionMock = vi.fn(async (handler: any) =>
+  handler({
+    get: transactionGetMock,
+    set: transactionSetMock,
+  })
+);
+const webhookNonceDocMock = vi.fn(() => ({}));
+const webhookNoncesCollectionMock = vi.fn(() => ({ doc: webhookNonceDocMock }));
+const paymentDocMock = vi.fn(() => ({
+  collection: (name: string) =>
+    name === "webhookNonces" ? webhookNoncesCollectionMock() : { doc: vi.fn(() => ({})) },
+}));
+const paymentEventDocMock = vi.fn(() => ({}));
 const paymentsCollectionMock = vi.fn(() => ({ doc: paymentDocMock }));
-const tenantDocMock = vi.fn(() => ({ collection: paymentsCollectionMock }));
+const paymentEventsCollectionMock = vi.fn(() => ({ doc: paymentEventDocMock }));
+const tenantDocMock = vi.fn(() => ({
+  collection: (name: string) =>
+    name === "payments" ? paymentsCollectionMock() : paymentEventsCollectionMock(),
+}));
 const tenantsCollectionMock = vi.fn(() => ({ doc: tenantDocMock }));
 
 const firestoreMock = vi.fn(() => ({
   collection: tenantsCollectionMock,
   collectionGroup: vi.fn(),
+  runTransaction: runTransactionMock,
 }));
 
 vi.mock("axios", () => ({
@@ -19,21 +40,35 @@ vi.mock("axios", () => ({
   },
 }));
 
-vi.mock("firebase-admin", () => ({
-  default: {
+vi.mock("firebase-admin", () => {
+  const firestore = Object.assign(firestoreMock, {
+    FieldPath: {
+      documentId: vi.fn(() => "__name__"),
+    },
+    FieldValue: {
+      serverTimestamp: vi.fn(() => "SERVER_TIMESTAMP"),
+    },
+    Timestamp: {
+      fromDate: vi.fn((date: Date) => ({ __timestamp: date.toISOString() })),
+      fromMillis: vi.fn((value: number) => ({ toMillis: () => value })),
+    },
+  });
+
+  return {
     initializeApp: vi.fn(),
-    firestore: Object.assign(firestoreMock, {
-      FieldPath: {
-        documentId: vi.fn(() => "__name__"),
-      },
-      FieldValue: {
-        serverTimestamp: vi.fn(() => "SERVER_TIMESTAMP"),
-      },
-      Timestamp: {
-        fromDate: vi.fn((date: Date) => ({ __timestamp: date.toISOString() })),
-      },
-    }),
-  },
+    firestore,
+    default: {
+      initializeApp: vi.fn(),
+      firestore,
+    },
+  };
+});
+
+
+vi.mock("firebase-functions/params", () => ({
+  defineString: (name: string, options?: { default?: string }) => ({
+    value: () => process.env[name] ?? options?.default ?? "",
+  }),
 }));
 
 vi.mock("firebase-functions", () => {
@@ -46,42 +81,43 @@ vi.mock("firebase-functions", () => {
     }
   }
 
-  return {
-    default: {
-      config: () => ({
-        mercadopago: {
-          access_token: "test-token",
-          webhook_secret: "test-secret",
-        },
-      }),
-      https: {
-        onRequest: (handler: any) => handler,
-        onCall: (handler: any) => handler,
-        HttpsError,
-      },
-      pubsub: {
-        schedule: () => ({
-          timeZone: () => ({
-            onRun: (handler: any) => handler,
-          }),
+  const functionsModule = {
+    https: {
+      onRequest: (handler: any) => handler,
+      onCall: (handler: any) => handler,
+      HttpsError,
+    },
+    pubsub: {
+      schedule: () => ({
+        timeZone: () => ({
           onRun: (handler: any) => handler,
         }),
-      },
-      firestore: {
-        document: () => ({
-          onWrite: (handler: any) => handler,
-        }),
-      },
+        onRun: (handler: any) => handler,
+      }),
     },
+    firestore: {
+      document: () => ({
+        onWrite: (handler: any) => handler,
+      }),
+    },
+  };
+
+  return {
+    ...functionsModule,
+    default: functionsModule,
   };
 });
 
 describe("mpWebhook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.MP_ACCESS_TOKEN;
+    delete process.env.MP_WEBHOOK_SECRET;
   });
 
   it("writes payment data into tenants/{tenantId}/payments/{paymentId}", async () => {
+    process.env.MP_ACCESS_TOKEN = "test-token";
+    process.env.MP_WEBHOOK_SECRET = "test-secret";
     axiosGetMock.mockResolvedValueOnce({
       data: {
         id: 123,
@@ -96,11 +132,11 @@ describe("mpWebhook", () => {
     const { mpWebhook } = await import("../src/index");
 
     const paymentId = "123";
-    const ts = "1700000000";
+    const ts = String(Math.floor(Date.now() / 1000));
     const requestId = "req-123";
     const signature = crypto
       .createHmac("sha256", "test-secret")
-      .update(`${ts}.${requestId}.${paymentId}`)
+       .update(`id:${paymentId};request-id:${requestId};ts:${ts};`)
       .digest("hex");
 
     const req: any = {
@@ -145,9 +181,10 @@ describe("mpWebhook", () => {
 
     expect(tenantsCollectionMock).toHaveBeenCalledWith("tenants");
     expect(tenantDocMock).toHaveBeenCalledWith("tenant-001");
-    expect(paymentsCollectionMock).toHaveBeenCalledWith("payments");
+    expect(paymentsCollectionMock).toHaveBeenCalledTimes(2);
     expect(paymentDocMock).toHaveBeenCalledWith("123");
-    expect(paymentsSetMock).toHaveBeenCalledWith(
+    expect(transactionSetMock).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({
         provider: "mercado_pago",
         status: "APPROVED",
