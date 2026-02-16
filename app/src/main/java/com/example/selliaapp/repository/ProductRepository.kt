@@ -640,12 +640,9 @@ class ProductRepository(
                     barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null }
                 )
                 val remoteImages = remoteProduct.imageUrls
-                val local = when {
-                    r.id != 0 -> localById[r.id]
-                    !r.barcode.isNullOrBlank() -> localByBarcode[r.barcode]
-                    !r.code.isNullOrBlank() -> localByCode[r.code]
-                    else -> null
-                }
+                val local = localById[r.id]
+                    ?: r.barcode?.let { localByBarcode[it] }
+                    ?: r.code?.let { localByCode[it] }
                 if (local == null) {
                     val newId = productDao.upsert(r.copy(id = 0))
                     if (remoteImages.isNotEmpty()) {
