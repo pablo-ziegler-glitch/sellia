@@ -39,7 +39,8 @@ class MercadoPagoApi @Inject constructor(
         val payload = mutableMapOf<String, Any>(
             "amount" to request.amount,
             "description" to description,
-            "external_reference" to externalReference
+            "external_reference" to externalReference,
+            "tenantId" to request.tenantId
         )
 
         if (request.items.isNotEmpty()) {
@@ -54,9 +55,10 @@ class MercadoPagoApi @Inject constructor(
         }
 
         request.payerEmail?.let { payload["payer_email"] = it }
-        if (request.metadata.isNotEmpty()) {
-            payload["metadata"] = request.metadata
+        val metadataWithTenant = request.metadata.toMutableMap().apply {
+            put("tenantId", request.tenantId)
         }
+        payload["metadata"] = metadataWithTenant
 
         return payload
     }

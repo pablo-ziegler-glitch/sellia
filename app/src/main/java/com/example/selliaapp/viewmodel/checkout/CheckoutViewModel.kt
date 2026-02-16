@@ -1,6 +1,7 @@
 package com.example.selliaapp.viewmodel.checkout
 
 import androidx.lifecycle.ViewModel
+import com.example.selliaapp.auth.TenantProvider
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.model.sales.CartItem
 import com.example.selliaapp.data.model.sales.InvoiceDraft
@@ -26,7 +27,8 @@ import javax.inject.Inject
 class CheckoutViewModel @Inject constructor(
     private val cartRepository: CartRepository,
     private val invoiceRepository: InvoiceRepository,
-    private val createPaymentPreferenceUseCase: CreatePaymentPreferenceUseCase
+    private val createPaymentPreferenceUseCase: CreatePaymentPreferenceUseCase,
+    private val tenantProvider: TenantProvider
 ) : ViewModel() {
     // [NUEVO] Configuración de impuestos simple (si tu lógica real difiere, ajustá)
     private val TAX_RATE = 0.0 // 0% por defecto; cambiar si aplican impuestos
@@ -116,6 +118,7 @@ class CheckoutViewModel @Inject constructor(
                     amount = amount,
                     description = description,
                     externalReference = externalReference,
+                    tenantId = tenantProvider.requireTenantId(),
                     items = paymentItems,
                     metadata = metadata
                 )

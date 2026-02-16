@@ -8,6 +8,7 @@ data class PaymentPreferenceRequest(
     val amount: Double,
     val description: String,
     val externalReference: String,
+    val tenantId: String,
     val items: List<PaymentItem> = emptyList(),
     val payerEmail: String? = null,
     val metadata: Map<String, Any?> = emptyMap()

@@ -13,6 +13,7 @@ class CreatePaymentPreferenceUseCase @Inject constructor(
         amount: Double,
         description: String,
         externalReference: String,
+        tenantId: String,
         items: List<PaymentItem> = emptyList(),
         payerEmail: String? = null,
         metadata: Map<String, Any?> = emptyMap()
@@ -20,11 +21,13 @@ class CreatePaymentPreferenceUseCase @Inject constructor(
         require(amount > 0) { "El monto debe ser mayor a cero." }
         require(description.isNotBlank()) { "La descripción del pago es obligatoria." }
         require(externalReference.isNotBlank()) { "Se requiere una referencia externa." }
+        require(tenantId.isNotBlank()) { "Se requiere tenantId para crear el pago." }
 
         val request = PaymentPreferenceRequest(
             amount = amount,
             description = description.trim(),
             externalReference = externalReference,
+            tenantId = tenantId.trim(),
             items = items,
             payerEmail = payerEmail,
             metadata = metadata
