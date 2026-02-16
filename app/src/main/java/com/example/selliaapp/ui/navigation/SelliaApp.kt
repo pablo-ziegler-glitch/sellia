@@ -442,10 +442,9 @@ fun SelliaApp(
 
 
                 // CHECKOUT (usa el MISMO VM del flujo con CompositionLocalProvider)
-                composable(Routes.PosCheckout.route) {
-                    val navBackStackEntry by navController.currentBackStackEntryAsState()
-                    val parentEntry = remember(navBackStackEntry) {
-                        navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) // ej.: "sell_flow"
+                composable(Routes.PosCheckout.route) { checkoutEntry ->
+                    val parentEntry = remember(checkoutEntry) {
+                        navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE)
                     }
                     CompositionLocalProvider(LocalViewModelStoreOwner provides parentEntry) {
                         CheckoutScreen(
