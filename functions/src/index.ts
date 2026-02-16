@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import { defineString } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import axios from "axios";
+import { AxiosError } from "axios";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
@@ -134,6 +135,54 @@ const getOptionalParam = (param: ReturnType<typeof defineString>): string | unde
   } catch (_error) {
     return undefined;
   }
+};
+
+const summarizeMercadoPagoError = (error: unknown) => {
+  if (!axios.isAxiosError(error)) {
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      status: null as number | null,
+      data: null as unknown,
+      code: null as string | null,
+    };
+  }
+
+  const axiosError = error as AxiosError;
+  const responseData = axiosError.response?.data;
+  const normalizedMessage =
+    normalizeString((responseData as Record<string, unknown> | undefined)?.message) ||
+    normalizeString((responseData as Record<string, unknown> | undefined)?.error) ||
+    normalizeString((responseData as Record<string, unknown> | undefined)?.cause) ||
+    normalizeString(axiosError.message) ||
+    "Unknown Mercado Pago error";
+
+  return {
+    message: normalizedMessage,
+    status: axiosError.response?.status ?? null,
+    data: responseData ?? null,
+    code: axiosError.code ?? null,
+  };
+};
+
+const mapMercadoPagoStatusToHttpsCode = (
+  status: number | null
+): functions.https.FunctionsErrorCode => {
+  if (status === 400) {
+    return "invalid-argument";
+  }
+  if (status === 401) {
+    return "unauthenticated";
+  }
+  if (status === 403) {
+    return "permission-denied";
+  }
+  if (status === 404) {
+    return "not-found";
+  }
+  if (status !== null && status >= 500) {
+    return "unavailable";
+  }
+  return "internal";
 };
 
 const USAGE_METRICS: UsageMetricDefinition[] = [
@@ -1186,20 +1235,43 @@ const createPreferenceHandler = async (data: unknown) => {
   };
   const externalReference = buildExternalReference(requiredTenantId, orderId);
 
-  const response = await axios.post(
-    `${MERCADOPAGO_API}/checkout/preferences`,
-    {
-      items: preferenceItems,
-      external_reference: externalReference,
-      metadata,
-      payer: payerEmail ? { email: payerEmail } : undefined,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+  let response;
+  try {
+    response = await axios.post(
+      `${MERCADOPAGO_API}/checkout/preferences`,
+      {
+        items: preferenceItems,
+        external_reference: externalReference,
+        metadata,
+        payer: payerEmail ? { email: payerEmail } : undefined,
       },
-    }
-  );
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+  } catch (error) {
+    const mpError = summarizeMercadoPagoError(error);
+    console.error("Mercado Pago create preference failed", {
+      orderId: orderId || "n/a",
+      tenantId: requiredTenantId,
+      status: mpError.status,
+      code: mpError.code,
+      message: mpError.message,
+      response: mpError.data,
+    });
+    throw new functions.https.HttpsError(
+      mapMercadoPagoStatusToHttpsCode(mpError.status),
+      `Mercado Pago error: ${mpError.message}`,
+      {
+        provider: "mercado_pago",
+        status: mpError.status,
+        code: mpError.code,
+        response: mpError.data,
+      }
+    );
+  }
 
   const initPoint = response.data?.init_point;
   if (!initPoint) {
@@ -1474,7 +1546,15 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
 
     res.status(200).send("ok");
   } catch (error) {
-    console.info("Mercado Pago webhook processing failed");
+    const mpError = summarizeMercadoPagoError(error);
+    console.error("Mercado Pago webhook processing failed", {
+      paymentId,
+      requestId: requestId || "n/a",
+      status: mpError.status,
+      code: mpError.code,
+      message: mpError.message,
+      response: mpError.data,
+    });
     res.status(500).send("error");
   }
 });

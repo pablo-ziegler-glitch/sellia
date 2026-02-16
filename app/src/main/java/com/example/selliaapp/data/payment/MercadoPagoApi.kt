@@ -16,7 +16,11 @@ class MercadoPagoApi @Inject constructor(
 ) {
     suspend fun createPaymentPreference(request: PaymentPreferenceRequest): PaymentPreferenceResult {
         val payload = buildPayload(request)
-        val result = callCreatePreferenceWithAuthRecovery(payload)
+        val result = try {
+            callCreatePreferenceWithAuthRecovery(payload)
+        } catch (exception: FirebaseFunctionsException) {
+            throw IllegalStateException(buildFunctionsErrorMessage(exception), exception)
+        }
 
         val data = result.data as? Map<*, *>
             ?: throw IllegalStateException("Respuesta inválida de la Cloud Function de pagos.")
@@ -103,6 +107,24 @@ class MercadoPagoApi @Inject constructor(
             return
         }
         currentUser.getIdToken(true).awaitResult()
+    }
+
+    private fun buildFunctionsErrorMessage(exception: FirebaseFunctionsException): String {
+        val details = exception.details?.toString()?.trim().orEmpty()
+        val baseMessage = exception.message?.trim().orEmpty()
+        val code = exception.code.name
+
+        val allParts = listOf(baseMessage, details)
+            .filter { it.isNotBlank() }
+            .joinToString(" | ")
+
+        val message = if (allParts.isBlank()) {
+            "Error de Cloud Function sin mensaje"
+        } else {
+            allParts
+        }
+
+        return "Pago MP falló ($code): $message"
     }
 
     private companion object {

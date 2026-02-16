@@ -82,6 +82,11 @@ vi.mock("firebase-functions", () => {
   }
 
   const functionsModule = {
+    runWith: () => ({
+      https: {
+        onCall: (handler: any) => handler,
+      },
+    }),
     https: {
       onRequest: (handler: any) => handler,
       onCall: (handler: any) => handler,
