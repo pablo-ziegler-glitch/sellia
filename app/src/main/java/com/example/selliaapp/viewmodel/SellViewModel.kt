@@ -93,12 +93,12 @@ class SellViewModel @Inject constructor(
 
     private suspend fun resolveProductByScan(rawValue: String): ProductEntity? {
         val normalizedValue = normalizeScanValue(rawValue)
-        val candidates = linkedSetOf(
-            normalizedValue,
-            rawValue.trim(),
-            extractPathLastSegment(normalizedValue),
-            extractPathLastSegment(rawValue)
-        ).filter { it.isNotBlank() }
+        val candidates = linkedSetOf<String>().apply {
+            add(normalizedValue)
+            add(rawValue.trim())
+            extractPathLastSegment(normalizedValue)?.let(::add)
+            extractPathLastSegment(rawValue)?.let(::add)
+        }.filter { it.isNotBlank() }
 
         candidates.forEach { candidate ->
             repo.getByBarcodeOrNull(candidate)?.let { return it }
