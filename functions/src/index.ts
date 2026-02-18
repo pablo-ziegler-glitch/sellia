@@ -286,15 +286,123 @@ const isProductPublished = (data: FirebaseFirestore.DocumentData): boolean => {
 };
 
 const buildPublicProductPayload = (
+const PUBLIC_PRODUCT_IMAGES_ROOT = "public_products";
+const FIREBASE_STORAGE_HOST = "firebasestorage.googleapis.com";
+
+const normalizeImageSourceUrl = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const sanitizePathSegment = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "image";
+
+const extractFileNameAndExtension = (inputUrl: string): { fileName: string; extension: string } => {
+  try {
+    const parsedUrl = new URL(inputUrl);
+    const pathParts = parsedUrl.pathname.split("/").filter(Boolean);
+    const lastSegment = pathParts[pathParts.length - 1] || "";
+    const decodedLastSegment = decodeURIComponent(lastSegment);
+    const leaf = decodedLastSegment.includes("/")
+      ? decodedLastSegment.split("/").filter(Boolean).pop() ?? ""
+      : decodedLastSegment;
+    const cleanLeaf = leaf.trim();
+    if (cleanLeaf.length === 0) {
+      return { fileName: "image", extension: "jpg" };
+    }
+    const dotIndex = cleanLeaf.lastIndexOf(".");
+    if (dotIndex <= 0 || dotIndex === cleanLeaf.length - 1) {
+      return { fileName: sanitizePathSegment(cleanLeaf), extension: "jpg" };
+    }
+    const fileName = sanitizePathSegment(cleanLeaf.slice(0, dotIndex));
+    const extension = sanitizePathSegment(cleanLeaf.slice(dotIndex + 1));
+    return {
+      fileName,
+      extension: extension || "jpg",
+    };
+  } catch (_error) {
+    return { fileName: "image", extension: "jpg" };
+  }
+};
+
+const buildPublicImageVersion = (inputUrl: string): string =>
+  createHash("sha1").update(inputUrl).digest("hex").slice(0, 10);
+
+const buildPublicStorageMediaUrl = (bucketName: string, objectPath: string): string => {
+  const encodedPath = encodeURIComponent(objectPath);
+  return `https://${FIREBASE_STORAGE_HOST}/v0/b/${bucketName}/o/${encodedPath}?alt=media`;
+};
+
+const normalizePublicImageUrl = (
+  inputUrl: string,
+  tenantId: string,
+  productId: string,
+  index: number,
+  bucketName: string
+): string => {
+  try {
+    const parsed = new URL(inputUrl);
+    const decodedPath = decodeURIComponent(parsed.pathname);
+    const alreadyPublicPath = `tenants/${tenantId}/${PUBLIC_PRODUCT_IMAGES_ROOT}/${productId}/images/`;
+    if (
+      parsed.hostname === FIREBASE_STORAGE_HOST &&
+      decodedPath.includes(`/o/${alreadyPublicPath}`)
+    ) {
+      return buildPublicStorageMediaUrl(
+        bucketName,
+        decodedPath.slice(decodedPath.indexOf("/o/") + 3)
+      );
+    }
+  } catch (_error) {
+    // Si la URL no es válida, se normaliza al target público igual.
+  }
+
+  const { fileName, extension } = extractFileNameAndExtension(inputUrl);
+  const version = buildPublicImageVersion(inputUrl);
+  const normalizedLeaf = `${String(index + 1).padStart(2, "0")}_${fileName}_v${version}.${extension}`;
+  const objectPath = [
+    "tenants",
+    tenantId,
+    PUBLIC_PRODUCT_IMAGES_ROOT,
+    productId,
+    "images",
+    normalizedLeaf,
+  ].join("/");
+
+  return buildPublicStorageMediaUrl(bucketName, objectPath);
+};
+
+const normalizePublicImageUrls = (
+  tenantId: string,
+  productId: string,
+  data: FirebaseFirestore.DocumentData
+): string[] => {
+  const rawUrls = Array.isArray(data.imageUrls)
+    ? data.imageUrls.map(normalizeImageSourceUrl).filter(Boolean)
+    : [];
+  const legacyUrl = normalizeImageSourceUrl(data.imageUrl);
+  const sourceUrls = [legacyUrl, ...rawUrls].filter((url): url is string => Boolean(url));
+  const uniqueSourceUrls = [...new Set(sourceUrls)];
+  const bucketName = admin.storage().bucket().name;
+
+  return uniqueSourceUrls.map((url, index) =>
+    normalizePublicImageUrl(url, tenantId, productId, index, bucketName)
+  );
+};
+
+const buildPublicProductPayload = (
   tenantId: string,
   productId: string,
   data: FirebaseFirestore.DocumentData
 ): PublicProductPayload => {
-  const rawUrls = Array.isArray(data.imageUrls)
-    ? data.imageUrls.filter((url) => typeof url === "string")
-    : [];
-  const legacyUrl = typeof data.imageUrl === "string" ? data.imageUrl : null;
-  const imageUrls = [...new Set([legacyUrl, ...rawUrls].filter(Boolean))] as string[];
+  const imageUrls = normalizePublicImageUrls(tenantId, productId, data);
 
   return {
     id: productId,
@@ -316,8 +424,8 @@ const buildPublicProductPayload = (
     cashPrice: typeof data.cashPrice === "number" ? data.cashPrice : null,
     transferPrice:
       typeof data.transferPrice === "number" ? data.transferPrice : null,
-    imageUrl: legacyUrl,
-    publicStatus: "published",
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
     updatedAt: data.updatedAt ?? admin.firestore.FieldValue.serverTimestamp(),
     publicUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };

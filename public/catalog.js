@@ -204,4 +204,9 @@ if (elements.storeFilter) {
   });
 }
 
-loadCatalog();
+async function bootstrap() {
+  await Promise.resolve(window.__STORE_CONFIG_READY__);
+  await loadCatalog();
+}
+
+bootstrap();

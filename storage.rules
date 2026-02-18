@@ -59,5 +59,10 @@ service firebase.storage {
       allow read: if isTenantUser(tenantId);
       allow write: if canWriteTenantStorage(tenantId);
     }
+
+    match /tenants/{tenantId}/public_products/{productId}/images/{allPaths=**} {
+      allow read: if true;
+      allow write: if canWriteTenantStorage(tenantId);
+    }
   }
 }
