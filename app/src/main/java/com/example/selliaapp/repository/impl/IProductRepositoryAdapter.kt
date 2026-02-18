@@ -39,6 +39,9 @@ class IProductRepositoryAdapter @Inject constructor(
     override suspend fun getByCodeOrNull(code: String): ProductEntity? =
         legacy.getByCodeOrNull(code)
 
+    override suspend fun getGlobalBarcodeMatch(barcode: String): IProductRepository.GlobalBarcodeMatch? =
+        legacy.getGlobalBarcodeMatch(barcode)
+
     // ---------- Búsquedas / listados ----------
     override fun search(q: String?): Flow<List<ProductEntity>> = legacy.search(q)
     override fun distinctCategories(): Flow<List<String>> = legacy.distinctCategories()

@@ -22,6 +22,12 @@ import kotlinx.coroutines.flow.Flow
  */
 interface IProductRepository {
 
+    data class GlobalBarcodeMatch(
+        val barcode: String,
+        val name: String,
+        val brand: String?
+    )
+
     // ---------- CRUD base ----------
     suspend fun insert(entity: ProductEntity): Int
     suspend fun update(entity: ProductEntity): Int
@@ -33,6 +39,7 @@ interface IProductRepository {
     suspend fun getByIdModel(id: Int): Product?
     suspend fun getByBarcodeOrNull(barcode: String): ProductEntity?
     suspend fun getByCodeOrNull(code: String): ProductEntity?
+    suspend fun getGlobalBarcodeMatch(barcode: String): GlobalBarcodeMatch?
 
     // ---------- Búsquedas / listados ----------
     fun search(q: String?): Flow<List<ProductEntity>>

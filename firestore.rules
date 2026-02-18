@@ -254,6 +254,12 @@ service cloud.firestore {
       allow write: if isBackend() || isAdminForTenant(tenantId);
     }
 
+
+    match /cross_catalog/{barcode} {
+      allow read: if isAuthenticated();
+      allow write: if isBackend() || isAdminUser();
+    }
+
     match /usage/{usageId} {
       allow read: if isAdminForTenant(resource.data.tenantId);
       allow write: if isBackend();

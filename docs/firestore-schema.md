@@ -1,8 +1,8 @@
-# Esquema Firestore: órdenes y pagos
+# Esquema Firestore: órdenes, pagos y catálogo CROSS de códigos de barras
 
-Este esquema define el modelo de **órdenes** y **pagos** para el flujo de checkout/pagos con Mercado Pago, optimizado para costos y seguridad.
+Este esquema define el modelo de **órdenes** y **pagos** para el flujo de checkout/pagos con Mercado Pago, optimizado para costos y seguridad, y agrega un **catálogo CROSS** global para acelerar altas de stock por barcode.
 
-> **Nota:** se asume multi-tenant. Las colecciones viven bajo `tenants/{tenantId}` para evitar lecturas cruzadas.
+> **Nota:** se asume multi-tenant. Las colecciones de negocio viven bajo `tenants/{tenantId}` para evitar lecturas cruzadas. El catálogo CROSS vive en una colección raíz porque es compartido por todas las tiendas.
 
 ## 1) Órdenes
 
@@ -30,15 +30,38 @@ Este esquema define el modelo de **órdenes** y **pagos** para el flujo de check
 | `createdAt` | timestamp | sí | Fecha de creación (serverTimestamp). |
 | `updatedAt` | timestamp | sí | Fecha de última actualización (serverTimestamp). |
 
-## 3) Seguridad (resumen)
+## 3) Catálogo CROSS de barcodes
 
-- **Cliente:** solo lectura de `orders`.
-- **Backend:** escritura de `orders` y `payments`, y lectura de `payments`.
+**Ruta:** `cross_catalog/{barcode}`
 
-Esto evita que el cliente pueda alterar el estado del pago y reduce riesgos de fraude.
+- `barcode` se usa como `documentId` (clave natural para lookup O(1)).
+- Esta colección la alimentan importaciones administradas (no edición manual de operador).
+- **Carga de catálogo maestro:** sólo se sincroniza desde procesos admin/backend cuando la carga se hace por archivo **CSV o XLSX**.
+- Las tiendas sólo leen para autocompletar `name` y `brand` cuando el producto no existe localmente.
+
+| Campo | Tipo | Obligatorio | Descripción |
+| --- | --- | --- | --- |
+| `barcode` | string | sí | Código de barras normalizado (también coincide con el docId). |
+| `name` | string | sí | Nombre de referencia compartido. |
+| `brand` | string | no | Marca de referencia compartida. |
+| `createdAt` | timestamp | sí | Fecha de alta inicial del barcode. |
+| `updatedAt` | timestamp | sí | Última actualización de datos compartidos. |
+| `createdBy` | map | sí | Auditoría inicial: `uid`, `email`, `tenantId`, `storeName`. |
+| `updatedBy` | map | sí | Último actor que modificó la línea: `uid`, `email`, `tenantId`, `storeName`. |
+
+## 4) Seguridad (resumen)
+
+- **Cliente:**
+  - Lectura de `orders` dentro de su tenant.
+  - Lectura autenticada de `cross_catalog` para lookup de barcode.
+- **Backend / administradores:**
+  - Escritura de `orders` y `payments` según regla existente.
+  - Escritura de `cross_catalog` restringida a backend o usuarios admin (no operadores estándar).
+
+Esto evita que usuarios no autenticados lean el catálogo CROSS y mantiene trazabilidad de cambios.
 
 
-## 4) Clientes finales (multi-tienda)
+## 5) Clientes finales (multi-tienda)
 
 Ver propuesta completa en `docs/customers-multitenant.md`.
 
