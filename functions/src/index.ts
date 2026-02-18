@@ -271,6 +271,7 @@ type PublicProductPayload = {
   cashPrice?: number | null;
   transferPrice?: number | null;
   imageUrl?: string | null;
+  imageUrls: string[];
   publicStatus: "published";
   updatedAt?: string | admin.firestore.FieldValue;
   publicUpdatedAt: admin.firestore.FieldValue;
@@ -285,7 +286,6 @@ const isProductPublished = (data: FirebaseFirestore.DocumentData): boolean => {
   return data.isPublic === true;
 };
 
-const buildPublicProductPayload = (
 const PUBLIC_PRODUCT_IMAGES_ROOT = "public_products";
 const FIREBASE_STORAGE_HOST = "firebasestorage.googleapis.com";
 
@@ -426,6 +426,7 @@ const buildPublicProductPayload = (
       typeof data.transferPrice === "number" ? data.transferPrice : null,
     imageUrl: imageUrls[0] ?? null,
     imageUrls,
+    publicStatus: "published",
     updatedAt: data.updatedAt ?? admin.firestore.FieldValue.serverTimestamp(),
     publicUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
