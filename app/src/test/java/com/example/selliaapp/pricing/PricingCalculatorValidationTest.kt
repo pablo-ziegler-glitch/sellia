@@ -44,6 +44,33 @@ class PricingCalculatorValidationTest {
         assertThat(result.listPrice).isEqualTo(1900.0)
     }
 
+
+    @Test
+    fun `modo 100 por ciento aplica costo fijo completo para cualquier rango`() {
+        val settings = baseSettings(monthlySalesEstimate = 500).copy(
+            fixedCostImputationMode = PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS
+        )
+        val fixedCosts = fixedCostsFromReference()
+
+        val resultLow = PricingCalculator.calculate(
+            purchasePrice = 200.0,
+            settings = settings,
+            fixedCosts = fixedCosts,
+            mlFixedCostTiers = emptyList(),
+            mlShippingTiers = emptyList()
+        )
+        val resultHigh = PricingCalculator.calculate(
+            purchasePrice = 12000.0,
+            settings = settings,
+            fixedCosts = fixedCosts,
+            mlFixedCostTiers = emptyList(),
+            mlShippingTiers = emptyList()
+        )
+
+        assertThat(resultLow.fixedCostImputed).isWithin(0.01).of(resultLow.fixedCostUnit)
+        assertThat(resultHigh.fixedCostImputed).isWithin(0.01).of(resultHigh.fixedCostUnit)
+    }
+
     private fun baseSettings(monthlySalesEstimate: Int): PricingSettingsEntity = PricingSettingsEntity(
         id = 1,
         ivaTerminalPercent = 21.0,
@@ -64,6 +91,7 @@ class PricingCalculatorValidationTest {
         coefficient5001To7500Percent = 60.0,
         coefficient7501To10000Percent = 80.0,
         coefficient10001PlusPercent = 100.0,
+        fixedCostImputationMode = PricingSettingsEntity.FixedCostImputationMode.BY_PRICE_RANGE,
         recalcIntervalMinutes = 30,
         updatedAt = Instant.now(),
         updatedBy = "test"

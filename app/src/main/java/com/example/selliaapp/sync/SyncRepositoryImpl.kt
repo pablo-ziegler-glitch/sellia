@@ -64,6 +64,7 @@ class SyncRepositoryImpl @Inject constructor(
             pushPendingProducts(now)
             pushPendingInvoices(now)
             pushPendingCustomers(now)
+            pushPendingPricingConfig(now)
         }
     }
 
@@ -108,6 +109,28 @@ class SyncRepositoryImpl @Inject constructor(
         pullRemote()
         if (includeBackup) {
             pushAllLocalTables()
+        }
+    }
+
+
+    private suspend fun pushPendingPricingConfig(now: Long) {
+        val entityType = SyncEntityType.PRICING_CONFIG.storageKey
+        val pending = syncOutboxDao.getByType(entityType)
+        if (pending.isEmpty()) return
+
+        val entityIds = pending.map { it.entityId }
+        try {
+            pricingConfigRepository.pushPricingConfigToCloud()
+            syncOutboxDao.deleteByTypeAndIds(entityType, entityIds)
+        } catch (t: Throwable) {
+            val error = extractErrorMessage(t)
+            syncOutboxDao.markAttempt(
+                entityType = entityType,
+                entityIds = entityIds,
+                timestamp = now,
+                error = error
+            )
+            throw t
         }
     }
 

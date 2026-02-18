@@ -501,6 +501,18 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
+                    ALTER TABLE `pricing_settings`
+                    ADD COLUMN `fixedCostImputationMode` TEXT NOT NULL DEFAULT 'FULL_TO_ALL_PRODUCTS'
+                    """.trimIndent()
+                )
+            }
+        }
+
+
+        val MIGRATION_42_43 = object : Migration(42, 43) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
                     ALTER TABLE `products`
                     ADD COLUMN `publicStatus` TEXT NOT NULL DEFAULT 'draft'
                     """.trimIndent()

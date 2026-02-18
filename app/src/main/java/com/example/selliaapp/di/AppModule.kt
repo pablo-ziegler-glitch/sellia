@@ -226,6 +226,7 @@ object AppModule {
         pricingAuditDao: PricingAuditDao,
         pricingMlFixedCostTierDao: PricingMlFixedCostTierDao,
         pricingMlShippingTierDao: PricingMlShippingTierDao,
+        syncOutboxDao: SyncOutboxDao,
         firestore: FirebaseFirestore,
         tenantProvider: TenantProvider,
         @IoDispatcher io: CoroutineDispatcher
@@ -235,6 +236,7 @@ object AppModule {
         pricingAuditDao = pricingAuditDao,
         pricingMlFixedCostTierDao = pricingMlFixedCostTierDao,
         pricingMlShippingTierDao = pricingMlShippingTierDao,
+        syncOutboxDao = syncOutboxDao,
         firestore = firestore,
         tenantProvider = tenantProvider,
         io = io

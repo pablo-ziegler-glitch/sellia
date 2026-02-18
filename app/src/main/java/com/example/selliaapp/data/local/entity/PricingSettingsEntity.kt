@@ -25,7 +25,15 @@ data class PricingSettingsEntity(
     val coefficient5001To7500Percent: Double,
     val coefficient7501To10000Percent: Double,
     val coefficient10001PlusPercent: Double,
+    val fixedCostImputationMode: String = FixedCostImputationMode.FULL_TO_ALL_PRODUCTS,
     val recalcIntervalMinutes: Int,
     val updatedAt: Instant,
     val updatedBy: String
-)
+) {
+    companion object {
+        object FixedCostImputationMode {
+            const val FULL_TO_ALL_PRODUCTS = "FULL_TO_ALL_PRODUCTS"
+            const val BY_PRICE_RANGE = "BY_PRICE_RANGE"
+        }
+    }
+}
