@@ -80,6 +80,17 @@ Para publicar el catálogo estático en Firebase Hosting:
    firebase deploy --only hosting
    ```
 
+
+## 🧭 Índices de Firestore para catálogo público
+La consulta `structuredQuery` de `public/catalog.js` usa `collectionGroup` sobre `public_products` y ordena por `tenantId` + `name` en orden ascendente.
+
+Este índice compuesto quedó versionado en `firestore.indexes.json` y referenciado desde `firebase.json` para evitar errores de catálogo cuando escala el volumen de tenants/productos.
+
+Deploy de índices:
+```bash
+firebase deploy --only firestore:indexes
+```
+
 ## ☁️ Firebase App Hosting (opcional)
 Si preferís desplegar la web con **Firebase App Hosting**, este repo incluye un servidor Node.js mínimo (`apphosting-server.js`) para evitar el error de detección de buildpacks (`No buildpack groups passed detection`).
 
