@@ -23,6 +23,7 @@ fun ProvidersHubScreen(
     onProviderInvoices: () -> Unit,
     onProviderPurchaseOrders: () -> Unit,
     onProviderPayments: () -> Unit,
+    onInvoiceReader: () -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(topBar = { BackTopAppBar(title = "Proveedores", onBack = onBack) }) { padding ->
@@ -40,6 +41,7 @@ fun ProvidersHubScreen(
             Button(onClick = onProviderInvoices) { Text("Boletas/Facturas por Proveedor") }
             Button(onClick = onProviderPurchaseOrders) { Text("Pedidos de compra pendientes") }
             Button(onClick = onProviderPayments) { Text("Pagos a Proveedores (Pendientes)") }
+            Button(onClick = onInvoiceReader) { Text("Leer factura (OCR + parser)") }
         }
     }
 }
