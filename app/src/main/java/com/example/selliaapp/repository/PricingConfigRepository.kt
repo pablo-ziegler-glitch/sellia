@@ -5,11 +5,14 @@ import com.example.selliaapp.data.dao.PricingFixedCostDao
 import com.example.selliaapp.data.dao.PricingMlFixedCostTierDao
 import com.example.selliaapp.data.dao.PricingMlShippingTierDao
 import com.example.selliaapp.data.dao.PricingSettingsDao
+import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.PricingAuditEntity
 import com.example.selliaapp.data.local.entity.PricingFixedCostEntity
 import com.example.selliaapp.data.local.entity.PricingMlFixedCostTierEntity
 import com.example.selliaapp.data.local.entity.PricingMlShippingTierEntity
 import com.example.selliaapp.data.local.entity.PricingSettingsEntity
+import com.example.selliaapp.data.local.entity.SyncEntityType
+import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.di.AppModule
 import com.example.selliaapp.auth.TenantProvider
 import com.google.firebase.firestore.FieldValue
@@ -28,6 +31,7 @@ class PricingConfigRepository(
     private val pricingAuditDao: PricingAuditDao,
     private val pricingMlFixedCostTierDao: PricingMlFixedCostTierDao,
     private val pricingMlShippingTierDao: PricingMlShippingTierDao,
+    private val syncOutboxDao: SyncOutboxDao,
     private val firestore: FirebaseFirestore,
     private val tenantProvider: TenantProvider,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
@@ -158,7 +162,7 @@ class PricingConfigRepository(
             }
         }
         resolved
-            .also { syncPricingConfigToCloud() }
+            .also { schedulePricingConfigSync() }
     }
 
     suspend fun deleteFixedCost(id: Int, changedBy: String = "System") = withContext(io) {
@@ -175,7 +179,7 @@ class PricingConfigRepository(
                 changedAt = Instant.now(),
                 changedBy = changedBy
             )
-            syncPricingConfigToCloud()
+            schedulePricingConfigSync()
         }
     }
 
@@ -199,7 +203,7 @@ class PricingConfigRepository(
             }
         }
         resolved
-            .also { syncPricingConfigToCloud() }
+            .also { schedulePricingConfigSync() }
     }
 
     suspend fun deleteMlFixedCostTier(id: Int, changedBy: String = "System") = withContext(io) {
@@ -216,7 +220,7 @@ class PricingConfigRepository(
                 changedAt = Instant.now(),
                 changedBy = changedBy
             )
-            syncPricingConfigToCloud()
+            schedulePricingConfigSync()
         }
     }
 
@@ -240,7 +244,7 @@ class PricingConfigRepository(
             }
         }
         resolved
-            .also { syncPricingConfigToCloud() }
+            .also { schedulePricingConfigSync() }
     }
 
     suspend fun deleteMlShippingTier(id: Int, changedBy: String = "System") = withContext(io) {
@@ -257,7 +261,7 @@ class PricingConfigRepository(
                 changedAt = Instant.now(),
                 changedBy = changedBy
             )
-            syncPricingConfigToCloud()
+            schedulePricingConfigSync()
         }
     }
 
@@ -300,13 +304,13 @@ class PricingConfigRepository(
             auditField("coefficient5001To7500Percent", existing.coefficient5001To7500Percent, candidate.coefficient5001To7500Percent, now, changedBy)
             auditField("coefficient7501To10000Percent", existing.coefficient7501To10000Percent, candidate.coefficient7501To10000Percent, now, changedBy)
             auditField("coefficient10001PlusPercent", existing.coefficient10001PlusPercent, candidate.coefficient10001PlusPercent, now, changedBy)
+            auditField("fixedCostImputationMode", existing.fixedCostImputationMode, candidate.fixedCostImputationMode, now, changedBy)
             auditField("recalcIntervalMinutes", existing.recalcIntervalMinutes, candidate.recalcIntervalMinutes, now, changedBy)
         }
-        syncPricingConfigToCloud()
+        schedulePricingConfigSync()
     }
 
-    private suspend fun syncPricingConfigToCloud() {
-        runCatching {
+    suspend fun pushPricingConfigToCloud() {
             val tenantId = tenantProvider.requireTenantId()
             val settings = pricingSettingsDao.getOnce() ?: return
             val fixedCosts = pricingFixedCostDao.getAllOnce()
@@ -333,6 +337,7 @@ class PricingConfigRepository(
                     "coefficient5001To7500Percent" to settings.coefficient5001To7500Percent,
                     "coefficient7501To10000Percent" to settings.coefficient7501To10000Percent,
                     "coefficient10001PlusPercent" to settings.coefficient10001PlusPercent,
+                    "fixedCostImputationMode" to settings.fixedCostImputationMode,
                     "recalcIntervalMinutes" to settings.recalcIntervalMinutes,
                     "updatedBy" to settings.updatedBy
                 ),
@@ -359,6 +364,29 @@ class PricingConfigRepository(
                 .document("pricing")
                 .set(payload)
                 .await()
+    }
+
+    private suspend fun schedulePricingConfigSync() {
+        val entityType = SyncEntityType.PRICING_CONFIG.storageKey
+        val entityId = PRICING_CONFIG_ENTITY_ID
+        syncOutboxDao.upsert(
+            SyncOutboxEntity(
+                entityType = entityType,
+                entityId = entityId
+            )
+        )
+
+        runCatching {
+            pushPricingConfigToCloud()
+        }.onSuccess {
+            syncOutboxDao.deleteByTypeAndIds(entityType, listOf(entityId))
+        }.onFailure { error ->
+            syncOutboxDao.markAttempt(
+                entityType = entityType,
+                entityIds = listOf(entityId),
+                timestamp = System.currentTimeMillis(),
+                error = error.message
+            )
         }
     }
 
@@ -422,7 +450,7 @@ class PricingConfigRepository(
 
     private fun defaultSettings(): PricingSettingsEntity = PricingSettingsEntity(
         ivaTerminalPercent = 21.0,
-        monthlySalesEstimate = 400,
+        monthlySalesEstimate = 1000,
         operativosLocalPercent = 3.0,
         posnet3CuotasPercent = 12.22,
         transferenciaRetencionPercent = 5.0,
@@ -439,6 +467,7 @@ class PricingConfigRepository(
         coefficient5001To7500Percent = 45.0,
         coefficient7501To10000Percent = 65.0,
         coefficient10001PlusPercent = 100.0,
+        fixedCostImputationMode = PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS,
         recalcIntervalMinutes = 30,
         updatedAt = Instant.now(),
         updatedBy = "System"
@@ -496,6 +525,7 @@ class PricingConfigRepository(
             coefficient5001To7500Percent = source["coefficient5001To7500Percent"].asDouble() ?: 45.0,
             coefficient7501To10000Percent = source["coefficient7501To10000Percent"].asDouble() ?: 65.0,
             coefficient10001PlusPercent = source["coefficient10001PlusPercent"].asDouble() ?: 100.0,
+            fixedCostImputationMode = (source["fixedCostImputationMode"] as? String)?.trim().orEmpty().ifBlank { PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS },
             recalcIntervalMinutes = source["recalcIntervalMinutes"].asInt() ?: 30,
             updatedAt = Instant.now(),
             updatedBy = (source["updatedBy"] as? String)?.trim().orEmpty().ifBlank { "Cloud Sync" }
@@ -556,5 +586,10 @@ class PricingConfigRepository(
             else -> null
         }
         else -> null
+    }
+
+
+    companion object {
+        private const val PRICING_CONFIG_ENTITY_ID = 1L
     }
 }

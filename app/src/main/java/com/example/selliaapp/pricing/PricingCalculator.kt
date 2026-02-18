@@ -39,7 +39,7 @@ object PricingCalculator {
         }
         val salesEstimate = settings.monthlySalesEstimate.coerceAtLeast(1)
         val fixedCostUnit = costTotal / salesEstimate
-        val fixedCostImputed = fixedCostUnit * (coefficientFor(purchasePrice, settings) / 100.0)
+        val fixedCostImputed = fixedCostUnit * fixedCostImputationMultiplier(purchasePrice, settings)
         val targetMargin = settings.gainTargetPercent / 100.0
         val operativosLocal = settings.operativosLocalPercent / 100.0
         val posnet3Cuotas = settings.posnet3CuotasPercent / 100.0
@@ -161,6 +161,15 @@ object PricingCalculator {
         fixedCostTiers = fixedCostTiers,
         shippingTiers = shippingTiers
     )
+
+    private fun fixedCostImputationMultiplier(price: Double, settings: PricingSettingsEntity): Double {
+        val normalizedMode = settings.fixedCostImputationMode.trim().uppercase()
+        return if (normalizedMode == PricingSettingsEntity.FixedCostImputationMode.BY_PRICE_RANGE) {
+            coefficientFor(price, settings) / 100.0
+        } else {
+            1.0
+        }
+    }
 
     private fun coefficientFor(price: Double, settings: PricingSettingsEntity): Double = when {
         price <= 1500.0 -> settings.coefficient0To1500Percent

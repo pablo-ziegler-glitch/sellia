@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
@@ -98,6 +99,8 @@ fun PricingConfigScreen(
     var coef7501To10000Text by remember { mutableStateOf("") }
     var coef10001PlusText by remember { mutableStateOf("") }
     var recalcIntervalText by remember { mutableStateOf("") }
+    var fixedCostImputationMode by remember { mutableStateOf(PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS) }
+    var showFixedCostModeHelp by remember { mutableStateOf(false) }
 
     LaunchedEffect(settings) {
         settings?.let {
@@ -120,6 +123,7 @@ fun PricingConfigScreen(
             coef7501To10000Text = it.coefficient7501To10000Percent.toString()
             coef10001PlusText = it.coefficient10001PlusPercent.toString()
             recalcIntervalText = it.recalcIntervalMinutes.toString()
+            fixedCostImputationMode = it.fixedCostImputationMode
         }
     }
 
@@ -144,6 +148,7 @@ fun PricingConfigScreen(
             coefficient5001To7500Percent = coef5001To7500Text.parseDecimal(current.coefficient5001To7500Percent),
             coefficient7501To10000Percent = coef7501To10000Text.parseDecimal(current.coefficient7501To10000Percent),
             coefficient10001PlusPercent = coef10001PlusText.parseDecimal(current.coefficient10001PlusPercent),
+            fixedCostImputationMode = fixedCostImputationMode,
             recalcIntervalMinutes = recalcIntervalText.toIntOrNull() ?: current.recalcIntervalMinutes,
             updatedAt = Instant.now(),
             updatedBy = current.updatedBy
@@ -206,6 +211,11 @@ fun PricingConfigScreen(
                         SettingsCard("Parámetros base") {
                             DecimalField("IVA terminal (%)", ivaTerminalText) { ivaTerminalText = it.cleanNumeric() }
                             IntegerField("Ventas mensuales estimadas", ventasMensualesText) { ventasMensualesText = it.cleanInteger() }
+                            FixedCostImputationModeSelector(
+                                selectedMode = fixedCostImputationMode,
+                                onModeChange = { fixedCostImputationMode = it },
+                                onHelpClick = { showFixedCostModeHelp = true }
+                            )
                             DecimalField("Operativos local (%)", operativosLocalText) { operativosLocalText = it.cleanNumeric() }
                             DecimalField("Posnet 3 cuotas (%)", posnetText) { posnetText = it.cleanNumeric() }
                             DecimalField("Retención transferencia (%)", transferenciaText) { transferenciaText = it.cleanNumeric() }
@@ -354,6 +364,92 @@ fun PricingConfigScreen(
                 showMlShippingDialog = false
             }
         )
+    }
+
+    if (showFixedCostModeHelp) {
+        AlertDialog(
+            onDismissRequest = { showFixedCostModeHelp = false },
+            title = { Text("¿Cómo se imputa el costo fijo?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("• Modo recomendado: 100% a cada producto. Toma el costo fijo unitario (costo total/ventas mensuales) y lo aplica completo en todos los productos.")
+                    Text("• Modo por rango de precios: mantiene el comportamiento anterior, aplicando un porcentaje distinto según el rango de precio de compra.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFixedCostModeHelp = false }) { Text("Entendido") }
+            }
+        )
+    }
+}
+
+
+@Composable
+private fun FixedCostImputationModeSelector(
+    selectedMode: String,
+    onModeChange: (String) -> Unit,
+    onHelpClick: () -> Unit
+) {
+    val fullMode = PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS
+    val rangeMode = PricingSettingsEntity.FixedCostImputationMode.BY_PRICE_RANGE
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Imputación de costo fijo", fontWeight = FontWeight.Medium)
+            IconButton(onClick = onHelpClick) {
+                Icon(Icons.Default.Info, contentDescription = "Ayuda sobre imputación de costo fijo")
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = selectedMode == fullMode,
+                    onCheckedChange = { checked ->
+                        if (checked) onModeChange(fullMode)
+                    }
+                )
+                Column {
+                    Text("100% para todos los productos", fontWeight = FontWeight.SemiBold)
+                    Text("Aplica el costo fijo unitario completo en cada producto.")
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = selectedMode == rangeMode,
+                    onCheckedChange = { checked ->
+                        if (checked) onModeChange(rangeMode)
+                    }
+                )
+                Column {
+                    Text("Por rango de precios (actual)", fontWeight = FontWeight.SemiBold)
+                    Text("Imputa un porcentaje del costo fijo según el rango de precio de compra.")
+                }
+            }
+        }
     }
 }
 
