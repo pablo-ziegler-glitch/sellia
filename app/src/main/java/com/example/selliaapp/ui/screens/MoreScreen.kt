@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -44,11 +43,8 @@ fun MoreScreen(
     onReports: () -> Unit,
     onAlerts: () -> Unit,
     onSettings: () -> Unit,
-    onSync: () -> Unit,
-    onManageUsers: () -> Unit,
     onSignOut: () -> Unit,
     accountSummary: AccountSummary,
-    canManageUsers: Boolean,
     isClientFinal: Boolean
 ) {
     Surface {
@@ -176,28 +172,6 @@ fun MoreScreen(
                     .fillMaxWidth()
                     .clickable(onClick = onSettings),
                 supportingContent = { Text("Usuarios, precios y marketing") },
-                trailingContent = null,
-                overlineContent = null
-            )
-            if (canManageUsers) {
-                ListItem(
-                    headlineContent = { Text("Usuarios y roles") },
-                    leadingContent = { Icon(Icons.Default.People, contentDescription = null) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onManageUsers),
-                    supportingContent = { Text("Altas, permisos y perfiles") },
-                    trailingContent = null,
-                    overlineContent = null
-                )
-            }
-            ListItem(
-                headlineContent = { Text("Sincronizar") },
-                leadingContent = { Icon(Icons.Default.Sync, contentDescription = null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onSync),
-                supportingContent = { Text("Enviar cambios pendientes") },
                 trailingContent = null,
                 overlineContent = null
             )

@@ -83,6 +83,7 @@ import com.example.selliaapp.ui.screens.public.PublicProductCardScreen
 import com.example.selliaapp.ui.screens.providers.ManageProvidersScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoicesScreen
+import com.example.selliaapp.ui.screens.providers.ProviderInvoiceReaderScreen
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.providers.ProviderPaymentsScreen
 import com.example.selliaapp.ui.screens.providers.ProviderPurchaseOrdersScreen
@@ -99,6 +100,7 @@ import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
 import com.example.selliaapp.ui.screens.stock.ProductPriceAuditScreen
 import com.example.selliaapp.ui.screens.stock.StockImportScreen
+import com.example.selliaapp.ui.screens.stock.PhotoStockIntakeScreen
 import com.example.selliaapp.ui.screens.stock.StockMovementsScreen
 import com.example.selliaapp.ui.screens.stock.StockScreen
 import com.example.selliaapp.viewmodel.ClientMetricsViewModel
@@ -120,6 +122,7 @@ import com.example.selliaapp.viewmodel.StockMovementsViewModel
 import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.viewmodel.AuthViewModel
 import com.example.selliaapp.viewmodel.SecuritySettingsViewModel
+import com.example.selliaapp.viewmodel.TenantOwnershipViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
@@ -328,11 +331,8 @@ fun SelliaApp(
                     onReports = { navController.navigate(Routes.Reports.route) },
                     onAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSettings = { navController.navigate(Routes.Config.route) },
-                    onSync = { SyncScheduler.enqueueNow(context, false) },
-                    onManageUsers = { navController.navigate(Routes.AddUser.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,
-                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
                     isClientFinal = isClientFinal
                 )
             }
@@ -549,6 +549,7 @@ fun SelliaApp(
                     onAddProduct = { navController.navigate(Routes.AddProduct.route) },
                     onScan = { navController.navigate(Routes.ScannerForStock.route) },
                     onImportCsv = { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
+                    onPhotoIntake = { navController.navigate(Routes.StockPhotoIntake.route) },
                     onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
                     onEditProduct = { product ->
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
@@ -574,6 +575,12 @@ fun SelliaApp(
                 val vm: StockImportViewModel = hiltViewModel()
                 StockImportScreen(
                     viewModel = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.StockPhotoIntake.route) {
+                PhotoStockIntakeScreen(
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -664,6 +671,7 @@ fun SelliaApp(
                     prefillBarcode = barcodeArg.ifBlank { null },
                     prefillName = nameArg.ifBlank { null },
                     editId = null,
+                    canManagePublication = accessState.permissions.contains(Permission.MANAGE_PUBLICATION),
                     onSaved = { navController.popBackStack() },
                     navController = navController
                 )
@@ -684,6 +692,7 @@ fun SelliaApp(
                     prefillBarcode = null,
                     prefillName = null,
                     editId = id.toInt(),
+                    canManagePublication = accessState.permissions.contains(Permission.MANAGE_PUBLICATION),
                     onSaved = { navController.popBackStack() },
                     navController = navController
                 )
@@ -789,9 +798,11 @@ fun SelliaApp(
                 val accessVm: AccessControlViewModel = hiltViewModel()
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
                 val requestsVm: AccountRequestsViewModel = hiltViewModel()
+                val ownershipVm: TenantOwnershipViewModel = hiltViewModel()
                 ManageUsersScreen(
                     vm = userViewModel,
                     requestsViewModel = requestsVm,
+                    ownershipViewModel = ownershipVm,
                     onBack = { navController.popBackStack() },
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
                 )
@@ -899,6 +910,7 @@ fun SelliaApp(
                     onProviderInvoices = { navController.navigate(Routes.ProviderInvoices.route) },
                     onProviderPurchaseOrders = { navController.navigate(Routes.ProviderPurchaseOrders.route) },
                     onProviderPayments = { navController.navigate(Routes.ProviderPayments.route) },
+                    onInvoiceReader = { navController.navigate(Routes.ProviderInvoiceReader.fromProviders()) },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -938,6 +950,24 @@ fun SelliaApp(
             composable(Routes.ProviderPayments.route) {
                 val invRepo = hiltViewModel<ProviderInvoicesEntryPoint>().repo
                 ProviderPaymentsScreen(repo = invRepo, onBack = { navController.popBackStack() })
+            }
+
+            composable(
+                route = Routes.ProviderInvoiceReader.route,
+                arguments = listOf(
+                    navArgument(Routes.ProviderInvoiceReader.ARG_SOURCE) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                val source = backStackEntry.arguments?.getString(Routes.ProviderInvoiceReader.ARG_SOURCE).orEmpty()
+                if (source != "providers") {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
+                ProviderInvoiceReaderScreen(onBack = { navController.popBackStack() })
             }
 
             // ---------- GASTOS ----------

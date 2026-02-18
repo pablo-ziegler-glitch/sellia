@@ -25,6 +25,7 @@ sealed class Routes(val route: String) {
     }
     object Stock : Routes("stock")
     object Stock_import : Routes("stock_import")
+    object StockPhotoIntake : Routes("stock_photo_intake")
     object QuickAdjustStock : Routes("stock/adjust/{productId}") {
         const val ARG_PRODUCT_ID = "productId"
         fun withProduct(productId: Int) = "stock/adjust/$productId"
@@ -110,6 +111,11 @@ sealed class Routes(val route: String) {
         fun build(id: Int) = "provider_invoice_detail?invoiceId=$id"
     }
     object ProviderPayments : Routes("provider_payments")              // pendientes
+    object ProviderInvoiceReader : Routes("provider_invoice_reader?source={source}") {
+        const val ARG_SOURCE = "source"
+        private const val SOURCE_PROVIDERS = "providers"
+        fun fromProviders() = "provider_invoice_reader?source=$SOURCE_PROVIDERS"
+    }
 
     // ---------- NUEVO: Gastos ----------
     object ExpensesHub : Routes("expenses_hub")

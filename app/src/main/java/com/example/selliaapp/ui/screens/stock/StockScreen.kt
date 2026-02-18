@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -92,6 +93,7 @@ fun StockScreen(
     onAddProduct: () -> Unit,
     onScan: () -> Unit,
     onImportCsv: () -> Unit,
+    onPhotoIntake: () -> Unit,
     onOpenPriceAudit: () -> Unit,
     onEditProduct: (ProductEntity) -> Unit,
     onOpenQrLabels: () -> Unit,
@@ -299,6 +301,14 @@ fun StockScreen(
                                             "application/vnd.google-apps.spreadsheet"
                                         )
                                     )
+                                }
+                            )
+                            SmallFabWithLabel(
+                                label = "Cargar por foto (IA)",
+                                icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Cargar por foto") },
+                                onClick = {
+                                    fabExpanded = false
+                                    onPhotoIntake()
                                 }
                             )
                             // Escanear

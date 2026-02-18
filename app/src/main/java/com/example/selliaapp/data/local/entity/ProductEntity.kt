@@ -68,7 +68,7 @@ data class ProductEntity(
     val sizes: List<String> = emptyList(),
     val minStock: Int? = null,
 
-    // Publicación catálogo web
+    // Estado de publicación en catálogo público
     val publicStatus: String = "draft",
 
     // Auditoría simple

@@ -21,7 +21,8 @@ object RolePermissionMatrix {
             Permission.CASH_MOVEMENT,
             Permission.CASH_CLOSE,
             Permission.VIEW_CASH_REPORT,
-            Permission.VIEW_USAGE_DASHBOARD
+            Permission.VIEW_USAGE_DASHBOARD,
+            Permission.MANAGE_PUBLICATION
         ),
         AppRole.CASHIER to setOf(
             Permission.CASH_OPEN,

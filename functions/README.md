@@ -166,3 +166,45 @@ Este módulo se usa para mover lógica sensible del cliente al backend de Fireba
 - reducir riesgo de manipulación desde la app/web cliente.
 
 En resumen: **la app Android/web consume datos; `functions` hace la lógica de backend segura y automatizada**.
+
+---
+
+## Gestión de titularidad de tienda (admin)
+
+Se incorporó la callable function:
+
+- **Nombre:** `manageTenantOwnership`
+- **Tipo:** `https.onCall`
+- **Acciones soportadas:**
+  - `ASSOCIATE_OWNER` (asociar co-dueño)
+  - `TRANSFER_PRIMARY_OWNER` (cambiar dueño principal)
+  - `DELEGATE_STORE` (delegar operación de tienda)
+
+### Payload base
+
+```json
+{
+  "tenantId": "tenant_123",
+  "action": "TRANSFER_PRIMARY_OWNER",
+  "targetEmail": "nuevo.dueno@negocio.com",
+  "keepPreviousOwnerAccess": true
+}
+```
+
+### Garantía de continuidad de datos
+
+La función **solo modifica metadatos de titularidad/permisos** (`tenants`, `users`, `tenant_users`, `ownershipEvents`) y **no migra ni borra datos operativos** del tenant. Por diseño, inventario, ventas, caja, facturas e histórico quedan intactos.
+
+---
+
+## Backup total automático cada 24h (retención 7)
+
+Se incorporó la función programada:
+
+- **Nombre:** `createDailyTenantBackups`
+- **Frecuencia:** cada 24h (UTC)
+- **Cobertura:** respaldo recursivo completo de cada `tenants/{tenantId}` con todas sus subcolecciones.
+- **Destino:** `tenant_backups/{tenantId}/runs/{runId}` + `chunks/*`
+- **Retención:** se conservan solo los **últimos 7** backups por tenant; los más antiguos se eliminan automáticamente.
+
+Esto permite restauración por corridas y evita crecimiento ilimitado de costo en Firestore.

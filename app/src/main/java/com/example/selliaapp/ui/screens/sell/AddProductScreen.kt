@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,6 +75,7 @@ fun AddProductScreen(
     prefill: PrefillData? = null,       // datos prellenados (si venís de OFF o de otra pantalla)
     editId: Int? = null,
     prefillName: String? = null,        // si no es null, estás editando / prellenando nombre
+    canManagePublication: Boolean,
     onSaved: () -> Unit,
     navController: NavController,
     offVm: OffLookupViewModel = hiltViewModel()
@@ -125,6 +127,7 @@ fun AddProductScreen(
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var minStockText by remember { mutableStateOf("") }
+    var isPublished by remember { mutableStateOf(false) }
 
     // Dialog de error/info
     var infoMessage by remember { mutableStateOf<String?>(null) }
@@ -170,6 +173,7 @@ fun AddProductScreen(
                 selectedProviderName = p.providerName.orEmpty()
                 providerSku = p.providerSku.orEmpty()
                 minStockText = p.minStock?.toString() ?: ""
+                isPublished = p.publicStatus == "published"
             }
         }
     }
@@ -496,6 +500,20 @@ fun AddProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            if (canManagePublication) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Publicado en catálogo público")
+                    Switch(
+                        checked = isPublished,
+                        onCheckedChange = { isPublished = it }
+                    )
+                }
+            }
+
             // --- Acciones (FIX: un solo Button, llaves ok) ---
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
@@ -545,6 +563,8 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
+                                canManagePublication = canManagePublication,
+                                publishRequested = isPublished,
                                 pendingImageUris = pendingImageUris.toList()
                             ) { result ->
                                 if (result.isSuccess) {
@@ -577,7 +597,9 @@ fun AddProductScreen(
                                 brand = brand.ifBlank { null },
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
-                                minStock = minStock
+                                minStock = minStock,
+                                canManagePublication = canManagePublication,
+                                publishRequested = isPublished
                             ) { result ->
                                 if (result.isSuccess) {
                                     onSaved()

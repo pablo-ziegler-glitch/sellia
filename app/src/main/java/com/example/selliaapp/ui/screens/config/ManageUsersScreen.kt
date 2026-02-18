@@ -22,6 +22,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +59,7 @@ import com.example.selliaapp.data.model.onboarding.BusinessModule
 import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.UserViewModel
+import com.example.selliaapp.viewmodel.TenantOwnershipViewModel
 import com.example.selliaapp.viewmodel.admin.AccountRequestsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,6 +67,7 @@ import com.example.selliaapp.viewmodel.admin.AccountRequestsViewModel
 fun ManageUsersScreen(
     vm: UserViewModel,
     requestsViewModel: AccountRequestsViewModel,
+    ownershipViewModel: TenantOwnershipViewModel,
     onBack: () -> Unit,
     canManageUsers: Boolean
 ) {
@@ -73,6 +76,27 @@ fun ManageUsersScreen(
     var editorUser by remember { mutableStateOf<User?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableStateOf(0) }
+    val ownershipState by ownershipViewModel.state.collectAsStateWithLifecycle()
+    var ownershipDialog by remember { mutableStateOf<OwnershipActionDialogState?>(null) }
+
+    ownershipDialog?.let { dialogState ->
+        OwnershipActionDialog(
+            state = dialogState,
+            isLoading = ownershipState.isLoading,
+            onDismiss = { ownershipDialog = null },
+            onConfirm = { targetEmail, keepPreviousOwnerAccess ->
+                when (dialogState.action) {
+                    OwnershipAction.DELEGATE_STORE -> ownershipViewModel.delegateStore(targetEmail)
+                    OwnershipAction.ASSOCIATE_OWNER -> ownershipViewModel.associateOwner(targetEmail)
+                    OwnershipAction.TRANSFER_PRIMARY_OWNER -> ownershipViewModel.transferPrimaryOwner(
+                        targetEmail,
+                        keepPreviousOwnerAccess
+                    )
+                }
+                ownershipDialog = null
+            }
+        )
+    }
 
     if (showEditor) {
         UserEditorDialog(
@@ -166,6 +190,18 @@ fun ManageUsersScreen(
                 return@Column
             }
 
+            if (canManageUsers) {
+                OwnershipManagementPanel(
+                    isLoading = ownershipState.isLoading,
+                    message = ownershipState.message,
+                    error = ownershipState.error,
+                    onClearMessage = ownershipViewModel::clearMessage,
+                    onDelegateStore = { ownershipDialog = OwnershipActionDialogState(OwnershipAction.DELEGATE_STORE) },
+                    onAssociateOwner = { ownershipDialog = OwnershipActionDialogState(OwnershipAction.ASSOCIATE_OWNER) },
+                    onTransferOwner = { ownershipDialog = OwnershipActionDialogState(OwnershipAction.TRANSFER_PRIMARY_OWNER) }
+                )
+            }
+
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
@@ -202,6 +238,133 @@ fun ManageUsersScreen(
             }
         }
     }
+}
+
+
+private enum class OwnershipAction(val title: String, val description: String) {
+    DELEGATE_STORE(
+        title = "Delegar tienda",
+        description = "Asigna acceso de encargado/a sin transferir la titularidad principal."
+    ),
+    ASSOCIATE_OWNER(
+        title = "Asociar co-dueño/a",
+        description = "Agrega un dueño adicional para operar la misma tienda sin pérdida de información."
+    ),
+    TRANSFER_PRIMARY_OWNER(
+        title = "Cambiar dueño principal",
+        description = "Transfiere la titularidad principal. Opcionalmente podés conservar acceso del dueño actual."
+    )
+}
+
+private data class OwnershipActionDialogState(
+    val action: OwnershipAction
+)
+
+@Composable
+private fun OwnershipManagementPanel(
+    isLoading: Boolean,
+    message: String?,
+    error: String?,
+    onClearMessage: () -> Unit,
+    onDelegateStore: () -> Unit,
+    onAssociateOwner: () -> Unit,
+    onTransferOwner: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Titularidad y delegación de tienda",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Estas acciones mantienen intacto el historial (ventas, stock, caja y reportes) porque solo cambian permisos y dueños del tenant.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onDelegateStore, enabled = !isLoading) {
+                    Text("Delegar tienda")
+                }
+                Button(onClick = onAssociateOwner, enabled = !isLoading) {
+                    Text("Agregar co-dueño")
+                }
+                Button(onClick = onTransferOwner, enabled = !isLoading) {
+                    Text("Cambiar dueño")
+                }
+            }
+            if (!message.isNullOrBlank()) {
+                AssistChip(onClick = onClearMessage, label = { Text(message) })
+            }
+            if (!error.isNullOrBlank()) {
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OwnershipActionDialog(
+    state: OwnershipActionDialogState,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (targetEmail: String, keepPreviousOwnerAccess: Boolean) -> Unit
+) {
+    var targetEmail by remember { mutableStateOf("") }
+    var keepPreviousOwnerAccess by remember { mutableStateOf(true) }
+    val canConfirm = targetEmail.isNotBlank() && !isLoading
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(state.action.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(state.action.description)
+                OutlinedTextField(
+                    value = targetEmail,
+                    onValueChange = { targetEmail = it.trim() },
+                    label = { Text("Email del usuario") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (state.action == OwnershipAction.TRANSFER_PRIMARY_OWNER) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            checked = keepPreviousOwnerAccess,
+                            onCheckedChange = { keepPreviousOwnerAccess = it }
+                        )
+                        Text("Mantener acceso del dueño anterior como co-dueño")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(targetEmail, keepPreviousOwnerAccess) },
+                enabled = canConfirm
+            ) {
+                Text("Confirmar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
 
 

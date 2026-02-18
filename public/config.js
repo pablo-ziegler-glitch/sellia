@@ -1,21 +1,106 @@
-window.STORE_CONFIG = {
-  brandName: "Tu tienda",
-  publicStoreUrl: "https://tu-proyecto.web.app/product.html",
-  tenantId: "REEMPLAZAR_TENANT",
-  productCollection: "products",
-  publicProductCollection: "public_products",
-  refreshIntervalMs: 300000,
-  firebase: {
-    apiKey: "REEMPLAZAR",
-    authDomain: "REEMPLAZAR",
-    projectId: "REEMPLAZAR",
-    storageBucket: "REEMPLAZAR",
-    messagingSenderId: "REEMPLAZAR",
-    appId: "REEMPLAZAR"
-  },
-  contact: {
-    whatsapp: "REEMPLAZAR",
-    instagram: "REEMPLAZAR",
-    maps: "REEMPLAZAR"
+(function attachStoreConfig(globalScope) {
+  const runtimeConfig = globalScope.__STORE_RUNTIME_CONFIG__ || {};
+  const runtimeFirebase = runtimeConfig.firebase || {};
+  const runtimeContact = runtimeConfig.contact || {};
+
+  const storeConfig = {
+    brandName: runtimeConfig.brandName || "Valkirja",
+    publicStoreUrl: runtimeConfig.publicStoreUrl || "https://valkirja.com.ar/product.html",
+    tenantId: runtimeConfig.tenantId || "valkirja",
+    productCollection: "products",
+    publicProductCollection: "public_products",
+    refreshIntervalMs: 300000,
+    firebase: {
+      apiKey: runtimeFirebase.apiKey || "",
+      authDomain: runtimeFirebase.authDomain || "sellia1993.firebaseapp.com",
+      projectId: runtimeFirebase.projectId || "sellia1993",
+      storageBucket: runtimeFirebase.storageBucket || "sellia1993.firebasestorage.app",
+      messagingSenderId: runtimeFirebase.messagingSenderId || "",
+      appId: runtimeFirebase.appId || ""
+    },
+    contact: {
+      whatsapp: runtimeContact.whatsapp || "",
+      instagram: runtimeContact.instagram || "",
+      maps: runtimeContact.maps || ""
+    }
+  };
+
+  globalScope.STORE_CONFIG = storeConfig;
+
+  const storeConfigReady = resolveTenantStoreConfig(storeConfig).catch((error) => {
+    console.warn("No se pudo resolver la configuración pública por tenant.", error);
+  });
+
+  globalScope.__STORE_CONFIG_READY__ = storeConfigReady;
+
+  async function resolveTenantStoreConfig(config) {
+    const tenantIdFromUrl = resolveTenantFromUrl();
+    if (tenantIdFromUrl) {
+      config.tenantId = tenantIdFromUrl;
+    }
+
+    const projectId = config.firebase?.projectId;
+    const apiKey = config.firebase?.apiKey;
+    if (!projectId || !apiKey || !config.tenantId) {
+      applyFallbackDomainByTenant(config);
+      return;
+    }
+
+    const response = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenant_directory/${encodeURIComponent(
+        config.tenantId
+      )}?key=${apiKey}`
+    );
+
+    if (!response.ok) {
+      applyFallbackDomainByTenant(config);
+      return;
+    }
+
+    const payload = await response.json();
+    const fields = payload?.fields || {};
+    const publicStoreUrl = fields.publicStoreUrl?.stringValue?.trim() || "";
+    const publicDomain = fields.publicDomain?.stringValue?.trim() || "";
+
+    if (publicStoreUrl) {
+      config.publicStoreUrl = normalizeUrl(publicStoreUrl);
+      return;
+    }
+
+    if (publicDomain) {
+      config.publicStoreUrl = buildProductUrl(publicDomain);
+      return;
+    }
+
+    applyFallbackDomainByTenant(config);
   }
-};
+
+  function resolveTenantFromUrl() {
+    const params = new URLSearchParams(globalScope.location.search);
+    return (
+      params.get("tenantId")?.trim() ||
+      params.get("tienda")?.trim() ||
+      params.get("TIENDA")?.trim() ||
+      ""
+    );
+  }
+
+  function applyFallbackDomainByTenant(config) {
+    if ((config.tenantId || "").toLowerCase() === "valkirja") {
+      config.publicStoreUrl = "https://valkirja.com.ar/product.html";
+    }
+  }
+
+  function normalizeUrl(url) {
+    if (!url) return "";
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    return `https://${url}`;
+  }
+
+  function buildProductUrl(domain) {
+    const normalizedDomain = domain.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+    return `https://${normalizedDomain}/product.html`;
+  }
+})(window);
