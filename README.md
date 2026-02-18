@@ -101,15 +101,20 @@ Guía recomendada para producción con QR público (web + app):
 ## 🖼️ URLs públicas de imágenes para importación masiva
 Para que las imágenes funcionen en la carga masiva de **Productos**, las columnas `imageUrl` / `image_urls` deben apuntar a una URL pública.
 
-Ruta recomendada en Firebase Storage (la misma que usa la app al subir imágenes):
-- `tenants/{tenantId}/products/{productId}/images/{archivo}`
+Ruta pública recomendada en Firebase Storage (catálogo público):
+- `tenants/{tenantId}/public_products/{productId}/images/{archivo_versionado}`
 
-Flujo recomendado:
-1. Subí la imagen con la app (gestión de producto) o consola Firebase Storage.
-2. Obtené el **Download URL** público.
-3. Pegá esa URL en `imageUrl` (principal) o en `image_urls` (múltiples separadas por `|`) dentro del CSV.
+Flujo recomendado para cargas masivas y app Android:
+1. Subí la imagen desde la app (gestión de producto) o desde backend/admin a la ruta pública anterior.
+2. Conservá **naming versionado** para cache busting sin romper URLs existentes:
+   - Formato sugerido: `{orden}_{slug}_v{hash|timestamp}.{ext}`
+   - Ejemplo: `01_campera-negra_v1739899476.webp`
+3. En sincronización de producto público, Cloud Functions normaliza `imageUrl` / `imageUrls` a URLs finales `alt=media` apuntando a `public_products`.
+4. En CSV, pegá esas URLs en `imageUrl` (principal) o `image_urls` (múltiples separadas por `|`).
 
-> `public/assets/` se usa para la web estática; para productos administrados en la app usá Firebase Storage.
+Notas de operación:
+- `public/assets/` se usa para la web estática; el catálogo dinámico de productos usa Firebase Storage.
+- No reutilices exactamente el mismo nombre de archivo al reemplazar imagen: creá nueva versión (`v...`) para invalidar caché de CDN/navegadores sin afectar clientes que ya consumen la URL anterior.
 
 ## 🧪 Testing
 Ejecutar los tests del módulo app:
