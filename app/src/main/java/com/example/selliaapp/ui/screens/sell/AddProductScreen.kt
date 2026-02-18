@@ -563,7 +563,8 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
-                                publicStatus = if (canManagePublication && isPublished) "published" else "draft",
+                                canManagePublication = canManagePublication,
+                                publishRequested = isPublished,
                                 pendingImageUris = pendingImageUris.toList()
                             ) { result ->
                                 if (result.isSuccess) {
@@ -597,9 +598,8 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
-                                publicStatus = if (canManagePublication) {
-                                    if (isPublished) "published" else "draft"
-                                } else null
+                                canManagePublication = canManagePublication,
+                                publishRequested = isPublished
                             ) { result ->
                                 if (result.isSuccess) {
                                     onSaved()
