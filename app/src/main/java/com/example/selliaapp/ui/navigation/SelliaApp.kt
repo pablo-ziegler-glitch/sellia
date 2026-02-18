@@ -99,6 +99,7 @@ import com.example.selliaapp.ui.screens.stock.QuickReorderScreen
 import com.example.selliaapp.ui.screens.stock.QuickStockAdjustScreen
 import com.example.selliaapp.ui.screens.stock.ProductPriceAuditScreen
 import com.example.selliaapp.ui.screens.stock.StockImportScreen
+import com.example.selliaapp.ui.screens.stock.PhotoStockIntakeScreen
 import com.example.selliaapp.ui.screens.stock.StockMovementsScreen
 import com.example.selliaapp.ui.screens.stock.StockScreen
 import com.example.selliaapp.viewmodel.ClientMetricsViewModel
@@ -549,6 +550,7 @@ fun SelliaApp(
                     onAddProduct = { navController.navigate(Routes.AddProduct.route) },
                     onScan = { navController.navigate(Routes.ScannerForStock.route) },
                     onImportCsv = { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
+                    onPhotoIntake = { navController.navigate(Routes.StockPhotoIntake.route) },
                     onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
                     onEditProduct = { product ->
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
@@ -574,6 +576,12 @@ fun SelliaApp(
                 val vm: StockImportViewModel = hiltViewModel()
                 StockImportScreen(
                     viewModel = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.StockPhotoIntake.route) {
+                PhotoStockIntakeScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

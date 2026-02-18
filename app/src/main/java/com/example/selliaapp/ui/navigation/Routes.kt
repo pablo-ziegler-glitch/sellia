@@ -25,6 +25,7 @@ sealed class Routes(val route: String) {
     }
     object Stock : Routes("stock")
     object Stock_import : Routes("stock_import")
+    object StockPhotoIntake : Routes("stock_photo_intake")
     object QuickAdjustStock : Routes("stock/adjust/{productId}") {
         const val ARG_PRODUCT_ID = "productId"
         fun withProduct(productId: Int) = "stock/adjust/$productId"
