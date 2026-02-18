@@ -30,10 +30,8 @@ data class PricingSettingsEntity(
     val updatedAt: Instant,
     val updatedBy: String
 ) {
-    companion object {
-        object FixedCostImputationMode {
-            const val FULL_TO_ALL_PRODUCTS = "FULL_TO_ALL_PRODUCTS"
-            const val BY_PRICE_RANGE = "BY_PRICE_RANGE"
-        }
+    object FixedCostImputationMode {
+        const val FULL_TO_ALL_PRODUCTS = "FULL_TO_ALL_PRODUCTS"
+        const val BY_PRICE_RANGE = "BY_PRICE_RANGE"
     }
 }
