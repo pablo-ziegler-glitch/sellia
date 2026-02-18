@@ -330,11 +330,8 @@ fun SelliaApp(
                     onReports = { navController.navigate(Routes.Reports.route) },
                     onAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSettings = { navController.navigate(Routes.Config.route) },
-                    onSync = { SyncScheduler.enqueueNow(context, false) },
-                    onManageUsers = { navController.navigate(Routes.AddUser.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,
-                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
                     isClientFinal = isClientFinal
                 )
             }
