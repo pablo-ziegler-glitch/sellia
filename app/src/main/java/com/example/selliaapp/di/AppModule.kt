@@ -64,6 +64,7 @@ import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.SecurityConfigRepository
 import com.example.selliaapp.repository.StorageRepository
 import com.example.selliaapp.repository.TenantDirectoryRepository
+import com.example.selliaapp.repository.TenantOwnershipRepository
 import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
 import com.example.selliaapp.repository.ViewerStoreRepository
@@ -72,12 +73,14 @@ import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.example.selliaapp.repository.impl.TenantDirectoryRepositoryImpl
+import com.example.selliaapp.repository.impl.TenantOwnershipRepositoryImpl
 import com.example.selliaapp.repository.impl.StorageRepositoryImpl
 import com.example.selliaapp.repository.impl.UsageRepositoryImpl
 import com.example.selliaapp.repository.impl.ViewerStoreRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.functions.FirebaseFunctions
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -337,6 +340,20 @@ object AppModule {
         @IoDispatcher io: CoroutineDispatcher
     ): TenantDirectoryRepository = TenantDirectoryRepositoryImpl(
         firestore = firestore,
+        io = io
+    )
+
+    @Provides
+    @Singleton
+    fun provideTenantOwnershipRepository(
+        functions: FirebaseFunctions,
+        tenantProvider: TenantProvider,
+        sessionCoordinator: FirebaseSessionCoordinator,
+        @IoDispatcher io: CoroutineDispatcher
+    ): TenantOwnershipRepository = TenantOwnershipRepositoryImpl(
+        functions = functions,
+        tenantProvider = tenantProvider,
+        sessionCoordinator = sessionCoordinator,
         io = io
     )
 

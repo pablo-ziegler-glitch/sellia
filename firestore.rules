@@ -269,6 +269,22 @@ service cloud.firestore {
       allow write: if isBackend();
     }
 
+
+    match /tenant_backups/{tenantId} {
+      allow read: if isAdminForTenant(tenantId) || isBackend();
+      allow write: if isBackend();
+
+      match /runs/{runId} {
+        allow read: if isAdminForTenant(tenantId) || isBackend();
+        allow write: if isBackend();
+
+        match /chunks/{chunkId} {
+          allow read: if isAdminForTenant(tenantId) || isBackend();
+          allow write: if isBackend();
+        }
+      }
+    }
+
     match /tenants/{tenantId}/{document=**} {
       allow read: if isTenantUser(tenantId);
       allow write: if isTenantUser(tenantId) && hasTenantWriteRole();

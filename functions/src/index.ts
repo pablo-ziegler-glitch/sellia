@@ -1880,3 +1880,393 @@ export const refreshPublicProducts = functions.pubsub
     }
     return null;
   });
+
+type TenantOwnershipAction =
+  | "ASSOCIATE_OWNER"
+  | "TRANSFER_PRIMARY_OWNER"
+  | "DELEGATE_STORE";
+
+type ManageTenantOwnershipPayload = {
+  tenantId?: unknown;
+  action?: unknown;
+  targetUid?: unknown;
+  targetEmail?: unknown;
+  keepPreviousOwnerAccess?: unknown;
+};
+
+type TenantBackupDocument = {
+  path: string;
+  data: admin.firestore.DocumentData;
+};
+
+const BACKUP_RETENTION_COUNT = 7;
+const BACKUP_CHUNK_SIZE = 150;
+
+const normalizeEmail = (value: unknown): string =>
+  String(value ?? "").trim().toLowerCase();
+
+const isAdminRole = (role: unknown): boolean => {
+  const normalized = normalizeString(role).toLowerCase();
+  return normalized === "admin" || normalized === "owner";
+};
+
+const resolveTargetUserId = async (
+  payload: ManageTenantOwnershipPayload
+): Promise<string> => {
+  const targetUid = normalizeString(payload.targetUid);
+  if (targetUid) {
+    const targetDoc = await db.collection("users").doc(targetUid).get();
+    if (!targetDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "targetUid no existe en users/");
+    }
+    return targetUid;
+  }
+
+  const targetEmail = normalizeEmail(payload.targetEmail);
+  if (!targetEmail) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Debés enviar targetUid o targetEmail"
+    );
+  }
+
+  const byEmailSnapshot = await db
+    .collection("users")
+    .where("email", "==", targetEmail)
+    .limit(1)
+    .get();
+
+  if (byEmailSnapshot.empty) {
+    throw new functions.https.HttpsError(
+      "not-found",
+      "No existe usuario con ese email"
+    );
+  }
+
+  return byEmailSnapshot.docs[0].id;
+};
+
+const upsertTenantUserMembership = async (
+  tenantId: string,
+  uid: string,
+  role: "owner" | "manager"
+): Promise<void> => {
+  const userRef = db.collection("users").doc(uid);
+  const tenantUserRef = db.collection("tenant_users").doc(`${tenantId}_${uid}`);
+
+  await db.runTransaction(async (tx) => {
+    const userDoc = await tx.get(userRef);
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "Usuario objetivo inexistente");
+    }
+
+    const userData = userDoc.data() || {};
+    tx.set(
+      userRef,
+      {
+        tenantId,
+        role,
+        accountType: role === "owner" ? "store_owner" : userData.accountType ?? "store_owner",
+        isActive: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    tx.set(
+      tenantUserRef,
+      {
+        tenantId,
+        uid,
+        name: userData.name ?? userData.displayName ?? "",
+        email: normalizeEmail(userData.email),
+        role,
+        isActive: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+};
+
+export const manageTenantOwnership = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: ManageTenantOwnershipPayload, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const tenantId = normalizeString(data?.tenantId);
+    const action = normalizeString(data?.action) as TenantOwnershipAction;
+    if (!tenantId || !action) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "tenantId y action son obligatorios"
+      );
+    }
+
+    const allowedActions: TenantOwnershipAction[] = [
+      "ASSOCIATE_OWNER",
+      "TRANSFER_PRIMARY_OWNER",
+      "DELEGATE_STORE",
+    ];
+    if (!allowedActions.includes(action)) {
+      throw new functions.https.HttpsError("invalid-argument", "action inválida");
+    }
+
+    const callerUid = context.auth.uid;
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const callerUserRef = db.collection("users").doc(callerUid);
+    const [tenantDoc, callerUserDoc] = await Promise.all([
+      tenantRef.get(),
+      callerUserRef.get(),
+    ]);
+
+    if (!tenantDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "tenant no existe");
+    }
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const callerRole = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const callerTenantId = normalizeString(callerUserDoc.get("tenantId"));
+    const hasAdminClaim =
+      context.auth.token.admin === true ||
+      context.auth.token.role === "admin" ||
+      normalizeEmail(context.auth.token.email) === "pabloz18ezeiza@gmail.com";
+
+    if (!hasAdminClaim && (!isAdminRole(callerRole) || callerTenantId !== tenantId)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo admin/owner del tenant puede gestionar titularidad"
+      );
+    }
+
+    const targetUid = await resolveTargetUserId(data ?? {});
+    const keepPreviousOwnerAccess = data.keepPreviousOwnerAccess !== false;
+
+    const result = await db.runTransaction(async (tx) => {
+      const freshTenantDoc = await tx.get(tenantRef);
+      if (!freshTenantDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "tenant no existe");
+      }
+
+      const tenantData = freshTenantDoc.data() || {};
+      const primaryOwnerUid = normalizeString(tenantData.ownerUid);
+      const ownerUids = new Set<string>(
+        Array.isArray(tenantData.ownerUids)
+          ? tenantData.ownerUids.map((value: unknown) => normalizeString(value)).filter(Boolean)
+          : []
+      );
+      if (primaryOwnerUid) {
+        ownerUids.add(primaryOwnerUid);
+      }
+
+      const delegatedStoreUids = new Set<string>(
+        Array.isArray(tenantData.delegatedStoreUids)
+          ? tenantData.delegatedStoreUids.map((value: unknown) => normalizeString(value)).filter(Boolean)
+          : []
+      );
+
+      if (action === "ASSOCIATE_OWNER") {
+        ownerUids.add(targetUid);
+      }
+
+      if (action === "TRANSFER_PRIMARY_OWNER") {
+        if (!keepPreviousOwnerAccess && primaryOwnerUid) {
+          ownerUids.delete(primaryOwnerUid);
+        }
+        ownerUids.add(targetUid);
+        tx.set(
+          tenantRef,
+          {
+            ownerUid: targetUid,
+          },
+          { merge: true }
+        );
+      }
+
+      if (action === "DELEGATE_STORE") {
+        delegatedStoreUids.add(targetUid);
+      }
+
+      tx.set(
+        tenantRef,
+        {
+          ownerUids: Array.from(ownerUids),
+          delegatedStoreUids: Array.from(delegatedStoreUids),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          ownershipVersion: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+      );
+
+      const eventRef = tenantRef.collection("ownershipEvents").doc();
+      tx.set(eventRef, {
+        action,
+        tenantId,
+        actorUid: callerUid,
+        targetUid,
+        previousPrimaryOwnerUid: primaryOwnerUid || null,
+        keepPreviousOwnerAccess,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        ownerUids: Array.from(ownerUids),
+        delegatedStoreUids: Array.from(delegatedStoreUids),
+      };
+    });
+
+    if (action === "DELEGATE_STORE") {
+      await upsertTenantUserMembership(tenantId, targetUid, "manager");
+    } else {
+      await upsertTenantUserMembership(tenantId, targetUid, "owner");
+    }
+
+    return {
+      ok: true,
+      tenantId,
+      action,
+      targetUid,
+      ownerUids: result.ownerUids,
+      delegatedStoreUids: result.delegatedStoreUids,
+      note:
+        "Cambio aplicado sin mover datos operativos del tenant. Inventario, ventas e histórico permanecen intactos.",
+    };
+  });
+
+const listTenantDocumentsRecursively = async (
+  docRef: admin.firestore.DocumentReference,
+  docs: TenantBackupDocument[]
+): Promise<void> => {
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) {
+    return;
+  }
+  docs.push({ path: docRef.path, data: docSnap.data() || {} });
+
+  const collections = await docRef.listCollections();
+  for (const collectionRef of collections) {
+    const colSnap = await collectionRef.get();
+    for (const nestedDoc of colSnap.docs) {
+      await listTenantDocumentsRecursively(nestedDoc.ref, docs);
+    }
+  }
+};
+
+const splitIntoChunks = <T>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const deleteRunWithChunks = async (
+  runRef: admin.firestore.DocumentReference
+): Promise<void> => {
+  const chunkSnap = await runRef.collection("chunks").get();
+  let batch = db.batch();
+  let counter = 0;
+
+  for (const chunkDoc of chunkSnap.docs) {
+    batch.delete(chunkDoc.ref);
+    counter += 1;
+    if (counter === 450) {
+      await batch.commit();
+      batch = db.batch();
+      counter = 0;
+    }
+  }
+
+  batch.delete(runRef);
+  await batch.commit();
+};
+
+const cleanupTenantBackupRetention = async (tenantId: string): Promise<void> => {
+  const runsRef = db.collection("tenant_backups").doc(tenantId).collection("runs");
+  const runsSnap = await runsRef.orderBy("createdAt", "desc").get();
+
+  if (runsSnap.size <= BACKUP_RETENTION_COUNT) {
+    return;
+  }
+
+  const staleRuns = runsSnap.docs.slice(BACKUP_RETENTION_COUNT);
+  for (const staleRun of staleRuns) {
+    await deleteRunWithChunks(staleRun.ref);
+  }
+};
+
+const backupTenant = async (tenantId: string): Promise<void> => {
+  const tenantRef = db.collection("tenants").doc(tenantId);
+  const documents: TenantBackupDocument[] = [];
+  await listTenantDocumentsRecursively(tenantRef, documents);
+
+  const runId = new Date().toISOString().replace(/[.:]/g, "-");
+  const runRef = db
+    .collection("tenant_backups")
+    .doc(tenantId)
+    .collection("runs")
+    .doc(runId);
+
+  const chunks = splitIntoChunks(documents, BACKUP_CHUNK_SIZE);
+
+  await runRef.set({
+    tenantId,
+    runId,
+    docCount: documents.length,
+    chunkCount: chunks.length,
+    retentionLimit: BACKUP_RETENTION_COUNT,
+    status: "completed",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  let batch = db.batch();
+  let counter = 0;
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
+    const chunkRef = runRef.collection("chunks").doc(String(index + 1).padStart(4, "0"));
+    batch.set(chunkRef, {
+      tenantId,
+      runId,
+      chunkIndex: index,
+      documents: chunk,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    counter += 1;
+    if (counter === 450) {
+      await batch.commit();
+      batch = db.batch();
+      counter = 0;
+    }
+  }
+  if (counter > 0) {
+    await batch.commit();
+  }
+
+  await cleanupTenantBackupRetention(tenantId);
+};
+
+export const createDailyTenantBackups = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .pubsub
+  .schedule("every 24 hours")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const tenantsSnapshot = await db.collection("tenants").get();
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantId = tenantDoc.id;
+      try {
+        await backupTenant(tenantId);
+        console.info("Tenant backup completed", { tenantId });
+      } catch (error) {
+        console.error("Tenant backup failed", {
+          tenantId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return null;
+  });

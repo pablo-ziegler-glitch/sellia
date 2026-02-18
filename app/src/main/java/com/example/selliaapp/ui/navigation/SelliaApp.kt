@@ -83,6 +83,7 @@ import com.example.selliaapp.ui.screens.public.PublicProductCardScreen
 import com.example.selliaapp.ui.screens.providers.ManageProvidersScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.providers.ProviderInvoicesScreen
+import com.example.selliaapp.ui.screens.providers.ProviderInvoiceReaderScreen
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.ui.screens.providers.ProviderPaymentsScreen
 import com.example.selliaapp.ui.screens.providers.ProviderPurchaseOrdersScreen
@@ -121,6 +122,7 @@ import com.example.selliaapp.viewmodel.StockMovementsViewModel
 import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.viewmodel.AuthViewModel
 import com.example.selliaapp.viewmodel.SecuritySettingsViewModel
+import com.example.selliaapp.viewmodel.TenantOwnershipViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
@@ -329,11 +331,8 @@ fun SelliaApp(
                     onReports = { navController.navigate(Routes.Reports.route) },
                     onAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSettings = { navController.navigate(Routes.Config.route) },
-                    onSync = { SyncScheduler.enqueueNow(context, false) },
-                    onManageUsers = { navController.navigate(Routes.AddUser.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,
-                    canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
                     isClientFinal = isClientFinal
                 )
             }
@@ -799,9 +798,11 @@ fun SelliaApp(
                 val accessVm: AccessControlViewModel = hiltViewModel()
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
                 val requestsVm: AccountRequestsViewModel = hiltViewModel()
+                val ownershipVm: TenantOwnershipViewModel = hiltViewModel()
                 ManageUsersScreen(
                     vm = userViewModel,
                     requestsViewModel = requestsVm,
+                    ownershipViewModel = ownershipVm,
                     onBack = { navController.popBackStack() },
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS)
                 )
@@ -909,6 +910,7 @@ fun SelliaApp(
                     onProviderInvoices = { navController.navigate(Routes.ProviderInvoices.route) },
                     onProviderPurchaseOrders = { navController.navigate(Routes.ProviderPurchaseOrders.route) },
                     onProviderPayments = { navController.navigate(Routes.ProviderPayments.route) },
+                    onInvoiceReader = { navController.navigate(Routes.ProviderInvoiceReader.fromProviders()) },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -948,6 +950,24 @@ fun SelliaApp(
             composable(Routes.ProviderPayments.route) {
                 val invRepo = hiltViewModel<ProviderInvoicesEntryPoint>().repo
                 ProviderPaymentsScreen(repo = invRepo, onBack = { navController.popBackStack() })
+            }
+
+            composable(
+                route = Routes.ProviderInvoiceReader.route,
+                arguments = listOf(
+                    navArgument(Routes.ProviderInvoiceReader.ARG_SOURCE) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                val source = backStackEntry.arguments?.getString(Routes.ProviderInvoiceReader.ARG_SOURCE).orEmpty()
+                if (source != "providers") {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
+                ProviderInvoiceReaderScreen(onBack = { navController.popBackStack() })
             }
 
             // ---------- GASTOS ----------

@@ -111,6 +111,11 @@ sealed class Routes(val route: String) {
         fun build(id: Int) = "provider_invoice_detail?invoiceId=$id"
     }
     object ProviderPayments : Routes("provider_payments")              // pendientes
+    object ProviderInvoiceReader : Routes("provider_invoice_reader?source={source}") {
+        const val ARG_SOURCE = "source"
+        private const val SOURCE_PROVIDERS = "providers"
+        fun fromProviders() = "provider_invoice_reader?source=$SOURCE_PROVIDERS"
+    }
 
     // ---------- NUEVO: Gastos ----------
     object ExpensesHub : Routes("expenses_hub")
