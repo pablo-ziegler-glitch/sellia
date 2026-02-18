@@ -399,8 +399,16 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMarketingConfigRepository(
-        dataStore: DataStore<Preferences>
-    ): MarketingConfigRepository = MarketingConfigRepository(dataStore)
+        dataStore: DataStore<Preferences>,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
+        @IoDispatcher io: CoroutineDispatcher
+    ): MarketingConfigRepository = MarketingConfigRepository(
+        dataStore = dataStore,
+        firestore = firestore,
+        tenantProvider = tenantProvider,
+        io = io
+    )
 
     @Provides
     @Singleton

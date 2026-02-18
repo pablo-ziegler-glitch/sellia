@@ -207,6 +207,7 @@ class ProductRepository(
         val skuPrefix = resolveSkuPrefix()
         val touchedIds = mutableSetOf<Int>()
         val interactionEvents = mutableListOf<StockInteractionEvent>()
+        val crossCatalogCandidates = mutableMapOf<String, Pair<String, String?>>()
 
         db.withTransaction {
             rows.forEach { r ->
