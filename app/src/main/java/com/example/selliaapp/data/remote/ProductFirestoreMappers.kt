@@ -52,6 +52,7 @@ object ProductFirestoreMappers {
             "color"        to product.color,
             "sizes"        to product.sizes,
             "minStock"     to product.minStock,
+            "publicStatus" to product.publicStatus,
             "updatedAt"    to product.updatedAt.format(ISO_DATE)
         )
     }
@@ -90,6 +91,7 @@ object ProductFirestoreMappers {
             color        = data["color"] as? String,
             sizes        = (data["sizes"] as? List<*>)?.mapNotNull { it as? String }.orEmpty(),
             minStock     = (data["minStock"] as? Number)?.toInt(),
+            publicStatus = (data["publicStatus"] as? String)?.trim().orEmpty().ifBlank { "draft" },
             updatedAt    = updatedAt
         )
         return RemoteProduct(entity = entity, imageUrls = combinedUrls)

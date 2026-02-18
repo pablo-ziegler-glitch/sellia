@@ -68,6 +68,9 @@ data class ProductEntity(
     val sizes: List<String> = emptyList(),
     val minStock: Int? = null,
 
+    // Publicación catálogo web
+    val publicStatus: String = "draft",
+
     // Auditoría simple
     val updatedAt: LocalDate = LocalDate.now()
 )
