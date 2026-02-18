@@ -155,12 +155,15 @@ class ProductViewModel @Inject constructor(
         color: String?,
         sizes: List<String>,
         minStock: Int?,
+        publicStatus: String? = null,
         pendingImageUris: List<Uri> = emptyList(),
         onDone: (Result<Int>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             _imageUploadState.value = ImageUploadUiState(uploading = false, message = null)
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+            val normalizedPublicStatus = publicStatus?.lowercase()?.takeIf { it == "published" || it == "draft" }
+                ?: "draft"
             val entity = ProductEntity(
                 id = 0, // autogen
                 code = code,
@@ -192,6 +195,7 @@ class ProductViewModel @Inject constructor(
                 color = color,
                 sizes = sizes,
                 minStock = minStock,
+                publicStatus = normalizedPublicStatus,
                 // timestamps si los tenés, dejá null o setéalos en DAO/DB trigger
                 updatedAt = LocalDate.now()
             )
@@ -250,10 +254,15 @@ class ProductViewModel @Inject constructor(
         color: String?,
         sizes: List<String>,
         minStock: Int?,
+        publicStatus: String? = null,
         onDone: (Result<Unit>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+            val current = repo.getById(id)
+            val normalizedPublicStatus = publicStatus?.lowercase()?.takeIf { it == "published" || it == "draft" }
+                ?: current?.publicStatus
+                ?: "draft"
             val entity = ProductEntity(
                 id = id,
                 code = code,
@@ -280,6 +289,7 @@ class ProductViewModel @Inject constructor(
                 color = color,
                 sizes = sizes,
                 minStock = minStock,
+                publicStatus = normalizedPublicStatus,
                 updatedAt = LocalDate.now()
             )
             runCatching {
