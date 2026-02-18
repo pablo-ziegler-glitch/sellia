@@ -5,9 +5,15 @@ const REFRESH_INTERVAL_MIN_MS = 15 * 60 * 1000;
 const REFRESH_INTERVAL_MAX_MS = 30 * 60 * 1000;
 const SESSION_CACHE_MAX_AGE_MS = 60 * 1000;
 const refreshIntervalMs = sanitizeRefreshInterval(config.refreshIntervalMs);
-const tenantId = config.tenantId || "";
 const publicProductCollection = config.publicProductCollection || "public_products";
-const sessionStorageKey = `store:product:${tenantId || "default"}`;
+
+function getTenantId() {
+  return config.tenantId || "";
+}
+
+function getSessionStorageKey() {
+  return `store:product:${getTenantId() || "default"}`;
+}
 
 const elements = {
   brandName: document.getElementById("brandName"),
@@ -42,7 +48,7 @@ function sanitizeRefreshInterval(value) {
 
 function safeReadCache() {
   try {
-    const raw = window.sessionStorage.getItem(sessionStorageKey);
+    const raw = window.sessionStorage.getItem(getSessionStorageKey());
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
@@ -71,7 +77,7 @@ function setCachedProduct(sku, product) {
     payload: product
   };
   try {
-    window.sessionStorage.setItem(sessionStorageKey, JSON.stringify(cache));
+    window.sessionStorage.setItem(getSessionStorageKey(), JSON.stringify(cache));
   } catch (error) {
     console.warn("No se pudo guardar la caché de sessionStorage", error);
   }
@@ -238,6 +244,7 @@ function parseFirestoreDocument(doc) {
 }
 
 function buildPublicCollectionPath() {
+  const tenantId = getTenantId();
   if (!tenantId) return null;
   return `tenants/${tenantId}/${publicProductCollection}`;
 }
@@ -245,6 +252,7 @@ function buildPublicCollectionPath() {
 function buildRunQueryUrl() {
   const projectId = config.firebase?.projectId;
   const apiKey = config.firebase?.apiKey;
+  const tenantId = getTenantId();
   if (!projectId || !apiKey || apiKey === "REEMPLAZAR" || !tenantId) return null;
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${tenantId}:runQuery?key=${apiKey}`;
 }
@@ -452,7 +460,7 @@ function init() {
   const params = new URLSearchParams(window.location.search);
   state.sku = params.get("q")?.trim() || "";
   state.mode = params.get("mode")?.trim().toLowerCase() || "public";
-  if (!tenantId) {
+  if (!getTenantId()) {
     setStatus("Falta configurar tenantId en config.js.", true);
   }
   maybeEnableOwnerAppRedirect();
@@ -469,4 +477,9 @@ function init() {
   window.addEventListener("focus", refreshOnResume);
 }
 
-init();
+async function bootstrap() {
+  await Promise.resolve(window.__STORE_CONFIG_READY__);
+  init();
+}
+
+bootstrap();

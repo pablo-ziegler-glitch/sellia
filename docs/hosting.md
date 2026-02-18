@@ -41,7 +41,7 @@ Ejemplo de inyección antes de cargar `config.js`:
 ```html
 <script>
   window.__STORE_RUNTIME_CONFIG__ = {
-    publicStoreUrl: "https://sellia1993.web.app/product.html",
+    publicStoreUrl: "https://valkirja.com.ar/product.html",
     tenantId: "valkirja",
     firebase: {
       apiKey: "${FIREBASE_API_KEY}",
@@ -59,6 +59,29 @@ Ejemplo de inyección antes de cargar `config.js`:
   };
 </script>
 ```
+
+
+### Dominio configurable por tenant (producción)
+
+La web pública resuelve `publicStoreUrl` por tenant usando este orden:
+
+1. `window.__STORE_RUNTIME_CONFIG__` (si el pipeline lo inyecta).
+2. Query param `tenantId` o `TIENDA/tienda` en la URL.
+3. Firestore público `tenant_directory/{tenantId}` leyendo `publicStoreUrl` o `publicDomain`.
+4. Fallback seguro por tenant (para `valkirja`: `https://valkirja.com.ar/product.html`).
+
+Para mantener consistencia operativa, la app Android guarda dominio/URL pública en:
+
+- `tenants/{tenantId}/config/public_store`
+- `tenant_directory/{tenantId}`
+
+Campos persistidos:
+
+- `publicStoreUrl`
+- `publicDomain`
+- `updatedAt`
+
+Esto evita hardcodeos por marca, reduce errores manuales y permite escalar múltiples tiendas con dominio propio sin redeploy del frontend.
 
 ## Estrategia de refresco y costo Firestore
 
