@@ -30,6 +30,59 @@ Editá `public/config.js` y completá:
 - `contact`: links de contacto (WhatsApp, Instagram, Maps).
 - `tenantId`: el ID del tenant que usa la app Android (para resolver precios y stock).
 
+
+### Configuración segura por pipeline (recomendado)
+
+`public/config.js` soporta inyección en runtime vía `window.__STORE_RUNTIME_CONFIG__` para evitar editar secretos manualmente.
+Podés generar un bloque previo al deploy con variables del entorno (`apiKey`, `appId`, canales de contacto, etc.) y mantener en repo solo defaults no sensibles.
+
+Ejemplo de inyección antes de cargar `config.js`:
+
+```html
+<script>
+  window.__STORE_RUNTIME_CONFIG__ = {
+    publicStoreUrl: "https://valkirja.com.ar/product.html",
+    tenantId: "valkirja",
+    firebase: {
+      apiKey: "${FIREBASE_API_KEY}",
+      authDomain: "sellia1993.firebaseapp.com",
+      projectId: "sellia1993",
+      storageBucket: "sellia1993.firebasestorage.app",
+      messagingSenderId: "${FIREBASE_MESSAGING_SENDER_ID}",
+      appId: "${FIREBASE_APP_ID}"
+    },
+    contact: {
+      whatsapp: "${PUBLIC_WHATSAPP_URL}",
+      instagram: "${PUBLIC_INSTAGRAM_URL}",
+      maps: "${PUBLIC_MAPS_URL}"
+    }
+  };
+</script>
+```
+
+
+### Dominio configurable por tenant (producción)
+
+La web pública resuelve `publicStoreUrl` por tenant usando este orden:
+
+1. `window.__STORE_RUNTIME_CONFIG__` (si el pipeline lo inyecta).
+2. Query param `tenantId` o `TIENDA/tienda` en la URL.
+3. Firestore público `tenant_directory/{tenantId}` leyendo `publicStoreUrl` o `publicDomain`.
+4. Fallback seguro por tenant (para `valkirja`: `https://valkirja.com.ar/product.html`).
+
+Para mantener consistencia operativa, la app Android guarda dominio/URL pública en:
+
+- `tenants/{tenantId}/config/public_store`
+- `tenant_directory/{tenantId}`
+
+Campos persistidos:
+
+- `publicStoreUrl`
+- `publicDomain`
+- `updatedAt`
+
+Esto evita hardcodeos por marca, reduce errores manuales y permite escalar múltiples tiendas con dominio propio sin redeploy del frontend.
+
 ## Estrategia de refresco y costo Firestore
 
 La ficha pública de producto (`public/product.js`) usa una estrategia híbrida orientada a costos:

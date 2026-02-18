@@ -82,7 +82,12 @@ async function renderLandingProducts() {
   }
 }
 
-setupBrandAndYear();
-setupContacts();
-setupVideo();
-renderLandingProducts();
+async function bootstrap() {
+  await Promise.resolve(window.__STORE_CONFIG_READY__);
+  setupBrandAndYear();
+  setupContacts();
+  setupVideo();
+  await renderLandingProducts();
+}
+
+bootstrap();
