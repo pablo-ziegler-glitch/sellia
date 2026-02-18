@@ -38,7 +38,7 @@ class StorageRepositoryImpl @Inject constructor(
         }
 
         val reference = storage.reference
-            .child("tenants/$tenantId/products/$productId/images/$fileName")
+            .child("tenants/$tenantId/public_products/$productId/images/$fileName")
         val metadata = contentType?.let {
             StorageMetadata.Builder()
                 .setContentType(it)
