@@ -30,6 +30,36 @@ Editá `public/config.js` y completá:
 - `contact`: links de contacto (WhatsApp, Instagram, Maps).
 - `tenantId`: el ID del tenant que usa la app Android (para resolver precios y stock).
 
+
+### Configuración segura por pipeline (recomendado)
+
+`public/config.js` soporta inyección en runtime vía `window.__STORE_RUNTIME_CONFIG__` para evitar editar secretos manualmente.
+Podés generar un bloque previo al deploy con variables del entorno (`apiKey`, `appId`, canales de contacto, etc.) y mantener en repo solo defaults no sensibles.
+
+Ejemplo de inyección antes de cargar `config.js`:
+
+```html
+<script>
+  window.__STORE_RUNTIME_CONFIG__ = {
+    publicStoreUrl: "https://sellia1993.web.app/product.html",
+    tenantId: "valkirja",
+    firebase: {
+      apiKey: "${FIREBASE_API_KEY}",
+      authDomain: "sellia1993.firebaseapp.com",
+      projectId: "sellia1993",
+      storageBucket: "sellia1993.firebasestorage.app",
+      messagingSenderId: "${FIREBASE_MESSAGING_SENDER_ID}",
+      appId: "${FIREBASE_APP_ID}"
+    },
+    contact: {
+      whatsapp: "${PUBLIC_WHATSAPP_URL}",
+      instagram: "${PUBLIC_INSTAGRAM_URL}",
+      maps: "${PUBLIC_MAPS_URL}"
+    }
+  };
+</script>
+```
+
 ## Estrategia de refresco y costo Firestore
 
 La ficha pública de producto (`public/product.js`) usa una estrategia híbrida orientada a costos:
