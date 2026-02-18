@@ -35,12 +35,16 @@ import com.example.selliaapp.data.model.stock.StockAdjustmentReason
 import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import com.example.selliaapp.auth.TenantProvider
+import com.example.selliaapp.data.remote.CrossCatalogAuditContext
+import com.example.selliaapp.data.remote.CrossCatalogRemoteDataSource
+import com.example.selliaapp.data.remote.InvalidCrossCatalogDataException
 import com.example.selliaapp.data.remote.ProductRemoteDataSource
 import com.example.selliaapp.data.remote.StockInteractionEvent
 import com.example.selliaapp.data.remote.StockInteractionRemoteDataSource
 import com.example.selliaapp.di.IoDispatcher
 import com.example.selliaapp.pricing.PricingCalculator
 import com.example.selliaapp.sync.CsvImportWorker
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineDispatcher
@@ -76,10 +80,12 @@ class ProductRepository(
     // ---------- Cache simple en memoria ----------
     @Volatile private var lastCache: List<ProductEntity> = emptyList()
     @Volatile private var cachedSkuPrefix: String? = null
+    @Volatile private var crossCatalogWriteAccessCache: Pair<Long, Boolean>? = null
 
     private val stockMovementDao = db.stockMovementDao()
     private val syncOutboxDao = db.syncOutboxDao()
     private val remote = ProductRemoteDataSource(firestore, tenantProvider)
+    private val crossCatalogRemote = CrossCatalogRemoteDataSource(firestore)
     private val stockInteractionRemote = StockInteractionRemoteDataSource(firestore, tenantProvider)
 
     suspend fun insert(entity: ProductEntity): Int = withContext(io) {
@@ -337,7 +343,14 @@ class ProductRepository(
         strategy: ImportStrategy
     ): ImportResult = withContext(io) {
         val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
-        importProducts(rows, strategy)
+        val allowMasterCatalogSync = isCsvOrXlsxImport(context, fileUri)
+        if (!allowMasterCatalogSync) {
+            Log.i(
+                "ProductRepository",
+                "Importación sin sync CROSS: solo se permite carga maestra vía CSV/XLSX"
+            )
+        }
+        importProducts(rows, strategy, allowMasterCatalogSync = allowMasterCatalogSync)
     }
 
     suspend fun importProductsFromTable(
@@ -345,12 +358,13 @@ class ProductRepository(
         strategy: ImportStrategy
     ): ImportResult = withContext(io) {
         val rows = ProductCsvImporter.parseTable(table)
-        importProducts(rows, strategy)
+        importProducts(rows, strategy, allowMasterCatalogSync = false)
     }
 
     private suspend fun importProducts(
         rows: List<ProductCsvImporter.Row>,
-        strategy: ImportStrategy
+        strategy: ImportStrategy,
+        allowMasterCatalogSync: Boolean
     ): ImportResult {
         var inserted = 0
         var updated = 0
@@ -449,6 +463,9 @@ class ProductRepository(
                             source = "CSV_IMPORT",
                             occurredAtEpochMs = now
                         )
+                        prepared.barcode?.trim()?.takeIf { it.isNotBlank() }?.let { barcode ->
+                            crossCatalogCandidates[barcode] = prepared.name to prepared.brand
+                        }
                     } else {
                         val newQty = existing.quantity + max(0, r.quantity)
                         val merged = existing.copy(
@@ -515,6 +532,9 @@ class ProductRepository(
                             source = "CSV_IMPORT",
                             occurredAtEpochMs = now
                         )
+                        priced.barcode?.trim()?.takeIf { it.isNotBlank() }?.let { barcode ->
+                            crossCatalogCandidates[barcode] = priced.name to priced.brand
+                        }
                     }
                 } catch (e: Exception) {
                     errors += "Línea ${idx + 2}: ${e.message}"
@@ -524,6 +544,11 @@ class ProductRepository(
         }
         trySyncProductsNow(touchedIds, now)
         saveStockInteractions(interactionEvents)
+        if (allowMasterCatalogSync) {
+            crossCatalogCandidates.forEach { (barcode, data) ->
+                syncToCrossCatalog(barcode = barcode, name = data.first, brand = data.second)
+            }
+        }
         return ImportResult(inserted, updated, errors)
     }
 
@@ -765,6 +790,21 @@ class ProductRepository(
 
     /** Obtener producto por código interno. */
     suspend fun getByCodeOrNull(code: String): ProductEntity? = productDao.getByCodeOnce(code)
+
+    suspend fun getGlobalBarcodeMatch(barcode: String): IProductRepository.GlobalBarcodeMatch? = withContext(io) {
+        runCatching { crossCatalogRemote.findByBarcode(barcode) }
+            .onFailure { error ->
+                Log.w("ProductRepository", "Lookup CROSS falló para barcode=$barcode", error)
+            }
+            .getOrNull()
+            ?.let { entry ->
+                IProductRepository.GlobalBarcodeMatch(
+                    barcode = entry.barcode,
+                    name = entry.name,
+                    brand = entry.brand
+                )
+            }
+    }
 
     /** Obtener producto por id (alias semántico). */
     suspend fun getByIdOrNull(id: Int): ProductEntity? = getById(id)
@@ -1165,6 +1205,123 @@ class ProductRepository(
         }
     }
 
+
+
+    private fun isCsvOrXlsxImport(context: Context, uri: Uri): Boolean {
+        val uriString = uri.toString().lowercase()
+        if (uriString.endsWith(".csv") || uriString.endsWith(".xlsx")) return true
+
+        val mimeType = runCatching { context.contentResolver.getType(uri) }
+            .getOrNull()
+            ?.lowercase()
+            .orEmpty()
+
+        return mimeType == "text/csv" ||
+            mimeType == "application/csv" ||
+            mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }
+
+    private suspend fun syncToCrossCatalog(barcode: String?, name: String, brand: String?) {
+        val normalizedBarcode = barcode?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val normalizedName = name.trim()
+        if (normalizedName.isBlank()) return
+
+        if (!canWriteMasterCrossCatalog()) {
+            Log.i(
+                "ProductRepository",
+                "Se omite sync de catálogo CROSS para barcode=$normalizedBarcode: usuario sin rol admin"
+            )
+            return
+        }
+
+        val audit = runCatching { buildCrossCatalogAuditContext() }
+            .onFailure { error ->
+                Log.w("ProductRepository", "No se pudo construir metadata de auditoría CROSS", error)
+            }
+            .getOrNull() ?: return
+
+        runCatching {
+            crossCatalogRemote.upsertByBarcode(
+                rawBarcode = normalizedBarcode,
+                name = normalizedName,
+                brand = brand,
+                audit = audit
+            )
+        }.onFailure { error ->
+            val reason = when (error) {
+                is InvalidCrossCatalogDataException -> StockMovementReasons.CSV_IMPORT
+                else -> StockMovementReasons.MANUAL_ADJUST
+            }
+            Log.w(
+                "ProductRepository",
+                "No se pudo sincronizar el catálogo CROSS para barcode=$normalizedBarcode",
+                error
+            )
+            saveStockInteractions(
+                listOf(
+                    StockInteractionEvent(
+                        action = "CROSS_CATALOG_SYNC_ERROR",
+                        productId = 0,
+                        productName = normalizedName,
+                        delta = 0,
+                        reason = reason,
+                        note = "barcode=$normalizedBarcode · ${error.message}",
+                        source = "CROSS_CATALOG",
+                        occurredAtEpochMs = System.currentTimeMillis(),
+                        actorUid = audit.updatedByUid
+                    )
+                )
+            )
+        }
+    }
+
+    private suspend fun canWriteMasterCrossCatalog(): Boolean {
+        val now = System.currentTimeMillis()
+        crossCatalogWriteAccessCache?.let { (cachedAt, allowed) ->
+            if (now - cachedAt <= 5 * 60_000L) return allowed
+        }
+
+        val user = FirebaseAuth.getInstance().currentUser ?: return false.also {
+            crossCatalogWriteAccessCache = now to false
+        }
+
+        val tokenAllowed = runCatching {
+            val claims = user.getIdToken(false).await().claims
+            (claims["admin"] as? Boolean) == true ||
+                (claims["isAdmin"] as? Boolean) == true ||
+                (claims["isSuperAdmin"] as? Boolean) == true ||
+                (claims["role"] as? String)?.equals("admin", ignoreCase = true) == true
+        }.getOrDefault(false)
+
+        if (tokenAllowed) {
+            crossCatalogWriteAccessCache = now to true
+            return true
+        }
+
+        val docAllowed = runCatching {
+            val snapshot = firestore.collection("users").document(user.uid).get().await()
+            if (!snapshot.exists()) return@runCatching false
+            val role = snapshot.getString("role")?.lowercase()
+            role == "admin" ||
+                snapshot.getBoolean("isAdmin") == true ||
+                snapshot.getBoolean("isSuperAdmin") == true
+        }.getOrDefault(false)
+
+        crossCatalogWriteAccessCache = now to docAllowed
+        return docAllowed
+    }
+
+    private suspend fun buildCrossCatalogAuditContext(): CrossCatalogAuditContext {
+        val tenantId = tenantProvider.requireTenantId()
+        val cachedTenantConfig = tenantSkuConfigDao.getByTenantId(tenantId)
+        val user = FirebaseAuth.getInstance().currentUser
+        return CrossCatalogAuditContext(
+            tenantId = tenantId,
+            storeName = cachedTenantConfig?.storeName,
+            updatedByUid = user?.uid,
+            updatedByEmail = user?.email
+        )
+    }
 
     private suspend fun saveStockInteractions(events: List<StockInteractionEvent>) {
         if (events.isEmpty()) return

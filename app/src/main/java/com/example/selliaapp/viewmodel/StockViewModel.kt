@@ -71,16 +71,44 @@ class StockViewModel @Inject constructor(
     // ====== Escaneo de stock ======
 
     /** Resultado simple para integración con UI de escaneo. */
-    data class ScanResult(val foundId: Int?, val prefillBarcode: String, val name: String? = null)
+    data class ScanResult(
+        val foundId: Int?,
+        val prefillBarcode: String,
+        val name: String? = null,
+        val brand: String? = null,
+        val errorMessage: String? = null
+    )
 
     /**
      * Consulta si un barcode existe. Si existe → foundId != null y devolvemos nombre para UI.
      * Si no existe → devolvemos el mismo barcode para precargar en alta.
      */
     suspend fun onScanBarcode(barcode: String): ScanResult = withContext(Dispatchers.IO) {
-        val p = repo.getByBarcodeOrNull(barcode)
-        if (p != null) ScanResult(foundId = p.id, prefillBarcode = barcode, name = p.name)
-        else ScanResult(foundId = null, prefillBarcode = barcode, name = null)
+        runCatching {
+            val p = repo.getByBarcodeOrNull(barcode)
+            if (p != null) {
+                ScanResult(
+                    foundId = p.id,
+                    prefillBarcode = barcode,
+                    name = p.name,
+                    brand = p.brand
+                )
+            } else {
+                val global = repo.getGlobalBarcodeMatch(barcode)
+                ScanResult(
+                    foundId = null,
+                    prefillBarcode = global?.barcode ?: barcode,
+                    name = global?.name,
+                    brand = global?.brand
+                )
+            }
+        }.getOrElse { error ->
+            ScanResult(
+                foundId = null,
+                prefillBarcode = barcode,
+                errorMessage = error.message ?: "No pudimos validar el código de barras."
+            )
+        }
     }
 
     /**
