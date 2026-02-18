@@ -271,11 +271,21 @@ type PublicProductPayload = {
   cashPrice?: number | null;
   transferPrice?: number | null;
   imageUrl?: string | null;
-  imageUrls: string[];
+  publicStatus: "published";
   updatedAt?: string | admin.firestore.FieldValue;
   publicUpdatedAt: admin.firestore.FieldValue;
 };
 
+const isProductPublished = (data: FirebaseFirestore.DocumentData): boolean => {
+  const publicStatus =
+    typeof data.publicStatus === "string" ? data.publicStatus.toLowerCase() : null;
+  if (publicStatus) {
+    return publicStatus === "published";
+  }
+  return data.isPublic === true;
+};
+
+const buildPublicProductPayload = (
 const PUBLIC_PRODUCT_IMAGES_ROOT = "public_products";
 const FIREBASE_STORAGE_HOST = "firebasestorage.googleapis.com";
 
@@ -1752,6 +1762,11 @@ export const syncPublicProductOnWrite = functions.firestore
       return null;
     }
 
+    if (!isProductPublished(afterData)) {
+      await publicRef.delete();
+      return null;
+    }
+
     const payload = buildPublicProductPayload(
       tenantId,
       productId,
@@ -1787,19 +1802,47 @@ export const refreshPublicProducts = functions.pubsub
         continue;
       }
 
-      const productsSnapshot = await db
+      const publishedProductsSnapshot = await db
         .collection("tenants")
         .doc(tenantId)
         .collection("products")
+        .where("publicStatus", "==", "published")
         .get();
+      const legacyPublicSnapshot = await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("products")
+        .where("isPublic", "==", true)
+        .get();
+
+      const publishedProducts = new Map<string, FirebaseFirestore.DocumentSnapshot>();
+      for (const doc of publishedProductsSnapshot.docs) {
+        publishedProducts.set(doc.id, doc);
+      }
+      for (const doc of legacyPublicSnapshot.docs) {
+        if (!publishedProducts.has(doc.id)) {
+          publishedProducts.set(doc.id, doc);
+        }
+      }
+
+      const publicProductsSnapshot = await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("public_products")
+        .get();
+      const publishedIds = new Set(publishedProducts.keys());
 
       let batch = db.batch();
       let batchCount = 0;
-      for (const productDoc of productsSnapshot.docs) {
+      for (const productDoc of publishedProducts.values()) {
+        const productData = productDoc.data();
+        if (!productData || !isProductPublished(productData)) {
+          continue;
+        }
         const payload = buildPublicProductPayload(
           tenantId,
           productDoc.id,
-          productDoc.data()
+          productData
         );
         const publicRef = db
           .collection("tenants")
@@ -1807,6 +1850,19 @@ export const refreshPublicProducts = functions.pubsub
           .collection("public_products")
           .doc(productDoc.id);
         batch.set(publicRef, payload, { merge: true });
+        batchCount += 1;
+        if (batchCount === 450) {
+          await batch.commit();
+          batch = db.batch();
+          batchCount = 0;
+        }
+      }
+
+      for (const publicProductDoc of publicProductsSnapshot.docs) {
+        if (publishedIds.has(publicProductDoc.id)) {
+          continue;
+        }
+        batch.delete(publicProductDoc.ref);
         batchCount += 1;
         if (batchCount === 450) {
           await batch.commit();

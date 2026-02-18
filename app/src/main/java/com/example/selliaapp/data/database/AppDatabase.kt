@@ -104,7 +104,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 41,
+    version = 42,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -491,6 +491,18 @@ abstract class AppDatabase : RoomDatabase() {
                         `updatedAtEpochMs` INTEGER NOT NULL,
                         PRIMARY KEY(`tenantId`)
                     )
+                    """.trimIndent()
+                )
+            }
+        }
+
+
+        val MIGRATION_41_42 = object : Migration(41, 42) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    ALTER TABLE `products`
+                    ADD COLUMN `publicStatus` TEXT NOT NULL DEFAULT 'draft'
                     """.trimIndent()
                 )
             }

@@ -52,6 +52,8 @@ object ProductFirestoreMappers {
             "color"        to product.color,
             "sizes"        to product.sizes,
             "minStock"     to product.minStock,
+            "publicStatus" to product.publicStatus,
+            "isPublic"     to (product.publicStatus == "published"),
             "updatedAt"    to product.updatedAt.format(ISO_DATE)
         )
     }
@@ -62,6 +64,10 @@ object ProductFirestoreMappers {
         val legacyImage = data["imageUrl"] as? String
         val imageUrls = (data["imageUrls"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
         val combinedUrls = (listOfNotNull(legacyImage) + imageUrls).distinct()
+        val publicStatus = (data["publicStatus"] as? String)
+            ?.lowercase()
+            ?.takeIf { it == "published" || it == "draft" }
+            ?: if ((data["isPublic"] as? Boolean) == true) "published" else "draft"
         val entity = ProductEntity(
             id           = docId.toIntOrNull() ?: 0, // si docId es numérico, lo usamos; si no, 0 para insert local
             code         = data["code"] as? String,
@@ -90,6 +96,7 @@ object ProductFirestoreMappers {
             color        = data["color"] as? String,
             sizes        = (data["sizes"] as? List<*>)?.mapNotNull { it as? String }.orEmpty(),
             minStock     = (data["minStock"] as? Number)?.toInt(),
+            publicStatus = publicStatus,
             updatedAt    = updatedAt
         )
         return RemoteProduct(entity = entity, imageUrls = combinedUrls)

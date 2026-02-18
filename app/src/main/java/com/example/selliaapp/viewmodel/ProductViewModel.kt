@@ -155,12 +155,18 @@ class ProductViewModel @Inject constructor(
         color: String?,
         sizes: List<String>,
         minStock: Int?,
+        canManagePublication: Boolean,
+        publishRequested: Boolean,
         pendingImageUris: List<Uri> = emptyList(),
         onDone: (Result<Int>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             _imageUploadState.value = ImageUploadUiState(uploading = false, message = null)
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+            val normalizedPublicStatus = resolvePublicStatusForCreate(
+                canManagePublication = canManagePublication,
+                publishRequested = publishRequested
+            )
             val entity = ProductEntity(
                 id = 0, // autogen
                 code = code,
@@ -192,6 +198,7 @@ class ProductViewModel @Inject constructor(
                 color = color,
                 sizes = sizes,
                 minStock = minStock,
+                publicStatus = normalizedPublicStatus,
                 // timestamps si los tenés, dejá null o setéalos en DAO/DB trigger
                 updatedAt = LocalDate.now()
             )
@@ -250,10 +257,18 @@ class ProductViewModel @Inject constructor(
         color: String?,
         sizes: List<String>,
         minStock: Int?,
+        canManagePublication: Boolean,
+        publishRequested: Boolean,
         onDone: (Result<Unit>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+            val current = repo.getById(id)
+            val normalizedPublicStatus = resolvePublicStatusForUpdate(
+                canManagePublication = canManagePublication,
+                publishRequested = publishRequested,
+                currentPublicStatus = current?.publicStatus
+            )
             val entity = ProductEntity(
                 id = id,
                 code = code,
@@ -280,6 +295,7 @@ class ProductViewModel @Inject constructor(
                 color = color,
                 sizes = sizes,
                 minStock = minStock,
+                publicStatus = normalizedPublicStatus,
                 updatedAt = LocalDate.now()
             )
             runCatching {
@@ -473,6 +489,27 @@ class ProductViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+
+    private fun resolvePublicStatusForCreate(
+        canManagePublication: Boolean,
+        publishRequested: Boolean
+    ): String {
+        if (!canManagePublication) return "draft"
+        return if (publishRequested) "published" else "draft"
+    }
+
+    private fun resolvePublicStatusForUpdate(
+        canManagePublication: Boolean,
+        publishRequested: Boolean,
+        currentPublicStatus: String?
+    ): String {
+        if (!canManagePublication) {
+            return currentPublicStatus?.lowercase()?.takeIf { it == "published" || it == "draft" }
+                ?: "draft"
+        }
+        return if (publishRequested) "published" else "draft"
     }
 
     private suspend fun uploadPendingImagesIfAny(

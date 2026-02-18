@@ -664,6 +664,7 @@ fun SelliaApp(
                     prefillBarcode = barcodeArg.ifBlank { null },
                     prefillName = nameArg.ifBlank { null },
                     editId = null,
+                    canManagePublication = accessState.permissions.contains(Permission.MANAGE_PUBLICATION),
                     onSaved = { navController.popBackStack() },
                     navController = navController
                 )
@@ -684,6 +685,7 @@ fun SelliaApp(
                     prefillBarcode = null,
                     prefillName = null,
                     editId = id.toInt(),
+                    canManagePublication = accessState.permissions.contains(Permission.MANAGE_PUBLICATION),
                     onSaved = { navController.popBackStack() },
                     navController = navController
                 )
