@@ -45,6 +45,7 @@ sealed class Routes(val route: String) {
     object BulkData : Routes("bulk_data")
     object CloudServicesAdmin : Routes("cloud_services_admin")
     object DevelopmentOptions : Routes("development_options")
+    object CrossCatalogAdmin : Routes("cross_catalog_admin")
     object Checkout : Routes("checkout")
     object Reports : Routes("reports")
     object PriceSummary : Routes("price_summary")

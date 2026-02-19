@@ -362,6 +362,40 @@ class ProductRepository(
         importProducts(rows, strategy, allowMasterCatalogSync = false)
     }
 
+    suspend fun importCrossCatalogFromFile(
+        context: Context,
+        fileUri: Uri
+    ): ImportResult = withContext(io) {
+        val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
+        var synced = 0
+        val errors = mutableListOf<String>()
+
+        rows.forEachIndexed { index, row ->
+            val barcode = row.barcode?.trim().orEmpty()
+            val name = row.name.trim()
+            val brand = row.brand?.trim()?.takeIf { it.isNotBlank() }
+            when {
+                barcode.isBlank() -> errors += "Línea ${index + 2}: falta código de barras"
+                name.isBlank() -> errors += "Línea ${index + 2}: falta nombre"
+                else -> {
+                    runCatching {
+                        syncToCrossCatalog(barcode = barcode, name = name, brand = brand)
+                    }.onSuccess { syncedOk ->
+                        if (syncedOk) {
+                            synced += 1
+                        } else {
+                            errors += "Línea ${index + 2}: no se pudo sincronizar CROSS (revisá permisos admin)"
+                        }
+                    }.onFailure { error ->
+                        errors += "Línea ${index + 2}: ${error.message ?: "error al sincronizar CROSS"}"
+                    }
+                }
+            }
+        }
+
+        ImportResult(inserted = synced, updated = 0, errors = errors)
+    }
+
     private suspend fun importProducts(
         rows: List<ProductCsvImporter.Row>,
         strategy: ImportStrategy,
@@ -1223,24 +1257,24 @@ class ProductRepository(
             mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }
 
-    private suspend fun syncToCrossCatalog(barcode: String?, name: String, brand: String?) {
-        val normalizedBarcode = barcode?.trim()?.takeIf { it.isNotBlank() } ?: return
+    private suspend fun syncToCrossCatalog(barcode: String?, name: String, brand: String?): Boolean {
+        val normalizedBarcode = barcode?.trim()?.takeIf { it.isNotBlank() } ?: return false
         val normalizedName = name.trim()
-        if (normalizedName.isBlank()) return
+        if (normalizedName.isBlank()) return false
 
         if (!canWriteMasterCrossCatalog()) {
             Log.i(
                 "ProductRepository",
                 "Se omite sync de catálogo CROSS para barcode=$normalizedBarcode: usuario sin rol admin"
             )
-            return
+            return false
         }
 
         val audit = runCatching { buildCrossCatalogAuditContext() }
             .onFailure { error ->
                 Log.w("ProductRepository", "No se pudo construir metadata de auditoría CROSS", error)
             }
-            .getOrNull() ?: return
+            .getOrNull() ?: return false
 
         runCatching {
             crossCatalogRemote.upsertByBarcode(
@@ -1249,6 +1283,7 @@ class ProductRepository(
                 brand = brand,
                 audit = audit
             )
+            true
         }.onFailure { error ->
             val reason = when (error) {
                 is InvalidCrossCatalogDataException -> StockMovementReasons.CSV_IMPORT
@@ -1274,7 +1309,7 @@ class ProductRepository(
                     )
                 )
             )
-        }
+        }.getOrElse { false }
     }
 
     private suspend fun canWriteMasterCrossCatalog(): Boolean {
