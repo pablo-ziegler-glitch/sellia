@@ -21,14 +21,28 @@ service firebase.storage {
     }
 
     function isUserActive() {
+      let status = userDocData().status is string
+        ? userDocData().status.lower()
+        : null;
       return hasUserProfile()
         && (
           // Compat legacy: si no existe status/isActive, asumimos activa para no romper
           // cuentas creadas antes de normalizar estos campos.
           (!(userDocData().status is string) && !(userDocData().isActive is bool))
-          || userDocData().status == 'active'
+          || status == 'active'
           || userDocData().isActive == true
         );
+    }
+
+    function normalizedRole() {
+      return userDocData().role is string
+        ? userDocData().role.lower()
+        : null;
+    }
+
+    function hasLegacyWriteRoleAlias() {
+      let role = normalizedRole();
+      return role in ['super_admin', 'superadmin', 'seller', 'employee'];
     }
 
     function userTenantId() {
@@ -42,11 +56,13 @@ service firebase.storage {
     }
 
     function hasTenantWriteRole() {
+      let role = normalizedRole();
       return isFixedSuperAdmin()
         || (
           hasUserProfile()
           && (
-            userDocData().role in ['owner', 'manager', 'cashier', 'admin']
+            role in ['owner', 'manager', 'cashier', 'admin']
+            || hasLegacyWriteRoleAlias()
             || userDocData().isAdmin == true
             || userDocData().isSuperAdmin == true
           )
