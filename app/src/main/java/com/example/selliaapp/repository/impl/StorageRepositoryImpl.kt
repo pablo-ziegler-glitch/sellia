@@ -75,9 +75,10 @@ class StorageRepositoryImpl @Inject constructor(
 
     override suspend fun listPublicCatalogImages(limit: Int): List<CloudCatalogImage> {
         val safeLimit = limit.coerceIn(1, 200)
-        val folderRef = storage.getReferenceFromUrl(
-            "gs://sellia1993.firebasestorage.app/Images/public/catalog"
-        )
+        // Evita bucket hardcodeado: toma siempre el bucket configurado en FirebaseApp.
+        // Esto corrige errores de permisos cuando el proyecto usa *.appspot.com o
+        // un bucket distinto al que quedó fijo en builds previos.
+        val folderRef = storage.reference.child(PUBLIC_CATALOG_PATH)
 
         val listed = folderRef.list(safeLimit).await()
         if (listed.items.isEmpty()) return emptyList()
@@ -116,7 +117,8 @@ class StorageRepositoryImpl @Inject constructor(
 
             StorageException.ERROR_NOT_AUTHORIZED -> {
                 IllegalStateException(
-                    "Tu usuario no tiene permisos para subir imágenes en este negocio."
+                    "Tu usuario no tiene permisos para acceder a este archivo en Storage. " +
+                        "Verificá reglas de Storage, sesión activa y App Check."
                 )
             }
 
@@ -128,5 +130,9 @@ class StorageRepositoryImpl @Inject constructor(
 
             else -> error
         }
+    }
+
+    private companion object {
+        private const val PUBLIC_CATALOG_PATH = "Images/public/catalog"
     }
 }
