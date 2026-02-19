@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -135,6 +136,7 @@ fun AddProductScreen(
     // Dialog de error/info
     var infoMessage by remember { mutableStateOf<String?>(null) }
     var showCloudCatalogDialog by remember { mutableStateOf(false) }
+    val selectedCloudImageUrls = remember { mutableStateListOf<String>() }
     val cloudCatalogState by viewModel.cloudCatalogState.collectAsState()
 
     // Listas
@@ -200,9 +202,11 @@ fun AddProductScreen(
     }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let(::handlePickedUri)
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        uris
+            .distinct()
+            .forEach(::handlePickedUri)
     }
 
     val takePicturePreviewLauncher = rememberLauncherForActivityResult(
@@ -243,8 +247,23 @@ fun AddProductScreen(
         AlertDialog(
             onDismissRequest = { showCloudCatalogDialog = false },
             confirmButton = {
-                TextButton(onClick = { showCloudCatalogDialog = false }) {
-                    Text("Cerrar")
+                TextButton(
+                    onClick = {
+                        imageUrls.addAll(selectedCloudImageUrls.filterNot { imageUrls.contains(it) })
+                        selectedCloudImageUrls.clear()
+                        showCloudCatalogDialog = false
+                    },
+                    enabled = selectedCloudImageUrls.isNotEmpty()
+                ) {
+                    Text("Agregar seleccionadas")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    selectedCloudImageUrls.clear()
+                    showCloudCatalogDialog = false
+                }) {
+                    Text("Cancelar")
                 }
             },
             title = { Text("Biblioteca cloud") },
@@ -265,12 +284,27 @@ fun AddProductScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                imageUrls.add(item.downloadUrl)
-                                                showCloudCatalogDialog = false
+                                                if (selectedCloudImageUrls.contains(item.downloadUrl)) {
+                                                    selectedCloudImageUrls.remove(item.downloadUrl)
+                                                } else {
+                                                    selectedCloudImageUrls.add(item.downloadUrl)
+                                                }
                                             },
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        Checkbox(
+                                            checked = selectedCloudImageUrls.contains(item.downloadUrl),
+                                            onCheckedChange = { checked ->
+                                                if (checked) {
+                                                    if (!selectedCloudImageUrls.contains(item.downloadUrl)) {
+                                                        selectedCloudImageUrls.add(item.downloadUrl)
+                                                    }
+                                                } else {
+                                                    selectedCloudImageUrls.remove(item.downloadUrl)
+                                                }
+                                            }
+                                        )
                                         AsyncImage(
                                             model = item.downloadUrl,
                                             contentDescription = "Imagen cloud",
@@ -431,7 +465,7 @@ fun AddProductScreen(
                         Text("Sacar foto")
                     }
                     Button(onClick = { imagePickerLauncher.launch("image/*") }) {
-                        Text("Subir desde celular")
+                        Text("Subir desde celular (múltiple)")
                     }
                 }
                 Row(
@@ -440,6 +474,7 @@ fun AddProductScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(onClick = {
+                        selectedCloudImageUrls.clear()
                         showCloudCatalogDialog = true
                         viewModel.loadPublicCatalogImages()
                     }) {
