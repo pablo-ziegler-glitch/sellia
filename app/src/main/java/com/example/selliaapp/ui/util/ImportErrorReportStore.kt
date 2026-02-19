@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter
 object ImportErrorReportStore {
 
     enum class Scope(val key: String, val title: String) {
+        CROSS("cross", "Catálogo CROSS"),
         PRODUCTS("products", "Productos"),
         CUSTOMERS("customers", "Clientes"),
         USERS("users", "Usuarios"),
