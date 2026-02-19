@@ -41,6 +41,7 @@ class FakeProductRepository : IProductRepository {
     override suspend fun getByIdModel(id: Int): Product? = null
     override suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? = null
     override suspend fun getByCodeOrNull(code: String): ProductEntity? = null
+    override suspend fun getGlobalBarcodeMatch(barcode: String): IProductRepository.GlobalBarcodeMatch? = null
 
     // ---------- Búsquedas / listados ----------
     override fun search(q: String?): Flow<List<ProductEntity>> = flowOf(emptyList())
