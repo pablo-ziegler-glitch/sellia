@@ -1,10 +1,13 @@
 package com.example.selliaapp.viewmodel
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.domain.product.ProductPhotoRecognitionService
 import com.example.selliaapp.repository.IProductRepository
+import com.example.selliaapp.repository.StorageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,7 +40,9 @@ data class PhotoStockIntakeUiState(
 @HiltViewModel
 class PhotoStockIntakeViewModel @Inject constructor(
     private val recognitionService: ProductPhotoRecognitionService,
-    private val productRepository: IProductRepository
+    private val productRepository: IProductRepository,
+    private val storageRepository: StorageRepository,
+    private val tenantProvider: TenantProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PhotoStockIntakeUiState())
@@ -88,6 +93,7 @@ class PhotoStockIntakeViewModel @Inject constructor(
 
             _uiState.update { it.copy(saving = true, errorMessage = null, infoMessage = null) }
             var created = 0
+            var withImage = 0
             selected.forEach { row ->
                 val quantity = row.quantity.toIntOrNull()?.coerceAtLeast(0) ?: 0
                 if (row.name.isBlank() || quantity <= 0) return@forEach
@@ -100,7 +106,10 @@ class PhotoStockIntakeViewModel @Inject constructor(
                     updatedAt = LocalDate.now(),
                     description = "Alta sugerida por IA (confianza ${(row.confidence * 100f).roundToInt()}%)"
                 )
-                productRepository.insert(entity)
+                val productId = productRepository.insert(entity)
+                if (attachPhotoToProduct(productId = productId, imagePath = row.imagePath)) {
+                    withImage++
+                }
                 created++
             }
 
@@ -108,11 +117,32 @@ class PhotoStockIntakeViewModel @Inject constructor(
                 it.copy(
                     saving = false,
                     rows = emptyList(),
-                    infoMessage = "Se agregaron $created productos al stock.",
+                    infoMessage = "Se agregaron $created productos al stock ($withImage con imagen).",
                     errorMessage = null
                 )
             }
         }
+    }
+
+    private suspend fun attachPhotoToProduct(productId: Int, imagePath: String): Boolean {
+        if (imagePath.isBlank() || productId <= 0) return false
+        return runCatching {
+            val tenantId = tenantProvider.requireTenantId()
+            val uploadedUrl = storageRepository.uploadProductImage(
+                tenantId = tenantId,
+                productId = productId,
+                localUri = Uri.parse(imagePath),
+                contentType = null
+            )
+            val current = productRepository.getById(productId) ?: return false
+            val merged = (current.imageUrls + uploadedUrl).distinct()
+            productRepository.update(
+                current.copy(
+                    imageUrl = merged.firstOrNull(),
+                    imageUrls = merged
+                )
+            ) > 0
+        }.getOrElse { false }
     }
 
     fun clearMessage() {

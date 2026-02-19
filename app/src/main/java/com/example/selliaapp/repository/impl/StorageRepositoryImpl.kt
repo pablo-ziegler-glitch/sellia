@@ -2,6 +2,7 @@ package com.example.selliaapp.repository.impl
 
 import android.net.Uri
 import com.example.selliaapp.auth.FirebaseSessionCoordinator
+import com.example.selliaapp.repository.CloudCatalogImage
 import com.example.selliaapp.repository.StorageRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
@@ -67,6 +68,27 @@ class StorageRepositoryImpl @Inject constructor(
             }
         }.getOrElse { error ->
             throw mapStorageError(error)
+        }
+    }
+
+
+
+    override suspend fun listPublicCatalogImages(limit: Int): List<CloudCatalogImage> {
+        val safeLimit = limit.coerceIn(1, 200)
+        val folderRef = storage.getReferenceFromUrl(
+            "gs://sellia1993.firebasestorage.app/Images/public/catalog"
+        )
+
+        val listed = folderRef.list(safeLimit).await()
+        if (listed.items.isEmpty()) return emptyList()
+
+        return listed.items.mapNotNull { item ->
+            runCatching {
+                CloudCatalogImage(
+                    fullPath = item.path,
+                    downloadUrl = item.downloadUrl.await().toString()
+                )
+            }.getOrNull()
         }
     }
 

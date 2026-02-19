@@ -64,5 +64,10 @@ service firebase.storage {
       allow read: if true;
       allow write: if canWriteTenantStorage(tenantId);
     }
+
+    match /Images/public/catalog/{allPaths=**} {
+      allow read: if true;
+      allow write: if isFixedSuperAdmin();
+    }
   }
 }
