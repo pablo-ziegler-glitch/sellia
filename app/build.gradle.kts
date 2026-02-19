@@ -125,6 +125,7 @@ dependencies {
     implementation(libs.androidx.runtime.livedata)
     implementation(libs.androidx.camera.core)
     implementation(libs.play.services.mlkit.barcode.scanning)
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation(libs.androidx.material3.android)
     implementation(libs.androidx.foundation.android)
     implementation(libs.androidx.benchmark.traceprocessor.android)
