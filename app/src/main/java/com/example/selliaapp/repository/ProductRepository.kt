@@ -1276,7 +1276,7 @@ class ProductRepository(
             }
             .getOrNull() ?: return false
 
-        runCatching {
+        return runCatching {
             crossCatalogRemote.upsertByBarcode(
                 rawBarcode = normalizedBarcode,
                 name = normalizedName,
