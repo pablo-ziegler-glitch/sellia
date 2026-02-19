@@ -104,7 +104,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 42,
+    version = 43,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
