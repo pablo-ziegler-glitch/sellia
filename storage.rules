@@ -23,9 +23,22 @@ service firebase.storage {
     function isUserActive() {
       return hasUserProfile()
         && (
-          userDocData().status == 'active'
+          // Compat legacy: si no existe status/isActive, asumimos activa para no romper
+          // cuentas creadas antes de normalizar estos campos.
+          (!(userDocData().status is string) && !(userDocData().isActive is bool))
+          || userDocData().status == 'active'
           || userDocData().isActive == true
         );
+    }
+
+    function userTenantId() {
+      return userDocData().tenantId is string
+        ? userDocData().tenantId
+        : (
+            userDocData().storeId is string
+            ? userDocData().storeId
+            : null
+          );
     }
 
     function hasTenantWriteRole() {
@@ -45,7 +58,7 @@ service firebase.storage {
         && (
           isFixedSuperAdmin()
           || (
-            userDocData().tenantId == tenantId
+            userTenantId() == tenantId
             && isUserActive()
           )
         );
@@ -63,6 +76,11 @@ service firebase.storage {
     match /tenants/{tenantId}/public_products/{productId}/images/{allPaths=**} {
       allow read: if true;
       allow write: if canWriteTenantStorage(tenantId);
+    }
+
+    // List/get del prefijo raíz (algunos SDK evalúan list sobre el prefijo exacto)
+    match /Images/public/catalog {
+      allow read: if true;
     }
 
     match /Images/public/catalog/{allPaths=**} {

@@ -87,13 +87,16 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         if (useDebugProvider) {
             installDebugProvider(appCheck)
 
-            // Durante setup: NO auto refresh para evitar “Too many attempts”
+            // Durante setup: token manual para validar configuración.
+            // Luego volvemos a auto-refresh para evitar expiración de App Check
+            // en sesiones largas de uso (subidas de imágenes, sync, etc.).
             appCheck.setTokenAutoRefreshEnabled(false)
 
             // Fuerza token para validar que ya registraste el debug secret
             appCheck.getAppCheckToken(true)
                 .addOnSuccessListener { token ->
                     Log.i(TAG, "AppCheck(debug) OK. token.len=${token.token.length} token.prefix=${token.token.take(16)}…")
+                    appCheck.setTokenAutoRefreshEnabled(true)
                     onReady()
                 }
                 .addOnFailureListener { e ->

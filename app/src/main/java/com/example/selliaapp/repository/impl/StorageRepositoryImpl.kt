@@ -5,6 +5,7 @@ import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.repository.CloudCatalogImage
 import com.example.selliaapp.repository.StorageRepository
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
@@ -47,17 +48,23 @@ class StorageRepositoryImpl @Inject constructor(
         }
 
         return runCatching {
-            currentUser.getIdToken(false).await()
-            uploadAndResolveDownloadUrl(
-                reference = reference,
-                localUri = localUri,
-                metadata = metadata
-            )
+            sessionCoordinator.runWithFreshSession {
+                ensureAppCheckToken(forceRefresh = false)
+                uploadAndResolveDownloadUrl(
+                    reference = reference,
+                    localUri = localUri,
+                    metadata = metadata
+                )
+            }
         }.recoverCatching { initialError ->
             val storageError = initialError as? StorageException
-            if (storageError?.errorCode == StorageException.ERROR_NOT_AUTHENTICATED) {
-                // Fuerza refresh de credenciales y reintenta una sola vez.
+            if (
+                storageError?.errorCode == StorageException.ERROR_NOT_AUTHENTICATED ||
+                storageError?.errorCode == StorageException.ERROR_NOT_AUTHORIZED
+            ) {
+                // Reintento único con refresh explícito de sesión + App Check.
                 currentUser.getIdToken(true).await()
+                ensureAppCheckToken(forceRefresh = true)
                 uploadAndResolveDownloadUrl(
                     reference = reference,
                     localUri = localUri,
@@ -80,6 +87,7 @@ class StorageRepositoryImpl @Inject constructor(
         // un bucket distinto al que quedó fijo en builds previos.
         val folderRef = storage.reference.child(PUBLIC_CATALOG_PATH)
 
+        ensureAppCheckToken(forceRefresh = false)
         val listed = folderRef.list(safeLimit).await()
         if (listed.items.isEmpty()) return emptyList()
 
@@ -90,6 +98,18 @@ class StorageRepositoryImpl @Inject constructor(
                     downloadUrl = item.downloadUrl.await().toString()
                 )
             }.getOrNull()
+        }
+    }
+
+
+    private suspend fun ensureAppCheckToken(forceRefresh: Boolean) {
+        runCatching {
+            FirebaseAppCheck.getInstance().getAppCheckToken(forceRefresh).await()
+        }.getOrElse { error ->
+            throw IllegalStateException(
+                "No se pudo validar App Check para Storage. Verificá token debug/Play Integrity y configuración del proyecto.",
+                error
+            )
         }
     }
 
