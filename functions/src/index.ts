@@ -6,6 +6,15 @@ import { AxiosError } from "axios";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
+import {
+  buildUsageOverview,
+  getCurrentDayKey,
+  getNextMonthStart,
+  type UsageCollectionError,
+  type UsageCollectionOutcome,
+  type UsageMetricResult,
+  type UsageServiceMetrics,
+} from "./usageMetrics.helpers";
 
 admin.initializeApp();
 
@@ -28,29 +37,6 @@ type UsageMetricDefinition = {
   unit: string;
   perSeriesAligner?: string;
   crossSeriesReducer?: string;
-};
-
-type UsageMetricResult = {
-  metricType: string;
-  description: string;
-  value: number;
-  unit: string;
-};
-
-type UsageCollectionError = {
-  metricType: string;
-  message: string;
-};
-
-type UsageServiceMetrics = {
-  metrics: UsageMetricResult[];
-  totalsByUnit: Record<string, number>;
-};
-
-type UsageCollectionOutcome = {
-  services: Record<UsageServiceKey, UsageServiceMetrics>;
-  errors: UsageCollectionError[];
-  sourceStatus: "success" | "partial_success";
 };
 
 type UsageErrorsBlock = {
@@ -101,6 +87,9 @@ type ExternalReferenceData = {
 
 const MERCADOPAGO_API = "https://api.mercadopago.com";
 const USAGE_COLLECTION = "usageMetricsMonthly";
+const USAGE_CURRENT_COLLECTION = "usageMetricsCurrent";
+const USAGE_CURRENT_DOC_ID = "current";
+const USAGE_DAILY_SNAPSHOTS_COLLECTION = "dailySnapshots";
 const PAYMENT_STATUS_PRIORITY: Record<PaymentStatus, number> = {
   PENDING: 10,
   REJECTED: 20,
@@ -1420,39 +1409,145 @@ export const collectUsageMetrics = functions.pubsub
     const now = new Date();
     const { start, end } = getMonthRange(now);
     const monthKey = getMonthKey(now);
+    const dayKey = getCurrentDayKey(now);
+    const nextResetAt = getNextMonthStart(now).toISOString();
 
     const usageCollection =
       config.source === "bigquery"
         ? await collectBigQueryUsage(config, start, end)
         : await collectMonitoringUsage(config, start, end);
 
-    await db.collection(USAGE_COLLECTION).doc(monthKey).set(
+    const errorsBlock: UsageErrorsBlock = {
+      count: usageCollection.errors.length,
+      items: usageCollection.errors,
+    };
+
+    const usageOverview = buildUsageOverview(usageCollection.services);
+    const monthDocRef = db.collection(USAGE_COLLECTION).doc(monthKey);
+
+    await monthDocRef.set(
       {
         monthKey,
         source: config.source,
         sourceStatus: usageCollection.sourceStatus,
-        errors: {
-          count: usageCollection.errors.length,
-          items: usageCollection.errors,
-        },
+        errors: errorsBlock,
         period: {
           start: start.toISOString(),
           end: end.toISOString(),
+          nextResetAt,
         },
         services: usageCollection.services,
+        overview: usageOverview,
+        accumulatedMonthToDate: true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
 
+    await Promise.all([
+      db
+        .collection(USAGE_CURRENT_COLLECTION)
+        .doc(USAGE_CURRENT_DOC_ID)
+        .set(
+          {
+            monthKey,
+            source: config.source,
+            sourceStatus: usageCollection.sourceStatus,
+            errors: errorsBlock,
+            period: {
+              start: start.toISOString(),
+              end: end.toISOString(),
+              nextResetAt,
+            },
+            overview: usageOverview,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+      monthDocRef.collection(USAGE_DAILY_SNAPSHOTS_COLLECTION).doc(dayKey).set(
+        {
+          dayKey,
+          monthKey,
+          sourceStatus: usageCollection.sourceStatus,
+          errors: errorsBlock,
+          period: {
+            start: start.toISOString(),
+            end: end.toISOString(),
+          },
+          overview: usageOverview,
+          services: usageCollection.services,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      ),
+    ]);
+
     console.info("Usage metrics collected", {
       monthKey,
+      dayKey,
       source: config.source,
       sourceStatus: usageCollection.sourceStatus,
       errors: usageCollection.errors.length,
+      nextResetAt,
     });
   });
+
+
+
+type UsageHistoryItem = {
+  monthKey: string;
+  source: UsageSource;
+  sourceStatus: "success" | "partial_success";
+  overview: Record<string, Record<string, number>>;
+  period: {
+    start: string;
+    end: string;
+    nextResetAt?: string;
+  };
+  errors: UsageErrorsBlock;
+  updatedAt: string | null;
+};
+
+export const getUsageMetricsHistory = functions.https.onCall(async (data) => {
+  const requestedLimit = Number((data as { limit?: number } | undefined)?.limit ?? 6);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
+    : 6;
+
+  const snapshot = await db
+    .collection(USAGE_COLLECTION)
+    .orderBy("monthKey", "desc")
+    .limit(limit)
+    .get();
+
+  const history: UsageHistoryItem[] = snapshot.docs.map((doc) => {
+    const raw = doc.data() as Record<string, unknown>;
+    const updatedAt = raw.updatedAt as admin.firestore.Timestamp | undefined;
+
+    return {
+      monthKey: normalizeString(raw.monthKey) || doc.id,
+      source: normalizeString(raw.source) === "bigquery" ? "bigquery" : "monitoring",
+      sourceStatus: raw.sourceStatus === "partial_success" ? "partial_success" : "success",
+      overview: (raw.overview as Record<string, Record<string, number>> | undefined) ?? {},
+      period: (raw.period as UsageHistoryItem["period"] | undefined) ?? {
+        start: "",
+        end: "",
+      },
+      errors:
+        (raw.errors as UsageErrorsBlock | undefined) ?? {
+          count: 0,
+          items: [],
+        },
+      updatedAt: updatedAt?.toDate().toISOString() ?? null,
+    };
+  });
+
+  return {
+    items: history,
+    limit,
+  };
+});
 
 export const mpWebhook = functions.https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
