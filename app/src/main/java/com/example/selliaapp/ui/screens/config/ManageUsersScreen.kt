@@ -3,13 +3,16 @@ package com.example.selliaapp.ui.screens.config
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.data.model.User
@@ -215,26 +220,32 @@ fun ManageUsersScreen(
                 )
             }
 
-            when (selectedTab) {
-                0 -> UsersTab(
-                    users = users,
-                    onAddUser = {
-                        editorUser = null
-                        showEditor = true
-                    },
-                    onEditUser = { user ->
-                        editorUser = user
-                        showEditor = true
-                    },
-                    onToggleActive = { user, enabled ->
-                        vm.updateUser(user.copy(isActive = enabled))
-                    }
-                )
-                1 -> AccountRequestsTab(
-                    state = requestsState,
-                    onRefresh = requestsViewModel::refresh,
-                    onUpdate = requestsViewModel::updateRequest
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true)
+            ) {
+                when (selectedTab) {
+                    0 -> UsersTab(
+                        users = users,
+                        onAddUser = {
+                            editorUser = null
+                            showEditor = true
+                        },
+                        onEditUser = { user ->
+                            editorUser = user
+                            showEditor = true
+                        },
+                        onToggleActive = { user, enabled ->
+                            vm.updateUser(user.copy(isActive = enabled))
+                        }
+                    )
+                    1 -> AccountRequestsTab(
+                        state = requestsState,
+                        onRefresh = requestsViewModel::refresh,
+                        onUpdate = requestsViewModel::updateRequest
+                    )
+                }
             }
         }
     }
@@ -289,15 +300,29 @@ private fun OwnershipManagementPanel(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(onClick = onDelegateStore, enabled = !isLoading) {
                     Text("Delegar tienda")
                 }
                 Button(onClick = onAssociateOwner, enabled = !isLoading) {
                     Text("Agregar co-dueño")
                 }
-                Button(onClick = onTransferOwner, enabled = !isLoading) {
-                    Text("Cambiar dueño")
+                Button(
+                    onClick = onTransferOwner,
+                    enabled = !isLoading,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    Text(
+                        text = "Cambiar dueño principal",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             if (!message.isNullOrBlank()) {

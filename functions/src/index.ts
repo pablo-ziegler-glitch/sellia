@@ -1463,7 +1463,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
   let config: MpConfig;
   try {
     config = getMpConfig();
-  } catch (error) {
+  } catch {
     console.info("Mercado Pago credentials missing for webhook.");
     res.status(500).send("Configuration error");
     return;
@@ -1937,14 +1937,19 @@ const resolveTargetUserId = async (
     .limit(1)
     .get();
 
-  if (byEmailSnapshot.empty) {
-    throw new functions.https.HttpsError(
-      "not-found",
-      "No existe usuario con ese email"
-    );
+  if (!byEmailSnapshot.empty) {
+    return byEmailSnapshot.docs[0].id;
   }
 
-  return byEmailSnapshot.docs[0].id;
+  try {
+    const authUser = await admin.auth().getUserByEmail(targetEmail);
+    return authUser.uid;
+  } catch {
+    throw new functions.https.HttpsError(
+      "not-found",
+      "No existe usuario activo con ese email"
+    );
+  }
 };
 
 const upsertTenantUserMembership = async (
@@ -1957,11 +1962,16 @@ const upsertTenantUserMembership = async (
 
   await db.runTransaction(async (tx) => {
     const userDoc = await tx.get(userRef);
+    let userData = userDoc.data() || {};
+
     if (!userDoc.exists) {
-      throw new functions.https.HttpsError("not-found", "Usuario objetivo inexistente");
+      const authUser = await admin.auth().getUser(uid);
+      userData = {
+        name: authUser.displayName ?? "",
+        email: normalizeEmail(authUser.email),
+      };
     }
 
-    const userData = userDoc.data() || {};
     tx.set(
       userRef,
       {
