@@ -22,6 +22,11 @@ class ProviderInvoiceReaderViewModel @Inject constructor(
         _state.update { it.copy(rawText = value) }
     }
 
+
+    fun onError(message: String) {
+        _state.update { it.copy(errorMessage = message) }
+    }
+
     fun analyze() {
         val text = _state.value.rawText.trim()
         if (text.isBlank()) {
