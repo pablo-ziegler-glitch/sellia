@@ -41,6 +41,10 @@ import com.example.selliaapp.viewmodel.config.CrossCatalogAdminViewModel
 import kotlinx.coroutines.launch
 
 private const val CROSS_TEMPLATE_CONTENT = "barcode,name,brand\n"
+private const val CROSS_EXAMPLE_CONTENT = """barcode,name,brand
+7791234567890,Detergente 500ml,Marca Norte
+7799876543210,Arroz Largo Fino 1kg,Marca Sur
+"""
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,6 +152,31 @@ fun CrossCatalogAdminScreen(
                     ) {
                         Icon(Icons.Default.FileDownload, contentDescription = null)
                         Text("Descargar plantilla CROSS")
+                    }
+                    FilledTonalButton(
+                        enabled = !uiState.isImporting,
+                        onClick = {
+                            val uri = exportTemplateToDownloads(
+                                context = context,
+                                fileName = "ejemplo_cross_catalog.csv",
+                                mimeType = "text/csv",
+                                content = CROSS_EXAMPLE_CONTENT
+                            )
+                            if (uri != null) {
+                                shareExportedFile(
+                                    context = context,
+                                    uri = uri,
+                                    mimeType = "text/csv",
+                                    title = "Compartir ejemplo catálogo CROSS"
+                                )
+                                showMessage("Ejemplo CROSS guardado en Descargas.")
+                            } else {
+                                showMessage("No se pudo generar el archivo de ejemplo CROSS.")
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = null)
+                        Text("Descargar archivo de ejemplo")
                     }
                     FilledTonalButton(
                         enabled = !uiState.isImporting,
