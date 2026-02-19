@@ -2270,6 +2270,38 @@ const splitIntoChunks = <T>(items: T[], size: number): T[][] => {
   return chunks;
 };
 
+const loadPurgedProductIds = async (tenantId: string): Promise<Set<string>> => {
+  const deletionsSnap = await db
+    .collection("tenants")
+    .doc(tenantId)
+    .collection("product_deletions")
+    .where("purgeBackup", "==", true)
+    .get();
+
+  return new Set(
+    deletionsSnap.docs
+      .map((doc) => normalizeString(doc.id))
+      .filter(Boolean)
+  );
+};
+
+const shouldKeepBackupDocument = (
+  path: string,
+  tenantId: string,
+  purgedProductIds: Set<string>
+): boolean => {
+  if (purgedProductIds.size === 0) {
+    return true;
+  }
+  for (const productId of purgedProductIds) {
+    const productRoot = `tenants/${tenantId}/products/${productId}`;
+    if (path === productRoot || path.startsWith(`${productRoot}/`)) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const deleteRunWithChunks = async (
   runRef: admin.firestore.DocumentReference
 ): Promise<void> => {
@@ -2309,6 +2341,10 @@ const backupTenant = async (tenantId: string): Promise<void> => {
   const tenantRef = db.collection("tenants").doc(tenantId);
   const documents: TenantBackupDocument[] = [];
   await listTenantDocumentsRecursively(tenantRef, documents);
+  const purgedProductIds = await loadPurgedProductIds(tenantId);
+  const filteredDocuments = documents.filter((doc) =>
+    shouldKeepBackupDocument(doc.path, tenantId, purgedProductIds)
+  );
 
   const runId = new Date().toISOString().replace(/[.:]/g, "-");
   const runRef = db
@@ -2317,12 +2353,12 @@ const backupTenant = async (tenantId: string): Promise<void> => {
     .collection("runs")
     .doc(runId);
 
-  const chunks = splitIntoChunks(documents, BACKUP_CHUNK_SIZE);
+  const chunks = splitIntoChunks(filteredDocuments, BACKUP_CHUNK_SIZE);
 
   await runRef.set({
     tenantId,
     runId,
-    docCount: documents.length,
+    docCount: filteredDocuments.length,
     chunkCount: chunks.length,
     retentionLimit: BACKUP_RETENTION_COUNT,
     status: "completed",
@@ -2375,4 +2411,51 @@ export const createDailyTenantBackups = functions
       }
     }
     return null;
+  });
+
+export const purgeDeletedProductFromBackups = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .firestore
+  .document("tenants/{tenantId}/product_deletions/{productId}")
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) {
+      return;
+    }
+    const tenantId = normalizeString(context.params.tenantId);
+    const productId = normalizeString(context.params.productId);
+    if (!tenantId || !productId) {
+      return;
+    }
+
+    const purgeBackup = change.after.get("purgeBackup") === true;
+    if (!purgeBackup) {
+      return;
+    }
+
+    const productRoot = `tenants/${tenantId}/products/${productId}`;
+    const runsSnap = await db
+      .collection("tenant_backups")
+      .doc(tenantId)
+      .collection("runs")
+      .get();
+
+    for (const runDoc of runsSnap.docs) {
+      const chunkSnap = await runDoc.ref.collection("chunks").get();
+      for (const chunkDoc of chunkSnap.docs) {
+        const documents = Array.isArray(chunkDoc.get("documents"))
+          ? (chunkDoc.get("documents") as TenantBackupDocument[])
+          : [];
+        const sanitizedDocuments = documents.filter((doc) => {
+          const path = normalizeString(doc?.path);
+          return !(path === productRoot || path.startsWith(`${productRoot}/`));
+        });
+        if (sanitizedDocuments.length === documents.length) {
+          continue;
+        }
+        await chunkDoc.ref.update({
+          documents: sanitizedDocuments,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
   });

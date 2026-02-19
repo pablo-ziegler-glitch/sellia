@@ -125,6 +125,9 @@ fun StockScreen(
     var showDeleteSelectedDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteAllDialog by rememberSaveable { mutableStateOf(false) }
     var detailProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var showDeleteBackupConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var deleteBackupConfirmationInput by rememberSaveable { mutableStateOf("") }
+    var pendingDeleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     // Snackbar host para mostrar mensajes del import
     val snackbarHostState = remember { SnackbarHostState() } // [NUEVO]
@@ -421,13 +424,17 @@ fun StockScreen(
             },
             onDelete = {
                 detailProduct = null
-                vm.deleteById(product.id) { result ->
-                    result.onSuccess {
-                        importMessage = "Producto eliminado correctamente."
-                    }.onFailure { error ->
-                        importMessage = error.message ?: "No se pudo eliminar el producto."
+                deleteBackupConfirmationInput = ""
+                pendingDeleteAction = {
+                    vm.deleteById(product.id) { result ->
+                        result.onSuccess {
+                            importMessage = "Producto eliminado correctamente. También se purgó de los backups en la nube."
+                        }.onFailure { error ->
+                            importMessage = error.message ?: "No se pudo eliminar el producto."
+                        }
                     }
                 }
+                showDeleteBackupConfirmDialog = true
             }
         )
     }
@@ -441,15 +448,19 @@ fun StockScreen(
                 Button(onClick = {
                     val idsToDelete = selectedProductIds
                     showDeleteSelectedDialog = false
-                    vm.deleteProductsByIds(idsToDelete) { result ->
-                        result.onSuccess { deleted ->
-                            importMessage = "Se eliminaron $deleted productos."
-                            selectionModeEnabled = false
-                            selectedProductIds = emptySet()
-                        }.onFailure { error ->
-                            importMessage = error.message ?: "No se pudieron eliminar los productos seleccionados."
+                    deleteBackupConfirmationInput = ""
+                    pendingDeleteAction = {
+                        vm.deleteProductsByIds(idsToDelete) { result ->
+                            result.onSuccess { deleted ->
+                                importMessage = "Se eliminaron $deleted productos. También se purgaron de los backups en la nube."
+                                selectionModeEnabled = false
+                                selectedProductIds = emptySet()
+                            }.onFailure { error ->
+                                importMessage = error.message ?: "No se pudieron eliminar los productos seleccionados."
+                            }
                         }
                     }
+                    showDeleteBackupConfirmDialog = true
                 }) {
                     Text("Eliminar")
                 }
@@ -470,21 +481,73 @@ fun StockScreen(
             confirmButton = {
                 Button(onClick = {
                     showDeleteAllDialog = false
-                    vm.deleteAllProducts { result ->
-                        result.onSuccess { deleted ->
-                            importMessage = "Se eliminaron $deleted productos del stock."
-                            selectionModeEnabled = false
-                            selectedProductIds = emptySet()
-                        }.onFailure { error ->
-                            importMessage = error.message ?: "No se pudo eliminar todo el stock."
+                    deleteBackupConfirmationInput = ""
+                    pendingDeleteAction = {
+                        vm.deleteAllProducts { result ->
+                            result.onSuccess { deleted ->
+                                importMessage = "Se eliminaron $deleted productos del stock. También se purgaron de los backups en la nube."
+                                selectionModeEnabled = false
+                                selectedProductIds = emptySet()
+                            }.onFailure { error ->
+                                importMessage = error.message ?: "No se pudo eliminar todo el stock."
+                            }
                         }
                     }
+                    showDeleteBackupConfirmDialog = true
                 }) {
                     Text("Eliminar todo")
                 }
             },
             dismissButton = {
                 Button(onClick = { showDeleteAllDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (showDeleteBackupConfirmDialog) {
+        val confirmationPhrase = "ELIMINAR"
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteBackupConfirmDialog = false
+                deleteBackupConfirmationInput = ""
+                pendingDeleteAction = null
+            },
+            title = { Text("Confirmación final") },
+            text = {
+                Column {
+                    Text("Esta acción también eliminará el producto de los backups en Firebase y no se podrá recuperar en futuras restauraciones.")
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("Escribí $confirmationPhrase para confirmar.")
+                    Spacer(modifier = Modifier.size(8.dp))
+                    OutlinedTextField(
+                        value = deleteBackupConfirmationInput,
+                        onValueChange = { deleteBackupConfirmationInput = it },
+                        singleLine = true,
+                        label = { Text("Confirmación") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteBackupConfirmDialog = false
+                        pendingDeleteAction?.invoke()
+                        pendingDeleteAction = null
+                        deleteBackupConfirmationInput = ""
+                    },
+                    enabled = deleteBackupConfirmationInput.trim().equals(confirmationPhrase, ignoreCase = true)
+                ) {
+                    Text("Confirmar eliminación")
+                }
+            },
+            dismissButton = {
+                Button(onClick = {
+                    showDeleteBackupConfirmDialog = false
+                    deleteBackupConfirmationInput = ""
+                    pendingDeleteAction = null
+                }) {
                     Text("Cancelar")
                 }
             }
