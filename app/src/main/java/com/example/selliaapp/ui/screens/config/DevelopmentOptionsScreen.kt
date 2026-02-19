@@ -34,6 +34,7 @@ import com.example.selliaapp.viewmodel.config.DevelopmentOptionsViewModel
 @Composable
 fun DevelopmentOptionsScreen(
     onBack: () -> Unit,
+    onCrossCatalogAdmin: () -> Unit,
     viewModel: DevelopmentOptionsViewModel = hiltViewModel()
 ) {
     val owners by viewModel.owners.collectAsState()
@@ -91,6 +92,24 @@ fun DevelopmentOptionsScreen(
                                     Text("Copiar token")
                                 }
                             }
+                        }
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Catálogo CROSS",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Carga técnica separada para barcode maestro. Usar solo para altas/actualizaciones poco frecuentes.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        TextButton(onClick = onCrossCatalogAdmin) {
+                            Text("Abrir administración CROSS")
                         }
                     }
                 }

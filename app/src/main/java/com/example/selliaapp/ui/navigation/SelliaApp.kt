@@ -58,6 +58,7 @@ import com.example.selliaapp.ui.screens.config.BulkDataScreen
 import com.example.selliaapp.ui.screens.config.CloudServicesAdminScreen
 import com.example.selliaapp.ui.screens.config.DevelopmentOptionsScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
+import com.example.selliaapp.ui.screens.config.CrossCatalogAdminScreen
 import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
@@ -789,10 +790,18 @@ fun SelliaApp(
 
             composable(Routes.DevelopmentOptions.route) {
                 DevelopmentOptionsScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onCrossCatalogAdmin = { navController.navigate(Routes.CrossCatalogAdmin.route) }
                 )
             }
 
+
+
+            composable(Routes.CrossCatalogAdmin.route) {
+                CrossCatalogAdminScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
             // Gestión de usuarios y roles
             composable(Routes.AddUser.route) {
                 val accessVm: AccessControlViewModel = hiltViewModel()
