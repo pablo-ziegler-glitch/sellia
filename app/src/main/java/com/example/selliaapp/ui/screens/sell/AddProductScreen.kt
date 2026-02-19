@@ -1,9 +1,12 @@
 package com.example.selliaapp.ui.screens.sell
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -131,6 +134,8 @@ fun AddProductScreen(
 
     // Dialog de error/info
     var infoMessage by remember { mutableStateOf<String?>(null) }
+    var showCloudCatalogDialog by remember { mutableStateOf(false) }
+    val cloudCatalogState by viewModel.cloudCatalogState.collectAsState()
 
     // Listas
     val categories: List<String> =
@@ -178,23 +183,35 @@ fun AddProductScreen(
         }
     }
 
+    fun handlePickedUri(uri: Uri) {
+        if (editId != null) {
+            val contentType = context.contentResolver.getType(uri)
+            viewModel.uploadProductImage(
+                productId = editId,
+                localUri = uri,
+                contentType = contentType
+            ) { result ->
+                result.onSuccess { imageUrls.add(it) }
+                result.onFailure { infoMessage = it.message ?: "Error subiendo imagen" }
+            }
+        } else {
+            pendingImageUris.add(uri)
+        }
+    }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        if (uri != null) {
-            if (editId != null) {
-                val contentType = context.contentResolver.getType(uri)
-                viewModel.uploadProductImage(
-                    productId = editId,
-                    localUri = uri,
-                    contentType = contentType
-                ) { result ->
-                    result.onSuccess { imageUrls.add(it) }
-                    result.onFailure { infoMessage = it.message ?: "Error subiendo imagen" }
-                }
-            } else {
-                pendingImageUris.add(uri)
-            }
+        uri?.let(::handlePickedUri)
+    }
+
+    val takePicturePreviewLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            persistPreviewBitmap(context = context, bitmap = bitmap)
+                ?.let(::handlePickedUri)
+                ?: run { infoMessage = "No se pudo guardar la foto tomada." }
         }
     }
 
@@ -220,6 +237,57 @@ fun AddProductScreen(
             is UiState.Error -> infoMessage = s.message
             else -> Unit
         }
+    }
+
+    if (showCloudCatalogDialog) {
+        AlertDialog(
+            onDismissRequest = { showCloudCatalogDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showCloudCatalogDialog = false }) {
+                    Text("Cerrar")
+                }
+            },
+            title = { Text("Biblioteca cloud") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when {
+                        cloudCatalogState.loading -> {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            Text("Cargando imágenes del catálogo...")
+                        }
+                        cloudCatalogState.images.isEmpty() -> {
+                            Text(cloudCatalogState.message ?: "No hay imágenes disponibles.")
+                        }
+                        else -> {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(cloudCatalogState.images, key = { it.fullPath }) { item ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                imageUrls.add(item.downloadUrl)
+                                                showCloudCatalogDialog = false
+                                            },
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = item.downloadUrl,
+                                            contentDescription = "Imagen cloud",
+                                            modifier = Modifier.size(72.dp)
+                                        )
+                                        Text(
+                                            text = item.fullPath.substringAfterLast('/'),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 
     if (infoMessage != null) {
@@ -356,11 +424,26 @@ fun AddProductScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Button(onClick = { takePicturePreviewLauncher.launch(null) }) {
+                        Text("Sacar foto")
+                    }
                     Button(onClick = { imagePickerLauncher.launch("image/*") }) {
-                        Text("Subir imagen")
+                        Text("Subir desde celular")
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(onClick = {
+                        showCloudCatalogDialog = true
+                        viewModel.loadPublicCatalogImages()
+                    }) {
+                        Text("Elegir desde nube")
                     }
                     if (imageUploadState.uploading) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp))
@@ -626,6 +709,20 @@ fun AddProductScreen(
 /**
  * Mensaje simple para estados de info/error.
  */
+private fun persistPreviewBitmap(context: android.content.Context, bitmap: Bitmap): Uri? {
+    return runCatching {
+        val file = java.io.File.createTempFile(
+            "product_camera_",
+            ".jpg",
+            context.cacheDir
+        )
+        file.outputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)
+        }
+        Uri.fromFile(file)
+    }.getOrNull()
+}
+
 @Composable
 private fun InfoMessage(
     text: String,

@@ -10,6 +10,7 @@ import com.example.selliaapp.data.remote.off.OffResult
 import com.example.selliaapp.data.remote.off.OpenFoodFactsRepository
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.repository.IProductRepository
+import com.example.selliaapp.repository.CloudCatalogImage
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.StorageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,6 +34,13 @@ data class ImageUploadUiState(
     val message: String? = null
 )
 
+data class CloudCatalogUiState(
+    val loading: Boolean = false,
+    val images: List<CloudCatalogImage> = emptyList(),
+    val message: String? = null
+)
+
+
 @HiltViewModel
 class ProductViewModel @Inject constructor(
     private val repo: IProductRepository,
@@ -47,6 +55,9 @@ class ProductViewModel @Inject constructor(
 
     private val _imageUploadState = MutableStateFlow(ImageUploadUiState())
     val imageUploadState = _imageUploadState.asStateFlow()
+
+    private val _cloudCatalogState = MutableStateFlow(CloudCatalogUiState())
+    val cloudCatalogState = _cloudCatalogState.asStateFlow()
 
     // Campos de tu formulario (simplificado)
     var name: String? = null
@@ -358,6 +369,29 @@ class ProductViewModel @Inject constructor(
             }
         }
     }
+
+
+    fun loadPublicCatalogImages(limit: Int = 60) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _cloudCatalogState.value = CloudCatalogUiState(loading = true)
+            runCatching {
+                storageRepository.listPublicCatalogImages(limit)
+            }.onSuccess { images ->
+                _cloudCatalogState.value = CloudCatalogUiState(
+                    loading = false,
+                    images = images,
+                    message = if (images.isEmpty()) "No hay imágenes disponibles en el catálogo cloud." else null
+                )
+            }.onFailure { error ->
+                _cloudCatalogState.value = CloudCatalogUiState(
+                    loading = false,
+                    images = emptyList(),
+                    message = error.message ?: "No se pudo leer el catálogo cloud."
+                )
+            }
+        }
+    }
+
 
 
     // --------- (Compat) Versión antigua aceptando Entity directo ---------
