@@ -128,6 +128,11 @@ fun CrossCatalogAdminScreen(
                         text = "Esta pantalla es solo para cargas ocasionales del catálogo maestro CROSS (barcode → producto). No reemplaza la carga operativa diaria de stock.",
                         style = MaterialTheme.typography.bodyMedium
                     )
+                    Text(
+                        text = "La plantilla SOLO requiere: barcode, name, brand. Los campos internos de auditoría (createdAt, updatedAt, createdBy, updatedBy) se generan automáticamente en Firestore al importar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     FilledTonalButton(
                         enabled = !uiState.isImporting,
                         onClick = {
