@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.selliaapp.ui.util.ImportErrorReportStore
+import com.example.selliaapp.ui.util.exportContentToDownloads
 import com.example.selliaapp.ui.util.exportTemplateToDownloads
 import com.example.selliaapp.ui.util.shareExportedFile
 import com.example.selliaapp.viewmodel.config.CrossCatalogAdminViewModel
@@ -84,13 +86,41 @@ fun CrossCatalogAdminScreen(
         viewModel.importFromFile(context, uri) { result ->
             val errorsCount = result.errors.size
             val okCount = result.inserted
-            showMessage(
-                if (errorsCount == 0) {
-                    "Catálogo CROSS actualizado: $okCount códigos procesados."
-                } else {
-                    "CROSS: $okCount códigos procesados, $errorsCount errores en $fileName."
-                }
+            ImportErrorReportStore.save(
+                context = context,
+                scope = ImportErrorReportStore.Scope.CROSS,
+                fileName = fileName,
+                errors = result.errors
             )
+            if (errorsCount > 0) {
+                val reportUri = exportContentToDownloads(
+                    context = context,
+                    fileName = "errores_importacion_cross_${System.currentTimeMillis()}.csv",
+                    mimeType = "text/csv",
+                    content = ImportErrorReportStore.buildCsv(
+                        ImportErrorReportStore.Report(
+                            generatedAt = java.time.LocalDateTime.now().format(
+                                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                            ),
+                            fileName = fileName,
+                            errors = result.errors
+                        )
+                    )
+                )
+                if (reportUri != null) {
+                    shareExportedFile(
+                        context = context,
+                        uri = reportUri,
+                        mimeType = "text/csv",
+                        title = "Compartir reporte de errores CROSS"
+                    )
+                    showMessage("CROSS: $okCount códigos procesados y $errorsCount errores. Se generó el reporte detallado.")
+                } else {
+                    showMessage("CROSS: $okCount códigos procesados y $errorsCount errores. No se pudo generar el reporte.")
+                }
+            } else {
+                showMessage("Catálogo CROSS actualizado: $okCount códigos procesados.")
+            }
         }
     }
 
