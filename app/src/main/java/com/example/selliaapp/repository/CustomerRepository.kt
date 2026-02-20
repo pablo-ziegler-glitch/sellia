@@ -37,6 +37,12 @@ class CustomerRepository @Inject constructor(
 
     suspend fun getAllOnce(): List<CustomerEntity> = customerDao.getAllOnce()
 
+    suspend fun findByNameIgnoreCase(name: String): CustomerEntity? {
+        val normalized = name.trim()
+        if (normalized.isBlank()) return null
+        return customerDao.getAllOnce().firstOrNull { it.name.equals(normalized, ignoreCase = true) }
+    }
+
     suspend fun upsert(c: CustomerEntity): Int {
         val localId = customerDao.upsert(c)
         if (localId <= 0) return localId

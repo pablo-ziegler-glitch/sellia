@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +46,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +63,7 @@ import com.example.selliaapp.ui.navigation.Routes.SellRoutes.SELL_FLOW_ROUTE
 import com.example.selliaapp.ui.state.CustomerSummaryUi
 import com.example.selliaapp.ui.state.OrderType
 import com.example.selliaapp.ui.state.PaymentMethod
+import com.example.selliaapp.viewmodel.CustomersViewModel
 import com.example.selliaapp.viewmodel.SellViewModel
 import com.example.selliaapp.viewmodel.checkout.CheckoutViewModel
 import kotlinx.coroutines.launch
@@ -82,8 +85,10 @@ fun CheckoutScreen(
     }
 
     val vm: SellViewModel = hiltViewModel(parentEntry)
+    val customersVm: CustomersViewModel = hiltViewModel()
     val paymentVm: CheckoutViewModel = hiltViewModel()
     val state by vm.state.collectAsStateWithLifecycle()
+    val customers by customersVm.customers.collectAsState(initial = emptyList())
     val paymentState by paymentVm.paymentState.collectAsStateWithLifecycle()
     val moneda = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/uuuu") }
@@ -92,6 +97,8 @@ fun CheckoutScreen(
     val context = LocalContext.current
     var isProcessing by remember { mutableStateOf(false) }
     var customerDiscountInput by remember { mutableStateOf("") }
+    var showCustomerValidationDialog by remember { mutableStateOf(false) }
+    var pendingCheckoutAction by remember { mutableStateOf(PendingCheckoutAction.CONFIRM_SALE) }
 
     LaunchedEffect(state.customerDiscountPercent) {
         customerDiscountInput = if (state.customerDiscountPercent == 0) "" else state.customerDiscountPercent.toString()
@@ -114,6 +121,77 @@ fun CheckoutScreen(
             snackbarHostState.showSnackbar(message)
             paymentVm.clearPaymentError()
         }
+    }
+
+
+    fun proceedWithResolvedCustomer(customerId: Long?, customerName: String?) {
+        if (pendingCheckoutAction == PendingCheckoutAction.MERCADO_PAGO) {
+            paymentVm.createPaymentPreference(
+                amount = state.total,
+                items = state.items,
+                customerName = customerName
+            )
+            return
+        }
+        isProcessing = true
+        vm.placeOrder(
+            customerId = customerId,
+            customerName = customerName,
+            onSuccess = { resultado ->
+                isProcessing = false
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = "Venta #${resultado.invoiceNumber}: ${moneda.format(resultado.total)} (${resultado.paymentMethod.nombreLegible()})"
+                    )
+                }
+                navController.navigate(
+                    Routes.PosSuccess.build(
+                        invoiceId = resultado.invoiceId,
+                        total = resultado.total,
+                        method = resultado.paymentMethod.nombreLegible()
+                    )
+                ) {
+                    popUpTo(Routes.Pos.route) { inclusive = false }
+                }
+            },
+            onError = { error ->
+                isProcessing = false
+                scope.launch {
+                    val mensaje = error.message?.takeIf { it.isNotBlank() }
+                        ?: "No se pudo confirmar la venta."
+                    snackbarHostState.showSnackbar(mensaje)
+                }
+            }
+        )
+    }
+
+
+    if (showCustomerValidationDialog) {
+        CustomerValidationDialog(
+            customers = customers,
+            onDismiss = { showCustomerValidationDialog = false },
+            onPickExisting = { customer ->
+                vm.setCustomer(customer.id, customer.name)
+                showCustomerValidationDialog = false
+                proceedWithResolvedCustomer(customer.id.toLong(), customer.name)
+            },
+            onCreateQuick = { quickName ->
+                vm.ensureQuickCustomer(
+                    rawName = quickName,
+                    onSuccess = { customerId, customerName ->
+                        showCustomerValidationDialog = false
+                        proceedWithResolvedCustomer(customerId.toLong(), customerName)
+                    },
+                    onError = { err ->
+                        scope.launch { snackbarHostState.showSnackbar(err.message ?: "No se pudo guardar el cliente rápido.") }
+                    }
+                )
+            },
+            onContinueWithoutCustomer = {
+                showCustomerValidationDialog = false
+                proceedWithResolvedCustomer(null, "Consumidor final")
+            }
+        )
     }
 
     Scaffold(
@@ -313,6 +391,9 @@ fun CheckoutScreen(
                         scope.launch {
                             snackbarHostState.showSnackbar("No podés cobrar hasta corregir el stock.")
                         }
+                    } else if (state.selectedCustomerName.isNullOrBlank()) {
+                        pendingCheckoutAction = PendingCheckoutAction.MERCADO_PAGO
+                        showCustomerValidationDialog = true
                     } else {
                         paymentVm.createPaymentPreference(
                             amount = state.total,
@@ -357,6 +438,9 @@ fun CheckoutScreen(
                             scope.launch {
                                 snackbarHostState.showSnackbar("No podés cobrar hasta corregir el stock.")
                             }
+                        } else if (state.selectedCustomerName.isNullOrBlank()) {
+                            pendingCheckoutAction = PendingCheckoutAction.CONFIRM_SALE
+                            showCustomerValidationDialog = true
                         } else {
                             isProcessing = true
                             vm.placeOrder(
@@ -408,6 +492,82 @@ fun CheckoutScreen(
             }
         }
     }
+}
+
+
+@Composable
+private fun CustomerValidationDialog(
+    customers: List<com.example.selliaapp.data.local.entity.CustomerEntity>,
+    onDismiss: () -> Unit,
+    onPickExisting: (com.example.selliaapp.data.local.entity.CustomerEntity) -> Unit,
+    onCreateQuick: (String) -> Unit,
+    onContinueWithoutCustomer: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    var quickCustomerName by remember { mutableStateOf("") }
+    val filteredCustomers = remember(customers, query) {
+        if (query.isBlank()) customers.take(10)
+        else customers.filter { customer ->
+            customer.name.contains(query, ignoreCase = true) ||
+                (customer.email ?: "").contains(query, ignoreCase = true) ||
+                (customer.phone ?: "").contains(query, ignoreCase = true)
+        }.take(10)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cliente para cobrar") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Antes de cerrar la venta podés buscar un cliente existente, cargar uno rápido o seguir como Consumidor final."
+                )
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Buscar cliente existente") },
+                    placeholder = { Text("Nombre, email o teléfono") },
+                    singleLine = true
+                )
+                if (filteredCustomers.isNotEmpty()) {
+                    LazyColumn(modifier = Modifier.height(140.dp)) {
+                        items(filteredCustomers, key = { it.id }) { customer ->
+                            TextButton(onClick = { onPickExisting(customer) }) {
+                                Text(customer.name)
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = quickCustomerName,
+                    onValueChange = { quickCustomerName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Cliente rápido") },
+                    placeholder = { Text("Ej: Juan Pérez") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onCreateQuick(quickCustomerName) }) {
+                Text("Guardar rápido y continuar")
+            }
+        },
+        dismissButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                TextButton(onClick = onContinueWithoutCustomer) {
+                    Text("Continuar como Consumidor final")
+                }
+                TextButton(onClick = onDismiss) { Text("Volver") }
+            }
+        }
+    )
+}
+
+private enum class PendingCheckoutAction {
+    CONFIRM_SALE,
+    MERCADO_PAGO
 }
 
 @Composable
