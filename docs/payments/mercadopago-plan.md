@@ -22,7 +22,9 @@ Checklist mínimo antes de pasar a producción:
 - Confirmar que la Cloud Function `createPaymentPreference` responde con `init_point` y la app puede abrir el link de pago sin errores.
 - Validar que `external_reference` viaja con el `orderId`/referencia interna y aparece en el detalle del pago en Mercado Pago.
 
-## Contrato de payload: frontend/app → Cloud Function `createPreference`
+## Contrato de payload: frontend/app → Cloud Function `createPaymentPreference`
+
+> ⚠️ Alias legado: `createPreference` se mantiene temporalmente por compatibilidad, pero está **deprecated** y su retiro está programado para **2026-03-31**. Todos los clientes deben migrar al endpoint canónico `createPaymentPreference`.
 
 A partir de esta versión, el payload de creación de preferencia debe cumplir este contrato mínimo:
 

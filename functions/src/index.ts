@@ -102,6 +102,7 @@ const TERMINAL_PAYMENT_STATUSES = new Set<PaymentStatus>([
   "FAILED",
 ]);
 const MP_SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
+const CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE = "2026-03-31";
 
 const MP_ACCESS_TOKEN_PARAM = defineString("MP_ACCESS_TOKEN");
 const MP_WEBHOOK_SECRET_PARAM = defineString("MP_WEBHOOK_SECRET");
@@ -1275,7 +1276,7 @@ const notifyAdmins = async (
   });
 };
 
-const createPreferenceHandler = async (data: unknown) => {
+const createPaymentPreferenceHandler = async (data: unknown) => {
   const payload = (data ?? {}) as Record<string, unknown>;
   const amount = Number(payload.amount);
   const items: PreferenceItemInput[] = Array.isArray(payload.items)
@@ -1396,10 +1397,21 @@ const createPreferenceHandler = async (data: unknown) => {
 };
 
 export const createPaymentPreference =
-  functions.runWith({ enforceAppCheck: false }).https.onCall(createPreferenceHandler);
+  functions.runWith({ enforceAppCheck: false }).https.onCall(createPaymentPreferenceHandler);
+
+/**
+ * @deprecated Use `createPaymentPreference`. This alias will be retired on 2026-03-31.
+ */
 export const createPreference = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall(createPreferenceHandler);
+  .https.onCall(async (data: unknown, context) => {
+    console.warn("Deprecated Cloud Function alias invoked: createPreference", {
+      canonicalEndpoint: "createPaymentPreference",
+      aliasRetirementDate: CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE,
+      uid: context.auth?.uid ?? null,
+    });
+    return createPaymentPreferenceHandler(data);
+  });
 
 export const collectUsageMetrics = functions.pubsub
   .schedule("every 24 hours")
