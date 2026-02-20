@@ -40,6 +40,64 @@ Este módulo incluye un scheduler que recopila métricas de uso desde **Cloud Mo
 
 ## Configuración requerida
 
+## Prerequisitos de Cloud Functions programadas
+
+Estas validaciones aplican especialmente a las funciones con scheduler (`collectUsageMetrics`, `evaluateUsageAlerts`, `refreshPublicProducts`, `createDailyTenantBackups`) para evitar fallos silenciosos en producción.
+
+### 1) APIs a habilitar (lista exacta)
+
+```bash
+gcloud services enable cloudscheduler.googleapis.com
+gcloud services enable pubsub.googleapis.com
+gcloud services enable monitoring.googleapis.com
+gcloud services enable bigquery.googleapis.com # solo cuando BILLING_SOURCE=bigquery
+```
+
+### 2) IAM mínimo por service account de ejecución
+
+> Service account de ejecución por defecto: `PROJECT_ID@appspot.gserviceaccount.com`.
+> Si usás un SA dedicado por función (recomendado en producción), asigná el mismo set mínimo por responsabilidad.
+
+| Service account (ejecución) | Funciones programadas | Roles IAM mínimos |
+| --- | --- | --- |
+| `PROJECT_ID@appspot.gserviceaccount.com` (o SA dedicado de scheduler) | `collectUsageMetrics` (source=monitoring) | `roles/monitoring.viewer`, `roles/datastore.user` |
+| `PROJECT_ID@appspot.gserviceaccount.com` (o SA dedicado de scheduler) | `collectUsageMetrics` (source=bigquery) | `roles/bigquery.dataViewer`, `roles/bigquery.jobUser`, `roles/datastore.user` |
+| `PROJECT_ID@appspot.gserviceaccount.com` (o SA dedicado de scheduler) | `evaluateUsageAlerts`, `refreshPublicProducts`, `createDailyTenantBackups` | `roles/datastore.user` |
+
+### 3) Facturación activa (requisito)
+
+Cloud Scheduler requiere proyecto con **facturación activa** para crear/ejecutar jobs programados. Si billing está desactivado, los schedulers no van a disparar aunque el deploy termine correctamente.
+
+### 4) Validación post-deploy
+
+#### 4.1 Logs por función
+
+```bash
+firebase functions:log --only collectUsageMetrics
+firebase functions:log --only evaluateUsageAlerts
+firebase functions:log --only refreshPublicProducts
+firebase functions:log --only createDailyTenantBackups
+```
+
+#### 4.2 Ejecución manual desde consola (cada scheduler)
+
+1. Ir a **Google Cloud Console > Cloud Scheduler**.
+2. Ubicar el job creado por cada función programada.
+3. Ejecutar **Run now** en cada job.
+4. Verificar en logs de Firebase/Cloud Logging que:
+   - no existan errores de permisos (`PERMISSION_DENIED`),
+   - no existan errores por API deshabilitada,
+   - se complete escritura en Firestore según la función.
+
+### 5) Matriz función -> dependencia externa/API
+
+| Función programada | Trigger | Dependencia externa | API crítica |
+| --- | --- | --- | --- |
+| `collectUsageMetrics` | Scheduler cada 24h | Cloud Monitoring (default) o BigQuery Billing Export (opcional) | `cloudscheduler.googleapis.com`, `pubsub.googleapis.com`, `monitoring.googleapis.com`, `bigquery.googleapis.com` (si aplica) |
+| `evaluateUsageAlerts` | Scheduler cada 1h | Firestore (lectura/escritura de usage y alerts) | `cloudscheduler.googleapis.com`, `pubsub.googleapis.com` |
+| `refreshPublicProducts` | Scheduler cada 15 min | Firestore (sincronización `products` -> `public_products`) | `cloudscheduler.googleapis.com`, `pubsub.googleapis.com` |
+| `createDailyTenantBackups` | Scheduler cada 24h | Firestore (backup recursivo + retención) | `cloudscheduler.googleapis.com`, `pubsub.googleapis.com` |
+
 ### 1) Habilitar APIs
 
 ```bash
