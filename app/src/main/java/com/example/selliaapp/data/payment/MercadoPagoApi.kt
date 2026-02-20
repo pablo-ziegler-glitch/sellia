@@ -17,7 +17,7 @@ class MercadoPagoApi @Inject constructor(
     suspend fun createPaymentPreference(request: PaymentPreferenceRequest): PaymentPreferenceResult {
         val payload = buildPayload(request)
         val result = try {
-            callCreatePreferenceWithAuthRecovery(payload)
+            callCreatePaymentPreferenceWithAuthRecovery(payload)
         } catch (exception: FirebaseFunctionsException) {
             throw IllegalStateException(buildFunctionsErrorMessage(exception), exception)
         }
@@ -37,20 +37,20 @@ class MercadoPagoApi @Inject constructor(
         )
     }
 
-    private suspend fun callCreatePreferenceWithAuthRecovery(payload: Map<String, Any>): HttpsCallableResult {
+    private suspend fun callCreatePaymentPreferenceWithAuthRecovery(payload: Map<String, Any>): HttpsCallableResult {
         return try {
-            callCreatePreference(payload)
+            callCreatePaymentPreference(payload)
         } catch (exception: FirebaseFunctionsException) {
             if (exception.code != FirebaseFunctionsException.Code.UNAUTHENTICATED) {
                 throw exception
             }
 
             refreshCallableAuthentication()
-            callCreatePreference(payload)
+            callCreatePaymentPreference(payload)
         }
     }
 
-    private suspend fun callCreatePreference(payload: Map<String, Any>): HttpsCallableResult {
+    private suspend fun callCreatePaymentPreference(payload: Map<String, Any>): HttpsCallableResult {
         return functions
             .getHttpsCallable(FUNCTION_NAME)
             .call(payload)
