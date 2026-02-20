@@ -68,18 +68,49 @@ python3 -m http.server 8080 --directory public
 ```
 Luego abrí `http://localhost:8080` en el navegador.
 
-## 🌐 Firebase Hosting
-Para publicar el catálogo estático en Firebase Hosting:
-1. Inicializar Firebase (si aún no está configurado en tu equipo):
+## 🚀 Despliegue a producción (secuencia única y obligatoria)
+> Esta secuencia es **obligatoria** para evitar desalineación entre reglas/índices, funciones y hosting. No cambiar el orden.
+
+### Precondiciones (una sola vez por equipo)
+1. Tener Firebase CLI instalado y autenticado:
    ```bash
-   firebase init
+   firebase login
    ```
-   Elegí **Hosting**, vinculá el proyecto y confirmá que el directorio público es `public`.
-2. Desplegar:
+2. Validar que `firebase.json`, `firestore.rules`, `firestore.indexes.json` y `storage.rules` estén versionados en este repo.
+
+### Orden de despliegue manual (producción)
+1. Seleccionar proyecto:
+   ```bash
+   firebase use <projectId>
+   ```
+2. Desplegar reglas e índices de datos:
+   ```bash
+   firebase deploy --only firestore:rules,firestore:indexes,storage
+   ```
+3. Desplegar backend (Cloud Functions):
+   ```bash
+   firebase deploy --only functions
+   ```
+4. Desplegar frontend público (Hosting):
    ```bash
    firebase deploy --only hosting
    ```
+5. Ejecutar verificación final (smoke tests):
+   - **Callables**: confirmar que las funciones callable críticas responden `2xx` y sin errores de permisos para usuarios válidos.
+   - **Webhook**: disparar evento de prueba del proveedor integrado y validar recepción + procesamiento exitoso en logs de Functions.
+   - **Catálogo público**: abrir la URL de Hosting, navegar listado, validar carga de imágenes y consulta de productos sin errores en consola.
 
+### Variante CI/CD (no interactiva, mismo orden fijo)
+Usar siempre variables de entorno (`FIREBASE_TOKEN` y `FIREBASE_PROJECT_ID`) y comandos no interactivos:
+
+```bash
+firebase use "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive
+firebase deploy --only firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive
+firebase deploy --only functions --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive
+firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive
+```
+
+> Recomendación de operación: bloquear merges a `main` si falla cualquier smoke test post-deploy para reducir incidentes en producción.
 
 ## 🧭 Índices de Firestore para catálogo público
 La consulta `structuredQuery` de `public/catalog.js` usa `collectionGroup` sobre `public_products` y ordena por `tenantId` + `name` en orden ascendente.
