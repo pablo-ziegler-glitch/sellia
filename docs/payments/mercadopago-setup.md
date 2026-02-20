@@ -55,3 +55,49 @@ firebase deploy --only functions
 # Ver logs del webhook
 firebase functions:log --only mpWebhook
 ```
+
+## Go-live verificado
+
+Usar esta lista como **criterio de salida a producción** para minimizar fallas operativas y cruces de credenciales entre ambientes.
+
+1. **Confirmar URL final de `mpWebhook` por entorno/proyecto**
+   - Verificar que la URL publicada coincida con el proyecto Firebase correcto.
+   - Formato por proyecto: `https://us-central1-<projectId>.cloudfunctions.net/mpWebhook`.
+   - Registrar explícitamente la URL en la documentación operativa de cada entorno.
+
+2. **Registrar webhook en Mercado Pago Developers con evento `payment`**
+   - Configurar el endpoint exacto del paso anterior.
+   - Seleccionar evento `payment` para asegurar actualización de estado de cobros.
+   - Confirmar que el panel de Mercado Pago muestre webhook activo y sin errores de validación.
+
+3. **Ejecutar pago de prueba y validar logs en `mpWebhook`**
+   - Generar preferencia con `createPaymentPreference` en el mismo entorno objetivo.
+   - Completar un pago de prueba con usuario/tarjeta de test (o flujo real en prod controlada).
+   - Validar recepción del callback en logs:
+
+   ```bash
+   firebase functions:log --only mpWebhook
+   ```
+
+4. **Validar escritura del documento de pago en Firestore**
+   - Confirmar creación/actualización del documento esperado en:
+     - `tenants/{tenantId}/payments/{paymentId}`
+   - Verificar campos mínimos de control operativo: `status`, `statusDetail`, `amount`, `updatedAt`.
+   - Corroborar consistencia entre el estado informado por Mercado Pago y el estado persistido.
+
+5. **Definir y aplicar criterio de rollback**
+   - Si no se observa callback en `mpWebhook` dentro de una ventana de tiempo definida (recomendado: **10-15 minutos**), ejecutar rollback controlado.
+   - Rollback mínimo sugerido:
+     - Deshabilitar temporalmente la promoción de tráfico al entorno afectado.
+     - Restaurar variables del último deploy estable.
+     - Revertir configuración de webhook al endpoint estable anterior.
+   - Registrar incidente con timestamp, payment IDs afectados y acciones tomadas.
+
+6. **Tabla de variables por entorno (test/prod) para evitar cruces de credenciales**
+
+| Entorno | Firebase Project ID | `MP_ACCESS_TOKEN` | `MP_WEBHOOK_SECRET` | URL `mpWebhook` |
+|---|---|---|---|---|
+| Test | `<project-id-test>` | `TEST-...` | `test_webhook_secret_...` | `https://us-central1-<project-id-test>.cloudfunctions.net/mpWebhook` |
+| Producción | `<project-id-prod>` | `APP_USR-...` | `prod_webhook_secret_...` | `https://us-central1-<project-id-prod>.cloudfunctions.net/mpWebhook` |
+
+> ✅ Recomendación operativa: mantener esta tabla versionada junto al runbook de despliegue y actualizarla en cada cambio de credenciales.
