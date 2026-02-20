@@ -11,6 +11,7 @@ import com.example.selliaapp.data.local.entity.CashMovementType
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.InvoiceRepository
+import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.SellDraft
 import com.example.selliaapp.repository.SellDraftItem
 import com.example.selliaapp.repository.SellDraftRepository
@@ -29,13 +30,15 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import java.time.LocalDateTime
 
 @HiltViewModel
 class SellViewModel @Inject constructor(
     private val repo: IProductRepository,
     private val invoiceRepo: InvoiceRepository,
     private val cashRepository: CashRepository,
-    private val sellDraftRepository: SellDraftRepository
+    private val sellDraftRepository: SellDraftRepository,
+    private val customerRepository: CustomerRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SellUiState())
@@ -332,6 +335,41 @@ class SellViewModel @Inject constructor(
         }
     }
 
+
+
+    fun ensureQuickCustomer(
+        rawName: String,
+        onSuccess: (customerId: Int, customerName: String) -> Unit,
+        onError: (Throwable) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val name = rawName.trim()
+            if (name.isBlank()) {
+                onError(IllegalArgumentException("Ingresá un nombre de cliente válido."))
+                return@launch
+            }
+            runCatching {
+                val existing = customerRepository.findByNameIgnoreCase(name)
+                if (existing != null) {
+                    existing.id to existing.name
+                } else {
+                    val newId = customerRepository.upsert(
+                        com.example.selliaapp.data.local.entity.CustomerEntity(
+                            name = name,
+                            createdAt = LocalDateTime.now()
+                        )
+                    )
+                    val persisted = customerRepository.findByNameIgnoreCase(name)
+                    val resolvedId = persisted?.id ?: newId
+                    resolvedId to name
+                }
+            }.onSuccess { (id, customerName) ->
+                setCustomer(id, customerName)
+                onSuccess(id, customerName)
+            }.onFailure(onError)
+        }
+    }
+
     fun setCustomerDiscountPercent(percent: Int) {
         updateAndPersist { ui ->
             val sanitized = percent.coerceIn(0, 100)
@@ -365,7 +403,9 @@ class SellViewModel @Inject constructor(
                     return@launch
                 }
                 val resolvedCustomerId = customerId ?: current.selectedCustomerId?.toLong()
-                val resolvedCustomerName = customerName ?: current.selectedCustomerName
+                val resolvedCustomerName = customerName
+                    ?: current.selectedCustomerName
+                    ?: "Consumidor final"
                 val draft = InvoiceDraft(
                     items = current.items.map { item ->
                         CartItem(
