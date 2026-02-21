@@ -1,6 +1,7 @@
 package com.example.selliaapp.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -47,15 +48,41 @@ private val ValkirjaDarkColors = darkColorScheme(
     outline = Color(0xFF6E5E4F)
 )
 
+data class ThemePalette(
+    val primaryHex: String = "",
+    val secondaryHex: String = "",
+    val tertiaryHex: String = ""
+)
+
 @Composable
 fun ValkirjaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicPalette: ThemePalette = ThemePalette(),
     content: @Composable () -> Unit
 ) {
-    val colors = if (darkTheme) ValkirjaDarkColors else ValkirjaLightColors
+    val base = if (darkTheme) ValkirjaDarkColors else ValkirjaLightColors
+    val colors = base.withPalette(dynamicPalette)
 
     MaterialTheme(
         colorScheme = colors,
         content = content
     )
+}
+
+private fun ColorScheme.withPalette(palette: ThemePalette): ColorScheme {
+    val primaryOverride = palette.primaryHex.toColorOrNull()
+    val secondaryOverride = palette.secondaryHex.toColorOrNull()
+    val tertiaryOverride = palette.tertiaryHex.toColorOrNull()
+
+    return copy(
+        primary = primaryOverride ?: primary,
+        secondary = secondaryOverride ?: secondary,
+        tertiary = tertiaryOverride ?: tertiary
+    )
+}
+
+private fun String.toColorOrNull(): Color? {
+    val normalized = trim().uppercase().let { if (it.startsWith("#")) it else "#$it" }
+    if (!normalized.matches(Regex("^#[0-9A-F]{6}$"))) return null
+    return runCatching { Color(android.graphics.Color.parseColor(normalized)) }.getOrNull()
 }

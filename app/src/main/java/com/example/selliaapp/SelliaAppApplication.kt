@@ -9,6 +9,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.selliaapp.repository.AppVersionRepository
 import com.example.selliaapp.sync.PricingScheduler
 import com.example.selliaapp.sync.SyncWorker
 import com.google.firebase.FirebaseApp
@@ -17,12 +18,19 @@ import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
 class SelliaAppApplication : Application(), Configuration.Provider {
 
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var appVersionRepository: AppVersionRepository
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -48,8 +56,19 @@ class SelliaAppApplication : Application(), Configuration.Provider {
                 // Evita spam mientras AppCheck está roto/no registrado
                 enqueuePeriodicSync()
                 PricingScheduler.enqueuePeriodic(this, 30)
+                trackInstalledVersion()
             }
         )
+    }
+
+
+    private fun trackInstalledVersion() {
+        applicationScope.launch {
+            appVersionRepository.trackInstalledVersionIfNeeded()
+                .onFailure { error ->
+                    Log.w(TAG, "No se pudo registrar versión instalada en Firebase.", error)
+                }
+        }
     }
 
     private fun initStrictMode() {
