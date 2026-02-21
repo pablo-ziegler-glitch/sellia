@@ -99,9 +99,13 @@ class FirebaseSessionCoordinator @Inject constructor(
             }
 
             is StorageException -> when (error.errorCode) {
-                StorageException.ERROR_NOT_AUTHENTICATED,
+                StorageException.ERROR_NOT_AUTHENTICATED -> {
+                    "No pudimos validar tu sesión para subir archivos. Cerrá sesión e iniciá nuevamente."
+                }
+
                 StorageException.ERROR_NOT_AUTHORIZED -> {
-                    "No tenés una sesión válida para subir archivos. Iniciá sesión nuevamente."
+                    "Tu usuario está autenticado, pero no tiene permisos para subir archivos en este tenant. " +
+                        "Verificá rol activo, tenant asignado y reglas de Storage."
                 }
 
                 StorageException.ERROR_RETRY_LIMIT_EXCEEDED,
