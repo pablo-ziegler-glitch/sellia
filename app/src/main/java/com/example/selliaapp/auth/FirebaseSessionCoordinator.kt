@@ -19,7 +19,7 @@ class FirebaseSessionCoordinator @Inject constructor(
 
     suspend fun <T> runWithFreshSession(block: suspend () -> T): T {
         val user = firebaseAuth.currentUser
-            ?: throw FirebaseSessionException("Tu sesión expiró. Iniciá sesión nuevamente.")
+            ?: throw buildSessionExpiredException()
 
         preflightToken(user = user, forceRefresh = false)
 
@@ -56,7 +56,7 @@ class FirebaseSessionCoordinator @Inject constructor(
 
     private suspend fun forceRefreshSessionToken() {
         val activeUser = firebaseAuth.currentUser
-            ?: throw FirebaseSessionException("Tu sesión expiró. Iniciá sesión nuevamente.")
+            ?: throw buildSessionExpiredException()
         preflightToken(user = activeUser, forceRefresh = true)
     }
 
@@ -76,9 +76,13 @@ class FirebaseSessionCoordinator @Inject constructor(
     }
 
     private fun mapToFunctionalError(error: Throwable): FirebaseSessionException {
+        if (shouldForceSignOut(error)) {
+            firebaseAuth.signOut()
+        }
+
         val userMessage = when (error) {
             is FirebaseAuthInvalidUserException -> {
-                "Tu sesión ya no es válida. Cerrá sesión e iniciá nuevamente."
+                "Tu sesión ya no es válida. Iniciá sesión nuevamente."
             }
 
             is FirebaseAuthInvalidCredentialsException -> {
@@ -86,9 +90,12 @@ class FirebaseSessionCoordinator @Inject constructor(
             }
 
             is FirebaseFirestoreException -> when (error.code) {
-                FirebaseFirestoreException.Code.UNAUTHENTICATED,
+                FirebaseFirestoreException.Code.UNAUTHENTICATED -> {
+                    "Tu sesión expiró. Volvé a iniciar sesión para continuar."
+                }
+
                 FirebaseFirestoreException.Code.PERMISSION_DENIED -> {
-                    "Tu sesión venció o no tiene permisos. Reintentá iniciando sesión nuevamente."
+                    "Tu sesión está activa, pero no tenés permisos para esta acción."
                 }
 
                 FirebaseFirestoreException.Code.UNAVAILABLE -> {
@@ -100,7 +107,7 @@ class FirebaseSessionCoordinator @Inject constructor(
 
             is StorageException -> when (error.errorCode) {
                 StorageException.ERROR_NOT_AUTHENTICATED -> {
-                    "No pudimos validar tu sesión para subir archivos. Cerrá sesión e iniciá nuevamente."
+                    "Tu sesión expiró. Volvé a iniciar sesión para subir archivos."
                 }
 
                 StorageException.ERROR_NOT_AUTHORIZED -> {
@@ -128,6 +135,38 @@ class FirebaseSessionCoordinator @Inject constructor(
                 ?: "Ocurrió un error de sesión. Intentá nuevamente."
         }
         return FirebaseSessionException(userMessage = userMessage, cause = error)
+    }
+
+    private fun shouldForceSignOut(error: Throwable): Boolean = when (error) {
+        is FirebaseAuthInvalidUserException,
+        is FirebaseAuthInvalidCredentialsException -> true
+
+        is FirebaseAuthException -> {
+            error.errorCode in FORCED_SIGN_OUT_AUTH_ERROR_CODES
+        }
+
+        is FirebaseFirestoreException -> {
+            error.code == FirebaseFirestoreException.Code.UNAUTHENTICATED
+        }
+
+        is StorageException -> {
+            error.errorCode == StorageException.ERROR_NOT_AUTHENTICATED
+        }
+
+        else -> false
+    }
+
+    private fun buildSessionExpiredException(): FirebaseSessionException {
+        firebaseAuth.signOut()
+        return FirebaseSessionException("Tu sesión expiró. Iniciá sesión nuevamente.")
+    }
+
+    private companion object {
+        val FORCED_SIGN_OUT_AUTH_ERROR_CODES = setOf(
+            "ERROR_USER_TOKEN_EXPIRED",
+            "ERROR_INVALID_USER_TOKEN",
+            "ERROR_USER_DISABLED"
+        )
     }
 }
 
