@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sellia Backoffice</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section id="authPanel" class="panel auth-panel">
+        <h1>Backoffice interno</h1>
+        <p class="muted">Acceso exclusivo para operadores del tenant.</p>
+
+        <form id="loginForm" class="login-form">
+          <label>
+            Email
+            <input id="email" type="email" autocomplete="username" required />
+          </label>
+          <label>
+            Contraseña
+            <input id="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button type="submit">Ingresar con email</button>
+        </form>
+
+        <button id="googleLogin" class="google-btn" type="button">Ingresar con Google</button>
+        <p id="authError" class="error" role="alert"></p>
+      </section>
+
+      <section id="appPanel" class="panel app-panel" hidden>
+        <header class="topbar">
+          <h2>Sellia Admin</h2>
+          <button id="logoutButton" class="secondary" type="button">Cerrar sesión</button>
+        </header>
+
+        <p id="sessionBanner" class="banner"></p>
+
+        <div class="session-context">
+          <span>Tenant: <strong id="tenantBadge">-</strong></span>
+          <span>Rol: <strong id="roleBadge">-</strong></span>
+          <span>Status: <strong id="statusBadge">-</strong></span>
+        </div>
+
+        <aside class="permissions">
+          <h3>Permisos efectivos</h3>
+          <ul id="permissionsList"></ul>
+        </aside>
+
+        <nav class="nav-grid">
+          <a href="#/dashboard">Dashboard</a>
+          <a href="#/settings/pricing">Pricing</a>
+          <a href="#/settings/marketing">Marketing</a>
+          <a href="#/settings/users">Usuarios</a>
+          <a href="#/settings/cloud-services">Cloud Services</a>
+          <a href="#/maintenance">Mantenimiento</a>
+        </nav>
+
+        <section class="view">
+          <h3 id="viewTitle">Panel de uso</h3>
+          <p id="viewDescription">Seleccioná un módulo del backoffice.</p>
+        </section>
+
+        <section id="deniedState" class="state denied" hidden>
+          <h4>Acceso denegado</h4>
+          <p>No tenés permisos para este módulo.</p>
+        </section>
+
+        <section id="missingTenantState" class="state warning" hidden>
+          <h4>Cuenta sin tenant válido</h4>
+          <p>Solicitá al owner del proyecto asignación correcta.</p>
+        </section>
+      </section>
+    </main>
+
+    <script src="../config.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

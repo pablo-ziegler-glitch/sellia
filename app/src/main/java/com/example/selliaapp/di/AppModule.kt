@@ -275,15 +275,19 @@ object AppModule {
     @Singleton
     fun provideCloudServiceConfigRepository(
         dao: CloudServiceConfigDao,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
         @IoDispatcher io: CoroutineDispatcher
-    ): CloudServiceConfigRepository = CloudServiceConfigRepository(dao, io)
+    ): CloudServiceConfigRepository = CloudServiceConfigRepository(dao, firestore, tenantProvider, io)
 
     @Provides
     @Singleton
     fun provideDevelopmentOptionsRepository(
         dao: DevelopmentOptionsDao,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
         @IoDispatcher io: CoroutineDispatcher
-    ): DevelopmentOptionsRepository = DevelopmentOptionsRepository(dao, io)
+    ): DevelopmentOptionsRepository = DevelopmentOptionsRepository(dao, firestore, tenantProvider, io)
 
     @Provides
     @Singleton
@@ -414,8 +418,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSecurityConfigRepository(
-        dataStore: DataStore<Preferences>
-    ): SecurityConfigRepository = SecurityConfigRepository(dataStore)
+        dataStore: DataStore<Preferences>,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
+        @IoDispatcher io: CoroutineDispatcher
+    ): SecurityConfigRepository = SecurityConfigRepository(dataStore, firestore, tenantProvider, io)
 
     @Provides
     @Singleton

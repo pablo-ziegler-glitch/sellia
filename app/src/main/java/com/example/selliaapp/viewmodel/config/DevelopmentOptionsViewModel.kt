@@ -81,6 +81,7 @@ class DevelopmentOptionsViewModel @Inject constructor(
     private var cooldownJob: Job? = null
 
     init {
+        viewModelScope.launch { developmentOptionsRepository.refreshFromCloud() }
         refreshAppCheckToken(forceRefresh = false)
     }
 

@@ -87,7 +87,7 @@ service cloud.firestore {
     function hasManageUsersRole() {
       return hasUserDoc()
         && (
-          userData().role in ['admin', 'owner', 'manager']
+          userData().role in ['admin', 'owner']
           || userData().isAdmin == true
           || userData().isSuperAdmin == true
         );
@@ -161,6 +161,27 @@ service cloud.firestore {
           isAuthenticated()
           && userTenantIdMatches(tenantId)
           && hasManageUsersRole()
+        );
+    }
+
+    function userRole() {
+      return hasUserDoc() && userData().role is string ? userData().role : '';
+    }
+
+    function hasRole(roles) {
+      return isFixedSuperAdmin()
+        || (hasUserDoc() && userRole() in roles)
+        || hasAdminField();
+    }
+
+    function canWriteConfig(tenantId, configId) {
+      return isTenantUser(tenantId)
+        && (
+          (configId == 'pricing' && hasRole(['owner', 'admin']))
+          || (configId == 'marketing' && hasRole(['owner', 'admin', 'manager']))
+          || (configId == 'security' && hasRole(['owner', 'admin']))
+          || (configId == 'cloud_services' && hasRole(['owner', 'admin']))
+          || (configId == 'development_options' && hasRole(['owner', 'admin']))
         );
     }
 
@@ -312,6 +333,10 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedByUid == request.auth.uid;
       allow delete: if isTenantUser(tenantId) && hasMaintenanceWriteAccess();
+
+    match /tenants/{tenantId}/config/{configId} {
+      allow read: if isTenantUser(tenantId);
+      allow create, update, delete: if canWriteConfig(tenantId, configId);
     }
 
     match /tenants/{tenantId}/orders/{orderId} {

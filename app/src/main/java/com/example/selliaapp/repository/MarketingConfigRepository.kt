@@ -1,6 +1,7 @@
 package com.example.selliaapp.repository
 
 import com.example.selliaapp.auth.TenantProvider
+import com.example.selliaapp.data.remote.TenantConfigContract
 import com.example.selliaapp.di.AppModule
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -51,10 +52,41 @@ class MarketingConfigRepository @Inject constructor(
         )
     }
 
+    suspend fun refreshFromCloud() = withContext(io) {
+        runCatching {
+            val tenantId = tenantProvider.requireTenantId()
+            val snapshot = firestore.collection(TenantConfigContract.COLLECTION_TENANTS)
+                .document(tenantId)
+                .collection(TenantConfigContract.COLLECTION_CONFIG)
+                .document(TenantConfigContract.DOC_MARKETING)
+                .get()
+                .await()
+            val data = snapshot.get(TenantConfigContract.Fields.DATA) as? Map<*, *> ?: return@runCatching
+            val cloudSettings = MarketingSettings(
+                publicStoreUrl = (data["publicStoreUrl"] as? String).orEmpty(),
+                storeName = (data["storeName"] as? String).orEmpty().ifBlank { "Tu tienda" },
+                storeLogoUrl = (data["storeLogoUrl"] as? String).orEmpty(),
+                storePhone = (data["storePhone"] as? String).orEmpty(),
+                storeWhatsapp = (data["storeWhatsapp"] as? String).orEmpty(),
+                storeEmail = (data["storeEmail"] as? String).orEmpty()
+            )
+            dataStore.edit { prefs ->
+                prefs[Keys.publicStoreUrl] = normalizePublicStoreUrl(cloudSettings.publicStoreUrl)
+                prefs[Keys.storeName] = cloudSettings.storeName
+                prefs[Keys.storeLogoUrl] = cloudSettings.storeLogoUrl
+                prefs[Keys.storePhone] = cloudSettings.storePhone
+                prefs[Keys.storeWhatsapp] = cloudSettings.storeWhatsapp
+                prefs[Keys.storeEmail] = cloudSettings.storeEmail
+            }
+        }
+    }
+
     suspend fun updateSettings(updated: MarketingSettings) {
         val normalizedSettings = updated.copy(
             publicStoreUrl = normalizePublicStoreUrl(updated.publicStoreUrl)
         )
+
+        syncPublicStoreConfig(normalizedSettings)
 
         dataStore.edit { prefs ->
             prefs[Keys.publicStoreUrl] = normalizedSettings.publicStoreUrl
@@ -65,7 +97,6 @@ class MarketingConfigRepository @Inject constructor(
             prefs[Keys.storeEmail] = normalizedSettings.storeEmail
         }
 
-        syncPublicStoreConfig(normalizedSettings)
     }
 
     private suspend fun syncPublicStoreConfig(settings: MarketingSettings) = withContext(io) {
@@ -74,21 +105,42 @@ class MarketingConfigRepository @Inject constructor(
             val publicStoreUrl = settings.publicStoreUrl.trim()
             val publicDomain = extractDomain(publicStoreUrl)
             val updatePayload = mapOf(
-                "publicStoreUrl" to publicStoreUrl,
-                "publicDomain" to publicDomain,
-                "updatedAt" to FieldValue.serverTimestamp()
+                TenantConfigContract.Fields.SCHEMA_VERSION to TenantConfigContract.CURRENT_SCHEMA_VERSION,
+                TenantConfigContract.Fields.UPDATED_AT to FieldValue.serverTimestamp(),
+                TenantConfigContract.Fields.UPDATED_BY to "android_marketing",
+                TenantConfigContract.Fields.AUDIT to mapOf(
+                    "event" to "UPSERT_MARKETING_CONFIG",
+                    "at" to FieldValue.serverTimestamp(),
+                    "by" to "android_marketing"
+                ),
+                TenantConfigContract.Fields.DATA to mapOf(
+                    "publicStoreUrl" to publicStoreUrl,
+                    "publicDomain" to publicDomain,
+                    "storeName" to settings.storeName,
+                    "storeLogoUrl" to settings.storeLogoUrl,
+                    "storePhone" to settings.storePhone,
+                    "storeWhatsapp" to settings.storeWhatsapp,
+                    "storeEmail" to settings.storeEmail
+                )
             )
 
-            firestore.collection("tenants")
+            firestore.collection(TenantConfigContract.COLLECTION_TENANTS)
                 .document(tenantId)
-                .collection("config")
-                .document("public_store")
+                .collection(TenantConfigContract.COLLECTION_CONFIG)
+                .document(TenantConfigContract.DOC_MARKETING)
                 .set(updatePayload, SetOptions.merge())
                 .await()
 
             firestore.collection("tenant_directory")
                 .document(tenantId)
-                .set(updatePayload, SetOptions.merge())
+                .set(
+                    mapOf(
+                        "publicStoreUrl" to publicStoreUrl,
+                        "publicDomain" to publicDomain,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    ),
+                    SetOptions.merge()
+                )
                 .await()
         }
     }

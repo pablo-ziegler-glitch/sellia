@@ -11,8 +11,12 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class MarketingConfigViewModel @Inject constructor(
     private val repository: MarketingConfigRepository
-) : ViewModel() {
+ ) : ViewModel() {
     val settings = repository.settings
+
+    init {
+        viewModelScope.launch { repository.refreshFromCloud() }
+    }
 
     fun updateSettings(updated: MarketingSettings) {
         viewModelScope.launch {

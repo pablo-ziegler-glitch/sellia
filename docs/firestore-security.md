@@ -34,13 +34,22 @@ Con esta consolidación, cualquier cambio futuro de política por rol debe tocar
 
 ## Validación con Emulator
 
-La validación objetivo para Emulator contempla:
+Se incorporó una suite de pruebas para Emulator en `tests/firestore.rules.emulator.test.js` con cobertura de:
 
-- `owner` / `admin` → permitidos para gestión de usuarios.
-- `manager` / `cashier` / `viewer` → denegados en escrituras administrativas de `tenant_users` y `users`.
+- `owner` / `admin` → permitidos para escrituras administrativas en `tenant_users`, `users` y `account_requests`.
+- `manager` / `cashier` / `viewer` → denegados para las mismas operaciones administrativas.
 
-## Política de mantenimiento (`maintenance_tasks`)
+Comando de ejecución:
 
-- Lectura permitida para `owner`/`admin` del tenant o usuarios con `MAINTENANCE_READ`.
-- Escritura (create/update/delete) permitida para `owner`/`admin` del tenant o usuarios con `MAINTENANCE_WRITE`.
-- Se valida integridad mínima de documento: `tenantId`, `title`, `status`, `priority`, timestamps y trazabilidad (`trace`).
+```bash
+npm run test:firestore-rules
+```
+
+## Breaking change de permisos
+
+> **Breaking change**: desde esta versión, `manager` deja de tener acceso a flujos administrativos de gestión de usuarios en Firestore.
+
+Impacto operativo esperado:
+
+- Flujos internos que usaban cuentas `manager` para alta/baja/edición administrativa de usuarios deben migrarse a cuentas `owner` o `admin`.
+- Si se requiere delegación parcial, debe hacerse por UX/backend sin ampliar reglas administrativas de Firestore.

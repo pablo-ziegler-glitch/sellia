@@ -18,12 +18,16 @@ import kotlinx.coroutines.launch
 class SecuritySettingsViewModel @Inject constructor(
     private val securityConfigRepository: SecurityConfigRepository,
     private val authManager: AuthManager
-) : ViewModel() {
+ ) : ViewModel() {
     val settings: StateFlow<SecuritySettings> = securityConfigRepository.settings.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         SecuritySettings()
     )
+
+    init {
+        viewModelScope.launch { securityConfigRepository.refreshFromCloud() }
+    }
 
     private val _events = MutableSharedFlow<String>()
     val events = _events.asSharedFlow()

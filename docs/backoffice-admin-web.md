@@ -1,0 +1,52 @@
+# Backoffice web separado del sitio público
+
+Se agregó un frontend independiente en `public/admin/` para desacoplar operación interna del catálogo público.
+
+## Objetivos de seguridad y operación
+
+- Autenticación con Firebase Auth (`email/password` + Google opcional).
+- Sesión persistente con `browserLocalPersistence`.
+- Logout seguro y controlado desde UI.
+- Validación de perfil en `users/{uid}` antes de habilitar navegación.
+- Guards de rutas por rol alineados a `docs/security/ROLE_PERMISSIONS_MATRIX.md`.
+- Hardening básico: expiración por inactividad, refresh de token, estados de acceso denegado y cuenta sin tenant.
+
+## Perfil requerido en Firestore
+
+Documento: `users/{uid}`
+
+Campos mínimos:
+
+```json
+{
+  "tenantId": "tenant_demo",
+  "role": "admin",
+  "status": "active"
+}
+```
+
+Reglas:
+- `tenantId`: obligatorio.
+- `role`: uno de `owner|admin|manager|cashier` para backoffice.
+- `status`: debe ser `active`.
+
+## Navegación inicial (backoffice)
+
+- `#/dashboard`
+- `#/settings/pricing`
+- `#/settings/marketing`
+- `#/settings/users`
+- `#/settings/cloud-services`
+- `#/maintenance`
+
+`#/maintenance` es explícitamente operativa (sin venta/carrito).
+
+## Acceso local
+
+```bash
+python3 -m http.server 8080 --directory public
+```
+
+Abrir:
+- Sitio público: `http://localhost:8080/`
+- Backoffice: `http://localhost:8080/admin/`
