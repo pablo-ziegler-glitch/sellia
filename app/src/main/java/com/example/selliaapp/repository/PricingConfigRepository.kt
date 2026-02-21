@@ -13,6 +13,7 @@ import com.example.selliaapp.data.local.entity.PricingMlShippingTierEntity
 import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
+import com.example.selliaapp.data.remote.TenantConfigContract
 import com.example.selliaapp.di.AppModule
 import com.example.selliaapp.auth.TenantProvider
 import com.google.firebase.firestore.FieldValue
@@ -40,20 +41,24 @@ class PricingConfigRepository(
         val tenantId = runCatching { tenantProvider.requireTenantId() }.getOrNull() ?: return@withContext false
         val snapshot = firestore.collection("tenants")
             .document(tenantId)
-            .collection("config")
-            .document("pricing")
+            .collection(TenantConfigContract.COLLECTION_CONFIG)
+            .document(TenantConfigContract.DOC_PRICING)
             .get()
             .await()
 
         if (!snapshot.exists()) return@withContext false
         val payload = snapshot.data.orEmpty()
+        val canonicalData = snapshot.get(TenantConfigContract.Fields.DATA) as? Map<*, *>
 
-        val settingsMap = snapshot.get("settings") as? Map<*, *> ?: return@withContext false
+        val settingsMap = (canonicalData?.get("settings") as? Map<*, *>)
+            ?: (snapshot.get("settings") as? Map<*, *>)
+            ?: return@withContext false
         val remoteSettings = settingsFromMap(settingsMap) ?: return@withContext false
         pricingSettingsDao.upsert(remoteSettings)
 
-        if (payload.containsKey("fixedCosts")) {
-            val remoteFixedCosts = (snapshot.get("fixedCosts") as? List<*>)
+        val fixedCostsRaw = canonicalData?.get("fixedCosts") ?: snapshot.get("fixedCosts")
+        if (fixedCostsRaw != null) {
+            val remoteFixedCosts = (fixedCostsRaw as? List<*>)
                 .orEmpty()
                 .mapNotNull { row -> fixedCostFromMap(row as? Map<*, *>) }
             val remoteFixedCostIds = remoteFixedCosts.map { it.id }.toSet()
@@ -65,8 +70,9 @@ class PricingConfigRepository(
             remoteFixedCosts.forEach { pricingFixedCostDao.upsert(it) }
         }
 
-        if (payload.containsKey("mlFixedCostTiers")) {
-            val remoteMlFixedTiers = (snapshot.get("mlFixedCostTiers") as? List<*>)
+        val mlFixedRaw = canonicalData?.get("mlFixedCostTiers") ?: snapshot.get("mlFixedCostTiers")
+        if (mlFixedRaw != null) {
+            val remoteMlFixedTiers = (mlFixedRaw as? List<*>)
                 .orEmpty()
                 .mapNotNull { row -> mlFixedCostTierFromMap(row as? Map<*, *>) }
             val remoteMlFixedTierIds = remoteMlFixedTiers.map { it.id }.toSet()
@@ -78,8 +84,9 @@ class PricingConfigRepository(
             remoteMlFixedTiers.forEach { pricingMlFixedCostTierDao.upsert(it) }
         }
 
-        if (payload.containsKey("mlShippingTiers")) {
-            val remoteMlShippingTiers = (snapshot.get("mlShippingTiers") as? List<*>)
+        val mlShippingRaw = canonicalData?.get("mlShippingTiers") ?: snapshot.get("mlShippingTiers")
+        if (mlShippingRaw != null) {
+            val remoteMlShippingTiers = (mlShippingRaw as? List<*>)
                 .orEmpty()
                 .mapNotNull { row -> mlShippingTierFromMap(row as? Map<*, *>) }
             val remoteMlShippingTierIds = remoteMlShippingTiers.map { it.id }.toSet()
@@ -317,6 +324,15 @@ class PricingConfigRepository(
             val mlFixedTiers = pricingMlFixedCostTierDao.getAllOnce()
             val mlShippingTiers = pricingMlShippingTierDao.getAllOnce()
             val payload = mapOf(
+                TenantConfigContract.Fields.SCHEMA_VERSION to TenantConfigContract.CURRENT_SCHEMA_VERSION,
+                TenantConfigContract.Fields.UPDATED_AT to FieldValue.serverTimestamp(),
+                TenantConfigContract.Fields.UPDATED_BY to "android_pricing",
+                TenantConfigContract.Fields.AUDIT to mapOf(
+                    "event" to "UPSERT_PRICING_CONFIG",
+                    "at" to FieldValue.serverTimestamp(),
+                    "by" to "android_pricing"
+                ),
+                TenantConfigContract.Fields.DATA to mapOf(
                 "tenantId" to tenantId,
                 "settings" to mapOf(
                     "ivaTerminalPercent" to settings.ivaTerminalPercent,
@@ -360,8 +376,8 @@ class PricingConfigRepository(
             )
             firestore.collection("tenants")
                 .document(tenantId)
-                .collection("config")
-                .document("pricing")
+                .collection(TenantConfigContract.COLLECTION_CONFIG)
+                .document(TenantConfigContract.DOC_PRICING)
                 .set(payload)
                 .await()
     }

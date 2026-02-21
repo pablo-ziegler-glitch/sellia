@@ -37,6 +37,7 @@ class PricingConfigViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            repository.pullPricingConfigFromCloud()
             _settings.value = repository.getSettings()
             repository.observeSettings().collect { _settings.value = it }
         }
