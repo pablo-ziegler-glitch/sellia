@@ -14,7 +14,8 @@ import javax.inject.Singleton
 
 @Singleton
 class FirebaseSessionCoordinator @Inject constructor(
-    private val firebaseAuth: FirebaseAuth
+    private val firebaseAuth: FirebaseAuth,
+    private val sessionUiNotifier: SessionUiNotifier
 ) {
 
     suspend fun <T> runWithFreshSession(block: suspend () -> T): T {
@@ -76,9 +77,7 @@ class FirebaseSessionCoordinator @Inject constructor(
     }
 
     private fun mapToFunctionalError(error: Throwable): FirebaseSessionException {
-        if (shouldForceSignOut(error)) {
-            firebaseAuth.signOut()
-        }
+        emitUiAlertIfNeeded(error)
 
         val userMessage = when (error) {
             is FirebaseAuthInvalidUserException -> {
@@ -111,8 +110,7 @@ class FirebaseSessionCoordinator @Inject constructor(
                 }
 
                 StorageException.ERROR_NOT_AUTHORIZED -> {
-                    "Tu usuario está autenticado, pero no tiene permisos para subir archivos en este tenant. " +
-                        "Verificá rol activo, tenant asignado y reglas de Storage."
+                    "Tu usuario está autenticado, pero no tiene permisos para subir archivos en este tenant."
                 }
 
                 StorageException.ERROR_RETRY_LIMIT_EXCEEDED,
@@ -137,6 +135,42 @@ class FirebaseSessionCoordinator @Inject constructor(
         return FirebaseSessionException(userMessage = userMessage, cause = error)
     }
 
+    private fun emitUiAlertIfNeeded(error: Throwable) {
+        if (shouldForceSignOut(error)) {
+            sessionUiNotifier.notifySessionExpired(
+                message = "Tu sesión venció por seguridad. Necesitás volver a iniciar sesión."
+            )
+            return
+        }
+
+        if (isPermissionDenied(error)) {
+            sessionUiNotifier.notifyMissingPermission(
+                message = "No tenés permisos para ejecutar esta acción.",
+                requiredPermission = requiredPermissionFor(error)
+            )
+        }
+    }
+
+    private fun isPermissionDenied(error: Throwable): Boolean = when (error) {
+        is FirebaseFirestoreException -> error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
+        is StorageException -> error.errorCode == StorageException.ERROR_NOT_AUTHORIZED
+        else -> false
+    }
+
+    private fun requiredPermissionFor(error: Throwable): String = when (error) {
+        is StorageException -> {
+            "Escritura en Storage para el tenant activo (rol owner/manager/cashier/admin o super admin)."
+        }
+
+        is FirebaseFirestoreException -> {
+            "Permiso de escritura/lectura en Firestore según reglas del tenant y rol activo."
+        }
+
+        else -> {
+            "Permiso del módulo solicitado para tu rol actual."
+        }
+    }
+
     private fun shouldForceSignOut(error: Throwable): Boolean = when (error) {
         is FirebaseAuthInvalidUserException,
         is FirebaseAuthInvalidCredentialsException -> true
@@ -157,7 +191,9 @@ class FirebaseSessionCoordinator @Inject constructor(
     }
 
     private fun buildSessionExpiredException(): FirebaseSessionException {
-        firebaseAuth.signOut()
+        sessionUiNotifier.notifySessionExpired(
+            message = "Tu sesión expiró. Para continuar necesitás volver a iniciar sesión."
+        )
         return FirebaseSessionException("Tu sesión expiró. Iniciá sesión nuevamente.")
     }
 

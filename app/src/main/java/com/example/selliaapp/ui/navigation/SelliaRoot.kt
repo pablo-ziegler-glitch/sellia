@@ -6,6 +6,9 @@ import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -22,6 +25,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.example.selliaapp.R
 import com.example.selliaapp.auth.AuthState
+import com.example.selliaapp.auth.SessionUiAlert
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.auth.RequiredAuthAction
 import com.example.selliaapp.sync.SyncScheduler
@@ -34,6 +38,7 @@ import com.example.selliaapp.viewmodel.RegisterViewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.flow.collect
 
 @Composable
 fun SelliaRoot(
@@ -49,6 +54,7 @@ fun SelliaRoot(
     var isRegistering by rememberSaveable { mutableStateOf(false) }
     var loginEmail by rememberSaveable { mutableStateOf("") }
     var googleAuthFlow by rememberSaveable { mutableStateOf(GoogleAuthFlow.LOGIN) }
+    var activeSessionAlert by remember { mutableStateOf<SessionUiAlert?>(null) }
 
     val context = LocalContext.current
 
@@ -107,6 +113,48 @@ fun SelliaRoot(
             authViewModel.reportAuthError("Falta configurar el web client id de Google.")
         } else {
             googleSignInLauncher.launch(googleSignInClient.signInIntent)
+        }
+    }
+
+
+    LaunchedEffect(Unit) {
+        authViewModel.sessionAlerts.collect { alert ->
+            activeSessionAlert = alert
+        }
+    }
+
+    activeSessionAlert?.let { alert ->
+        when (alert) {
+            is SessionUiAlert.SessionExpired -> {
+                AlertDialog(
+                    onDismissRequest = { },
+                    title = { Text("Sesión vencida") },
+                    text = { Text(alert.message) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            activeSessionAlert = null
+                            authViewModel.signOut()
+                        }) {
+                            Text("Volver a iniciar sesión")
+                        }
+                    }
+                )
+            }
+
+            is SessionUiAlert.MissingPermission -> {
+                AlertDialog(
+                    onDismissRequest = { activeSessionAlert = null },
+                    title = { Text("Permiso insuficiente") },
+                    text = {
+                        Text("${alert.message}\n\nPermiso requerido:\n${alert.requiredPermission}")
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { activeSessionAlert = null }) {
+                            Text("Entendido")
+                        }
+                    }
+                )
+            }
         }
     }
 
