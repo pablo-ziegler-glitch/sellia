@@ -48,6 +48,9 @@ fun YoVendoLoadingScene(
     val sellerColor = MaterialTheme.colorScheme.primary
     val buyerColor = MaterialTheme.colorScheme.secondary
     val packageColor = Color(0xFFF59E0B)
+    val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+    val trackStrokeColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+    val laneColor = MaterialTheme.colorScheme.surfaceVariant
 
     Column(
         modifier = modifier
@@ -93,7 +96,7 @@ fun YoVendoLoadingScene(
             val laneTop = centerY - (personRadius * 0.4f)
             val laneHeight = personRadius * 0.8f
             drawRoundRect(
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = laneColor,
                 topLeft = Offset(sellerX + personRadius, laneTop),
                 size = androidx.compose.ui.geometry.Size(
                     width = (buyerX - sellerX) - (personRadius * 2),
@@ -112,7 +115,7 @@ fun YoVendoLoadingScene(
             )
 
             drawRoundRect(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
+                color = trackColor,
                 topLeft = Offset(0f, size.height - 16.dp.toPx()),
                 size = androidx.compose.ui.geometry.Size(size.width, 8.dp.toPx()),
                 cornerRadius = CornerRadius(8.dp.toPx())
@@ -125,7 +128,7 @@ fun YoVendoLoadingScene(
             )
 
             drawRoundRect(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                color = trackStrokeColor,
                 topLeft = Offset(0f, size.height - 16.dp.toPx()),
                 size = androidx.compose.ui.geometry.Size(size.width, 8.dp.toPx()),
                 cornerRadius = CornerRadius(8.dp.toPx()),

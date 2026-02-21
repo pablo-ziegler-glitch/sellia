@@ -3,14 +3,13 @@ package com.example.selliaapp.ui.screens.barcode
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
-import android.util.Size
 import androidx.activity.compose.BackHandler
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
-import androidx.camera.core.ResolutionSelector
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -70,11 +69,6 @@ fun BarcodeScannerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-
-    var lastTs by remember { mutableStateOf(0L) }
-    val windowMs = 800L
-    var flashlightOn by remember { mutableStateOf(false) }
-    var manualBarcode by remember { mutableStateOf("") }
 
     // Estado de permiso de cámara
     var hasCameraPermission by remember {
