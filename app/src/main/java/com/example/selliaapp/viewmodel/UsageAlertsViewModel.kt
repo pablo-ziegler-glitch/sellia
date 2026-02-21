@@ -32,6 +32,7 @@ data class UsageAlertsUiState(
     val error: String? = null
 ) {
     val unreadCount: Int = alerts.count { !it.isRead }
+    val hasContent: Boolean = alerts.isNotEmpty() || currentMetrics.isNotEmpty()
 }
 
 @HiltViewModel
@@ -68,15 +69,20 @@ class UsageAlertsViewModel @Inject constructor(
             val overrides = overridesResult.getOrDefault(emptyList())
             val currentMetrics = metricsResult.getOrDefault(emptyMap())
             val summaries = buildLimitSummaries(alerts, overrides, currentMetrics)
+            val firstErrorMessage = alertsResult.exceptionOrNull()?.message
+                ?: overridesResult.exceptionOrNull()?.message
+                ?: metricsResult.exceptionOrNull()?.message
+            val shouldDisplayBlockingError = firstErrorMessage != null &&
+                alerts.isEmpty() &&
+                currentMetrics.isEmpty() &&
+                summaries.all { it.currentValue <= 0.0 }
             _state.update {
                 it.copy(
                     alerts = alerts,
                     limitSummaries = summaries,
                     currentMetrics = currentMetrics,
                     loading = false,
-                    error = alertsResult.exceptionOrNull()?.message
-                        ?: overridesResult.exceptionOrNull()?.message
-                        ?: metricsResult.exceptionOrNull()?.message
+                    error = if (shouldDisplayBlockingError) firstErrorMessage else null
                 )
             }
         }
