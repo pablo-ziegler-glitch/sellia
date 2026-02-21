@@ -39,6 +39,9 @@ class AuthManager @Inject constructor(
     private val _lastSessionRefreshAtMs = MutableStateFlow<Long?>(null)
     val lastSessionRefreshAtMs: StateFlow<Long?> = _lastSessionRefreshAtMs
 
+    private val _loadingUiState = MutableStateFlow(AuthLoadingUiState())
+    val loadingUiState: StateFlow<AuthLoadingUiState> = _loadingUiState
+
     private val refreshSignals = MutableSharedFlow<FirebaseUser?>(
         replay = 0,
         extraBufferCapacity = 1,
@@ -54,29 +57,36 @@ class AuthManager @Inject constructor(
     }
 
     suspend fun signIn(email: String, password: String): Result<AuthSession> = runCatching {
+        showLoading(progress = 0.1f, label = "Validando credenciales...")
         _state.value = AuthState.Loading
         val result = firebaseAuth.signInWithEmailAndPassword(email, password).await()
         val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
+        showLoading(progress = 0.35f, label = "Verificando tu cuenta...")
         enforceEmailVerification(user)
+        showLoading(progress = 0.6f, label = "Sincronizando tu perfil...")
         val session = fetchSession(user)
         publishAuthenticatedState(session)
         session
     }.onFailure { error ->
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión"))
+        resetLoading()
     }
 
     suspend fun signInWithGoogle(idToken: String, allowOnboardingFallback: Boolean = true): Result<AuthSession> =
         runCatching {
+            showLoading(progress = 0.1f, label = "Conectando con Google...")
             _state.value = AuthState.Loading
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             val result = firebaseAuth.signInWithCredential(credential).await()
             val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
+            showLoading(progress = 0.55f, label = "Recuperando datos de tu tienda...")
             val session = runCatching { fetchSession(user) }
                 .getOrElse { ensurePublicCustomerSession(user, allowOnboardingFallback) }
             publishAuthenticatedState(session)
             session
         }.onFailure { error ->
             _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo iniciar sesión con Google"))
+            resetLoading()
         }
 
     suspend fun completePublicCustomerOnboarding(tenantId: String, tenantName: String?): Result<AuthSession> =
@@ -148,13 +158,16 @@ class AuthManager @Inject constructor(
                 session = pendingSessionFromCurrentUser(),
                 requiredAction = RequiredAuthAction.SELECT_TENANT
             )
+            resetLoading()
         }
 
     fun reportAuthError(message: String) {
         _state.value = AuthState.Error(message)
+        resetLoading()
     }
 
     suspend fun refreshSession(): Result<AuthSession> = runCatching {
+        showLoading(progress = 0.2f, label = "Actualizando sesión...")
         _state.value = AuthState.Loading
         val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
         val session = fetchSession(user)
@@ -162,12 +175,14 @@ class AuthManager @Inject constructor(
         session
     }.onFailure { error ->
         _state.value = AuthState.Error(AuthErrorMapper.toUserMessage(error, "No se pudo actualizar la sesión"))
+        resetLoading()
     }
 
     fun signOut() {
         firebaseAuth.signOut()
         _state.value = AuthState.Unauthenticated
         _lastSessionRefreshAtMs.value = null
+        resetLoading()
     }
 
     suspend fun updatePassword(newPassword: String): Result<Unit> = runCatching {
@@ -220,26 +235,39 @@ class AuthManager @Inject constructor(
         if (user == null) {
             _state.value = AuthState.Unauthenticated
             _lastSessionRefreshAtMs.value = null
+            resetLoading()
             return
         }
 
-        _state.value = AuthState.Loading
+        if (shouldShowLoadingFor(user)) {
+            showLoading(progress = 0.15f, label = "Validando tu sesión...")
+            _state.value = AuthState.Loading
+        }
         runCatching { fetchSessionWithRetry(user) }
             .onSuccess { session -> publishAuthenticatedState(session) }
             .onFailure { error ->
                 _state.value = AuthState.Error(
                     error.message ?: "No se pudo resolver el tenantId"
                 )
+                resetLoading()
             }
     }
 
+    private fun shouldShowLoadingFor(user: FirebaseUser): Boolean {
+        val currentState = _state.value
+        val authenticated = currentState as? AuthState.Authenticated ?: return true
+        return authenticated.session.uid != user.uid
+    }
+
     private fun publishAuthenticatedState(session: AuthSession) {
+        showLoading(progress = 1f, label = "Listo")
         val refreshedAtMs = System.currentTimeMillis()
         _lastSessionRefreshAtMs.value = refreshedAtMs
         _state.value = AuthState.Authenticated(
             session = session,
             refreshedAtMs = refreshedAtMs
         )
+        resetLoading()
     }
 
     private suspend fun enforceEmailVerification(user: FirebaseUser) {
@@ -256,6 +284,8 @@ class AuthManager @Inject constructor(
         val maxAttempts = 3
         var lastError: Throwable? = null
         repeat(maxAttempts) { attempt ->
+            val progress = 0.35f + ((attempt + 1f) / maxAttempts.toFloat()) * 0.45f
+            showLoading(progress = progress.coerceIn(0f, 0.9f), label = "Sincronizando perfil (${attempt + 1}/$maxAttempts)...")
             runCatching { fetchSession(user) }
                 .onSuccess { return it }
                 .onFailure { lastError = it }
@@ -267,6 +297,7 @@ class AuthManager @Inject constructor(
     }
 
     private suspend fun fetchSession(user: FirebaseUser): AuthSession {
+        showLoading(progress = 0.75f, label = "Leyendo permisos y tienda...")
         val snapshot = firestore.collection("users").document(user.uid).get().await()
         val status = snapshot.getString("status")?.lowercase()
         if (!status.isNullOrBlank() && status != "active") {
@@ -290,6 +321,7 @@ class AuthManager @Inject constructor(
                 }
                 throw MissingTenantContextException()
             }
+        showLoading(progress = 0.92f, label = "Finalizando ingreso...")
         return AuthSession(
             uid = user.uid,
             tenantId = tenantId,
@@ -300,6 +332,7 @@ class AuthManager @Inject constructor(
     }
 
     private suspend fun ensurePublicCustomerSession(user: FirebaseUser, allowOnboardingFallback: Boolean): AuthSession {
+        showLoading(progress = 0.82f, label = "Preparando alta de cliente...")
         val existing = runCatching { fetchSession(user) }.getOrNull()
         if (existing != null) return existing
 
@@ -328,6 +361,17 @@ class AuthManager @Inject constructor(
             requiredAction = RequiredAuthAction.SELECT_TENANT
         )
         throw MissingTenantContextException()
+    }
+
+    private fun showLoading(progress: Float, label: String) {
+        _loadingUiState.value = AuthLoadingUiState(
+            progress = progress.coerceIn(0f, 1f),
+            label = label
+        )
+    }
+
+    private fun resetLoading() {
+        _loadingUiState.value = AuthLoadingUiState()
     }
 
     private fun pendingSessionFromCurrentUser(): PendingAuthSession {
