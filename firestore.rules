@@ -185,6 +185,14 @@ service cloud.firestore {
         );
     }
 
+    function isRestrictedTenantDocumentPath(documentPath) {
+      return documentPath.matches('maintenance_tasks(/.*)?')
+        || documentPath.matches('config(/.*)?')
+        || documentPath.matches('orders(/.*)?')
+        || documentPath.matches('payments(/.*)?')
+        || documentPath.matches('public_products(/.*)?');
+    }
+
     function isSelfTenantUserWrite() {
       return isAuthenticated()
         && request.resource.data.tenantId is string
@@ -333,6 +341,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedByUid == request.auth.uid;
       allow delete: if isTenantUser(tenantId) && hasMaintenanceWriteAccess();
+    }
 
     match /tenants/{tenantId}/config/{configId} {
       allow read: if isTenantUser(tenantId);
@@ -392,10 +401,10 @@ service cloud.firestore {
 
     match /tenants/{tenantId}/{document=**} {
       allow read: if isTenantUser(tenantId)
-        && !document.matches('maintenance_tasks(/.*)?');
+        && !isRestrictedTenantDocumentPath(document);
       allow write: if isTenantUser(tenantId)
         && hasTenantWriteRole()
-        && !document.matches('maintenance_tasks(/.*)?');
+        && !isRestrictedTenantDocumentPath(document);
     }
   }
 }
