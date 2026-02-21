@@ -1,4 +1,4 @@
- package com.example.selliaapp.repository
+package com.example.selliaapp.repository
 
 import android.content.ContentResolver
 import android.content.Context
@@ -8,6 +8,7 @@ import com.example.selliaapp.data.csv.ProductCsvImporter
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.model.Product
+import com.example.selliaapp.data.model.stock.StockMovementWithProduct
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -54,9 +55,10 @@ class FakeScanProductRepository(
     override suspend fun getByBarcodeOrNull(barcode: String): ProductEntity? =
         products.firstOrNull { it.barcode == barcode }
 
-    override suspend fun getByCodeOrNull(code: String): ProductEntity? {
-        TODO("Not yet implemented")
-    }
+    override suspend fun getByCodeOrNull(code: String): ProductEntity? =
+        products.firstOrNull { it.code == code }
+
+    override suspend fun getGlobalBarcodeMatch(barcode: String): IProductRepository.GlobalBarcodeMatch? = null
 
     // ---------- Búsquedas / listados ----------
     override fun search(q: String?): Flow<List<ProductEntity>> {
@@ -77,9 +79,9 @@ class FakeScanProductRepository(
     override fun observeStockMovements(
         productId: Int,
         limit: Int
-    ): Flow<List<com.example.selliaapp.data.model.stock.StockMovementWithProduct>> = flowOf(emptyList())
+    ): Flow<List<StockMovementWithProduct>> = flowOf(emptyList())
 
-    override fun observeRecentStockMovements(limit: Int): Flow<List<com.example.selliaapp.data.model.stock.StockMovementWithProduct>> =
+    override fun observeRecentStockMovements(limit: Int): Flow<List<StockMovementWithProduct>> =
         flowOf(emptyList())
 
     // ---------- Cache util ----------
@@ -101,7 +103,8 @@ class FakeScanProductRepository(
         val idx = products.indexOfFirst { it.id == productId }
         if (idx < 0) return false
         val current = products[idx]
-        val newQty = (current.quantity ?: 0) + delta
+        val q = (current.quantity ?: 0) + delta
+        val newQty = if (q < 0) 0 else q
         products[idx] = current.copy(quantity = newQty)
         productsFlow.value = products.toList()
         return true
@@ -134,6 +137,13 @@ class FakeScanProductRepository(
 
     // ---------- Sync ----------
     override suspend fun syncDown(): Int = 0
+
+    // ---------- Pricing ----------
+    override suspend fun recalculateAutoPricingForAll(
+        reason: String,
+        changedBy: String,
+        source: String
+    ): Int = 0
 
     // Enum espejo (no lo referenciamos directamente)
     enum class ImportStrategy { Append, Replace }
