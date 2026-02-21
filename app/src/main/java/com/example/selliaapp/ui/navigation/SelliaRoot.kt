@@ -3,9 +3,7 @@ package com.example.selliaapp.ui.navigation
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -14,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -26,6 +23,7 @@ import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.auth.RequiredAuthAction
 import com.example.selliaapp.sync.SyncScheduler
+import com.example.selliaapp.ui.components.YoVendoLoadingScene
 import com.example.selliaapp.ui.screens.auth.LoginScreen
 import com.example.selliaapp.ui.screens.auth.RegisterScreen
 import com.example.selliaapp.ui.screens.auth.TenantOnboardingRequiredScreen
@@ -43,6 +41,7 @@ fun SelliaRoot(
     registerViewModel: RegisterViewModel = hiltViewModel()
 ) {
     val authState by authViewModel.authState.collectAsState()
+    val loadingUiState by authViewModel.loadingUiState.collectAsState()
     val registerState by registerViewModel.uiState.collectAsState()
 
     var isRegistering by rememberSaveable { mutableStateOf(false) }
@@ -111,12 +110,10 @@ fun SelliaRoot(
 
     when (authState) {
         is AuthState.Loading -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
+            YoVendoLoadingScene(
+                loadingUiState = loadingUiState,
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
         is AuthState.Authenticated -> {
