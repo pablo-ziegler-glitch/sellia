@@ -26,7 +26,14 @@ data class AppVersionHistoryEntry(
     val versionName: String,
     val versionCode: Long,
     val isCurrentInstalled: Boolean,
-    val mergedPrs: List<String>
+    val mergedPrs: List<String>,
+    val changelog: VersionChangelog
+)
+
+data class VersionChangelog(
+    val majorChanges: List<String> = emptyList(),
+    val minorChanges: List<String> = emptyList(),
+    val fixes: List<String> = emptyList()
 )
 
 @Singleton
@@ -59,7 +66,8 @@ class AppVersionRepository @Inject constructor(
                         versionName = currentVersion.versionName,
                         versionCode = currentVersion.versionCode,
                         isCurrentInstalled = true,
-                        mergedPrs = mergedPrs()
+                        mergedPrs = mergedPrs(),
+                        changelog = changelogFrom(mergedPrs = mergedPrs())
                     )
                 )
             }
@@ -80,11 +88,18 @@ class AppVersionRepository @Inject constructor(
                     .orEmpty()
                     .mapNotNull { it?.toString()?.trim() }
                     .filter { it.isNotBlank() }
+                val changelog = changelogFrom(
+                    mergedPrs = prs,
+                    majorChanges = stringListFromAny(doc.get("majorChanges")),
+                    minorChanges = stringListFromAny(doc.get("minorChanges")),
+                    fixes = stringListFromAny(doc.get("fixes"))
+                )
                 AppVersionHistoryEntry(
                     versionName = versionName,
                     versionCode = versionCode,
                     isCurrentInstalled = versionName == currentVersion.versionName && versionCode == currentVersion.versionCode,
-                    mergedPrs = prs
+                    mergedPrs = prs,
+                    changelog = changelog
                 )
             }
 
@@ -94,7 +109,8 @@ class AppVersionRepository @Inject constructor(
                         versionName = currentVersion.versionName,
                         versionCode = currentVersion.versionCode,
                         isCurrentInstalled = true,
-                        mergedPrs = mergedPrs()
+                        mergedPrs = mergedPrs(),
+                        changelog = changelogFrom(mergedPrs = mergedPrs())
                     )
                 ) + mapped
             }
@@ -117,6 +133,9 @@ class AppVersionRepository @Inject constructor(
                 "versionName" to currentVersion.versionName,
                 "versionCode" to currentVersion.versionCode,
                 "mergedPrs" to mergedPrs,
+                "majorChanges" to emptyList<String>(),
+                "minorChanges" to mergedPrs.map { "Detalle PR: $it" },
+                "fixes" to emptyList<String>(),
                 "buildType" to BuildConfig.BUILD_TYPE,
                 "lastSeenAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp(),
@@ -154,6 +173,41 @@ class AppVersionRepository @Inject constructor(
     private fun mergedPrs(): List<String> = BuildConfig.MERGED_PRS
         .split(",")
         .map { it.trim() }
+        .filter { it.isNotBlank() }
+
+    private fun changelogFrom(
+        mergedPrs: List<String>,
+        majorChanges: List<String> = emptyList(),
+        minorChanges: List<String> = emptyList(),
+        fixes: List<String> = emptyList()
+    ): VersionChangelog {
+        val normalizedMajor = sanitizeChangelogItems(majorChanges)
+        val normalizedMinor = sanitizeChangelogItems(minorChanges)
+        val normalizedFixes = sanitizeChangelogItems(fixes)
+
+        if (normalizedMajor.isNotEmpty() || normalizedMinor.isNotEmpty() || normalizedFixes.isNotEmpty()) {
+            return VersionChangelog(
+                majorChanges = normalizedMajor,
+                minorChanges = normalizedMinor,
+                fixes = normalizedFixes
+            )
+        }
+
+        return VersionChangelog(
+            minorChanges = sanitizeChangelogItems(
+                mergedPrs.map { "Detalle PR: $it" }
+            )
+        )
+    }
+
+    private fun stringListFromAny(value: Any?): List<String> =
+        (value as? List<*>)
+            .orEmpty()
+            .mapNotNull { it?.toString() }
+
+    private fun sanitizeChangelogItems(items: List<String>): List<String> = items
+        .map { it.replace(Regex("(?i)\\b(codex|ai|ia)\\b"), "") }
+        .map { it.replace(Regex("\\s+"), " ").trim(' ', '-', '•', ':', ';') }
         .filter { it.isNotBlank() }
 
     private fun resolveInstallationId(): String {

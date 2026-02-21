@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -15,15 +16,19 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.repository.AppVersionHistoryEntry
+import com.example.selliaapp.repository.VersionChangelog
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.AppVersionViewModel
 
@@ -135,9 +140,73 @@ private fun PreviousVersionCard(item: AppVersionHistoryEntry) {
                 Text(
                     text = "PRs: ${item.mergedPrs.joinToString()}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+
+            ChangelogSection(changelog = item.changelog)
         }
+    }
+}
+
+
+@Composable
+private fun ChangelogSection(changelog: VersionChangelog) {
+    val hasDetails = changelog.majorChanges.isNotEmpty() || changelog.minorChanges.isNotEmpty() || changelog.fixes.isNotEmpty()
+    if (!hasDetails) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ChangelogGroup(title = "Cambios mayores", items = changelog.majorChanges)
+        ChangelogGroup(title = "Cambios menores", items = changelog.minorChanges)
+        ChangelogGroup(title = "Fixes", items = changelog.fixes)
+    }
+}
+
+@Composable
+private fun ChangelogGroup(
+    title: String,
+    items: List<String>
+) {
+    if (items.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold
+        )
+        items.forEach { entry ->
+            ChangelogBullet(text = entry)
+        }
+    }
+}
+
+@Composable
+private fun ChangelogBullet(text: String) {
+    androidx.compose.foundation.layout.Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Surface(
+            modifier = Modifier
+                .padding(top = 7.dp)
+                .size(6.dp)
+                .clip(MaterialTheme.shapes.small),
+            color = MaterialTheme.colorScheme.primary,
+            content = {}
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
