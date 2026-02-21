@@ -39,6 +39,7 @@ Instalar en un dispositivo conectado (opcional):
 │   ├── styles.css       # Estilos globales (mobile-first)
 │   ├── main.js          # Lógica de interacción de la landing
 │   ├── data/            # JSON de productos
+│   ├── admin/           # Backoffice interno (auth + guards + hardening)
 │   └── assets/          # Imágenes placeholder
  ├── gradle/              # Gradle wrapper
  ├── build.gradle.kts     # Configuración raíz de Gradle
@@ -67,6 +68,10 @@ El catálogo web es un sitio estático dentro de `public/`. Para previsualizarlo
 python3 -m http.server 8080 --directory public
 ```
 Luego abrí `http://localhost:8080` en el navegador.
+
+Backoffice separado (operación interna):
+- `http://localhost:8080/admin/`
+- Requiere Firebase Auth + perfil en `users/{uid}` (tenant/role/status).
 
 ## 🚀 Despliegue a producción (secuencia única y obligatoria)
 > Esta secuencia es **obligatoria** para evitar desalineación entre reglas/índices, funciones y hosting. No cambiar el orden.
