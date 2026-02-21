@@ -30,6 +30,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.domain.config.DevelopmentFeatureKey
 import com.example.selliaapp.viewmodel.config.DevelopmentOptionsViewModel
 
+@Suppress("DEPRECATION")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DevelopmentOptionsScreen(

@@ -25,6 +25,7 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @Singleton
 class AuthManager @Inject constructor(
     private val firebaseAuth: FirebaseAuth,

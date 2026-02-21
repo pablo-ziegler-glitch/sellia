@@ -31,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -603,7 +604,7 @@ private fun AccountRequestItem(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .menuAnchor(),
+                        .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true),
                     enabled = !isLoading
                 )
                 ExposedDropdownMenu(
@@ -809,7 +810,7 @@ private fun UserEditorDialog(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(),
+                            .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true),
                         enabled = canManageUsers
                     )
                     ExposedDropdownMenu(

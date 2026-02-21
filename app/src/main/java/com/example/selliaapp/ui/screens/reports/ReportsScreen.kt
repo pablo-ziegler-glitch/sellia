@@ -17,7 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -226,7 +225,7 @@ private fun StockValuationSection(
         ScenarioCard(scenario = scenario, currency = currency)
         if (index != report.scenarios.lastIndex) {
             Spacer(modifier = Modifier.height(10.dp))
-            Divider()
+            HorizontalDivider()
             Spacer(modifier = Modifier.height(10.dp))
         }
     }

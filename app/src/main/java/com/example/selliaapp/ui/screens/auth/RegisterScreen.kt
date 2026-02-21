@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -95,7 +96,7 @@ fun RegisterScreen(
                 readOnly = true,
                 enabled = !isLoading,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeExpanded) },
-                modifier = Modifier.menuAnchor()
+                modifier = Modifier.menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true)
             )
             ExposedDropdownMenu(
                 expanded = modeExpanded,
@@ -163,7 +164,7 @@ fun RegisterScreen(
                     readOnly = true,
                     enabled = !isLoading && !isLoadingTenants,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tenantExpanded) },
-                    modifier = Modifier.menuAnchor().width(280.dp)
+                    modifier = Modifier.menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true).width(280.dp)
                 )
                 ExposedDropdownMenu(
                     expanded = tenantExpanded,
