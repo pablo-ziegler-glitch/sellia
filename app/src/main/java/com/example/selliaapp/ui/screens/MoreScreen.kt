@@ -13,13 +13,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -83,7 +83,7 @@ fun MoreScreen(
                 )
                 ListItem(
                     headlineContent = { Text("Cerrar sesión") },
-                    leadingContent = { Icon(Icons.Default.Logout, contentDescription = null) },
+                    leadingContent = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onSignOut),
@@ -119,7 +119,7 @@ fun MoreScreen(
 
             ListItem(
                 headlineContent = { Text("Historial de stock") },
-                leadingContent = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
+                leadingContent = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onStockHistory),
@@ -128,11 +128,11 @@ fun MoreScreen(
                 overlineContent = null
             )
 
-            Divider()
+            HorizontalDivider()
             SectionTitle("Finanzas")
             ListItem(
                 headlineContent = { Text("Gastos") },
-                leadingContent = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
+                leadingContent = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onExpenses),
@@ -163,7 +163,7 @@ fun MoreScreen(
                 tonalElevation = 0.dp
             )
 
-            Divider()
+            HorizontalDivider()
             SectionTitle("Sistema")
             ListItem(
                 headlineContent = { Text("Configuración") },
@@ -177,7 +177,7 @@ fun MoreScreen(
             )
             ListItem(
                 headlineContent = { Text("Cerrar sesión") },
-                leadingContent = { Icon(Icons.Default.Logout, contentDescription = null) },
+                leadingContent = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onSignOut),

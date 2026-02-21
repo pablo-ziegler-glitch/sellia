@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.selliaapp.ui.navigation
 
 import android.app.Activity

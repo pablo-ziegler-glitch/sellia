@@ -20,6 +20,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @Singleton
 class CashRepositoryImpl @Inject constructor(
     private val cashSessionDao: CashSessionDao,
