@@ -812,3 +812,46 @@ main {
   letter-spacing: 0.04em;
   color: var(--muted);
 }
+
+.bo-shell {
+  max-width: 920px;
+  margin: 24px auto;
+  padding: 16px;
+}
+
+.bo-modules,
+.bo-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.bo-module,
+.bo-filter {
+  border: 1px solid #d0d7de;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.bo-module--active,
+.bo-filter--active {
+  background: #111827;
+  color: #fff;
+}
+
+.bo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.bo-list li {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+}

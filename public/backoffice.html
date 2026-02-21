@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sellia Backoffice</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="bo-shell">
+    <header>
+      <h1>Backoffice</h1>
+      <p>Módulos iniciales: Configuración, Usuarios, Mantenimiento, Reportes.</p>
+      <small>Ventas / Carrito fuera de alcance inicial.</small>
+    </header>
+
+    <nav class="bo-modules" aria-label="Dominios funcionales">
+      <button class="bo-module">Configuración</button>
+      <button class="bo-module">Usuarios</button>
+      <button class="bo-module bo-module--active">Mantenimiento</button>
+      <button class="bo-module">Reportes</button>
+    </nav>
+
+    <section>
+      <h2>Mantenimiento operativo</h2>
+      <div class="bo-filters">
+        <button data-filter="pending" class="bo-filter bo-filter--active">Pendientes</button>
+        <button data-filter="overdue" class="bo-filter">Vencidas</button>
+        <button data-filter="blocker" class="bo-filter">Bloqueantes operativas</button>
+      </div>
+      <ul id="maintenance-list" class="bo-list"></ul>
+    </section>
+  </main>
+
+  <script src="/backoffice.js" defer></script>
+</body>
+</html>
