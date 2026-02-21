@@ -18,7 +18,10 @@ class FirebaseSessionCoordinator @Inject constructor(
     private val sessionUiNotifier: SessionUiNotifier
 ) {
 
-    suspend fun <T> runWithFreshSession(block: suspend () -> T): T {
+    suspend fun <T> runWithFreshSession(
+        notifyPermissionDenied: Boolean = true,
+        block: suspend () -> T
+    ): T {
         val user = firebaseAuth.currentUser
             ?: throw buildSessionExpiredException()
 
@@ -29,7 +32,10 @@ class FirebaseSessionCoordinator @Inject constructor(
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             if (!isRetryableAuthFailure(error)) {
-                throw mapToFunctionalError(error)
+                throw mapToFunctionalError(
+                    error = error,
+                    notifyPermissionDenied = notifyPermissionDenied
+                )
             }
 
             forceRefreshSessionToken()
@@ -38,7 +44,10 @@ class FirebaseSessionCoordinator @Inject constructor(
                 block()
             } catch (retryError: Throwable) {
                 if (retryError is CancellationException) throw retryError
-                throw mapToFunctionalError(retryError)
+                throw mapToFunctionalError(
+                    error = retryError,
+                    notifyPermissionDenied = notifyPermissionDenied
+                )
             }
         }
     }
@@ -51,7 +60,7 @@ class FirebaseSessionCoordinator @Inject constructor(
             user.getIdToken(forceRefresh).await()
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
-            throw mapToFunctionalError(error)
+            throw mapToFunctionalError(error = error, notifyPermissionDenied = true)
         }
     }
 
@@ -76,8 +85,11 @@ class FirebaseSessionCoordinator @Inject constructor(
         else -> false
     }
 
-    private fun mapToFunctionalError(error: Throwable): FirebaseSessionException {
-        emitUiAlertIfNeeded(error)
+    private fun mapToFunctionalError(
+        error: Throwable,
+        notifyPermissionDenied: Boolean
+    ): FirebaseSessionException {
+        emitUiAlertIfNeeded(error = error, notifyPermissionDenied = notifyPermissionDenied)
 
         val userMessage = when (error) {
             is FirebaseAuthInvalidUserException -> {
@@ -135,7 +147,10 @@ class FirebaseSessionCoordinator @Inject constructor(
         return FirebaseSessionException(userMessage = userMessage, cause = error)
     }
 
-    private fun emitUiAlertIfNeeded(error: Throwable) {
+    private fun emitUiAlertIfNeeded(
+        error: Throwable,
+        notifyPermissionDenied: Boolean
+    ) {
         if (shouldForceSignOut(error)) {
             sessionUiNotifier.notifySessionExpired(
                 message = "Tu sesión venció por seguridad. Necesitás volver a iniciar sesión."
@@ -143,7 +158,7 @@ class FirebaseSessionCoordinator @Inject constructor(
             return
         }
 
-        if (isPermissionDenied(error)) {
+        if (notifyPermissionDenied && isPermissionDenied(error)) {
             sessionUiNotifier.notifyMissingPermission(
                 message = "No tenés permisos para ejecutar esta acción.",
                 requiredPermission = requiredPermissionFor(error)

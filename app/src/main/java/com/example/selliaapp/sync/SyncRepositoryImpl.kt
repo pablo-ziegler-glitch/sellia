@@ -55,7 +55,7 @@ class SyncRepositoryImpl @Inject constructor(
 ) : SyncRepository {
 
     override suspend fun pushPending() = withContext(io) {
-        sessionCoordinator.runWithFreshSession {
+        sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
             if (!hasPrivilegedSyncAccess()) {
             Log.i(TAG, "Sincronización omitida: rol sin permisos.")
                 return@runWithFreshSession
@@ -69,7 +69,7 @@ class SyncRepositoryImpl @Inject constructor(
     }
 
     override suspend fun pullRemote() = withContext(io) {
-        sessionCoordinator.runWithFreshSession {
+        sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
             if (!hasReadSyncAccess()) {
             Log.i(TAG, "Sincronización omitida: rol sin permisos.")
                 return@runWithFreshSession
