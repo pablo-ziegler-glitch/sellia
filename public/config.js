@@ -46,18 +46,40 @@
       return;
     }
 
-    const response = await fetch(
+    const marketingResponse = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${encodeURIComponent(
+        config.tenantId
+      )}/config/marketing?key=${apiKey}`
+    );
+
+    if (marketingResponse.ok) {
+      const marketingPayload = await marketingResponse.json();
+      const marketingFields = marketingPayload?.fields || {};
+      const marketingData = marketingFields.data?.mapValue?.fields || {};
+      const publicStoreUrl = marketingData.publicStoreUrl?.stringValue?.trim() || "";
+      const publicDomain = marketingData.publicDomain?.stringValue?.trim() || "";
+      if (publicStoreUrl) {
+        config.publicStoreUrl = normalizeUrl(publicStoreUrl);
+        return;
+      }
+      if (publicDomain) {
+        config.publicStoreUrl = buildProductUrl(publicDomain);
+        return;
+      }
+    }
+
+    const directoryResponse = await fetch(
       `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenant_directory/${encodeURIComponent(
         config.tenantId
       )}?key=${apiKey}`
     );
 
-    if (!response.ok) {
+    if (!directoryResponse.ok) {
       applyFallbackDomainByTenant(config);
       return;
     }
 
-    const payload = await response.json();
+    const payload = await directoryResponse.json();
     const fields = payload?.fields || {};
     const publicStoreUrl = fields.publicStoreUrl?.stringValue?.trim() || "";
     const publicDomain = fields.publicDomain?.stringValue?.trim() || "";

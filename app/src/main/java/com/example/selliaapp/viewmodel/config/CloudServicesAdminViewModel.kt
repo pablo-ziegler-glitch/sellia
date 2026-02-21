@@ -25,7 +25,11 @@ data class OwnerCloudServiceConfigUi(
 class CloudServicesAdminViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val cloudServiceConfigRepository: CloudServiceConfigRepository
-) : ViewModel() {
+ ) : ViewModel() {
+
+    init {
+        viewModelScope.launch { cloudServiceConfigRepository.refreshFromCloud() }
+    }
 
     private val configs = cloudServiceConfigRepository.observeConfigs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

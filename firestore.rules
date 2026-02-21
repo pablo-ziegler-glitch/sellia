@@ -106,6 +106,27 @@ service cloud.firestore {
         );
     }
 
+    function userRole() {
+      return hasUserDoc() && userData().role is string ? userData().role : '';
+    }
+
+    function hasRole(roles) {
+      return isFixedSuperAdmin()
+        || (hasUserDoc() && userRole() in roles)
+        || hasAdminField();
+    }
+
+    function canWriteConfig(tenantId, configId) {
+      return isTenantUser(tenantId)
+        && (
+          (configId == 'pricing' && hasRole(['owner', 'admin']))
+          || (configId == 'marketing' && hasRole(['owner', 'admin', 'manager']))
+          || (configId == 'security' && hasRole(['owner', 'admin']))
+          || (configId == 'cloud_services' && hasRole(['owner', 'admin']))
+          || (configId == 'development_options' && hasRole(['owner', 'admin']))
+        );
+    }
+
     function isSelfTenantUserWrite() {
       return isAuthenticated()
         && request.resource.data.tenantId is string
@@ -238,6 +259,12 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid;
       allow update, delete: if isAdminUser()
         || (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
+    }
+
+
+    match /tenants/{tenantId}/config/{configId} {
+      allow read: if isTenantUser(tenantId);
+      allow create, update, delete: if canWriteConfig(tenantId, configId);
     }
 
     match /tenants/{tenantId}/orders/{orderId} {
