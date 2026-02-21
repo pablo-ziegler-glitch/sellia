@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 
 /**
- * Fake para tests de flujo de escaneo (Sell/Stock).
+ * Fake compartido para debug/tests de flujo de escaneo (Sell/Stock).
  * Implementa lo mínimo necesario y deja stubs seguros para el resto.
  */
 class FakeScanProductRepository(
