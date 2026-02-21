@@ -318,21 +318,21 @@ class PricingConfigRepository(
     }
 
     suspend fun pushPricingConfigToCloud() {
-            val tenantId = tenantProvider.requireTenantId()
-            val settings = pricingSettingsDao.getOnce() ?: return
-            val fixedCosts = pricingFixedCostDao.getAllOnce()
-            val mlFixedTiers = pricingMlFixedCostTierDao.getAllOnce()
-            val mlShippingTiers = pricingMlShippingTierDao.getAllOnce()
-            val payload = mapOf(
-                TenantConfigContract.Fields.SCHEMA_VERSION to TenantConfigContract.CURRENT_SCHEMA_VERSION,
-                TenantConfigContract.Fields.UPDATED_AT to FieldValue.serverTimestamp(),
-                TenantConfigContract.Fields.UPDATED_BY to "android_pricing",
-                TenantConfigContract.Fields.AUDIT to mapOf(
-                    "event" to "UPSERT_PRICING_CONFIG",
-                    "at" to FieldValue.serverTimestamp(),
-                    "by" to "android_pricing"
-                ),
-                TenantConfigContract.Fields.DATA to mapOf(
+        val tenantId = tenantProvider.requireTenantId()
+        val settings = pricingSettingsDao.getOnce() ?: return
+        val fixedCosts = pricingFixedCostDao.getAllOnce()
+        val mlFixedTiers = pricingMlFixedCostTierDao.getAllOnce()
+        val mlShippingTiers = pricingMlShippingTierDao.getAllOnce()
+        val payload = mapOf(
+            TenantConfigContract.Fields.SCHEMA_VERSION to TenantConfigContract.CURRENT_SCHEMA_VERSION,
+            TenantConfigContract.Fields.UPDATED_AT to FieldValue.serverTimestamp(),
+            TenantConfigContract.Fields.UPDATED_BY to "android_pricing",
+            TenantConfigContract.Fields.AUDIT to mapOf(
+                "event" to "UPSERT_PRICING_CONFIG",
+                "at" to FieldValue.serverTimestamp(),
+                "by" to "android_pricing"
+            ),
+            TenantConfigContract.Fields.DATA to mapOf(
                 "tenantId" to tenantId,
                 "settings" to mapOf(
                     "ivaTerminalPercent" to settings.ivaTerminalPercent,
@@ -374,12 +374,14 @@ class PricingConfigRepository(
                 },
                 "updatedAt" to FieldValue.serverTimestamp()
             )
-            firestore.collection("tenants")
-                .document(tenantId)
-                .collection(TenantConfigContract.COLLECTION_CONFIG)
-                .document(TenantConfigContract.DOC_PRICING)
-                .set(payload)
-                .await()
+        )
+
+        firestore.collection("tenants")
+            .document(tenantId)
+            .collection(TenantConfigContract.COLLECTION_CONFIG)
+            .document(TenantConfigContract.DOC_PRICING)
+            .set(payload)
+            .await()
     }
 
     private suspend fun schedulePricingConfigSync() {
