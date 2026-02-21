@@ -511,13 +511,28 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_42_43 = object : Migration(42, 43) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
-                    ALTER TABLE `products`
-                    ADD COLUMN `publicStatus` TEXT NOT NULL DEFAULT 'draft'
-                    """.trimIndent()
-                )
+                if (!db.hasColumn(tableName = "products", columnName = "publicStatus")) {
+                    db.execSQL(
+                        """
+                        ALTER TABLE `products`
+                        ADD COLUMN `publicStatus` TEXT NOT NULL DEFAULT 'draft'
+                        """.trimIndent()
+                    )
+                }
             }
+        }
+
+        private fun SupportSQLiteDatabase.hasColumn(tableName: String, columnName: String): Boolean {
+            query("PRAGMA table_info(`$tableName`)").use { cursor ->
+                val nameColumnIndex = cursor.getColumnIndex("name")
+                if (nameColumnIndex == -1) return false
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameColumnIndex).equals(columnName, ignoreCase = true)) {
+                        return true
+                    }
+                }
+            }
+            return false
         }
 
     }
