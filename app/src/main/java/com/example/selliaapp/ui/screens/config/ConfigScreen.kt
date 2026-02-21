@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
@@ -60,6 +61,7 @@ fun ConfigScreen(
     onCloudServicesAdmin: () -> Unit,
     canManageCloudServices: Boolean,
     onSecuritySettings: () -> Unit,
+    onAppVersion: () -> Unit,
     onUsageAlerts: () -> Unit,
     onManageUsers: () -> Unit,
     canManageUsers: Boolean,
@@ -133,7 +135,7 @@ fun ConfigScreen(
                 // Menú
                 SettingsItem(
                     icon = Icons.Filled.Campaign,
-                    title = "Campañas de marketing",
+                    title = "Configuraciones de tienda",
                     onClick = onMarketingConfig
                 )
                 SettingsItem(
@@ -165,6 +167,11 @@ fun ConfigScreen(
                     icon = Icons.Filled.Notifications,
                     title = "Alertas de uso",
                     onClick = onUsageAlerts
+                )
+                SettingsItem(
+                    icon = Icons.Filled.Info,
+                    title = "Versión de la app",
+                    onClick = onAppVersion
                 )
                 if (canManageUsers) {
                     SettingsItem(

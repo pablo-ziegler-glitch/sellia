@@ -60,6 +60,7 @@ import com.example.selliaapp.ui.screens.config.DevelopmentOptionsScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.CrossCatalogAdminScreen
 import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
+import com.example.selliaapp.ui.screens.config.AppVersionScreen
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
@@ -118,6 +119,7 @@ import com.example.selliaapp.viewmodel.ReportsViewModel
 import com.example.selliaapp.viewmodel.SellViewModel
 import com.example.selliaapp.viewmodel.SellDraftFabViewModel
 import com.example.selliaapp.viewmodel.StockImportViewModel
+import com.example.selliaapp.viewmodel.AppVersionViewModel
 import com.example.selliaapp.viewmodel.UserViewModel
 import com.example.selliaapp.viewmodel.StockMovementsViewModel
 import com.example.selliaapp.viewmodel.AccessControlViewModel
@@ -738,6 +740,7 @@ fun SelliaApp(
                     onManageUsers = { navController.navigate(Routes.AddUser.route) },
                     onUsageAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSecuritySettings = { navController.navigate(Routes.SecuritySettings.route) },
+                    onAppVersion = { navController.navigate(Routes.AppVersion.route) },
                     canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
@@ -777,6 +780,14 @@ fun SelliaApp(
             composable(Routes.SecuritySettings.route) {
                 val vm: SecuritySettingsViewModel = hiltViewModel()
                 SecuritySettingsScreen(
+                    viewModel = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.AppVersion.route) {
+                val vm: AppVersionViewModel = hiltViewModel()
+                AppVersionScreen(
                     viewModel = vm,
                     onBack = { navController.popBackStack() }
                 )

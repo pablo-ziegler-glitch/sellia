@@ -1,12 +1,12 @@
 package com.example.selliaapp.repository
 
-import com.example.selliaapp.auth.TenantProvider
-import com.example.selliaapp.data.remote.TenantConfigContract
-import com.example.selliaapp.di.AppModule
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.selliaapp.auth.TenantProvider
+import com.example.selliaapp.data.remote.TenantConfigContract
+import com.example.selliaapp.di.AppModule
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -17,13 +17,21 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
+data class StorePalette(
+    val primary: String = "",
+    val secondary: String = "",
+    val tertiary: String = ""
+)
+
 data class MarketingSettings(
     val publicStoreUrl: String = "",
     val storeName: String = "Tu tienda",
     val storeLogoUrl: String = "",
     val storePhone: String = "",
     val storeWhatsapp: String = "",
-    val storeEmail: String = ""
+    val storeEmail: String = "",
+    val tenantPalette: StorePalette = StorePalette(),
+    val defaultPalette: StorePalette = StorePalette()
 )
 
 class MarketingConfigRepository @Inject constructor(
@@ -39,6 +47,12 @@ class MarketingConfigRepository @Inject constructor(
         val storePhone = stringPreferencesKey("store_phone")
         val storeWhatsapp = stringPreferencesKey("store_whatsapp")
         val storeEmail = stringPreferencesKey("store_email")
+        val tenantPalettePrimary = stringPreferencesKey("tenant_palette_primary")
+        val tenantPaletteSecondary = stringPreferencesKey("tenant_palette_secondary")
+        val tenantPaletteTertiary = stringPreferencesKey("tenant_palette_tertiary")
+        val defaultPalettePrimary = stringPreferencesKey("default_palette_primary")
+        val defaultPaletteSecondary = stringPreferencesKey("default_palette_secondary")
+        val defaultPaletteTertiary = stringPreferencesKey("default_palette_tertiary")
     }
 
     val settings: Flow<MarketingSettings> = dataStore.data.map { prefs ->
@@ -48,7 +62,17 @@ class MarketingConfigRepository @Inject constructor(
             storeLogoUrl = prefs[Keys.storeLogoUrl] ?: "",
             storePhone = prefs[Keys.storePhone] ?: "",
             storeWhatsapp = prefs[Keys.storeWhatsapp] ?: "",
-            storeEmail = prefs[Keys.storeEmail] ?: ""
+            storeEmail = prefs[Keys.storeEmail] ?: "",
+            tenantPalette = StorePalette(
+                primary = prefs[Keys.tenantPalettePrimary] ?: "",
+                secondary = prefs[Keys.tenantPaletteSecondary] ?: "",
+                tertiary = prefs[Keys.tenantPaletteTertiary] ?: ""
+            ),
+            defaultPalette = StorePalette(
+                primary = prefs[Keys.defaultPalettePrimary] ?: "",
+                secondary = prefs[Keys.defaultPaletteSecondary] ?: "",
+                tertiary = prefs[Keys.defaultPaletteTertiary] ?: ""
+            )
         )
     }
 
@@ -62,13 +86,25 @@ class MarketingConfigRepository @Inject constructor(
                 .get()
                 .await()
             val data = snapshot.get(TenantConfigContract.Fields.DATA) as? Map<*, *> ?: return@runCatching
+            val palette = data["palette"] as? Map<*, *> ?: emptyMap<String, Any>()
+            val defaultPalette = data["defaultPalette"] as? Map<*, *> ?: emptyMap<String, Any>()
             val cloudSettings = MarketingSettings(
                 publicStoreUrl = (data["publicStoreUrl"] as? String).orEmpty(),
                 storeName = (data["storeName"] as? String).orEmpty().ifBlank { "Tu tienda" },
                 storeLogoUrl = (data["storeLogoUrl"] as? String).orEmpty(),
                 storePhone = (data["storePhone"] as? String).orEmpty(),
                 storeWhatsapp = (data["storeWhatsapp"] as? String).orEmpty(),
-                storeEmail = (data["storeEmail"] as? String).orEmpty()
+                storeEmail = (data["storeEmail"] as? String).orEmpty(),
+                tenantPalette = StorePalette(
+                    primary = normalizeHexColor((palette["primary"] as? String).orEmpty()),
+                    secondary = normalizeHexColor((palette["secondary"] as? String).orEmpty()),
+                    tertiary = normalizeHexColor((palette["tertiary"] as? String).orEmpty())
+                ),
+                defaultPalette = StorePalette(
+                    primary = normalizeHexColor((defaultPalette["primary"] as? String).orEmpty()),
+                    secondary = normalizeHexColor((defaultPalette["secondary"] as? String).orEmpty()),
+                    tertiary = normalizeHexColor((defaultPalette["tertiary"] as? String).orEmpty())
+                )
             )
             dataStore.edit { prefs ->
                 prefs[Keys.publicStoreUrl] = normalizePublicStoreUrl(cloudSettings.publicStoreUrl)
@@ -77,13 +113,20 @@ class MarketingConfigRepository @Inject constructor(
                 prefs[Keys.storePhone] = cloudSettings.storePhone
                 prefs[Keys.storeWhatsapp] = cloudSettings.storeWhatsapp
                 prefs[Keys.storeEmail] = cloudSettings.storeEmail
+                prefs[Keys.tenantPalettePrimary] = cloudSettings.tenantPalette.primary
+                prefs[Keys.tenantPaletteSecondary] = cloudSettings.tenantPalette.secondary
+                prefs[Keys.tenantPaletteTertiary] = cloudSettings.tenantPalette.tertiary
+                prefs[Keys.defaultPalettePrimary] = cloudSettings.defaultPalette.primary
+                prefs[Keys.defaultPaletteSecondary] = cloudSettings.defaultPalette.secondary
+                prefs[Keys.defaultPaletteTertiary] = cloudSettings.defaultPalette.tertiary
             }
         }
     }
 
     suspend fun updateSettings(updated: MarketingSettings) {
         val normalizedSettings = updated.copy(
-            publicStoreUrl = normalizePublicStoreUrl(updated.publicStoreUrl)
+            publicStoreUrl = normalizePublicStoreUrl(updated.publicStoreUrl),
+            tenantPalette = updated.tenantPalette.normalized()
         )
 
         syncPublicStoreConfig(normalizedSettings)
@@ -95,8 +138,10 @@ class MarketingConfigRepository @Inject constructor(
             prefs[Keys.storePhone] = normalizedSettings.storePhone
             prefs[Keys.storeWhatsapp] = normalizedSettings.storeWhatsapp
             prefs[Keys.storeEmail] = normalizedSettings.storeEmail
+            prefs[Keys.tenantPalettePrimary] = normalizedSettings.tenantPalette.primary
+            prefs[Keys.tenantPaletteSecondary] = normalizedSettings.tenantPalette.secondary
+            prefs[Keys.tenantPaletteTertiary] = normalizedSettings.tenantPalette.tertiary
         }
-
     }
 
     private suspend fun syncPublicStoreConfig(settings: MarketingSettings) = withContext(io) {
@@ -120,7 +165,12 @@ class MarketingConfigRepository @Inject constructor(
                     "storeLogoUrl" to settings.storeLogoUrl,
                     "storePhone" to settings.storePhone,
                     "storeWhatsapp" to settings.storeWhatsapp,
-                    "storeEmail" to settings.storeEmail
+                    "storeEmail" to settings.storeEmail,
+                    "palette" to mapOf(
+                        "primary" to settings.tenantPalette.primary,
+                        "secondary" to settings.tenantPalette.secondary,
+                        "tertiary" to settings.tenantPalette.tertiary
+                    )
                 )
             )
 
@@ -161,5 +211,19 @@ class MarketingConfigRepository @Inject constructor(
         return runCatching {
             java.net.URI(normalized).host.orEmpty().removePrefix("www.")
         }.getOrDefault("")
+    }
+
+    private fun StorePalette.normalized(): StorePalette = StorePalette(
+        primary = normalizeHexColor(primary),
+        secondary = normalizeHexColor(secondary),
+        tertiary = normalizeHexColor(tertiary)
+    )
+
+    private fun normalizeHexColor(value: String): String {
+        val trimmed = value.trim().uppercase()
+        if (trimmed.isBlank()) return ""
+        val withHash = if (trimmed.startsWith("#")) trimmed else "#$trimmed"
+        val isRgb = withHash.matches(Regex("^#[0-9A-F]{6}$"))
+        return if (isRgb) withHash else ""
     }
 }

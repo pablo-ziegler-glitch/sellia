@@ -66,6 +66,7 @@ sealed class Routes(val route: String) {
     object CashReport : Routes("cash_report")
     object UsageAlerts : Routes("usage_alerts")
     object SecuritySettings : Routes("security_settings")
+    object AppVersion : Routes("app_version")
 
     object AddUser : Routes("add_user")
     object ManageProducts : Routes("manage_products")

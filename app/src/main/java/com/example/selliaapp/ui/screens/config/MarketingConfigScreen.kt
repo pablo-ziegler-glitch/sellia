@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.repository.MarketingSettings
+import com.example.selliaapp.repository.StorePalette
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 
@@ -44,6 +46,9 @@ fun MarketingConfigScreen(
     var storePhone by remember { mutableStateOf(settings.storePhone) }
     var storeWhatsapp by remember { mutableStateOf(settings.storeWhatsapp) }
     var storeEmail by remember { mutableStateOf(settings.storeEmail) }
+    var primaryColor by remember { mutableStateOf(settings.tenantPalette.primary) }
+    var secondaryColor by remember { mutableStateOf(settings.tenantPalette.secondary) }
+    var tertiaryColor by remember { mutableStateOf(settings.tenantPalette.tertiary) }
 
     LaunchedEffect(settings) {
         publicStoreUrl = settings.publicStoreUrl
@@ -52,10 +57,13 @@ fun MarketingConfigScreen(
         storePhone = settings.storePhone
         storeWhatsapp = settings.storeWhatsapp
         storeEmail = settings.storeEmail
+        primaryColor = settings.tenantPalette.primary
+        secondaryColor = settings.tenantPalette.secondary
+        tertiaryColor = settings.tenantPalette.tertiary
     }
 
     Scaffold(
-        topBar = { BackTopAppBar(title = "Campañas de marketing", onBack = onBack) }
+        topBar = { BackTopAppBar(title = "Configuraciones de tienda", onBack = onBack) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -115,6 +123,35 @@ fun MarketingConfigScreen(
                 )
             }
 
+            Spacer(Modifier.height(6.dp))
+            HorizontalDivider()
+            Text("Paleta de colores de la tienda")
+            Text(
+                "Ingresá colores HEX (#RRGGBB). Si dejás vacío, se usa la paleta default definida por Admin en backoffice."
+            )
+
+            OutlinedTextField(
+                value = primaryColor,
+                onValueChange = { primaryColor = it },
+                label = { Text("Color primario") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = secondaryColor,
+                onValueChange = { secondaryColor = it },
+                label = { Text("Color secundario") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = tertiaryColor,
+                onValueChange = { tertiaryColor = it },
+                label = { Text("Color terciario") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                "Default admin actual: ${settings.defaultPalette.primary.ifBlank { "-" }} / ${settings.defaultPalette.secondary.ifBlank { "-" }} / ${settings.defaultPalette.tertiary.ifBlank { "-" }}"
+            )
+
             Button(
                 onClick = {
                     vm.updateSettings(
@@ -124,7 +161,13 @@ fun MarketingConfigScreen(
                             storeLogoUrl = storeLogoUrl.trim(),
                             storePhone = storePhone.trim(),
                             storeWhatsapp = storeWhatsapp.trim(),
-                            storeEmail = storeEmail.trim()
+                            storeEmail = storeEmail.trim(),
+                            tenantPalette = StorePalette(
+                                primary = primaryColor,
+                                secondary = secondaryColor,
+                                tertiary = tertiaryColor
+                            ),
+                            defaultPalette = settings.defaultPalette
                         )
                     )
                 },

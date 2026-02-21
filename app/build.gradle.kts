@@ -17,6 +17,9 @@ android {
     compileSdk = 35
 
     defaultConfig {
+        val mergedPrs = (project.findProperty("mergedPrs") as String?)
+            ?.trim()
+            .orEmpty()
         applicationId = "com.example.selliaapp"
         minSdk = 29
         targetSdk = 35
@@ -28,6 +31,7 @@ android {
             "true"
         )
         buildConfigField("String", "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID", "\"\"")
+        buildConfigField("String", "MERGED_PRS", "\"${mergedPrs.replace("\"", "\\\"")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {

@@ -5,11 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.ui.navigation.SelliaRoot
 import com.example.selliaapp.ui.theme.ValkirjaTheme
+import com.example.selliaapp.viewmodel.AppThemeViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -32,7 +35,10 @@ class MainActivity : ComponentActivity() {
             // Crea el NavController de Compose
             val navController = rememberNavController()
 
-            ValkirjaTheme {
+            val appThemeViewModel: AppThemeViewModel = hiltViewModel()
+            val palette = appThemeViewModel.themePalette.collectAsStateWithLifecycle()
+
+            ValkirjaTheme(dynamicPalette = palette.value) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     SelliaRoot(
                         navController = navController,
