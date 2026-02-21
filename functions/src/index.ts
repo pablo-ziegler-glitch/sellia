@@ -2018,6 +2018,103 @@ const isAdminRole = (role: unknown): boolean => {
   return normalized === "admin" || normalized === "owner";
 };
 
+
+const MAINTENANCE_READ = "MAINTENANCE_READ";
+const MAINTENANCE_WRITE = "MAINTENANCE_WRITE";
+const MAINTENANCE_STATUS = new Set([
+  "pending",
+  "in_progress",
+  "blocked",
+  "completed",
+  "cancelled",
+]);
+const MAINTENANCE_PRIORITY = new Set(["low", "medium", "high", "critical"]);
+
+const normalizeStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => normalizeString(item))
+    .filter(Boolean);
+};
+
+const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean => {
+  const role = normalizeString(userData.role).toLowerCase();
+  const permissions = new Set(normalizeStringList(userData.permissions));
+  return (
+    isAdminRole(role) ||
+    userData.isAdmin === true ||
+    userData.isSuperAdmin === true ||
+    permissions.has(MAINTENANCE_READ) ||
+    permissions.has(MAINTENANCE_WRITE)
+  );
+};
+
+const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean => {
+  const role = normalizeString(userData.role).toLowerCase();
+  const permissions = new Set(normalizeStringList(userData.permissions));
+  return (
+    isAdminRole(role) ||
+    userData.isAdmin === true ||
+    userData.isSuperAdmin === true ||
+    permissions.has(MAINTENANCE_WRITE)
+  );
+};
+
+const sanitizeMaintenanceTaskPayload = (
+  payload: Record<string, unknown>,
+  tenantId: string,
+  actorUid: string,
+  previous?: admin.firestore.DocumentData
+): admin.firestore.DocumentData => {
+  const title = normalizeString(payload.title);
+  const description = normalizeString(payload.description);
+  const status = normalizeString(payload.status).toLowerCase() || "pending";
+  const priority = normalizeString(payload.priority).toLowerCase() || "medium";
+  const assigneeUid = normalizeString(payload.assigneeUid) || null;
+  const dueAtRaw = payload.dueAt;
+  const dueAt =
+    dueAtRaw instanceof admin.firestore.Timestamp
+      ? dueAtRaw
+      : typeof dueAtRaw === "string" && dueAtRaw
+      ? admin.firestore.Timestamp.fromDate(new Date(dueAtRaw))
+      : null;
+  const operationalBlocker = payload.operationalBlocker === true;
+
+  if (title.length < 3) {
+    throw new functions.https.HttpsError("invalid-argument", "title requiere al menos 3 caracteres");
+  }
+  if (!MAINTENANCE_STATUS.has(status)) {
+    throw new functions.https.HttpsError("invalid-argument", "status inválido");
+  }
+  if (!MAINTENANCE_PRIORITY.has(priority)) {
+    throw new functions.https.HttpsError("invalid-argument", "priority inválida");
+  }
+  if (dueAt && Number.isNaN(dueAt.toMillis())) {
+    throw new functions.https.HttpsError("invalid-argument", "dueAt inválido");
+  }
+
+  return {
+    tenantId,
+    title,
+    description: description || null,
+    status,
+    priority,
+    assigneeUid,
+    dueAt,
+    operationalBlocker,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedByUid: actorUid,
+    createdAt: previous?.createdAt ?? admin.firestore.FieldValue.serverTimestamp(),
+    createdByUid: previous?.createdByUid ?? actorUid,
+    trace: {
+      lastAction: previous ? "update" : "create",
+      source: "cloud_function",
+    },
+  };
+};
+
 const resolveTargetUserId = async (
   payload: ManageTenantOwnershipPayload
 ): Promise<string> => {
@@ -2470,4 +2567,74 @@ export const purgeDeletedProductFromBackups = functions
         });
       }
     }
+  });
+
+
+export const createMaintenanceTask = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canWriteMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
+    }
+
+    const taskRef = db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc();
+    const taskData = sanitizeMaintenanceTaskPayload(payload, tenantId, context.auth.uid);
+    await taskRef.set(taskData, { merge: false });
+    return { ok: true, taskId: taskRef.id };
+  });
+
+export const updateMaintenanceTask = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const taskId = normalizeString(payload.taskId);
+    if (!tenantId || !taskId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y taskId requeridos");
+    }
+
+    const [userDoc, taskDoc] = await Promise.all([
+      db.collection("users").doc(context.auth.uid).get(),
+      db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc(taskId).get(),
+    ]);
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    if (!taskDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "task no existe");
+    }
+
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canWriteMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
+    }
+
+    const nextData = sanitizeMaintenanceTaskPayload(
+      { ...taskDoc.data(), ...payload },
+      tenantId,
+      context.auth.uid,
+      taskDoc.data()
+    );
+
+    await taskDoc.ref.set(nextData, { merge: false });
+    return { ok: true, taskId };
   });

@@ -38,3 +38,9 @@ La validación objetivo para Emulator contempla:
 
 - `owner` / `admin` → permitidos para gestión de usuarios.
 - `manager` / `cashier` / `viewer` → denegados en escrituras administrativas de `tenant_users` y `users`.
+
+## Política de mantenimiento (`maintenance_tasks`)
+
+- Lectura permitida para `owner`/`admin` del tenant o usuarios con `MAINTENANCE_READ`.
+- Escritura (create/update/delete) permitida para `owner`/`admin` del tenant o usuarios con `MAINTENANCE_WRITE`.
+- Se valida integridad mínima de documento: `tenantId`, `title`, `status`, `priority`, timestamps y trazabilidad (`trace`).

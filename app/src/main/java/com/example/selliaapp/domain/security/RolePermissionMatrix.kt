@@ -4,7 +4,7 @@ package com.example.selliaapp.domain.security
  * Matriz oficial de permisos (fuente única para el producto):
  * - ADMIN: operación completa del tenant y configuración cloud.
  * - OWNER: operación completa del tenant y configuración cloud.
- * - MANAGER: operación diaria de caja + monitoreo de uso, sin administración de cloud ni usuarios.
+ * - MANAGER: operación diaria de caja + monitoreo de uso, sin administración de cloud/usuarios ni escritura de mantenimiento.
  * - CASHIER: operación de caja diaria, sin cierre/auditoría avanzada de usuarios/cloud.
  * - VIEWER: cliente final sin permisos operativos internos.
  *

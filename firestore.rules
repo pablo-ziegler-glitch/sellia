@@ -93,6 +93,64 @@ service cloud.firestore {
         );
     }
 
+    function userPermissions() {
+      return hasUserDoc() && userData().permissions is list
+        ? userData().permissions
+        : [];
+    }
+
+    function hasMaintenanceReadAccess() {
+      return isFixedSuperAdmin()
+        || (
+          hasUserDoc()
+          && (
+            userData().role in ['owner', 'admin']
+            || userData().isAdmin == true
+            || userData().isSuperAdmin == true
+            || 'MAINTENANCE_READ' in userPermissions()
+            || 'MAINTENANCE_WRITE' in userPermissions()
+          )
+        );
+    }
+
+    function hasMaintenanceWriteAccess() {
+      return isFixedSuperAdmin()
+        || (
+          hasUserDoc()
+          && (
+            userData().role in ['owner', 'admin']
+            || userData().isAdmin == true
+            || userData().isSuperAdmin == true
+            || 'MAINTENANCE_WRITE' in userPermissions()
+          )
+        );
+    }
+
+    function isValidMaintenanceStatus(status) {
+      return status in ['pending', 'in_progress', 'blocked', 'completed', 'cancelled'];
+    }
+
+    function isValidMaintenancePriority(priority) {
+      return priority in ['low', 'medium', 'high', 'critical'];
+    }
+
+    function isValidMaintenanceTask(data, tenantId) {
+      return data.tenantId == tenantId
+        && data.title is string
+        && data.title.size() >= 3
+        && data.status is string
+        && isValidMaintenanceStatus(data.status)
+        && data.priority is string
+        && isValidMaintenancePriority(data.priority)
+        && (!('assigneeUid' in data) || data.assigneeUid is string)
+        && (!('dueAt' in data) || data.dueAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.createdByUid is string
+        && data.updatedByUid is string
+        && (!('trace' in data) || data.trace is map);
+    }
+
     function isAdminUser() {
       return isAuthenticated() && (hasAdminClaim() || hasAdminField());
     }
@@ -240,6 +298,22 @@ service cloud.firestore {
         || (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
     }
 
+    match /tenants/{tenantId}/maintenance_tasks/{taskId} {
+      allow read: if isTenantUser(tenantId) && hasMaintenanceReadAccess();
+      allow create: if isTenantUser(tenantId)
+        && hasMaintenanceWriteAccess()
+        && isValidMaintenanceTask(request.resource.data, tenantId)
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.updatedByUid == request.auth.uid;
+      allow update: if isTenantUser(tenantId)
+        && hasMaintenanceWriteAccess()
+        && isValidMaintenanceTask(request.resource.data, tenantId)
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedByUid == request.auth.uid;
+      allow delete: if isTenantUser(tenantId) && hasMaintenanceWriteAccess();
+    }
+
     match /tenants/{tenantId}/orders/{orderId} {
       allow read: if isTenantUser(tenantId);
       allow write: if isBackend();
@@ -292,8 +366,11 @@ service cloud.firestore {
     }
 
     match /tenants/{tenantId}/{document=**} {
-      allow read: if isTenantUser(tenantId);
-      allow write: if isTenantUser(tenantId) && hasTenantWriteRole();
+      allow read: if isTenantUser(tenantId)
+        && !document.matches('maintenance_tasks(/.*)?');
+      allow write: if isTenantUser(tenantId)
+        && hasTenantWriteRole()
+        && !document.matches('maintenance_tasks(/.*)?');
     }
   }
 }
