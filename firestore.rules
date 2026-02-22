@@ -49,6 +49,11 @@ service cloud.firestore {
     function isUserActive() {
       return hasUserProfile()
         && (
+          (
+            !("status" in userData())
+            && !("isActive" in userData())
+          )
+          ||
           userData().status == 'active'
           || userData().isActive == true
         );
