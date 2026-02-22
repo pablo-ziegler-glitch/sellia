@@ -15,7 +15,9 @@
     "test": "vitest",
     "test:ci": "vitest run",
     "claims:super-admin:grant": "node scripts/manage-super-admin-claim.js --grant",
-    "claims:super-admin:revoke": "node scripts/manage-super-admin-claim.js --revoke"
+    "claims:super-admin:revoke": "node scripts/manage-super-admin-claim.js --revoke",
+    "admin:grant:dry": "node scripts/manage-admin-access.js --dry-run",
+    "admin:grant": "node scripts/manage-admin-access.js"
   },
   "dependencies": {
     "axios": "^1.6.7",
