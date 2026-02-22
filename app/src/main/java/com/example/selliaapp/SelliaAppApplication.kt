@@ -4,20 +4,14 @@ import android.app.Application
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import com.example.selliaapp.repository.AppVersionRepository
 import com.example.selliaapp.sync.PricingScheduler
-import com.example.selliaapp.sync.SyncWorker
+import com.example.selliaapp.sync.SyncScheduler
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import dagger.hilt.android.HiltAndroidApp
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -141,21 +135,7 @@ class SelliaAppApplication : Application(), Configuration.Provider {
     }
 
     private fun enqueuePeriodicSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
-            .build()
-
-        val request = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS)
-            .setConstraints(constraints)
-            .addTag("syncProducts")
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "syncProductsPeriodicWork",
-            ExistingPeriodicWorkPolicy.KEEP,
-            request
-        )
+        SyncScheduler.enqueuePeriodic(this)
     }
 
     private companion object {
