@@ -13,7 +13,6 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import com.example.selliaapp.repository.CloudServiceConfigRepository
 
 
 /**
@@ -23,8 +22,7 @@ import com.example.selliaapp.repository.CloudServiceConfigRepository
 class SyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val syncRepository: SyncRepository,
-    private val cloudServiceConfigRepository: CloudServiceConfigRepository
+    private val syncRepository: SyncRepository
 ) : CoroutineWorker(appContext, params) {
 
     /**
@@ -40,27 +38,12 @@ class SyncWorker @AssistedInject constructor(
         EntryPointAccessors.fromApplication(
             appContext,
             SyncWorkerEntryPoint::class.java
-        ).syncRepository(),
-        EntryPointAccessors.fromApplication(
-            appContext,
-            SyncWorkerEntryPoint::class.java
-        ).cloudServiceConfigRepository()
+        ).syncRepository()
     )
-
-
-
 
     override suspend fun doWork(): Result {
         Log.i(TAG, "Iniciando sincronización manual (workId=$id)")
         return try {
-            if (!cloudServiceConfigRepository.isCloudEnabled()) {
-                return Result.failure(
-                    workDataOf(
-                        OUTPUT_STATUS to "failed",
-                        OUTPUT_MESSAGE to "Sincronización deshabilitada (requiere Datos en la nube activo)."
-                    )
-                )
-            }
             val includeBackup = inputData.getBoolean(INPUT_BACKUP, false)
             syncRepository.runSync(includeBackup)
             Log.i(TAG, "Sincronización completada con éxito")
@@ -105,5 +88,4 @@ class SyncWorker @AssistedInject constructor(
 @InstallIn(SingletonComponent::class)
 interface SyncWorkerEntryPoint {
     fun syncRepository(): SyncRepository
-    fun cloudServiceConfigRepository(): CloudServiceConfigRepository
 }

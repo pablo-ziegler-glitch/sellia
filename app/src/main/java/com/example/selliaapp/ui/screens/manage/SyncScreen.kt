@@ -13,17 +13,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,10 +46,6 @@ import com.example.selliaapp.sync.SyncWorker
 import com.example.selliaapp.ui.components.BackTopAppBar
 import kotlinx.coroutines.launch
 
-/**
- * Pantalla simple para ejecutar la sincronización manual.
- * Encola el SyncWorker y observa su estado (ENQUEUED/RUNNING/SUCCEEDED/FAILED).
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SyncScreen(
@@ -53,20 +53,20 @@ fun SyncScreen(
 ) {
     val context = LocalContext.current
     val viewModel: SyncViewModel = hiltViewModel()
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState = remember { mutableStateOf(viewModel.uiState()) }
     val workManager = remember(context) { WorkManager.getInstance(context) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var lastState by remember { mutableStateOf<WorkInfo.State?>(null) }
     var includeBackup by remember { mutableStateOf(false) }
+    var intervalExpanded by remember { mutableStateOf(false) }
 
-     // Observamos el estado del trabajo único por nombre
+    val intervalOptions = listOf(15, 30, 60, 120, 240, 480, 720, 1440)
+
     val workInfos by workManager
         .getWorkInfosForUniqueWorkLiveData(SyncWorker.UNIQUE_NAME)
         .observeAsState(initial = emptyList())
 
-
-    // syncing = hay un trabajo encolado o corriendo
     val syncing = workInfos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
 
     val last = workInfos.firstOrNull()
@@ -101,18 +101,43 @@ fun SyncScreen(
             horizontalAlignment = Alignment.Start
         ) {
             Text(
-                "Sincronizá ahora los datos (subida/descarga remota si corresponde).",
+                "La sincronización en la nube está activa de forma permanente.",
                 style = MaterialTheme.typography.bodyLarge
             )
 
             Text(
-                "Opción 1: Sincronización estándar",
+                "Frecuencia de sincronización automática",
                 style = MaterialTheme.typography.titleSmall
             )
-            Text(
-                "Sube cambios pendientes y baja productos/facturas remotas (requiere Datos en la nube activo).",
-                style = MaterialTheme.typography.bodySmall
-            )
+            ExposedDropdownMenuBox(
+                expanded = intervalExpanded,
+                onExpandedChange = { intervalExpanded = !intervalExpanded }
+            ) {
+                OutlinedTextField(
+                    value = "Cada ${uiState.value.syncIntervalMinutes} min",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Intervalo") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = intervalExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = intervalExpanded,
+                    onDismissRequest = { intervalExpanded = false }
+                ) {
+                    intervalOptions.forEach { minutes ->
+                        DropdownMenuItem(
+                            text = { Text("Cada $minutes min") },
+                            onClick = {
+                                intervalExpanded = false
+                                viewModel.updateIntervalMinutes(minutes)
+                                uiState.value = viewModel.uiState()
+                                scope.launch { snackbarHostState.showSnackbar("Frecuencia actualizada.") }
+                            }
+                        )
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -125,28 +150,19 @@ fun SyncScreen(
                         style = MaterialTheme.typography.titleSmall
                     )
                     Text(
-                        "Guarda todas las tablas locales en Firestore para recuperación y auditoría (requiere Datos en la nube activo).",
+                        "Guarda todas las tablas locales en Firestore para recuperación y auditoría.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
                 Switch(
                     checked = includeBackup,
                     onCheckedChange = { includeBackup = it },
-                    enabled = uiState.cloudEnabled && !syncing
+                    enabled = !syncing
                 )
             }
 
-            if (!uiState.cloudEnabled) {
-                Text(
-                    "Sincronización deshabilitada (requiere Datos en la nube activo).",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-
-            // Botón principal: Encolar sync
             Button(
-                enabled = !syncing && uiState.cloudEnabled,
+                enabled = !syncing,
                 onClick = {
                     SyncScheduler.enqueueNow(context, includeBackup)
                     scope.launch { snackbarHostState.showSnackbar("Sincronización encolada.") }
@@ -163,7 +179,6 @@ fun SyncScreen(
                 Text(if (syncing) "Sincronizando..." else "Sincronizar ahora")
             }
 
-            // Botón opcional: cancelar si está corriendo
             if (syncing) {
                 OutlinedButton(
                     onClick = { workManager.cancelUniqueWork(SyncWorker.UNIQUE_NAME) }
@@ -172,7 +187,6 @@ fun SyncScreen(
                 }
             }
 
-            // Estado visible (útil para debug)
             if (workInfos.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
