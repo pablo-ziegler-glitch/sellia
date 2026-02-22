@@ -53,14 +53,6 @@ class DevelopmentOptionsViewModel @Inject constructor(
                 .filter { AppRole.fromRaw(it.role) == AppRole.OWNER }
                 .map { user -> user.copy(email = SecurityHashing.normalizeEmail(user.email)) }
                 .filter { it.email.isNotBlank() }
-                .plus(
-                    com.example.selliaapp.data.model.User(
-                        name = FIXED_SUPER_ADMIN_NAME,
-                        email = FIXED_SUPER_ADMIN_EMAIL,
-                        role = AppRole.OWNER.raw,
-                        isActive = true
-                    )
-                )
                 .distinctBy { it.email }
                 .sortedBy { it.name.lowercase() }
                 .toList()
@@ -151,7 +143,5 @@ class DevelopmentOptionsViewModel @Inject constructor(
     private companion object {
         private const val DEFAULT_APP_CHECK_COOLDOWN_MS = 60_000L
         private const val COOLDOWN_TICK_MS = 1_000L
-        const val FIXED_SUPER_ADMIN_EMAIL = "pabloz18ezeiza@gmail.com"
-        const val FIXED_SUPER_ADMIN_NAME = "Pablo (Super Admin)"
     }
 }

@@ -38,6 +38,37 @@ Este módulo incluye un scheduler que recopila métricas de uso desde **Cloud Mo
 
 ---
 
+
+## Gestión de claim `superAdmin` (asignar/revocar)
+
+Las reglas y funciones administrativas ya **no dependen de un email fijo**. El bypass global usa `request.auth.token.superAdmin == true`.
+
+### Flujo operativo (CLI)
+
+1. Ejecutar con una identidad con permisos para `firebaseauth.users.update` (por ejemplo, service account de administración o credenciales gcloud con rol adecuado).
+2. Asignar claim:
+
+```bash
+npm run claims:super-admin:grant -- --uid <UID>
+# o
+npm run claims:super-admin:grant -- --email <EMAIL>
+```
+
+3. Revocar claim:
+
+```bash
+npm run claims:super-admin:revoke -- --uid <UID>
+# o
+npm run claims:super-admin:revoke -- --email <EMAIL>
+```
+
+4. Forzar refresh de token en cliente (logout/login o `getIdToken(true)`) para que el claim impacte de inmediato.
+
+### Alcance técnico
+
+- El script `functions/scripts/manage-super-admin-claim.js` preserva claims existentes y solo actualiza `superAdmin`.
+- Se recomienda auditar cada cambio de claims en procesos internos (ticket/cambio) para trazabilidad.
+
 ## Configuración requerida
 
 ## Prerequisitos de Cloud Functions programadas

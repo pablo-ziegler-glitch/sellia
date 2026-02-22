@@ -2247,9 +2247,9 @@ export const manageTenantOwnership = functions
     const callerRole = normalizeString(callerUserDoc.get("role")).toLowerCase();
     const callerTenantId = normalizeString(callerUserDoc.get("tenantId"));
     const hasAdminClaim =
+      context.auth.token.superAdmin === true ||
       context.auth.token.admin === true ||
-      context.auth.token.role === "admin" ||
-      normalizeEmail(context.auth.token.email) === "pabloz18ezeiza@gmail.com";
+      context.auth.token.role === "admin";
 
     if (!hasAdminClaim && (!isAdminRole(callerRole) || callerTenantId !== tenantId)) {
       throw new functions.https.HttpsError(
