@@ -52,10 +52,12 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            manifestPlaceholders["allowBackup"] = "true"
             buildConfigField("boolean", "APP_CHECK_DEBUG", "true")
         }
         release {
             isMinifyEnabled = true
+            manifestPlaceholders["allowBackup"] = "false"
             buildConfigField("boolean", "APP_CHECK_DEBUG", "false")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
