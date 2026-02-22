@@ -55,6 +55,9 @@ Si un usuario no puede acceder al backoffice, este script deja todo consistente 
 # 1) Simulación segura
 npm run admin:grant:dry -- --email <EMAIL> --tenant <TENANT_ID> --role admin
 
+# Alternativa explícita (recomendado en Windows/CI):
+npm run admin:grant:dry -- --email <EMAIL> --tenant <TENANT_ID> --role admin --service-account <PATH_JSON>
+
 # 2) Aplicar cambios
 npm run admin:grant -- --email <EMAIL> --tenant <TENANT_ID> --role admin
 
@@ -67,7 +70,7 @@ npm run admin:grant -- --email <EMAIL> --tenant <TENANT_ID> --role admin --super
 
 > Resolución de proyecto: el script toma `--project`, luego `GCLOUD_PROJECT`/`GOOGLE_CLOUD_PROJECT`, luego `FIREBASE_CONFIG.projectId` y por último `.firebaserc`.
 >
-> Si aparece `metadata.google.internal` en local, faltan credenciales ADC: ejecutar `gcloud auth application-default login` o exportar `GOOGLE_APPLICATION_CREDENTIALS=/ruta/service-account.json`.
+> Si no hay ADC configuradas, el script ahora corta con error explícito (sin depender de `metadata.google.internal`): ejecutar `gcloud auth application-default login`, exportar `GOOGLE_APPLICATION_CREDENTIALS=/ruta/service-account.json`, o pasar `--service-account <PATH_JSON>`.
 
 ## Gestión de claim `superAdmin` (asignar/revocar)
 

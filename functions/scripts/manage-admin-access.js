@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const admin = require('firebase-admin');
 
@@ -21,6 +22,7 @@ function parseArgs(argv) {
     email: '',
     tenantId: '',
     projectId: '',
+    serviceAccountPath: '',
     role: 'admin',
     superAdmin: false,
     dryRun: false
@@ -31,6 +33,7 @@ function parseArgs(argv) {
     if (token === '--email') args.email = argv[++i] || '';
     else if (token === '--tenant') args.tenantId = argv[++i] || '';
     else if (token === '--project') args.projectId = argv[++i] || '';
+    else if (token === '--service-account') args.serviceAccountPath = argv[++i] || '';
     else if (token === '--role') args.role = (argv[++i] || 'admin').toLowerCase();
     else if (token === '--super-admin') args.superAdmin = true;
     else if (token === '--dry-run') args.dryRun = true;
@@ -74,6 +77,59 @@ function resolveProjectId(cliProjectId) {
   return byPriority.map((value) => String(value || '').trim()).find(Boolean) || '';
 }
 
+
+function getDefaultAdcPathCandidates() {
+  const candidates = [];
+  const home = os.homedir();
+
+  if (home) {
+    candidates.push(path.join(home, '.config', 'gcloud', 'application_default_credentials.json'));
+  }
+
+  const appData = process.env.APPDATA;
+  if (appData) {
+    candidates.push(path.join(appData, 'gcloud', 'application_default_credentials.json'));
+  }
+
+  return candidates;
+}
+
+function hasUsableAdcCredentials() {
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    return fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  }
+
+  return getDefaultAdcPathCandidates().some((candidatePath) => fs.existsSync(candidatePath));
+}
+
+function readServiceAccountFromPath(serviceAccountPath) {
+  const normalizedPath = String(serviceAccountPath || '').trim();
+  if (!normalizedPath) return null;
+
+  const absolutePath = path.resolve(process.cwd(), normalizedPath);
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`No existe el archivo de service account: ${absolutePath}`);
+  }
+
+  try {
+    const content = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+    return { credential: admin.credential.cert(content), source: absolutePath };
+  } catch {
+    throw new Error(`No se pudo parsear el JSON de service account: ${absolutePath}`);
+  }
+}
+
+function resolveCredentialConfig(serviceAccountPath) {
+  const fromFile = readServiceAccountFromPath(serviceAccountPath);
+  if (fromFile) return fromFile;
+
+  if (hasUsableAdcCredentials()) {
+    return { credential: admin.credential.applicationDefault(), source: 'adc' };
+  }
+
+  throw new Error('No se encontraron credenciales de Google válidas. Usá --service-account <PATH_JSON>, ejecutá "gcloud auth application-default login" o configurá GOOGLE_APPLICATION_CREDENTIALS.');
+}
+
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -113,8 +169,13 @@ async function main() {
     throw new Error('No se pudo resolver el project ID. Usá --project <PROJECT_ID> o definí GCLOUD_PROJECT.');
   }
 
+  const credentialConfig = resolveCredentialConfig(args.serviceAccountPath);
+
   if (!admin.apps.length) {
-    admin.initializeApp({ projectId: args.projectId });
+    admin.initializeApp({
+      projectId: args.projectId,
+      credential: credentialConfig.credential
+    });
   }
 
   const auth = admin.auth();
@@ -188,6 +249,7 @@ async function main() {
     superAdmin: nextClaims.superAdmin === true,
     emailHash,
     maskedEmail: maskEmail(args.email),
+    credentialSource: credentialConfig.source,
     note: 'El usuario debe refrescar token (logout/login o getIdToken(true)).'
   }, null, 2));
 }
