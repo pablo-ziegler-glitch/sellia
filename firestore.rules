@@ -32,6 +32,20 @@ service cloud.firestore {
       return userData().tenantId;
     }
 
+    function userTenantIds() {
+      return hasUserProfile() && userData().tenantIds is list
+        ? userData().tenantIds
+        : [];
+    }
+
+    function userTenantIdMatches(tenantId) {
+      return hasUserProfile()
+        && (
+          userTenantId() == tenantId
+          || tenantId in userTenantIds()
+        );
+    }
+
     function isUserActive() {
       return hasUserProfile()
         && (
@@ -58,7 +72,7 @@ service cloud.firestore {
           hasSuperAdminClaim()
           || (
             hasUserProfile()
-            && userTenantId() == tenantId
+            && userTenantIdMatches(tenantId)
             && isUserActive()
           )
         );
