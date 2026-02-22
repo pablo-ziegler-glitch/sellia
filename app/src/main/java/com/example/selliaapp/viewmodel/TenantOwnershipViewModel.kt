@@ -2,6 +2,7 @@ package com.example.selliaapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.selliaapp.auth.AuthErrorMapper
 import com.example.selliaapp.repository.TenantOwnershipRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -61,7 +62,10 @@ class TenantOwnershipViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             isLoading = false,
-                            error = error.message ?: "No se pudo completar la operación"
+                            error = AuthErrorMapper.toUserMessage(
+                                error,
+                                "No se pudo completar la operación"
+                            )
                         )
                     }
                 }

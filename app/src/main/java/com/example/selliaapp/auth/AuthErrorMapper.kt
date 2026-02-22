@@ -4,6 +4,7 @@ import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.functions.FirebaseFunctionsException
 
 object AuthErrorMapper {
 
@@ -39,6 +40,38 @@ object AuthErrorMapper {
             }
 
             is FirebaseNetworkException -> "Sin conexión. Verificá internet e intentá nuevamente."
+            is FirebaseFunctionsException -> mapFunctionsError(error, fallback)
+            else -> fallback
+        }
+    }
+
+    private fun mapFunctionsError(
+        error: FirebaseFunctionsException,
+        fallback: String
+    ): String {
+        val message = error.message.orEmpty().lowercase()
+        val details = error.details?.toString().orEmpty().lowercase()
+        return when {
+            message.contains("ya administra otra tienda") || details.contains("ya administra otra tienda") -> {
+                "Ese email ya administra otra tienda. Usá otro usuario para co-dueño o delegación."
+            }
+
+            error.code == FirebaseFunctionsException.Code.NOT_FOUND -> {
+                "No encontramos un usuario activo con ese email. Verificá que ya tenga cuenta en SellIA."
+            }
+
+            error.code == FirebaseFunctionsException.Code.PERMISSION_DENIED -> {
+                "No tenés permisos para gestionar dueños o delegaciones de esta tienda."
+            }
+
+            error.code == FirebaseFunctionsException.Code.FAILED_PRECONDITION -> {
+                "No se puede completar la acción por una condición de la cuenta destino."
+            }
+
+            error.code == FirebaseFunctionsException.Code.INVALID_ARGUMENT -> {
+                "Los datos ingresados no son válidos. Revisá el email e intentá nuevamente."
+            }
+
             else -> fallback
         }
     }

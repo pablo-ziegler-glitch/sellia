@@ -4,6 +4,7 @@ import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.functions.FirebaseFunctionsException
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -70,6 +71,36 @@ class AuthErrorMapperTest {
         val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
 
         assertEquals("Necesitás verificar tu email antes de ingresar.", mapped)
+    }
+
+    @Test
+    fun `maps ownership not found errors to clear user message`() {
+        val error = FirebaseFunctionsException(
+            FirebaseFunctionsException.Code.NOT_FOUND,
+            "No existe usuario activo con ese email"
+        )
+
+        val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
+
+        assertEquals(
+            "No encontramos un usuario activo con ese email. Verificá que ya tenga cuenta en SellIA.",
+            mapped
+        )
+    }
+
+    @Test
+    fun `maps ownership conflict with another store to specific guidance`() {
+        val error = FirebaseFunctionsException(
+            FirebaseFunctionsException.Code.FAILED_PRECONDITION,
+            "El usuario ya administra otra tienda"
+        )
+
+        val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
+
+        assertEquals(
+            "Ese email ya administra otra tienda. Usá otro usuario para co-dueño o delegación.",
+            mapped
+        )
     }
 
 }
