@@ -58,8 +58,6 @@ import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
 import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.ProductRepository
-import com.example.selliaapp.repository.ProviderInvoiceRepository
-import com.example.selliaapp.repository.ProviderRepository
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.SecurityConfigRepository
 import com.example.selliaapp.repository.StorageRepository
@@ -401,9 +399,6 @@ object AppModule {
         sessionCoordinator = sessionCoordinator,
         ioDispatcher = io
     )
-
-    @Provides @Singleton fun provideProviderRepository(dao: ProviderDao): ProviderRepository = ProviderRepository(dao)
-    @Provides @Singleton fun provideProviderInvoiceRepository(dao: ProviderInvoiceDao): ProviderInvoiceRepository = ProviderInvoiceRepository(dao)
 
     @Provides
     @Singleton
