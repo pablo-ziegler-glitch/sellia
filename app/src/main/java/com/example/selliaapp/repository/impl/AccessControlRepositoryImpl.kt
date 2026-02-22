@@ -63,13 +63,14 @@ class AccessControlRepositoryImpl @Inject constructor(
         }
         val firestoreRole = resolveRoleFromCloud()
         val totalUsers = userDao.countUsers()
-        val role = when {
-            isConfiguredAdmin -> AppRole.ADMIN
-            user != null && user.isActive -> AppRole.fromRaw(user.role)
-            firestoreRole != null -> firestoreRole
-            totalUsers == 0 && !email.isNullOrBlank() -> AppRole.ADMIN
-            else -> AppRole.fromRaw(null)
-        }
+        val role = resolveEffectiveRole(
+            isConfiguredAdmin = isConfiguredAdmin,
+            localRole = user?.let { AppRole.fromRaw(it.role) },
+            localUserIsActive = user?.isActive == true,
+            firestoreRole = firestoreRole,
+            totalUsers = totalUsers,
+            hasAuthenticatedEmail = !email.isNullOrBlank()
+        )
         UserAccessState(
             email = user?.email ?: email,
             role = role,
@@ -81,18 +82,38 @@ class AccessControlRepositoryImpl @Inject constructor(
         val uid = auth.currentUser?.uid ?: return null
         val snapshot = firestore.collection("users").document(uid).get().await()
         if (!snapshot.exists()) return null
+        val roleRaw = snapshot.getString("role")?.trim()?.lowercase()
+        val isSuperAdmin = snapshot.getBoolean("isSuperAdmin") == true
+        val isAdmin = snapshot.getBoolean("isAdmin") == true
+        if (isSuperAdmin || roleRaw == "super_admin" || isAdmin || roleRaw == AppRole.ADMIN.raw) {
+            return AppRole.ADMIN
+        }
         val status = snapshot.getString("status")?.lowercase()
         if (!status.isNullOrBlank() && status != "active") {
             return AppRole.VIEWER
         }
-        val roleRaw = snapshot.getString("role")?.trim()?.lowercase()
-        val isSuperAdmin = snapshot.getBoolean("isSuperAdmin") == true
-        val isAdmin = snapshot.getBoolean("isAdmin") == true
         return when {
-            isSuperAdmin -> AppRole.ADMIN
-            roleRaw == "super_admin" -> AppRole.ADMIN
-            isAdmin -> AppRole.ADMIN
             else -> AppRole.fromRaw(roleRaw)
         }
     }
+
+
+    companion object {
+        internal fun resolveEffectiveRole(
+            isConfiguredAdmin: Boolean,
+            localRole: AppRole?,
+            localUserIsActive: Boolean,
+            firestoreRole: AppRole?,
+            totalUsers: Int,
+            hasAuthenticatedEmail: Boolean
+        ): AppRole = when {
+            isConfiguredAdmin -> AppRole.ADMIN
+            firestoreRole != null -> firestoreRole
+            localRole == AppRole.ADMIN -> AppRole.ADMIN
+            localUserIsActive && localRole != null -> localRole
+            totalUsers == 0 && hasAuthenticatedEmail -> AppRole.ADMIN
+            else -> AppRole.fromRaw(null)
+        }
+    }
+
 }
