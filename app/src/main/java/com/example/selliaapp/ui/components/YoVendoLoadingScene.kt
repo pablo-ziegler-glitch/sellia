@@ -7,7 +7,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,9 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.selliaapp.R
 import com.example.selliaapp.auth.AuthLoadingUiState
 
 @Composable
@@ -52,31 +57,45 @@ fun YoVendoLoadingScene(
     val trackStrokeColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
     val laneColor = MaterialTheme.colorScheme.surfaceVariant
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "YoVendo",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "Preparando tu operación",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)
+        Image(
+            painter = painterResource(id = R.drawable.valkirja_log),
+            contentDescription = "Pantalla inicial",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
         )
 
-        Canvas(
+        Column(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(140.dp)
-        ) {
+                .padding(horizontal = 24.dp, vertical = 32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        )
+        {
+            Text(
+                text = "YoVendo",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Text(
+                text = "Preparando tu operación",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)
+            )
+
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+            ) {
             val centerY = size.height * 0.55f
             val sellerX = size.width * 0.2f
             val buyerX = size.width * 0.8f
@@ -134,18 +153,20 @@ fun YoVendoLoadingScene(
                 cornerRadius = CornerRadius(8.dp.toPx()),
                 style = Stroke(width = 1.dp.toPx())
             )
-        }
+            }
 
-        Text(
-            text = loadingUiState.label,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 14.dp)
-        )
-        Text(
-            text = "${(progress * 100).toInt()}%",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 4.dp)
-        )
+            Text(
+                text = loadingUiState.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+                modifier = Modifier.padding(top = 14.dp)
+            )
+            Text(
+                text = "${(progress * 100).toInt()}%",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
 }
