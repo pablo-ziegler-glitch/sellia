@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -357,24 +358,67 @@ class SyncRepositoryImpl @Inject constructor(
     private suspend fun hasPrivilegedSyncAccess(): Boolean {
         val uid = auth.currentUser?.uid ?: return false
         val snapshot = firestore.collection("users").document(uid).get().await()
-        val role = snapshot.getString("role")?.trim()?.lowercase().orEmpty()
+        val role = snapshot.getString("role")?.normalizeRole().orEmpty()
         val isAdmin = role == "admin"
         val isPrivileged = role == "owner" || role == "manager"
         val hasAdminFlags = snapshot.getBoolean("isAdmin") == true ||
             snapshot.getBoolean("isSuperAdmin") == true
-        return isAdmin || isPrivileged || hasAdminFlags
+        if (isAdmin || isPrivileged || hasAdminFlags) return true
+
+        val tenantId = resolveTenantId(snapshot) ?: return false
+        val normalizedEmail = auth.currentUser?.email
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            .orEmpty()
+        if (normalizedEmail.isBlank()) return false
+
+        val tenantUserSnapshot = firestore.collection("tenant_users")
+            .document("${tenantId}_${normalizedEmail}")
+            .get()
+            .await()
+        if (!tenantUserSnapshot.exists()) return false
+        if (tenantUserSnapshot.getBoolean("isActive") == false) return false
+
+        val tenantUserRole = tenantUserSnapshot.getString("role")?.normalizeRole().orEmpty()
+        return tenantUserRole == "admin" || tenantUserRole == "owner" || tenantUserRole == "manager"
     }
 
     private suspend fun hasReadSyncAccess(): Boolean {
         val uid = auth.currentUser?.uid ?: return false
         val snapshot = firestore.collection("users").document(uid).get().await()
-        val status = snapshot.getString("status")?.trim()?.lowercase()
+        val status = snapshot.getString("status")?.trim()?.lowercase(Locale.ROOT)
         if (!status.isNullOrBlank() && status != "active") {
             return false
         }
-        val tenantId = snapshot.getString("tenantId") ?: snapshot.getString("storeId")
-        return !tenantId.isNullOrBlank()
+
+        val tenantId = resolveTenantId(snapshot) ?: return false
+        val normalizedEmail = auth.currentUser?.email
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            .orEmpty()
+        if (normalizedEmail.isBlank()) return true
+
+        val tenantUserSnapshot = firestore.collection("tenant_users")
+            .document("${tenantId}_${normalizedEmail}")
+            .get()
+            .await()
+        if (!tenantUserSnapshot.exists()) return true
+        return tenantUserSnapshot.getBoolean("isActive") != false
     }
+
+    private fun resolveTenantId(snapshot: DocumentSnapshot): String? {
+        return tenantProvider.currentTenantId()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: snapshot.getString("tenantId")?.trim()?.takeIf { it.isNotBlank() }
+            ?: snapshot.getString("storeId")?.trim()?.takeIf { it.isNotBlank() }
+            ?: ((snapshot.get("tenantIds") as? List<*>)
+                ?.mapNotNull { it as? String }
+                ?.map { it.trim() }
+                ?.firstOrNull { it.isNotBlank() })
+    }
+
+    private fun String.normalizeRole(): String = trim().lowercase(Locale.ROOT)
 
     private suspend fun syncCustomersFromRemote() {
         val tenantId = tenantProvider.requireTenantId()
