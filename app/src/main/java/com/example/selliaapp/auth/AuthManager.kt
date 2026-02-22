@@ -1,6 +1,8 @@
 package com.example.selliaapp.auth
 
 import com.example.selliaapp.BuildConfig
+import com.example.selliaapp.data.dao.TenantSkuConfigDao
+import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.di.AppModule
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -30,6 +32,7 @@ import javax.inject.Singleton
 class AuthManager @Inject constructor(
     private val firebaseAuth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
+    private val tenantSkuConfigDao: TenantSkuConfigDao,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) : TenantProvider {
 
@@ -66,6 +69,7 @@ class AuthManager @Inject constructor(
         enforceEmailVerification(user)
         showLoading(progress = 0.6f, label = "Sincronizando tu perfil...")
         val session = fetchSession(user)
+        syncTenantStoreMetadata(session)
         publishAuthenticatedState(session)
         session
     }.onFailure { error ->
@@ -83,6 +87,7 @@ class AuthManager @Inject constructor(
             showLoading(progress = 0.55f, label = "Recuperando datos de tu tienda...")
             val session = runCatching { fetchSession(user) }
                 .getOrElse { ensurePublicCustomerSession(user, allowOnboardingFallback) }
+            syncTenantStoreMetadata(session)
             publishAuthenticatedState(session)
             session
         }.onFailure { error ->
@@ -172,6 +177,7 @@ class AuthManager @Inject constructor(
         _state.value = AuthState.Loading
         val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
         val session = fetchSession(user)
+        syncTenantStoreMetadata(session)
         publishAuthenticatedState(session)
         session
     }.onFailure { error ->
@@ -245,7 +251,10 @@ class AuthManager @Inject constructor(
             _state.value = AuthState.Loading
         }
         runCatching { fetchSessionWithRetry(user) }
-            .onSuccess { session -> publishAuthenticatedState(session) }
+            .onSuccess { session ->
+                syncTenantStoreMetadata(session)
+                publishAuthenticatedState(session)
+            }
             .onFailure { error ->
                 _state.value = AuthState.Error(
                     error.message ?: "No se pudo resolver el tenantId"
@@ -362,6 +371,81 @@ class AuthManager @Inject constructor(
             requiredAction = RequiredAuthAction.SELECT_TENANT
         )
         throw MissingTenantContextException()
+    }
+
+    private suspend fun syncTenantStoreMetadata(session: AuthSession) {
+        val tenantId = session.tenantId.trim()
+        if (tenantId.isBlank()) return
+
+        val now = System.currentTimeMillis()
+        runCatching {
+            val tenantRef = firestore.collection("tenants").document(tenantId)
+            val tenantSnapshot = tenantRef.get().await()
+            val tenantName = tenantSnapshot.getString("name").orEmpty().trim()
+            val tenantPrefix = tenantSnapshot.getString("skuPrefix").normalizeSkuPrefixOrNull()
+
+            val marketingStoreName = if (tenantName.isBlank()) {
+                val marketingSnapshot = tenantRef
+                    .collection("config")
+                    .document("marketing")
+                    .get()
+                    .await()
+                val marketingData = marketingSnapshot.get("data") as? Map<*, *>
+                (marketingData?.get("storeName") as? String).orEmpty().trim()
+            } else {
+                ""
+            }
+
+            val resolvedStoreName = tenantName
+                .ifBlank { marketingStoreName }
+                .ifBlank { "Tienda" }
+
+            val resolvedPrefix = tenantPrefix ?: deriveSkuPrefixFromStoreName(resolvedStoreName)
+
+            tenantSkuConfigDao.upsert(
+                TenantSkuConfigEntity(
+                    tenantId = tenantId,
+                    storeName = resolvedStoreName,
+                    skuPrefix = resolvedPrefix,
+                    updatedAtEpochMs = now
+                )
+            )
+
+            val tenantWrite = mutableMapOf<String, Any>(
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            if (tenantName.isBlank()) {
+                tenantWrite["name"] = resolvedStoreName
+            }
+            if (tenantPrefix == null) {
+                tenantWrite["skuPrefix"] = resolvedPrefix
+            }
+            if (tenantWrite.size > 1) {
+                tenantRef.set(tenantWrite, SetOptions.merge()).await()
+            }
+
+            firestore.collection("tenant_directory")
+                .document(tenantId)
+                .set(
+                    mapOf(
+                        "tenantId" to tenantId,
+                        "storeName" to resolvedStoreName,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    ),
+                    SetOptions.merge()
+                )
+                .await()
+        }
+    }
+
+    private fun String?.normalizeSkuPrefixOrNull(): String? {
+        val normalized = this.orEmpty().uppercase().replace("[^A-Z0-9]".toRegex(), "").take(6)
+        return normalized.takeIf { it.length >= 3 }
+    }
+
+    private fun deriveSkuPrefixFromStoreName(storeName: String): String {
+        val normalized = storeName.uppercase().replace("[^A-Z0-9]".toRegex(), "")
+        return normalized.take(3).padEnd(3, 'X')
     }
 
     private fun showLoading(progress: Float, label: String) {
