@@ -13,7 +13,9 @@
     "cleanup:public-customers:dry": "node scripts/cleanup-orphan-public-customers.js --dry-run",
     "cleanup:public-customers:apply": "node scripts/cleanup-orphan-public-customers.js --apply",
     "test": "vitest",
-    "test:ci": "vitest run"
+    "test:ci": "vitest run",
+    "claims:super-admin:grant": "node scripts/manage-super-admin-claim.js --grant",
+    "claims:super-admin:revoke": "node scripts/manage-super-admin-claim.js --revoke"
   },
   "dependencies": {
     "axios": "^1.6.7",
