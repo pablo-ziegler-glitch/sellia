@@ -10,6 +10,23 @@ import org.junit.Test
 
 class AuthErrorMapperTest {
 
+    private fun buildFunctionsException(
+        message: String,
+        code: FirebaseFunctionsException.Code,
+        details: Any?
+    ): FirebaseFunctionsException {
+        val constructor = FirebaseFunctionsException::class.java.declaredConstructors
+            .first { candidate ->
+                val parameterTypes = candidate.parameterTypes
+                parameterTypes.size == 3 &&
+                    parameterTypes[0] == String::class.java &&
+                    parameterTypes[1] == FirebaseFunctionsException.Code::class.java &&
+                    parameterTypes[2] == Any::class.java
+            }
+        constructor.isAccessible = true
+        return constructor.newInstance(message, code, details) as FirebaseFunctionsException
+    }
+
     @Test
     fun `maps invalid login credential to actionable message`() {
         val error = FirebaseAuthInvalidCredentialsException(
@@ -75,7 +92,7 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps ownership not found errors to clear user message`() {
-        val error = FirebaseFunctionsException(
+        val error = buildFunctionsException(
             "No existe usuario activo con ese email",
             FirebaseFunctionsException.Code.NOT_FOUND,
             null
@@ -91,7 +108,7 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps ownership conflict with another store to specific guidance`() {
-        val error = FirebaseFunctionsException(
+        val error = buildFunctionsException(
             "El usuario ya administra otra tienda",
             FirebaseFunctionsException.Code.FAILED_PRECONDITION,
             null
