@@ -64,6 +64,11 @@ npm run admin:grant -- --email <EMAIL> --tenant <TENANT_ID> --role admin --super
 
 > Después de aplicar claims, forzar refresh del token del usuario (`logout/login` o `getIdToken(true)`).
 
+
+> Resolución de proyecto: el script toma `--project`, luego `GCLOUD_PROJECT`/`GOOGLE_CLOUD_PROJECT`, luego `FIREBASE_CONFIG.projectId` y por último `.firebaserc`.
+>
+> Si aparece `metadata.google.internal` en local, faltan credenciales ADC: ejecutar `gcloud auth application-default login` o exportar `GOOGLE_APPLICATION_CREDENTIALS=/ruta/service-account.json`.
+
 ## Gestión de claim `superAdmin` (asignar/revocar)
 
 Las reglas y funciones administrativas ya **no dependen de un email fijo**. El bypass global usa `request.auth.token.superAdmin == true`.
