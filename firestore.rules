@@ -119,8 +119,7 @@ service cloud.firestore {
       return hasUserDoc()
         && (
           userData().role in ['admin', 'owner']
-          || userData().isAdmin == true
-          || userData().isSuperAdmin == true
+          || hasAdminClaim()
         );
     }
 
@@ -136,8 +135,7 @@ service cloud.firestore {
           hasUserDoc()
           && (
             userData().role in ['owner', 'admin']
-            || userData().isAdmin == true
-            || userData().isSuperAdmin == true
+            || hasAdminClaim()
             || 'MAINTENANCE_READ' in userPermissions()
             || 'MAINTENANCE_WRITE' in userPermissions()
           )
@@ -150,8 +148,7 @@ service cloud.firestore {
           hasUserDoc()
           && (
             userData().role in ['owner', 'admin']
-            || userData().isAdmin == true
-            || userData().isSuperAdmin == true
+            || hasAdminClaim()
             || 'MAINTENANCE_WRITE' in userPermissions()
           )
         );
@@ -183,7 +180,7 @@ service cloud.firestore {
     }
 
     function isAdminUser() {
-      return isAuthenticated() && (hasAdminClaim() || hasAdminField());
+      return isAuthenticated() && hasAdminClaim();
     }
 
     function isAdminForTenant(tenantId) {
