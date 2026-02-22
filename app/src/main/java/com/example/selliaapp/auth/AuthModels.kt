@@ -12,7 +12,13 @@ data class PendingAuthSession(
     val uid: String,
     val email: String?,
     val displayName: String?,
-    val photoUrl: String?
+    val photoUrl: String?,
+    val availableTenants: List<PendingTenantOption> = emptyList()
+)
+
+data class PendingTenantOption(
+    val id: String,
+    val name: String
 )
 
 enum class RequiredAuthAction {

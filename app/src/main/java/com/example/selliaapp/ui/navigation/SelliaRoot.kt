@@ -180,6 +180,12 @@ fun SelliaRoot(
 
         is AuthState.PartiallyAuthenticated -> {
             val partialState = authState as AuthState.PartiallyAuthenticated
+            val sessionTenants = partialState.session.availableTenants
+            val availableTenants = if (sessionTenants.isNotEmpty()) {
+                sessionTenants.map { com.example.selliaapp.repository.TenantSummary(id = it.id, name = it.name) }
+            } else {
+                registerState.tenants
+            }
             LaunchedEffect(partialState.requiredAction) {
                 if (partialState.requiredAction == RequiredAuthAction.SELECT_TENANT) {
                     registerViewModel.setRequiresTenantSelectionOnboarding(true)
@@ -189,10 +195,20 @@ fun SelliaRoot(
                 isLoading = registerState.isLoading,
                 isLoadingTenants = registerState.isLoadingTenants,
                 errorMessage = registerState.errorMessage,
-                tenants = registerState.tenants,
+                tenants = availableTenants,
                 selectedTenantId = registerState.selectedTenantId,
                 onTenantChange = registerViewModel::selectTenant,
-                onSubmit = registerViewModel::completeTenantSelectionOnboarding,
+                onSubmit = { tenantId, tenantName ->
+                    if (sessionTenants.isNotEmpty()) {
+                        if (tenantId.isNullOrBlank()) {
+                            authViewModel.reportAuthError("Seleccioná una tienda para continuar")
+                        } else {
+                            authViewModel.selectTenantForSession(tenantId)
+                        }
+                    } else {
+                        registerViewModel.completeTenantSelectionOnboarding(tenantId, tenantName)
+                    }
+                },
                 onSignOut = authViewModel::signOut
             )
         }

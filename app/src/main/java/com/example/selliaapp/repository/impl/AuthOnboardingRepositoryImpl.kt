@@ -52,6 +52,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 userRef,
                 mapOf(
                     "tenantId" to tenantId,
+                    "tenantIds" to listOf(tenantId),
                     "email" to email,
                     "role" to AppRole.OWNER.raw,
                     "accountType" to ACCOUNT_TYPE_STORE_OWNER,
@@ -131,6 +132,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 tenantUserRef,
                 mapOf(
                     "tenantId" to tenantId,
+                    "tenantIds" to listOf(tenantId),
                     "name" to storeName,
                     "email" to email.trim().lowercase(),
                     "role" to AppRole.OWNER.raw,
@@ -178,6 +180,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             userRef.set(
                 mapOf(
                     "tenantId" to normalizedTenantId,
+                    "tenantIds" to listOf(normalizedTenantId),
                     "email" to email,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
@@ -255,6 +258,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             userRef.set(
                 mapOf(
                     "tenantId" to tenantId,
+                    "tenantIds" to listOf(tenantId),
                     "email" to normalizedEmail,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,

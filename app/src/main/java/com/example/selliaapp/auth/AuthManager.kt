@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -54,6 +55,7 @@ class AuthManager @Inject constructor(
 
     private var authStateListener: FirebaseAuth.AuthStateListener? = null
     private var idTokenListener: FirebaseAuth.IdTokenListener? = null
+
 
     init {
         observeRefreshSignals()
@@ -102,21 +104,40 @@ class AuthManager @Inject constructor(
             if (!tenantSnapshot.exists()) {
                 throw IllegalArgumentException("La tienda seleccionada no existe")
             }
+            val tenantStatus = tenantSnapshot.getString("status")?.trim()?.lowercase(Locale.ROOT)
+            if (!tenantStatus.isNullOrBlank() && tenantStatus != "active") {
+                throw IllegalStateException("La tienda seleccionada no está activa en este momento")
+            }
+
             val createdAt = FieldValue.serverTimestamp()
-            val normalizedEmail = (user.email ?: "").trim().lowercase()
+            val normalizedEmail = (user.email ?: "").trim().lowercase(Locale.ROOT)
             val displayName = (user.displayName ?: "").trim()
 
-            firestore.collection("users").document(user.uid)
+            val userRef = firestore.collection("users").document(user.uid)
+            val userSnapshot = userRef.get().await()
+            val currentTenantId = userSnapshot.getString("tenantId")
+            @Suppress("UNCHECKED_CAST")
+            val existingTenantIds = (userSnapshot.get("tenantIds") as? List<*>)
+                ?.mapNotNull { it as? String }
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
+            val mergedTenantIds = (existingTenantIds + listOfNotNull(currentTenantId?.trim(), tenantId.trim()))
+                .filter { it.isNotBlank() }
+                .distinct()
+
+            userRef
                 .set(
                     mapOf(
                         "tenantId" to tenantId,
+                        "tenantIds" to mergedTenantIds,
                         "email" to normalizedEmail,
                         "role" to "viewer",
                         "accountType" to "final_customer",
                         "status" to "active",
                         "displayName" to displayName,
                         "selectedCatalogTenantId" to tenantId,
-                        "followedTenantIds" to listOf(tenantId),
+                        "followedTenantIds" to mergedTenantIds,
                         "updatedAt" to createdAt
                     ),
                     SetOptions.merge()
@@ -309,32 +330,57 @@ class AuthManager @Inject constructor(
     private suspend fun fetchSession(user: FirebaseUser): AuthSession {
         showLoading(progress = 0.75f, label = "Leyendo permisos y tienda...")
         val snapshot = firestore.collection("users").document(user.uid).get().await()
-        val status = snapshot.getString("status")?.lowercase()
+        val status = snapshot.getString("status")?.trim()?.lowercase(Locale.ROOT)
         if (!status.isNullOrBlank() && status != "active") {
             throw IllegalStateException("Tu cuenta está pendiente de aprobación o fue deshabilitada.")
         }
-        val tenantId = snapshot.getString("tenantId")
-            ?: snapshot.getString("storeId")
-            ?: run {
-                val role = snapshot.getString("role")?.lowercase()
-                val accountType = snapshot.getString("accountType")?.lowercase()
-                if (role == "viewer" || accountType == "final_customer" || accountType == "public_customer") {
-                    _state.value = AuthState.PartiallyAuthenticated(
-                        session = PendingAuthSession(
-                            uid = user.uid,
-                            email = user.email,
-                            displayName = user.displayName,
-                            photoUrl = user.photoUrl?.toString()
-                        ),
-                        requiredAction = RequiredAuthAction.SELECT_TENANT
-                    )
-                }
-                throw MissingTenantContextException()
+
+        val availableTenants = extractAvailableTenants(snapshot)
+        val selectedTenantId = snapshot.getString("tenantId")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { tenantId -> availableTenants.isEmpty() || availableTenants.any { it.id == tenantId } }
+
+        if (availableTenants.size > 1 && selectedTenantId == null) {
+            _state.value = AuthState.PartiallyAuthenticated(
+                session = PendingAuthSession(
+                    uid = user.uid,
+                    email = user.email,
+                    displayName = user.displayName,
+                    photoUrl = user.photoUrl?.toString(),
+                    availableTenants = availableTenants
+                ),
+                requiredAction = RequiredAuthAction.SELECT_TENANT
+            )
+            throw MissingTenantContextException()
+        }
+
+        val resolvedTenantId = selectedTenantId ?: availableTenants.firstOrNull()?.id
+
+        if (resolvedTenantId == null) {
+            val role = snapshot.getString("role")?.trim()?.lowercase(Locale.ROOT)
+            val accountType = snapshot.getString("accountType")?.trim()?.lowercase(Locale.ROOT)
+            if (role == "viewer" || accountType == "final_customer" || accountType == "public_customer") {
+                _state.value = AuthState.PartiallyAuthenticated(
+                    session = PendingAuthSession(
+                        uid = user.uid,
+                        email = user.email,
+                        displayName = user.displayName,
+                        photoUrl = user.photoUrl?.toString(),
+                        availableTenants = availableTenants
+                    ),
+                    requiredAction = RequiredAuthAction.SELECT_TENANT
+                )
             }
+            throw MissingTenantContextException()
+        }
+
+        validateTenantIsActiveOrThrow(resolvedTenantId)
+
         showLoading(progress = 0.92f, label = "Finalizando ingreso...")
         return AuthSession(
             uid = user.uid,
-            tenantId = tenantId,
+            tenantId = resolvedTenantId,
             email = user.email,
             displayName = user.displayName,
             photoUrl = user.photoUrl?.toString()
@@ -371,6 +417,75 @@ class AuthManager @Inject constructor(
             requiredAction = RequiredAuthAction.SELECT_TENANT
         )
         throw MissingTenantContextException()
+    }
+
+    private suspend fun validateTenantIsActiveOrThrow(tenantId: String) {
+        val tenantSnapshot = firestore.collection("tenants").document(tenantId).get().await()
+        if (!tenantSnapshot.exists()) {
+            throw IllegalStateException("La tienda asociada a tu cuenta ya no existe.")
+        }
+        val tenantStatus = tenantSnapshot.getString("status")?.trim()?.lowercase(Locale.ROOT)
+        if (!tenantStatus.isNullOrBlank() && tenantStatus != "active") {
+            throw IllegalStateException("La tienda está temporalmente deshabilitada. Podés solicitar reactivación al administrador.")
+        }
+    }
+
+    private suspend fun extractAvailableTenants(snapshot: com.google.firebase.firestore.DocumentSnapshot): List<PendingTenantOption> {
+        @Suppress("UNCHECKED_CAST")
+        val tenantIdsFromArray = (snapshot.get("tenantIds") as? List<*>)
+            ?.mapNotNull { it as? String }
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+        val candidateIds = buildList {
+            addAll(tenantIdsFromArray)
+            snapshot.getString("tenantId")?.trim()?.takeIf { it.isNotBlank() }?.let(::add)
+            snapshot.getString("storeId")?.trim()?.takeIf { it.isNotBlank() }?.let(::add)
+        }.distinct()
+
+        if (candidateIds.isEmpty()) return emptyList()
+
+        val tenantsById = candidateIds.associateWith { tenantId ->
+            runCatching {
+                firestore.collection("tenants").document(tenantId).get().await()
+            }.getOrNull()
+        }
+
+        return candidateIds.mapNotNull { tenantId ->
+            val doc = tenantsById[tenantId] ?: return@mapNotNull null
+            if (!doc.exists()) return@mapNotNull null
+            val status = doc.getString("status")?.trim()?.lowercase(Locale.ROOT)
+            if (!status.isNullOrBlank() && status != "active") return@mapNotNull null
+            val name = doc.getString("name")?.trim().orEmpty().ifBlank { "Tienda" }
+            PendingTenantOption(id = tenantId, name = name)
+        }
+    }
+
+    suspend fun switchTenant(tenantId: String): Result<AuthSession> = runCatching {
+        showLoading(progress = 0.3f, label = "Cambiando de tienda...")
+        val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
+        val snapshot = firestore.collection("users").document(user.uid).get().await()
+        val availableTenants = extractAvailableTenants(snapshot)
+        if (availableTenants.none { it.id == tenantId }) {
+            throw IllegalArgumentException("No tenés acceso a la tienda seleccionada")
+        }
+        validateTenantIsActiveOrThrow(tenantId)
+        firestore.collection("users").document(user.uid)
+            .set(
+                mapOf(
+                    "tenantId" to tenantId,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            )
+            .await()
+        val session = fetchSession(user)
+        syncTenantStoreMetadata(session)
+        publishAuthenticatedState(session)
+        session
+    }.onFailure {
+        resetLoading()
     }
 
     private suspend fun syncTenantStoreMetadata(session: AuthSession) {
@@ -465,7 +580,8 @@ class AuthManager @Inject constructor(
             uid = user?.uid.orEmpty(),
             email = user?.email,
             displayName = user?.displayName,
-            photoUrl = user?.photoUrl?.toString()
+            photoUrl = user?.photoUrl?.toString(),
+            availableTenants = emptyList()
         )
     }
 }

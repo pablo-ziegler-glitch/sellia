@@ -40,4 +40,10 @@ class AuthViewModel @Inject constructor(
     fun signOut() {
         authManager.signOut()
     }
+
+    fun selectTenantForSession(tenantId: String) {
+        viewModelScope.launch {
+            authManager.switchTenant(tenantId)
+        }
+    }
 }
