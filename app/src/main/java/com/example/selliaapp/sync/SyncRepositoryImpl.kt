@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -355,26 +356,122 @@ class SyncRepositoryImpl @Inject constructor(
         t.message?.take(512) ?: t::class.java.simpleName
 
     private suspend fun hasPrivilegedSyncAccess(): Boolean {
-        val uid = auth.currentUser?.uid ?: return false
-        val snapshot = firestore.collection("users").document(uid).get().await()
-        val role = snapshot.getString("role")?.trim()?.lowercase().orEmpty()
+        val currentUser = auth.currentUser ?: return false
+        val snapshot = firestore.collection("users").document(currentUser.uid).get().await()
+        val role = snapshot.getString("role")?.normalizeRole().orEmpty()
         val isAdmin = role == "admin"
         val isPrivileged = role == "owner" || role == "manager"
         val hasAdminFlags = snapshot.getBoolean("isAdmin") == true ||
             snapshot.getBoolean("isSuperAdmin") == true
-        return isAdmin || isPrivileged || hasAdminFlags
+        if (isAdmin || isPrivileged || hasAdminFlags) return true
+
+        val tenantId = resolveTenantId(snapshot) ?: return false
+        val normalizedEmail = currentUser.email?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val membership = resolveTenantMembership(
+            tenantId = tenantId,
+            uid = currentUser.uid,
+            normalizedEmail = normalizedEmail
+        ) ?: return false
+        if (!membership.isActive) return false
+
+        val membershipRole = membership.role.orEmpty()
+        return membershipRole == "admin" || membershipRole == "owner" || membershipRole == "manager"
     }
 
     private suspend fun hasReadSyncAccess(): Boolean {
-        val uid = auth.currentUser?.uid ?: return false
-        val snapshot = firestore.collection("users").document(uid).get().await()
-        val status = snapshot.getString("status")?.trim()?.lowercase()
+        val currentUser = auth.currentUser ?: return false
+        val snapshot = firestore.collection("users").document(currentUser.uid).get().await()
+        val status = snapshot.getString("status")?.trim()?.lowercase(Locale.ROOT)
         if (!status.isNullOrBlank() && status != "active") {
             return false
         }
-        val tenantId = snapshot.getString("tenantId") ?: snapshot.getString("storeId")
-        return !tenantId.isNullOrBlank()
+
+        val tenantId = resolveTenantId(snapshot) ?: return false
+        val normalizedEmail = currentUser.email?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val membership = resolveTenantMembership(
+            tenantId = tenantId,
+            uid = currentUser.uid,
+            normalizedEmail = normalizedEmail
+        )
+        return membership?.isActive ?: true
     }
+
+    private suspend fun resolveTenantMembership(
+        tenantId: String,
+        uid: String,
+        normalizedEmail: String
+    ): TenantMembership? {
+        val tenantUsers = firestore.collection("tenant_users")
+
+        val documentIds = buildList {
+            if (normalizedEmail.isNotBlank()) add("${tenantId}_${normalizedEmail}")
+            add("${tenantId}_${uid}")
+            add(uid)
+        }.distinct()
+
+        for (documentId in documentIds) {
+            val snapshot = tenantUsers.document(documentId).get().await()
+            if (!snapshot.exists()) continue
+            val snapshotTenantId = snapshot.getString("tenantId")?.trim()
+            if (!snapshotTenantId.isNullOrBlank() && snapshotTenantId != tenantId) continue
+            return TenantMembership(
+                isActive = snapshot.getBoolean("isActive") != false,
+                role = snapshot.getString("role")?.normalizeRole()
+            )
+        }
+
+        val byUid = tenantUsers
+            .whereEqualTo("tenantId", tenantId)
+            .whereEqualTo("uid", uid)
+            .limit(1)
+            .get()
+            .await()
+            .documents
+            .firstOrNull()
+        if (byUid != null) {
+            return TenantMembership(
+                isActive = byUid.getBoolean("isActive") != false,
+                role = byUid.getString("role")?.normalizeRole()
+            )
+        }
+
+        if (normalizedEmail.isBlank()) return null
+
+        val byEmail = tenantUsers
+            .whereEqualTo("tenantId", tenantId)
+            .whereEqualTo("email", normalizedEmail)
+            .limit(1)
+            .get()
+            .await()
+            .documents
+            .firstOrNull()
+
+        return byEmail?.let {
+            TenantMembership(
+                isActive = it.getBoolean("isActive") != false,
+                role = it.getString("role")?.normalizeRole()
+            )
+        }
+    }
+
+    private fun resolveTenantId(snapshot: DocumentSnapshot): String? {
+        return tenantProvider.currentTenantId()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: snapshot.getString("tenantId")?.trim()?.takeIf { it.isNotBlank() }
+            ?: snapshot.getString("storeId")?.trim()?.takeIf { it.isNotBlank() }
+            ?: ((snapshot.get("tenantIds") as? List<*>)
+                ?.mapNotNull { it as? String }
+                ?.map { it.trim() }
+                ?.firstOrNull { it.isNotBlank() })
+    }
+
+    private fun String.normalizeRole(): String = trim().lowercase(Locale.ROOT)
+
+    private data class TenantMembership(
+        val isActive: Boolean,
+        val role: String?
+    )
 
     private suspend fun syncCustomersFromRemote() {
         val tenantId = tenantProvider.requireTenantId()
