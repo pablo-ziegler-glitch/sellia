@@ -49,11 +49,16 @@ android {
 
     }
 
+    val appCheckDebugOverride = (project.findProperty("appCheckDebug") as String?)
+        ?.trim()
+        ?.lowercase()
+
     buildTypes {
         debug {
             isMinifyEnabled = false
             manifestPlaceholders["allowBackup"] = "true"
-            buildConfigField("boolean", "APP_CHECK_DEBUG", "true")
+            val useDebugAppCheck = appCheckDebugOverride?.toBooleanStrictOrNull() ?: true
+            buildConfigField("boolean", "APP_CHECK_DEBUG", useDebugAppCheck.toString())
         }
         release {
             isMinifyEnabled = true
