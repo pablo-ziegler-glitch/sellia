@@ -5,6 +5,8 @@ const firebaseConfig = config.firebase || {};
 const publicCollection = config.publicProductCollection || "public_products";
 const catalogLimit = Number(config.publicCatalogLimit) > 0 ? Number(config.publicCatalogLimit) : 1000;
 
+const { sanitizeText } = window.SafeDom || {};
+
 const elements = {
   storeFilter: document.getElementById("storeFilter"),
   catalogRows: document.getElementById("catalogRows"),
@@ -140,13 +142,19 @@ function renderStoreFilter() {
     stores.set(key, getStoreLabel(product));
   });
 
-  elements.storeFilter.innerHTML = '<option value="all">Todas las tiendas</option>';
+  elements.storeFilter.replaceChildren();
+
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "all";
+  defaultOption.textContent = "Todas las tiendas";
+  elements.storeFilter.appendChild(defaultOption);
+
   [...stores.entries()]
     .sort((a, b) => a[1].localeCompare(b[1], "es"))
     .forEach(([storeId, label]) => {
       const option = document.createElement("option");
       option.value = storeId;
-      option.textContent = label;
+      option.textContent = sanitizeText ? sanitizeText(label) : String(label);
       elements.storeFilter.appendChild(option);
     });
 }
@@ -160,22 +168,31 @@ function renderProducts() {
   if (!elements.catalogRows || !elements.catalogCount) return;
 
   const visibleProducts = getVisibleProducts();
-  elements.catalogRows.innerHTML = visibleProducts
-    .map(
-      (product) => `
-        <tr>
-          <td>${product.name}</td>
-          <td>${product.sku}</td>
-          <td>${formatCurrency(product.listPrice)}</td>
-          <td>${formatCurrency(product.cashPrice)}</td>
-        </tr>
-      `
-    )
-    .join("");
+  elements.catalogRows.replaceChildren();
 
   if (visibleProducts.length === 0) {
-    elements.catalogRows.innerHTML =
-      '<tr><td colspan="4" class="muted">No hay productos para la tienda seleccionada.</td></tr>';
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.setAttribute("colspan", "4");
+    emptyCell.className = "muted";
+    emptyCell.textContent = "No hay productos para la tienda seleccionada.";
+    emptyRow.appendChild(emptyCell);
+    elements.catalogRows.appendChild(emptyRow);
+  } else {
+    visibleProducts.forEach((product) => {
+      const row = document.createElement("tr");
+      [
+        sanitizeText ? sanitizeText(product.name) : String(product.name),
+        sanitizeText ? sanitizeText(product.sku) : String(product.sku),
+        formatCurrency(product.listPrice),
+        formatCurrency(product.cashPrice)
+      ].forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+      elements.catalogRows.appendChild(row);
+    });
   }
 
   elements.catalogCount.textContent = `${visibleProducts.length} producto(s) visibles de ${state.products.length} total.`;
