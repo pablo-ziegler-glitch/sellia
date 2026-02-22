@@ -92,40 +92,87 @@ service cloud.firestore {
       return hasAdminClaim();
     }
 
-    function hasNoClientManagedAdminFlags() {
-      return request.resource.data.isAdmin != true
-        && request.resource.data.isSuperAdmin != true
-        && !('permissions' in request.resource.data);
+    function isAllowedUserRole(role) {
+      return role in ['owner', 'admin', 'manager', 'cashier', 'viewer'];
     }
 
-    function hasAllowedUserRole() {
-      return request.resource.data.role in ['owner', 'admin', 'manager', 'cashier', 'viewer'];
+    function isAllowedAccountType(accountType) {
+      return accountType in ['store_owner', 'final_customer'];
     }
 
-    function isValidUserDocBase() {
-      return request.resource.data.keys().hasOnly([
-          'email',
-          'tenantId',
-          'role',
-          'status',
-          'accountType',
-          'isAdmin',
-          'isSuperAdmin'
-        ])
-        && request.resource.data.email is string
-        && request.resource.data.tenantId is string
-        && request.resource.data.status is string
-        && request.resource.data.accountType in ['store_owner', 'final_customer']
-        && hasAllowedUserRole()
-        && hasNoClientManagedAdminFlags();
+    function userStatusIsAllowed(status) {
+      return status in ['active', 'inactive', 'suspended', 'pending'];
     }
 
-    function isValidUserDocCreate() {
-      return isValidUserDocBase();
+    function hasRequiredUserFields(data) {
+      return data.keys().hasAll(['email', 'role', 'accountType']);
     }
 
-    function isValidUserDocUpdate() {
-      return isValidUserDocBase();
+    function hasOnlyKnownUserFields(data) {
+      return data.keys().hasOnly([
+        'accountType',
+        'createdAt',
+        'email',
+        'isActive',
+        'isAdmin',
+        'isSuperAdmin',
+        'permissions',
+        'role',
+        'status',
+        'tenantId',
+        'updatedAt',
+        'updatedBy'
+      ]);
+    }
+
+    function hasValidUserFieldTypes(data) {
+      return data.email is string
+        && data.role is string
+        && isAllowedUserRole(data.role)
+        && data.accountType is string
+        && isAllowedAccountType(data.accountType)
+        && (!('tenantId' in data) || data.tenantId is string)
+        && (!('status' in data) || (data.status is string && userStatusIsAllowed(data.status)))
+        && (!('isActive' in data) || data.isActive is bool)
+        && (!('isAdmin' in data) || data.isAdmin is bool)
+        && (!('isSuperAdmin' in data) || data.isSuperAdmin is bool)
+        && (!('permissions' in data) || data.permissions is list)
+        && (!('createdAt' in data) || data.createdAt is timestamp)
+        && (!('updatedAt' in data) || data.updatedAt is timestamp)
+        && (!('updatedBy' in data) || data.updatedBy is string);
+    }
+
+    function hasNoClientManagedPrivilegeValues(data) {
+      return (!('isAdmin' in data) || data.isAdmin == false)
+        && (!('isSuperAdmin' in data) || data.isSuperAdmin == false)
+        && (!('permissions' in data) || data.permissions.size() == 0);
+    }
+
+    function hasNoClientManagedPrivilegeMutations() {
+      return !(request.resource.data.diff(resource.data).changedKeys().hasAny(['isAdmin', 'isSuperAdmin', 'permissions']));
+    }
+
+    function isValidSelfServiceUserCreateDoc() {
+      return hasRequiredUserFields(request.resource.data)
+        && hasOnlyKnownUserFields(request.resource.data)
+        && hasValidUserFieldTypes(request.resource.data)
+        && hasNoClientManagedPrivilegeValues(request.resource.data);
+    }
+
+    function isValidSelfServiceUserUpdateDoc() {
+      return hasRequiredUserFields(request.resource.data)
+        && hasOnlyKnownUserFields(request.resource.data)
+        && hasValidUserFieldTypes(request.resource.data)
+        && hasNoClientManagedPrivilegeMutations()
+        && request.resource.data.isAdmin == resource.data.isAdmin
+        && request.resource.data.isSuperAdmin == resource.data.isSuperAdmin
+        && request.resource.data.permissions == resource.data.permissions;
+    }
+
+    function isValidPrivilegedUserWriteDoc() {
+      return hasRequiredUserFields(request.resource.data)
+        && hasOnlyKnownUserFields(request.resource.data)
+        && hasValidUserFieldTypes(request.resource.data);
     }
 
     function hasManageUsersRole() {
@@ -260,10 +307,8 @@ service cloud.firestore {
       return request.auth.uid == userId
         && request.resource.data.role == 'owner'
         && request.resource.data.accountType == 'store_owner'
-        && request.resource.data.isAdmin != true
-        && request.resource.data.isSuperAdmin != true
-        && !('permissions' in request.resource.data)
         && request.resource.data.tenantId is string
+        && hasNoClientManagedPrivilegeValues(request.resource.data)
         && (
           (
             exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
@@ -280,10 +325,8 @@ service cloud.firestore {
       return request.auth.uid == userId
         && request.resource.data.role == 'viewer'
         && request.resource.data.accountType == 'final_customer'
-        && request.resource.data.status == 'active'
-        && request.resource.data.isAdmin != true
-        && request.resource.data.isSuperAdmin != true
-        && !('permissions' in request.resource.data)
+        && (!('status' in request.resource.data) || request.resource.data.status == 'active')
+        && hasNoClientManagedPrivilegeValues(request.resource.data)
         && (
           !(request.resource.data.tenantId is string)
           || exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
@@ -294,29 +337,41 @@ service cloud.firestore {
       return request.resource.data.role == resource.data.role
         && request.resource.data.accountType == resource.data.accountType
         && request.resource.data.isAdmin == resource.data.isAdmin
-        && request.resource.data.isSuperAdmin == resource.data.isSuperAdmin;
+        && request.resource.data.isSuperAdmin == resource.data.isSuperAdmin
+        && request.resource.data.permissions == resource.data.permissions;
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated()
         && (
           request.auth.uid == userId
-          || isAdminForTenant(resource.data.tenantId)
+          || (resource.data.tenantId is string && isAdminForTenant(resource.data.tenantId))
+          || isBackend()
         );
+
       allow create: if isAuthenticated()
-        && isValidUserDocCreate()
-        && request.resource.data.tenantId is string
-        && request.resource.data.accountType in ['store_owner', 'final_customer']
         && (
-          isOwnerBootstrapWrite(userId)
-          || isFinalCustomerSelfWrite(userId)
-          || isAdminForTenant(request.resource.data.tenantId)
+          (
+            isValidSelfServiceUserCreateDoc()
+            && isOwnerBootstrapWrite(userId)
+          )
+          || (
+            isValidSelfServiceUserCreateDoc()
+            && isFinalCustomerSelfWrite(userId)
+          )
+          || (
+            isValidPrivilegedUserWriteDoc()
+            && request.resource.data.tenantId is string
+            && isAdminForTenant(request.resource.data.tenantId)
+          )
+          || (isValidPrivilegedUserWriteDoc() && isBackend())
         );
+
       allow update: if isAuthenticated()
-        && isValidUserDocUpdate()
         && (
           (
             request.auth.uid == userId
+            && isValidSelfServiceUserUpdateDoc()
             && keepsSelfRoleDataImmutable()
             && (
               request.resource.data.tenantId == resource.data.tenantId
@@ -328,14 +383,20 @@ service cloud.firestore {
             )
           )
           || (
-            request.resource.data.tenantId == resource.data.tenantId
+            isValidPrivilegedUserWriteDoc()
+            && request.resource.data.tenantId is string
+            && resource.data.tenantId is string
+            && request.resource.data.tenantId == resource.data.tenantId
             && isAdminForTenant(resource.data.tenantId)
           )
+          || (isValidPrivilegedUserWriteDoc() && isBackend())
         );
+
       allow delete: if isAuthenticated()
         && (
           request.auth.uid == userId
-          || isAdminForTenant(resource.data.tenantId)
+          || (resource.data.tenantId is string && isAdminForTenant(resource.data.tenantId))
+          || isBackend()
         );
     }
 
