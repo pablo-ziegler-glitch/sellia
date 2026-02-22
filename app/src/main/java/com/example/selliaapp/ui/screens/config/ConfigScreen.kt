@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -33,6 +35,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,12 +69,20 @@ fun ConfigScreen(
     onUsageAlerts: () -> Unit,
     onManageUsers: () -> Unit,
     canManageUsers: Boolean,
+    onTenantDeactivation: () -> Unit,
+    onTenantReactivation: () -> Unit,
+    onTenantDelete: (String, String) -> Unit,
+    tenantActionFeedback: String?,
+    tenantActionError: String?,
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
     isClientFinal: Boolean,
     onBack: () -> Unit
 ) {
     var showProfileDetails by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var confirmTenantId by remember { mutableStateOf("") }
+    var confirmPhrase by remember { mutableStateOf("") }
     Scaffold(
         topBar = {
             BackTopAppBar(title = "Configuración", onBack = onBack)
@@ -180,6 +192,27 @@ fun ConfigScreen(
                         onClick = onManageUsers
                     )
                 }
+                SettingsItem(
+                    icon = Icons.Filled.Lock,
+                    title = "Dar de baja tienda (lógica)",
+                    onClick = onTenantDeactivation
+                )
+                SettingsItem(
+                    icon = Icons.Filled.Lock,
+                    title = "Solicitar reactivación tienda",
+                    onClick = onTenantReactivation
+                )
+                SettingsItem(
+                    icon = Icons.Filled.Lock,
+                    title = "Eliminar tienda (doble check)",
+                    onClick = { showDeleteDialog = true }
+                )
+                tenantActionFeedback?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+                tenantActionError?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
                 if (canManageCloudServices) {
                     SettingsItem(
                         icon = Icons.Filled.AdminPanelSettings,
@@ -237,6 +270,32 @@ fun ConfigScreen(
                 UserDetailRow(label = "Tenant ID", value = userProfile.tenantId ?: "No disponible")
             }
         }
+    }
+
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Eliminar tienda") },
+            text = {
+                Column {
+                    Text("Esta acción es irreversible. Confirmá tenant ID y escribí ELIMINAR.")
+                    TextField(value = confirmTenantId, onValueChange = { confirmTenantId = it }, label = { Text("Tenant ID") })
+                    TextField(value = confirmPhrase, onValueChange = { confirmPhrase = it }, label = { Text("Escribí ELIMINAR") })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onTenantDelete(confirmTenantId, confirmPhrase)
+                    showDeleteDialog = false
+                }) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") }
+            }
+        )
     }
 }
 

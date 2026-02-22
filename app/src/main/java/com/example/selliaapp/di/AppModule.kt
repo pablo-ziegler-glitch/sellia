@@ -64,6 +64,7 @@ import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.SecurityConfigRepository
 import com.example.selliaapp.repository.StorageRepository
 import com.example.selliaapp.repository.TenantDirectoryRepository
+import com.example.selliaapp.repository.TenantManagementRepository
 import com.example.selliaapp.repository.TenantOwnershipRepository
 import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
@@ -73,6 +74,7 @@ import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
 import com.example.selliaapp.repository.impl.AuthOnboardingRepositoryImpl
 import com.example.selliaapp.repository.impl.CashRepositoryImpl
 import com.example.selliaapp.repository.impl.TenantDirectoryRepositoryImpl
+import com.example.selliaapp.repository.impl.TenantManagementRepositoryImpl
 import com.example.selliaapp.repository.impl.TenantOwnershipRepositoryImpl
 import com.example.selliaapp.repository.impl.StorageRepositoryImpl
 import com.example.selliaapp.repository.impl.UsageRepositoryImpl
@@ -347,6 +349,18 @@ object AppModule {
         @IoDispatcher io: CoroutineDispatcher
     ): TenantDirectoryRepository = TenantDirectoryRepositoryImpl(
         firestore = firestore,
+        io = io
+    )
+
+    @Provides
+    @Singleton
+    fun provideTenantManagementRepository(
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
+        @IoDispatcher io: CoroutineDispatcher
+    ): TenantManagementRepository = TenantManagementRepositoryImpl(
+        firestore = firestore,
+        tenantProvider = tenantProvider,
         io = io
     )
 

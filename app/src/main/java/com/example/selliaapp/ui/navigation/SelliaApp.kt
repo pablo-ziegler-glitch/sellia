@@ -112,6 +112,7 @@ import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
+import com.example.selliaapp.viewmodel.TenantManagementViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.ProductPriceAuditViewModel
 import com.example.selliaapp.viewmodel.QuickReorderViewModel
@@ -740,6 +741,8 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
+                val tenantManagementVm: TenantManagementViewModel = hiltViewModel()
+                val tenantManagementState by tenantManagementVm.uiState.collectAsStateWithLifecycle()
                 val userProfile = remember(authState, accessState) {
                     val session = (authState as? AuthState.Authenticated)?.session
                     UserProfileDetails(
@@ -765,6 +768,11 @@ fun SelliaApp(
                     onAppVersion = { navController.navigate(Routes.AppVersion.route) },
                     canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
+                    onTenantDeactivation = tenantManagementVm::requestDeactivation,
+                    onTenantReactivation = tenantManagementVm::requestReactivation,
+                    onTenantDelete = tenantManagementVm::deleteTenant,
+                    tenantActionFeedback = tenantManagementState.message,
+                    tenantActionError = tenantManagementState.error,
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = accessState.role == AppRole.ADMIN,
                     isClientFinal = isClientFinal,
