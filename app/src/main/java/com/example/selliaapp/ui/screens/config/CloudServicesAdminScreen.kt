@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -20,6 +23,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,7 +38,8 @@ fun CloudServicesAdminScreen(
     onBack: () -> Unit,
     viewModel: CloudServicesAdminViewModel = hiltViewModel()
 ) {
-    val owners by viewModel.owners.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val selectedOwner = uiState.selectedOwner
 
     Scaffold(
         topBar = {
@@ -50,7 +57,7 @@ fun CloudServicesAdminScreen(
         ) {
             item {
                 Text(
-                    text = "Configuración por dueño de tienda",
+                    text = if (uiState.isAdmin) "Configuración por tienda" else "Configuración de tu tienda",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -60,61 +67,122 @@ fun CloudServicesAdminScreen(
                 )
             }
 
-            items(owners, key = { it.ownerEmail }) { owner ->
-                val config = owner.config
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(owner.ownerName, fontWeight = FontWeight.Bold)
-                        Text(owner.ownerEmail, style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(12.dp))
-                        SettingSwitch(
-                            title = "Servicios en la nube",
-                            description = if (config.cloudEnabled) {
-                                "Cloud activo para esta tienda."
-                            } else {
-                                "Solo local (Room)."
-                            },
-                            checked = config.cloudEnabled,
-                            onCheckedChange = { viewModel.setCloudEnabled(owner.ownerEmail, it) }
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        SettingSwitch(
-                            title = "Backup Firestore",
-                            description = "Copia de seguridad en Firebase (Firestore).",
-                            checked = config.firestoreBackupEnabled,
-                            enabled = config.cloudEnabled,
-                            onCheckedChange = { viewModel.setFirestoreBackup(owner.ownerEmail, it) }
-                        )
-                        SettingSwitch(
-                            title = "Firebase Auth",
-                            description = "Sincronización de usuarios y sesiones.",
-                            checked = config.authSyncEnabled,
-                            enabled = config.cloudEnabled,
-                            onCheckedChange = { viewModel.setAuthSync(owner.ownerEmail, it) }
-                        )
-                        SettingSwitch(
-                            title = "Firebase Storage",
-                            description = "Backup de imágenes/archivos.",
-                            checked = config.storageBackupEnabled,
-                            enabled = config.cloudEnabled,
-                            onCheckedChange = { viewModel.setStorageBackup(owner.ownerEmail, it) }
-                        )
-                        SettingSwitch(
-                            title = "Cloud Functions",
-                            description = "Automatizaciones serverless y webhooks.",
-                            checked = config.functionsEnabled,
-                            enabled = config.cloudEnabled,
-                            onCheckedChange = { viewModel.setFunctionsEnabled(owner.ownerEmail, it) }
-                        )
-                        SettingSwitch(
-                            title = "Firebase Hosting",
-                            description = "Publicación de la web pública/landing.",
-                            checked = config.hostingEnabled,
-                            enabled = config.cloudEnabled,
-                            onCheckedChange = { viewModel.setHostingEnabled(owner.ownerEmail, it) }
-                        )
+            if (uiState.owners.isEmpty()) {
+                item {
+                    Text(
+                        text = "No hay tiendas disponibles para configurar.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                return@LazyColumn
+            }
+
+            if (uiState.isAdmin) {
+                item {
+                    OwnerSelector(
+                        ownerOptions = uiState.owners.map { it.ownerEmail to it.ownerName },
+                        selectedOwnerEmail = selectedOwner?.ownerEmail.orEmpty(),
+                        onOwnerSelected = viewModel::selectOwner
+                    )
+                }
+            }
+
+            selectedOwner?.let { owner ->
+                item {
+                    val config = owner.config
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(owner.ownerName, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            SettingSwitch(
+                                title = "Servicios en la nube",
+                                description = if (config.cloudEnabled) {
+                                    "Cloud activo para esta tienda."
+                                } else {
+                                    "Solo local (Room)."
+                                },
+                                checked = config.cloudEnabled,
+                                onCheckedChange = { viewModel.setCloudEnabled(owner.ownerEmail, it) }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            SettingSwitch(
+                                title = "Backup Firestore",
+                                description = "Copia de seguridad en Firebase (Firestore).",
+                                checked = config.firestoreBackupEnabled,
+                                enabled = config.cloudEnabled,
+                                onCheckedChange = { viewModel.setFirestoreBackup(owner.ownerEmail, it) }
+                            )
+                            SettingSwitch(
+                                title = "Firebase Auth",
+                                description = "Sincronización de usuarios y sesiones.",
+                                checked = config.authSyncEnabled,
+                                enabled = config.cloudEnabled,
+                                onCheckedChange = { viewModel.setAuthSync(owner.ownerEmail, it) }
+                            )
+                            SettingSwitch(
+                                title = "Firebase Storage",
+                                description = "Backup de imágenes/archivos.",
+                                checked = config.storageBackupEnabled,
+                                enabled = config.cloudEnabled,
+                                onCheckedChange = { viewModel.setStorageBackup(owner.ownerEmail, it) }
+                            )
+                            SettingSwitch(
+                                title = "Cloud Functions",
+                                description = "Automatizaciones serverless y webhooks.",
+                                checked = config.functionsEnabled,
+                                enabled = config.cloudEnabled,
+                                onCheckedChange = { viewModel.setFunctionsEnabled(owner.ownerEmail, it) }
+                            )
+                            SettingSwitch(
+                                title = "Firebase Hosting",
+                                description = "Publicación de la web pública/landing.",
+                                checked = config.hostingEnabled,
+                                enabled = config.cloudEnabled,
+                                onCheckedChange = { viewModel.setHostingEnabled(owner.ownerEmail, it) }
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OwnerSelector(
+    ownerOptions: List<Pair<String, String>>,
+    selectedOwnerEmail: String,
+    onOwnerSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        androidx.compose.material3.OutlinedTextField(
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            value = ownerOptions.firstOrNull { it.first == selectedOwnerEmail }?.second.orEmpty(),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Tienda") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            ownerOptions.forEach { (ownerEmail, ownerName) ->
+                DropdownMenuItem(
+                    text = { Text(ownerName) },
+                    onClick = {
+                        onOwnerSelected(ownerEmail)
+                        expanded = false
+                    }
+                )
             }
         }
     }

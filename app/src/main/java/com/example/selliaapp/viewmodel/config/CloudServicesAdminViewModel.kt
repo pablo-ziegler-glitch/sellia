@@ -5,13 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.domain.config.CloudServiceConfig
 import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.domain.security.SecurityHashing
+import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.CloudServiceConfigRepository
 import com.example.selliaapp.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -21,8 +24,19 @@ data class OwnerCloudServiceConfigUi(
     val config: CloudServiceConfig
 )
 
+data class CloudServicesAdminUiState(
+    val isAdmin: Boolean,
+    val currentUserEmail: String,
+    val owners: List<OwnerCloudServiceConfigUi>,
+    val selectedOwnerEmail: String?
+) {
+    val selectedOwner: OwnerCloudServiceConfigUi?
+        get() = owners.firstOrNull { it.ownerEmail == selectedOwnerEmail }
+}
+
 @HiltViewModel
 class CloudServicesAdminViewModel @Inject constructor(
+    private val accessControlRepository: AccessControlRepository,
     private val userRepository: UserRepository,
     private val cloudServiceConfigRepository: CloudServiceConfigRepository
  ) : ViewModel() {
@@ -34,27 +48,26 @@ class CloudServicesAdminViewModel @Inject constructor(
     private val configs = cloudServiceConfigRepository.observeConfigs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val owners: StateFlow<List<OwnerCloudServiceConfigUi>> =
-        combine(userRepository.observeUsers(), configs) { users, configList ->
+    private val selectedOwnerEmail = MutableStateFlow<String?>(null)
+
+    val uiState: StateFlow<CloudServicesAdminUiState> =
+        combine(
+            accessControlRepository.observeAccessState(),
+            userRepository.observeUsers(),
+            configs,
+            selectedOwnerEmail
+        ) { accessState, users, configList, selectedEmail ->
             val configByEmail = configList.associateBy { SecurityHashing.normalizeEmail(it.ownerEmail) }
             val ownerUsers = users
                 .asSequence()
                 .filter { AppRole.fromRaw(it.role) == AppRole.OWNER }
                 .map { user -> user.copy(email = SecurityHashing.normalizeEmail(user.email)) }
                 .filter { it.email.isNotBlank() }
-                .plus(
-                    com.example.selliaapp.data.model.User(
-                        name = FIXED_SUPER_ADMIN_NAME,
-                        email = FIXED_SUPER_ADMIN_EMAIL,
-                        role = AppRole.OWNER.raw,
-                        isActive = true
-                    )
-                )
                 .distinctBy { it.email }
                 .sortedBy { it.name.lowercase() }
                 .toList()
 
-            ownerUsers.map { user ->
+            val allOwners = ownerUsers.map { user ->
                 val config = configByEmail[user.email] ?: CloudServiceConfig.defaultFor(user.email)
                 OwnerCloudServiceConfigUi(
                     ownerName = user.name,
@@ -62,7 +75,40 @@ class CloudServicesAdminViewModel @Inject constructor(
                     config = config
                 )
             }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+            val currentUserEmail = SecurityHashing.normalizeEmail(accessState.email.orEmpty())
+            val isAdmin = accessState.role == AppRole.ADMIN
+            val visibleOwners = if (isAdmin) {
+                allOwners
+            } else {
+                allOwners.filter { it.ownerEmail == currentUserEmail }
+            }
+            val resolvedSelectedEmail = when {
+                visibleOwners.isEmpty() -> null
+                isAdmin && selectedEmail != null && visibleOwners.any { it.ownerEmail == selectedEmail } -> selectedEmail
+                else -> visibleOwners.first().ownerEmail
+            }
+
+            CloudServicesAdminUiState(
+                isAdmin = isAdmin,
+                currentUserEmail = currentUserEmail,
+                owners = visibleOwners,
+                selectedOwnerEmail = resolvedSelectedEmail
+            )
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            CloudServicesAdminUiState(
+                isAdmin = false,
+                currentUserEmail = "",
+                owners = emptyList(),
+                selectedOwnerEmail = null
+            )
+        )
+
+    fun selectOwner(ownerEmail: String) {
+        selectedOwnerEmail.update { SecurityHashing.normalizeEmail(ownerEmail) }
+    }
 
     fun setCloudEnabled(ownerEmail: String, enabled: Boolean) {
         viewModelScope.launch {
@@ -119,8 +165,4 @@ class CloudServicesAdminViewModel @Inject constructor(
             ?: CloudServiceConfig.defaultFor(normalizedEmail)
     }
 
-    private companion object {
-        const val FIXED_SUPER_ADMIN_EMAIL = "pabloz18ezeiza@gmail.com"
-        const val FIXED_SUPER_ADMIN_NAME = "Pablo (Super Admin)"
-    }
 }
