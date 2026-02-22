@@ -171,8 +171,11 @@ Ejecutar los tests del módulo app:
 
 ## 🔐 Firebase App Check seguro (debug y release)
 - **debug**: por defecto usa `DebugAppCheckProviderFactory.getInstance()` con `BuildConfig.APP_CHECK_DEBUG=true`.
-  - Para forzar token productivo también en debug (Play Integrity), ejecutar `./gradlew assembleDebug -PappCheckDebug=false`.
-- **release**: la app usa exclusivamente `PlayIntegrityAppCheckProviderFactory.getInstance()` con `BuildConfig.APP_CHECK_DEBUG=false`.
+  - Prueba puntual de token productivo en debug: `./gradlew assembleDebug -PappCheckDebug=false`.
+- **release**: usa exclusivamente `PlayIntegrityAppCheckProviderFactory.getInstance()` con `BuildConfig.APP_CHECK_DEBUG=false`.
+- **modo productivo total (recomendado para preproducción/UAT)**: forzá Play Integrity también en debug con `-PforceProductionAppCheck=true`.
+  - Ejemplo: `./gradlew assembleDebug -PforceProductionAppCheck=true`.
+  - Si querés que quede fijo para todo el equipo/CI, agregá `forceProductionAppCheck=true` en `gradle.properties` (o en `~/.gradle/gradle.properties` si querés solo local).
 - No se embeben secrets de App Check en código fuente ni en logs de aplicación.
 
 ### Registro temporal de debug tokens (Firebase Console)

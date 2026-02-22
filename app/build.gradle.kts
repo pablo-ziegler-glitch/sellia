@@ -52,12 +52,22 @@ android {
     val appCheckDebugOverride = (project.findProperty("appCheckDebug") as String?)
         ?.trim()
         ?.lowercase()
+        ?.toBooleanStrictOrNull()
+    val forceProductionAppCheck = (project.findProperty("forceProductionAppCheck") as String?)
+        ?.trim()
+        ?.lowercase()
+        ?.toBooleanStrictOrNull()
+        ?: false
 
     buildTypes {
         debug {
             isMinifyEnabled = false
             manifestPlaceholders["allowBackup"] = "true"
-            val useDebugAppCheck = appCheckDebugOverride?.toBooleanStrictOrNull() ?: true
+            val useDebugAppCheck = if (forceProductionAppCheck) {
+                false
+            } else {
+                appCheckDebugOverride ?: true
+            }
             buildConfigField("boolean", "APP_CHECK_DEBUG", useDebugAppCheck.toString())
         }
         release {
