@@ -76,8 +76,9 @@ class AuthErrorMapperTest {
     @Test
     fun `maps ownership not found errors to clear user message`() {
         val error = FirebaseFunctionsException(
+            "No existe usuario activo con ese email",
             FirebaseFunctionsException.Code.NOT_FOUND,
-            "No existe usuario activo con ese email"
+            null
         )
 
         val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
@@ -91,8 +92,9 @@ class AuthErrorMapperTest {
     @Test
     fun `maps ownership conflict with another store to specific guidance`() {
         val error = FirebaseFunctionsException(
+            "El usuario ya administra otra tienda",
             FirebaseFunctionsException.Code.FAILED_PRECONDITION,
-            "El usuario ya administra otra tienda"
+            null
         )
 
         val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
