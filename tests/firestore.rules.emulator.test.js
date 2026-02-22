@@ -151,6 +151,51 @@ describe('firestore.rules - tenant user management policy', () => {
     });
   }
 
+  it('viewer without superAdmin claim cannot perform administrative writes', async () => {
+    const db = dbWithClaims('viewer-claimless', { superAdmin: false });
+
+    await assertFails(
+      setDoc(doc(db, 'tenant_users', 'viewer-claimless-tu'), {
+        tenantId: TENANT_ID,
+        userId: 'viewer-claimless-target',
+        role: 'cashier',
+        status: 'active',
+      }),
+    );
+  });
+
+  it('authenticated user with superAdmin claim can perform administrative writes', async () => {
+    const db = dbWithClaims('super-admin-uid', { superAdmin: true });
+
+    await assertSucceeds(
+      setDoc(doc(db, 'tenant_users', 'super-admin-tu'), {
+        tenantId: TENANT_ID,
+        userId: 'super-admin-target',
+        role: 'cashier',
+        status: 'active',
+      }),
+    );
+
+    await assertSucceeds(
+      setDoc(doc(db, 'users', 'super-admin-created-user'), {
+        email: 'super-admin-created@example.com',
+        tenantId: TENANT_ID,
+        role: 'cashier',
+        status: 'active',
+        accountType: 'store_owner',
+        isAdmin: false,
+        isSuperAdmin: false,
+      }),
+    );
+
+    await assertSucceeds(
+      updateDoc(doc(db, 'account_requests', 'ar-1'), {
+        status: 'approved',
+      }),
+    );
+  });
+
+
   for (const role of NON_ADMIN_ROLES) {
     it(`${role} is denied for administrative writes on /tenant_users, /users and /account_requests`, async () => {
       const db = roleDb(role);

@@ -6,10 +6,9 @@ service firebase.storage {
       return request.auth != null && request.auth.uid != null;
     }
 
-    function isFixedSuperAdmin() {
+    function hasSuperAdminClaim() {
       return isAuthenticated()
-        && request.auth.token.email is string
-        && request.auth.token.email.lower() == 'pabloz18ezeiza@gmail.com';
+        && request.auth.token.superAdmin == true;
     }
 
     function hasUserProfile() {
@@ -57,7 +56,7 @@ service firebase.storage {
 
     function hasTenantWriteRole() {
       let role = normalizedRole();
-      return isFixedSuperAdmin()
+      return hasSuperAdminClaim()
         || (
           hasUserProfile()
           && (
@@ -72,7 +71,7 @@ service firebase.storage {
     function isTenantUser(tenantId) {
       return isAuthenticated()
         && (
-          isFixedSuperAdmin()
+          hasSuperAdminClaim()
           || (
             userTenantId() == tenantId
             && isUserActive()
@@ -101,7 +100,7 @@ service firebase.storage {
 
     match /Images/public/catalog/{allPaths=**} {
       allow read: if true;
-      allow write: if isFixedSuperAdmin();
+      allow write: if hasSuperAdminClaim();
     }
   }
 }

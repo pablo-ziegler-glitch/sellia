@@ -43,6 +43,7 @@ import androidx.navigation.navigation
 import com.example.selliaapp.auth.AuthState
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.MarketingSettings
+import com.example.selliaapp.security.DeepLinkSecurity
 import com.example.selliaapp.ui.components.AppScaffold
 import com.example.selliaapp.ui.components.BottomNavItem
 import com.example.selliaapp.ui.screens.ClientHomeScreen
@@ -502,12 +503,33 @@ fun SelliaApp(
                 deepLinks = listOf(
                     navDeepLink {
                         uriPattern = "sellia://product?q={${Routes.PublicProductCard.ARG_QR}}"
+                    },
+                    navDeepLink {
+                        uriPattern = "https://sellia1993.web.app/product?q={${Routes.PublicProductCard.ARG_QR}}"
+                    },
+                    navDeepLink {
+                        uriPattern = "https://sellia1993.firebaseapp.com/product?q={${Routes.PublicProductCard.ARG_QR}}"
                     }
                 )
             ) { backStackEntry ->
                 val qrValue = backStackEntry.arguments
                     ?.getString(Routes.PublicProductCard.ARG_QR)
                     .orEmpty()
+                    .trim()
+
+                if (!DeepLinkSecurity.isSafeQr(qrValue)) {
+                    DeepLinkSecurity.logInvalidIntent(
+                        reason = "navigation_invalid_qr",
+                        originalUri = backStackEntry.arguments?.toString()
+                    )
+                    LaunchedEffect(Unit) {
+                        navController.navigate(Routes.Home.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                    return@composable
+                }
+
                 PublicProductCardScreen(
                     qrValue = qrValue,
                     onBack = { navController.popBackStack() }

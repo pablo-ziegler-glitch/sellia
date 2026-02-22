@@ -96,7 +96,7 @@ class SelliaAppApplication : Application(), Configuration.Provider {
 
     private fun initAppCheck(onReady: () -> Unit) {
         val appCheck = FirebaseAppCheck.getInstance()
-        val useDebugProvider = isAppCheckDebugEnabled()
+        val useDebugProvider = BuildConfig.APP_CHECK_DEBUG
 
         Log.w(
             TAG,
@@ -104,25 +104,18 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         )
 
         if (useDebugProvider) {
-            installDebugProvider(appCheck)
+            appCheck.installAppCheckProviderFactory(DebugAppCheckProviderFactory.getInstance())
+            appCheck.setTokenAutoRefreshEnabled(true)
 
-            // Durante setup: token manual para validar configuración.
-            // Luego volvemos a auto-refresh para evitar expiración de App Check
-            // en sesiones largas de uso (subidas de imágenes, sync, etc.).
-            appCheck.setTokenAutoRefreshEnabled(false)
-
-            // Fuerza token para validar que ya registraste el debug secret
             appCheck.getAppCheckToken(true)
                 .addOnSuccessListener { token ->
-                    Log.i(TAG, "AppCheck(debug) OK. token.len=${token.token.length} token.prefix=${token.token.take(16)}…")
-                    appCheck.setTokenAutoRefreshEnabled(true)
+                    Log.i(TAG, "AppCheck(debug) OK. token.len=${token.token.length}")
                     onReady()
                 }
                 .addOnFailureListener { e ->
                     Log.w(
                         TAG,
-                        "AppCheck(debug) FAIL (403 es normal si NO registraste el debug secret). " +
-                                "Buscá el log 'DebugAppCheckProvider: Enter this debug secret…' y cargalo en Firebase Console.",
+                        "AppCheck(debug) FAIL. Verificá la registración temporal del debug token en Firebase Console.",
                         e
                     )
                     // NO llamo onReady(): evitamos workers spameando mientras AppCheck no está configurado
@@ -147,34 +140,6 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         }
     }
 
-    /**
-     * Modo “infalible”: definimos un debug secret fijo y lo registrás en Firebase Console.
-     * Si reflection falla, cae al modo oficial (secret auto que se imprime en Logcat).
-     */
-    private fun installDebugProvider(appCheck: FirebaseAppCheck) {
-        // ✅ Cambiá esto por un UUID tuyo (y REGISTRALO en Firebase Console > App Check > Debug tokens)
-        val fixedDebugSecret = APP_CHECK_DEBUG_SECRET
-
-        val installed = runCatching {
-            val ctor = DebugAppCheckProviderFactory::class.java.getDeclaredConstructor(String::class.java)
-            ctor.isAccessible = true
-            val factory = ctor.newInstance(fixedDebugSecret)
-            appCheck.installAppCheckProviderFactory(factory)
-            true
-        }.getOrElse { t ->
-            Log.w(TAG, "No pude instalar DebugAppCheckProviderFactory(secret) por reflection. Caigo al modo oficial (Logcat).", t)
-            false
-        }
-
-        if (installed) {
-            Log.w(TAG, "Debug AppCheck usando SECRET FIJO. Registralo en Firebase Console: $fixedDebugSecret")
-        } else {
-            // Modo oficial: se genera secret y se imprime en Logcat con tag DebugAppCheckProvider
-            appCheck.installAppCheckProviderFactory(DebugAppCheckProviderFactory.getInstance())
-            Log.w(TAG, "Debug AppCheck usando secret AUTO. Buscar en Logcat tag DebugAppCheckProvider.")
-        }
-    }
-
     private fun enqueuePeriodicSync() {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -193,20 +158,7 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         )
     }
 
-    private fun isAppCheckDebugEnabled(): Boolean {
-        // Si definiste APP_CHECK_DEBUG en BuildConfig, respétalo; si no, usa DEBUG.
-        return try {
-            val f = BuildConfig::class.java.getField("APP_CHECK_DEBUG")
-            f.getBoolean(null)
-        } catch (_: Throwable) {
-            BuildConfig.DEBUG
-        }
-    }
-
     private companion object {
         private const val TAG = "SELLIA_BOOT"
-
-        // ✅ Elegí uno y NO lo cambies: lo tenés que registrar tal cual en Firebase Console.
-        private const val APP_CHECK_DEBUG_SECRET = "7a5c0df2-9b38-4a9a-9b1c-2db1a9a9c9b1"
     }
 }

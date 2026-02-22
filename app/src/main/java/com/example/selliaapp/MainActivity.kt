@@ -1,5 +1,6 @@
 package com.example.selliaapp
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +10,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.security.DeepLinkSecurity
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.ui.navigation.SelliaRoot
 import com.example.selliaapp.ui.theme.ValkirjaTheme
@@ -29,7 +31,13 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var customerRepository: CustomerRepository
 
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(DeepLinkSecurity.sanitizeIncomingIntent(intent))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        setIntent(DeepLinkSecurity.sanitizeIncomingIntent(intent))
         super.onCreate(savedInstanceState)
         setContent {
             // Crea el NavController de Compose

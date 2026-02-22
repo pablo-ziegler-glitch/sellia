@@ -93,6 +93,17 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
             )
 
+            val publicDirectoryRef = firestore.collection("public_tenant_directory").document(tenantId)
+            batch.set(
+                publicDirectoryRef,
+                mapOf(
+                    "id" to tenantId,
+                    "name" to storeName,
+                    "createdAt" to createdAt,
+                    "updatedAt" to createdAt
+                )
+            )
+
             val requestRef = firestore.collection("account_requests").document(user.uid)
             batch.set(
                 requestRef,

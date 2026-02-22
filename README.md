@@ -169,6 +169,40 @@ Ejecutar los tests del módulo app:
 ./gradlew test
 ```
 
+## 🔐 Firebase App Check seguro (debug y release)
+- **debug**: la app usa exclusivamente `DebugAppCheckProviderFactory.getInstance()` mediante `BuildConfig.APP_CHECK_DEBUG=true` (definido en `buildTypes.debug`).
+- **release**: la app usa exclusivamente `PlayIntegrityAppCheckProviderFactory.getInstance()` con `BuildConfig.APP_CHECK_DEBUG=false`.
+- No se embeben secrets de App Check en código fuente ni en logs de aplicación.
+
+### Registro temporal de debug tokens (Firebase Console)
+1. Ejecutá la app en build `debug`.
+2. En Logcat, filtrá por `DebugAppCheckProvider` y copiá el token generado por el SDK (sin persistirlo en repositorio, docs internas ni gestores de tareas).
+3. Abrí **Firebase Console → App Check → [tu app Android] → Manage debug tokens**.
+4. Registrá el token con etiqueta de trazabilidad (ejemplo: `dev-<iniciales>-<fecha>`).
+5. Volvé a ejecutar la app y validá que App Check responde OK.
+
+### Rotación recomendada de debug tokens
+- Crear tokens por dispositivo/persona (no compartidos).
+- Definir vencimiento operativo corto (7-30 días) y rotación inmediata ante baja de equipo, pérdida de dispositivo o sospecha de exposición.
+- Eliminar tokens no utilizados en cada cierre de sprint.
+- Nunca publicar tokens en PRs, capturas, chats abiertos o documentación versionada.
+
+### ¿Qué vas a poder hacer y qué no vas a poder hacer? (explicado simple)
+**Vas a poder:**
+- Probar la app en `debug` durante desarrollo aunque App Check esté activo, registrando un token temporal en Firebase Console.
+- Mantener entornos de desarrollo y producción separados sin mezclar proveedores de App Check.
+- Detectar rápido problemas de configuración de App Check sin exponer secretos en el código.
+
+**No vas a poder:**
+- Usar un secreto fijo en el código para destrabar cualquier dispositivo. Eso se eliminó por seguridad.
+- Pasar por App Check en `release` con el provider de debug: en producción solo se admite Play Integrity.
+- Reutilizar tokens de debug viejos indefinidamente: deben rotarse y eliminarse.
+
+**¿Para qué sirve esto?**
+- Evita que apps modificadas o no confiables consuman tus recursos Firebase (Firestore, Storage, Functions).
+- Reduce riesgo operativo y de costos por abuso de backend.
+- Te deja un flujo seguro para desarrollo y un flujo estricto para producción, que es lo correcto para escalar.
+
 ## 📤 Exportación CSV (productos, clientes, ventas y gastos)
 Desde la pantalla **Cargas masivas** podés generar archivos CSV con los datos actuales:
 1. Abrí **Configuración → Cargas masivas**.

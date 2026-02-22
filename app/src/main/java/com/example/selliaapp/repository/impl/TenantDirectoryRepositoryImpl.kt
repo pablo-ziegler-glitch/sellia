@@ -18,7 +18,7 @@ class TenantDirectoryRepositoryImpl @Inject constructor(
 
     override suspend fun fetchTenants(): Result<List<TenantSummary>> = withContext(io) {
         runCatching {
-            val snapshot = firestore.collection("tenant_directory")
+            val snapshot = firestore.collection("public_tenant_directory")
                 .orderBy("name")
                 .get()
                 .await()

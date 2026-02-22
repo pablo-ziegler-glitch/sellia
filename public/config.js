@@ -69,7 +69,7 @@
     }
 
     const directoryResponse = await fetch(
-      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenant_directory/${encodeURIComponent(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/public_tenant_directory/${encodeURIComponent(
         config.tenantId
       )}?key=${apiKey}`
     );
