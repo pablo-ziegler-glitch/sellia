@@ -75,20 +75,50 @@ service cloud.firestore {
     }
 
     function hasAdminField() {
-      return hasUserDoc()
-        && (
-          userData().role == 'admin'
-          || userData().isAdmin == true
-          || userData().isSuperAdmin == true
-        );
+      return hasAdminClaim();
+    }
+
+    function hasNoClientManagedAdminFlags() {
+      return request.resource.data.isAdmin != true
+        && request.resource.data.isSuperAdmin != true
+        && !('permissions' in request.resource.data);
+    }
+
+    function hasAllowedUserRole() {
+      return request.resource.data.role in ['owner', 'admin', 'manager', 'cashier', 'viewer'];
+    }
+
+    function isValidUserDocBase() {
+      return request.resource.data.keys().hasOnly([
+          'email',
+          'tenantId',
+          'role',
+          'status',
+          'accountType',
+          'isAdmin',
+          'isSuperAdmin'
+        ])
+        && request.resource.data.email is string
+        && request.resource.data.tenantId is string
+        && request.resource.data.status is string
+        && request.resource.data.accountType in ['store_owner', 'final_customer']
+        && hasAllowedUserRole()
+        && hasNoClientManagedAdminFlags();
+    }
+
+    function isValidUserDocCreate() {
+      return isValidUserDocBase();
+    }
+
+    function isValidUserDocUpdate() {
+      return isValidUserDocBase();
     }
 
     function hasManageUsersRole() {
       return hasUserDoc()
         && (
           userData().role in ['admin', 'owner']
-          || userData().isAdmin == true
-          || userData().isSuperAdmin == true
+          || hasAdminClaim()
         );
     }
 
@@ -104,8 +134,7 @@ service cloud.firestore {
           hasUserDoc()
           && (
             userData().role in ['owner', 'admin']
-            || userData().isAdmin == true
-            || userData().isSuperAdmin == true
+            || hasAdminClaim()
             || 'MAINTENANCE_READ' in userPermissions()
             || 'MAINTENANCE_WRITE' in userPermissions()
           )
@@ -118,8 +147,7 @@ service cloud.firestore {
           hasUserDoc()
           && (
             userData().role in ['owner', 'admin']
-            || userData().isAdmin == true
-            || userData().isSuperAdmin == true
+            || hasAdminClaim()
             || 'MAINTENANCE_WRITE' in userPermissions()
           )
         );
@@ -151,7 +179,7 @@ service cloud.firestore {
     }
 
     function isAdminUser() {
-      return isAuthenticated() && (hasAdminClaim() || hasAdminField());
+      return isAuthenticated() && hasAdminClaim();
     }
 
     function isAdminForTenant(tenantId) {
@@ -218,6 +246,9 @@ service cloud.firestore {
       return request.auth.uid == userId
         && request.resource.data.role == 'owner'
         && request.resource.data.accountType == 'store_owner'
+        && request.resource.data.isAdmin != true
+        && request.resource.data.isSuperAdmin != true
+        && !('permissions' in request.resource.data)
         && request.resource.data.tenantId is string
         && (
           (
@@ -236,6 +267,9 @@ service cloud.firestore {
         && request.resource.data.role == 'viewer'
         && request.resource.data.accountType == 'final_customer'
         && request.resource.data.status == 'active'
+        && request.resource.data.isAdmin != true
+        && request.resource.data.isSuperAdmin != true
+        && !('permissions' in request.resource.data)
         && (
           !(request.resource.data.tenantId is string)
           || exists(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId))
@@ -256,6 +290,7 @@ service cloud.firestore {
           || isAdminForTenant(resource.data.tenantId)
         );
       allow create: if isAuthenticated()
+        && isValidUserDocCreate()
         && request.resource.data.tenantId is string
         && request.resource.data.accountType in ['store_owner', 'final_customer']
         && (
@@ -264,6 +299,7 @@ service cloud.firestore {
           || isAdminForTenant(request.resource.data.tenantId)
         );
       allow update: if isAuthenticated()
+        && isValidUserDocUpdate()
         && (
           (
             request.auth.uid == userId

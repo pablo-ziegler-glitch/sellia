@@ -65,13 +65,14 @@ async function seedAdminTargets() {
   });
 }
 
-
-function dbWithClaims(uid, claims = {}) {
-  return testEnv.authenticatedContext(uid, {
-    uid,
-    email: `${uid}@example.com`,
-    ...claims,
-  }).firestore();
+async function seedTenantForBootstrap(tenantId, ownerUid) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'tenants', tenantId), {
+      id: tenantId,
+      ownerUid,
+    });
+  });
 }
 
 function roleDb(role) {
@@ -241,4 +242,73 @@ describe('firestore.rules - tenant user management policy', () => {
       assert.ok(true);
     });
   }
+
+  it('denies final customer self create with isAdmin=true', async () => {
+    const uid = 'final-customer-malicious';
+    const db = testEnv
+      .authenticatedContext(uid, {
+        uid,
+        email: 'final-customer-malicious@example.com',
+      })
+      .firestore();
+
+    await assertFails(
+      setDoc(doc(db, 'users', uid), {
+        email: 'final-customer-malicious@example.com',
+        tenantId: TENANT_ID,
+        role: 'viewer',
+        status: 'active',
+        accountType: 'final_customer',
+        isAdmin: true,
+        isSuperAdmin: false,
+      }),
+    );
+  });
+
+  it('denies owner bootstrap when trying to set isSuperAdmin=true', async () => {
+    const uid = 'owner-bootstrap-malicious';
+    const ownerTenantId = 'tenant-owner-bootstrap';
+    await seedTenantForBootstrap(ownerTenantId, uid);
+
+    const db = testEnv
+      .authenticatedContext(uid, {
+        uid,
+        email: 'owner-bootstrap-malicious@example.com',
+      })
+      .firestore();
+
+    await assertFails(
+      setDoc(doc(db, 'users', uid), {
+        email: 'owner-bootstrap-malicious@example.com',
+        tenantId: ownerTenantId,
+        role: 'owner',
+        status: 'active',
+        accountType: 'store_owner',
+        isAdmin: false,
+        isSuperAdmin: true,
+      }),
+    );
+  });
+
+  it('allows valid final customer self create without sensitive fields', async () => {
+    const uid = 'final-customer-valid';
+    const db = testEnv
+      .authenticatedContext(uid, {
+        uid,
+        email: 'final-customer-valid@example.com',
+      })
+      .firestore();
+
+    await assertSucceeds(
+      setDoc(doc(db, 'users', uid), {
+        email: 'final-customer-valid@example.com',
+        tenantId: TENANT_ID,
+        role: 'viewer',
+        status: 'active',
+        accountType: 'final_customer',
+        isAdmin: false,
+        isSuperAdmin: false,
+      }),
+    );
+  });
 });
