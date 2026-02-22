@@ -39,6 +39,31 @@ Este módulo incluye un scheduler que recopila métricas de uso desde **Cloud Mo
 ---
 
 
+
+## Alta de admin por email hasheado (claim + perfil + tenant)
+
+Si un usuario no puede acceder al backoffice, este script deja todo consistente en una sola ejecución:
+
+- setea custom claims (`admin=true`, `role=admin|owner`, opcional `superAdmin=true`),
+- actualiza `users/{uid}` con `tenantId`, `role`, `status=active`, permisos administrativos,
+- actualiza `tenant_users/{tenantId}_{uid}`,
+- guarda huella del email en `admin_email_hashes/{sha256(email_normalizado)}` (sin almacenar email plano en ese registro).
+
+### Uso
+
+```bash
+# 1) Simulación segura
+npm run admin:grant:dry -- --email <EMAIL> --tenant <TENANT_ID> --role admin
+
+# 2) Aplicar cambios
+npm run admin:grant -- --email <EMAIL> --tenant <TENANT_ID> --role admin
+
+# Opcional: elevar también super admin
+npm run admin:grant -- --email <EMAIL> --tenant <TENANT_ID> --role admin --super-admin
+```
+
+> Después de aplicar claims, forzar refresh del token del usuario (`logout/login` o `getIdToken(true)`).
+
 ## Gestión de claim `superAdmin` (asignar/revocar)
 
 Las reglas y funciones administrativas ya **no dependen de un email fijo**. El bypass global usa `request.auth.token.superAdmin == true`.
