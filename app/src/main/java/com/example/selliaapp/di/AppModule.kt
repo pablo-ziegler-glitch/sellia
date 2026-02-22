@@ -438,11 +438,13 @@ object AppModule {
     fun provideStorageRepository(
         storage: FirebaseStorage,
         sessionCoordinator: FirebaseSessionCoordinator,
-        auth: FirebaseAuth
+        auth: FirebaseAuth,
+        firestore: FirebaseFirestore
     ): StorageRepository = StorageRepositoryImpl(
         storage = storage,
         sessionCoordinator = sessionCoordinator,
-        auth = auth
+        auth = auth,
+        firestore = firestore
     )
 
     @Provides
