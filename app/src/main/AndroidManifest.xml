@@ -3,13 +3,12 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.camera.any" />
 
     <application
-
         android:name=".SelliaAppApplication"
-        android:allowBackup="true"
+        android:allowBackup="${allowBackup}"
         android:enableOnBackInvokedCallback="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -20,40 +19,25 @@
         android:theme="@style/Theme.SelliaApp"
         tools:targetApi="31">
 
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
 
-    <activity android:name=".MainActivity"
-        android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
 
-        <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent-filter>
-
-        <intent-filter android:autoVerify="true">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data
-                android:scheme="https"
-                android:host="sellia1993.web.app"
-                android:pathPrefix="/product" />
-            <data
-                android:scheme="https"
-                android:host="sellia1993.firebaseapp.com"
-                android:pathPrefix="/product" />
-        </intent-filter>
-
-        <intent-filter>
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data
-                android:scheme="sellia"
-                android:host="product" />
-        </intent-filter>
-    </activity>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="product"
+                    android:scheme="sellia" />
+            </intent-filter>
+        </activity>
 
     </application>
-
 
 </manifest>

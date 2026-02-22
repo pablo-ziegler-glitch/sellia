@@ -2,10 +2,9 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isFixedSuperAdmin() {
+    function hasSuperAdminClaim() {
       return isAuthenticated()
-        && request.auth.token.email is string
-        && request.auth.token.email.lower() == 'pabloz18ezeiza@gmail.com';
+        && request.auth.token.superAdmin == true;
     }
 
     function isAuthenticated() {
@@ -42,7 +41,7 @@ service cloud.firestore {
     }
 
     function hasTenantWriteRole() {
-      return isFixedSuperAdmin()
+      return hasSuperAdminClaim()
         || (
           hasUserProfile()
           && (
@@ -56,7 +55,7 @@ service cloud.firestore {
     function isTenantUser(tenantId) {
       return isAuthenticated()
         && (
-          isFixedSuperAdmin()
+          hasSuperAdminClaim()
           || (
             hasUserProfile()
             && userTenantId() == tenantId
@@ -70,7 +69,7 @@ service cloud.firestore {
     }
 
     function hasAdminClaim() {
-      return isFixedSuperAdmin()
+      return hasSuperAdminClaim()
         || request.auth.token.admin == true
         || request.auth.token.role == 'admin';
     }
@@ -100,7 +99,7 @@ service cloud.firestore {
     }
 
     function hasMaintenanceReadAccess() {
-      return isFixedSuperAdmin()
+      return hasSuperAdminClaim()
         || (
           hasUserDoc()
           && (
@@ -114,7 +113,7 @@ service cloud.firestore {
     }
 
     function hasMaintenanceWriteAccess() {
-      return isFixedSuperAdmin()
+      return hasSuperAdminClaim()
         || (
           hasUserDoc()
           && (
@@ -169,7 +168,7 @@ service cloud.firestore {
     }
 
     function hasRole(roles) {
-      return isFixedSuperAdmin()
+      return hasSuperAdminClaim()
         || (hasUserDoc() && userRole() in roles)
         || hasAdminField();
     }
@@ -319,12 +318,17 @@ service cloud.firestore {
     }
 
     match /tenant_directory/{tenantId} {
-      allow read: if true;
+      allow read: if isAdminForTenant(tenantId);
       allow create: if isAuthenticated()
         && request.resource.data.id == tenantId
         && request.resource.data.ownerUid == request.auth.uid;
       allow update, delete: if isAdminUser()
         || (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
+    }
+
+    match /public_tenant_directory/{tenantId} {
+      allow read: if true;
+      allow write: if isBackend() || isAdminForTenant(tenantId);
     }
 
     match /tenants/{tenantId}/maintenance_tasks/{taskId} {

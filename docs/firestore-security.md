@@ -7,6 +7,7 @@ La política final de negocio queda definida así:
 - **Solo `owner` y `admin`** pueden gestionar usuarios de su tenant.
 - `manager`, `cashier` y `viewer` **no** pueden hacer escrituras administrativas.
 - `isAdmin` / `isSuperAdmin` y claims administrativos siguen habilitando acceso administrativo global.
+- El bypass de super admin en reglas se evalúa exclusivamente con claim `superAdmin == true` (sin emails hardcodeados).
 
 En `firestore.rules`, esto se implementa removiendo `manager` de `hasManageUsersRole()` y centralizando las validaciones por tenant en `isAdminForTenant(tenantId)`.
 
@@ -53,3 +54,18 @@ Impacto operativo esperado:
 
 - Flujos internos que usaban cuentas `manager` para alta/baja/edición administrativa de usuarios deben migrarse a cuentas `owner` o `admin`.
 - Si se requiere delegación parcial, debe hacerse por UX/backend sin ampliar reglas administrativas de Firestore.
+
+
+### Gestión de claim super admin
+
+La elevación/revocación de super admin se realiza desde backend/CLI mediante custom claims de Firebase Auth.
+
+Comandos:
+
+```bash
+cd functions
+npm run claims:super-admin:grant -- --uid <UID>
+npm run claims:super-admin:revoke -- --uid <UID>
+```
+
+Tras actualizar claims, el cliente debe refrescar el ID token para que Firestore/Storage apliquen la nueva autorización.

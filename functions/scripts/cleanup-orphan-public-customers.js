@@ -70,6 +70,7 @@ async function main() {
       const batch = db.batch();
       batch.delete(db.collection('tenants').doc(tenantId));
       batch.delete(db.collection('tenant_directory').doc(tenantId));
+      batch.delete(db.collection('public_tenant_directory').doc(tenantId));
       await batch.commit();
       console.log(`  ↳ eliminado`);
     }
