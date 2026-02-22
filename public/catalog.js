@@ -4,6 +4,7 @@ const config = window.STORE_CONFIG || {};
 const firebaseConfig = config.firebase || {};
 const publicCollection = config.publicProductCollection || "public_products";
 const catalogLimit = Number(config.publicCatalogLimit) > 0 ? Number(config.publicCatalogLimit) : 1000;
+const catalogTenantId = (config.tenantId || "").trim();
 
 const elements = {
   storeFilter: document.getElementById("storeFilter"),
@@ -82,6 +83,11 @@ function buildRunQueryUrl() {
   const projectId = firebaseConfig.projectId;
   const apiKey = firebaseConfig.apiKey;
   if (!isConfiguredValue(projectId) || !isConfiguredValue(apiKey)) return null;
+  if (catalogTenantId) {
+    return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${encodeURIComponent(
+      catalogTenantId
+    )}:runQuery?key=${apiKey}`;
+  }
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
 }
 
@@ -93,7 +99,7 @@ async function fetchFirestoreProducts() {
 
   const body = {
     structuredQuery: {
-      from: [{ collectionId: publicCollection, allDescendants: true }],
+      from: [{ collectionId: publicCollection, allDescendants: !catalogTenantId }],
       select: {
         fields: [
           { fieldPath: "tenantId" },
@@ -183,7 +189,8 @@ function renderProducts() {
 
 async function loadCatalog() {
   try {
-    setStatus("Cargando catálogo desde Firestore...");
+    const tenantLabel = catalogTenantId ? ` de ${catalogTenantId}` : "";
+    setStatus(`Cargando catálogo${tenantLabel} desde Firestore...`);
     state.products = await fetchFirestoreProducts();
     setStatus(state.products.length ? "" : "No hay productos públicos disponibles.");
     renderStoreFilter();
