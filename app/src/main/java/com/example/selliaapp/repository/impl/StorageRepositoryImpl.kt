@@ -7,6 +7,7 @@ import com.example.selliaapp.repository.StorageRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.tasks.await
@@ -18,7 +19,8 @@ import javax.inject.Singleton
 class StorageRepositoryImpl @Inject constructor(
     private val storage: FirebaseStorage,
     private val sessionCoordinator: FirebaseSessionCoordinator,
-    private val auth: FirebaseAuth
+    private val auth: FirebaseAuth,
+    private val firestore: FirebaseFirestore
 ) : StorageRepository {
 
     override suspend fun uploadProductImage(
@@ -47,8 +49,12 @@ class StorageRepositoryImpl @Inject constructor(
                 .build()
         }
 
+        var accessValidatedByFirestoreProfile = false
+
         return runCatching {
             sessionCoordinator.runWithFreshSession {
+                validateUploadAccessOrThrow(tenantId = tenantId, currentUser = currentUser)
+                accessValidatedByFirestoreProfile = true
                 ensureAppCheckToken(forceRefresh = false)
                 uploadAndResolveDownloadUrl(
                     reference = reference,
@@ -74,7 +80,12 @@ class StorageRepositoryImpl @Inject constructor(
                 throw initialError
             }
         }.getOrElse { error ->
-            throw mapStorageError(error)
+            throw mapStorageError(
+                error = error,
+                accessValidatedByFirestoreProfile = accessValidatedByFirestoreProfile,
+                tenantId = tenantId,
+                productId = productId
+            )
         }
     }
 
@@ -126,8 +137,15 @@ class StorageRepositoryImpl @Inject constructor(
         return reference.downloadUrl.await().toString()
     }
 
-    private fun mapStorageError(error: Throwable): Throwable {
+    private fun mapStorageError(
+        error: Throwable,
+        accessValidatedByFirestoreProfile: Boolean,
+        tenantId: String,
+        productId: Int
+    ): Throwable {
         val storageError = error as? StorageException ?: return error
+        val storageMessage = storageError.message?.lowercase().orEmpty()
+
         return when (storageError.errorCode) {
             StorageException.ERROR_NOT_AUTHENTICATED -> {
                 IllegalStateException(
@@ -136,10 +154,21 @@ class StorageRepositoryImpl @Inject constructor(
             }
 
             StorageException.ERROR_NOT_AUTHORIZED -> {
-                IllegalStateException(
-                    "Tu usuario no tiene permisos para acceder a este archivo en Storage. " +
-                        "Verificá reglas de Storage, sesión activa y App Check."
-                )
+                if (storageMessage.contains("app check") || storageMessage.contains("appcheck")) {
+                    IllegalStateException(
+                        "Firebase App Check rechazó la subida. Verificá Play Integrity/Debug token y la configuración de App Check en Storage."
+                    )
+                } else if (accessValidatedByFirestoreProfile) {
+                    IllegalStateException(
+                        "Storage rechazó la subida aunque el perfil users/{uid} es válido para tenant '$tenantId'. " +
+                            "Revisá App Check, bucket activo y reglas publicadas para la ruta tenants/$tenantId/public_products/$productId/images/*."
+                    )
+                } else {
+                    IllegalStateException(
+                        "Tu usuario no tiene permisos para acceder a este archivo en Storage. " +
+                            "Verificá rol/tenant en users/{uid}, reglas de Storage y App Check."
+                    )
+                }
             }
 
             StorageException.ERROR_RETRY_LIMIT_EXCEEDED -> {
@@ -152,7 +181,68 @@ class StorageRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun validateUploadAccessOrThrow(
+        tenantId: String,
+        currentUser: com.google.firebase.auth.FirebaseUser
+    ) {
+        val tokenResult = currentUser.getIdToken(false).await()
+        val claims = tokenResult.claims
+        val hasSuperAdminClaim = claims["superAdmin"] == true
+
+        if (hasSuperAdminClaim) return
+
+        val userSnapshot = firestore.collection("users")
+            .document(currentUser.uid)
+            .get()
+            .await()
+
+        if (!userSnapshot.exists()) {
+            throw IllegalStateException(
+                "No existe perfil de usuario en Firebase (users/${currentUser.uid}). " +
+                    "Contactá a soporte para registrar tu cuenta en el tenant."
+            )
+        }
+
+        val role = userSnapshot.getString("role")?.trim()?.lowercase().orEmpty()
+        val status = userSnapshot.getString("status")?.trim()?.lowercase()
+        val isActiveFlag = userSnapshot.getBoolean("isActive")
+        val isAdminFlag = userSnapshot.getBoolean("isAdmin") == true
+        val isSuperAdminFlag = userSnapshot.getBoolean("isSuperAdmin") == true
+        val userTenantId = userSnapshot.getString("tenantId")
+            ?.takeIf { it.isNotBlank() }
+            ?: userSnapshot.getString("storeId")
+
+        val legacyRoleAllowed = role in LEGACY_WRITE_ROLE_ALIASES
+        val roleAllowed = role in STORAGE_WRITE_ROLES
+
+        val isUserActive =
+            (status == null && isActiveFlag == null) ||
+                status == "active" ||
+                isActiveFlag == true
+
+        if (!isUserActive) {
+            throw IllegalStateException(
+                "Tu cuenta está inactiva para subir archivos. Estado actual: ${status ?: "sin estado"}."
+            )
+        }
+
+        if (userTenantId != tenantId) {
+            throw IllegalStateException(
+                "Tu usuario pertenece al tenant '${userTenantId ?: "sin tenant"}' y estás intentando subir al tenant '$tenantId'."
+            )
+        }
+
+        if (!(roleAllowed || legacyRoleAllowed || isAdminFlag || isSuperAdminFlag)) {
+            throw IllegalStateException(
+                "Tu rol '$role' no tiene permiso de escritura en Storage para este tenant. " +
+                    "Roles permitidos: owner, admin, manager, cashier."
+            )
+        }
+    }
+
     private companion object {
         private const val PUBLIC_CATALOG_PATH = "Images/public/catalog"
+        private val STORAGE_WRITE_ROLES = setOf("owner", "admin", "manager", "cashier")
+        private val LEGACY_WRITE_ROLE_ALIASES = setOf("super_admin", "superadmin", "seller", "employee")
     }
 }
