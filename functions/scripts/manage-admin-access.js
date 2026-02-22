@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const admin = require('firebase-admin');
 
 const ADMIN_PERMISSIONS = [
@@ -18,6 +20,7 @@ function parseArgs(argv) {
   const args = {
     email: '',
     tenantId: '',
+    projectId: '',
     role: 'admin',
     superAdmin: false,
     dryRun: false
@@ -27,12 +30,48 @@ function parseArgs(argv) {
     const token = argv[i];
     if (token === '--email') args.email = argv[++i] || '';
     else if (token === '--tenant') args.tenantId = argv[++i] || '';
+    else if (token === '--project') args.projectId = argv[++i] || '';
     else if (token === '--role') args.role = (argv[++i] || 'admin').toLowerCase();
     else if (token === '--super-admin') args.superAdmin = true;
     else if (token === '--dry-run') args.dryRun = true;
   }
 
   return args;
+}
+
+function readFirebaseProjectFromRc() {
+  const rcPath = path.resolve(__dirname, '../../.firebaserc');
+  if (!fs.existsSync(rcPath)) return '';
+
+  try {
+    const rcContent = JSON.parse(fs.readFileSync(rcPath, 'utf8'));
+    return String(rcContent?.projects?.default || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function readProjectIdFromFirebaseConfig() {
+  if (!process.env.FIREBASE_CONFIG) return '';
+
+  try {
+    const parsed = JSON.parse(process.env.FIREBASE_CONFIG);
+    return String(parsed?.projectId || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function resolveProjectId(cliProjectId) {
+  const byPriority = [
+    cliProjectId,
+    process.env.GCLOUD_PROJECT,
+    process.env.GOOGLE_CLOUD_PROJECT,
+    readProjectIdFromFirebaseConfig(),
+    readFirebaseProjectFromRc()
+  ];
+
+  return byPriority.map((value) => String(value || '').trim()).find(Boolean) || '';
 }
 
 function normalizeEmail(value) {
@@ -67,10 +106,15 @@ function validateInput({ email, tenantId, role }) {
 async function main() {
   const args = parseArgs(process.argv);
   args.email = normalizeEmail(args.email);
+  args.projectId = resolveProjectId(args.projectId);
   validateInput(args);
 
+  if (!args.projectId) {
+    throw new Error('No se pudo resolver el project ID. Usá --project <PROJECT_ID> o definí GCLOUD_PROJECT.');
+  }
+
   if (!admin.apps.length) {
-    admin.initializeApp();
+    admin.initializeApp({ projectId: args.projectId });
   }
 
   const auth = admin.auth();
@@ -149,6 +193,12 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('[manage-admin-access] error:', error.message || error);
+  const message = String(error?.message || error || 'Error desconocido');
+  console.error('[manage-admin-access] error:', message);
+
+  if (message.includes('metadata.google.internal')) {
+    console.error('[manage-admin-access] hint: Ejecutá con credenciales ADC locales (gcloud auth application-default login) o definí GOOGLE_APPLICATION_CREDENTIALS con una service account JSON.');
+  }
+
   process.exit(1);
 });
