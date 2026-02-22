@@ -40,7 +40,10 @@ import androidx.compose.ui.unit.dp
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.selliaapp.domain.security.Permission
 import com.example.selliaapp.viewmodel.manage.SyncViewModel
+import com.example.selliaapp.viewmodel.AccessControlViewModel
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.sync.SyncWorker
 import com.example.selliaapp.ui.components.BackTopAppBar
@@ -53,6 +56,8 @@ fun SyncScreen(
 ) {
     val context = LocalContext.current
     val viewModel: SyncViewModel = hiltViewModel()
+    val accessControlViewModel: AccessControlViewModel = hiltViewModel()
+    val accessState by accessControlViewModel.state.collectAsStateWithLifecycle()
     val uiState = remember { mutableStateOf(viewModel.uiState()) }
     val workManager = remember(context) { WorkManager.getInstance(context) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -61,6 +66,7 @@ fun SyncScreen(
     var includeBackup by remember { mutableStateOf(false) }
     var intervalExpanded by remember { mutableStateOf(false) }
 
+    val canUseOperationalBackup = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES)
     val intervalOptions = listOf(15, 30, 60, 120, 240, 480, 720, 1440)
 
     val workInfos by workManager
@@ -156,8 +162,26 @@ fun SyncScreen(
                 }
                 Switch(
                     checked = includeBackup,
-                    onCheckedChange = { includeBackup = it },
-                    enabled = !syncing
+                    onCheckedChange = {
+                        if (canUseOperationalBackup) {
+                            includeBackup = it
+                        } else {
+                            includeBackup = false
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    "No tenés permisos para ejecutar respaldo completo operativo."
+                                )
+                            }
+                        }
+                    },
+                    enabled = !syncing && canUseOperationalBackup
+                )
+            }
+
+            if (!canUseOperationalBackup) {
+                Text(
+                    "Tu rol actual permite sincronización estándar, pero no respaldo completo operativo.",
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
 
