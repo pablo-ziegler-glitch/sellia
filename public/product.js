@@ -1,4 +1,5 @@
 const config = window.STORE_CONFIG || {};
+const safeDom = window.SafeDom || {};
 const brandName = config.brandName || "Tu tienda";
 const REFRESH_INTERVAL_DEFAULT_MS = 20 * 60 * 1000;
 const REFRESH_INTERVAL_MIN_MS = 15 * 60 * 1000;
@@ -111,10 +112,10 @@ function formatCurrency(value) {
 
 function renderProduct(product) {
   if (!product) return;
-  elements.productTitle.textContent = product.name || "Producto";
-  elements.productDescription.textContent = product.description || "Sin descripción.";
+  elements.productTitle.textContent = safeDom.sanitizeText ? safeDom.sanitizeText(product.name || "Producto") : String(product.name || "Producto");
+  elements.productDescription.textContent = safeDom.sanitizeText ? safeDom.sanitizeText(product.description || "Sin descripción.") : String(product.description || "Sin descripción.");
 
-  elements.productMeta.innerHTML = "";
+  elements.productMeta.replaceChildren();
   if (product.sku) {
     const sku = document.createElement("span");
     sku.textContent = `SKU: ${product.sku}`;
@@ -151,7 +152,7 @@ function renderProduct(product) {
     elements.productMeta.appendChild(updated);
   }
 
-  elements.productGallery.innerHTML = "";
+  elements.productGallery.replaceChildren();
   const images = product.images?.length
     ? product.images
     : product.imageUrl
@@ -159,13 +160,13 @@ function renderProduct(product) {
       : ["/assets/placeholder.svg"];
   images.forEach((url) => {
     const img = document.createElement("img");
-    img.src = url;
-    img.alt = product.name || "Producto";
+    if (!safeDom.setSafeUrl?.(img, "src", url)) return;
+    img.alt = safeDom.sanitizeText ? safeDom.sanitizeText(product.name || "Producto") : String(product.name || "Producto");
     img.loading = "lazy";
     elements.productGallery.appendChild(img);
   });
 
-  elements.priceGrid.innerHTML = "";
+  elements.priceGrid.replaceChildren();
   const priceRows = [
     { label: "PRECIO LISTA", value: formatCurrency(product.listPrice) },
     { label: "PRECIO EFECTIVO", value: formatCurrency(product.cashPrice) },
@@ -174,11 +175,16 @@ function renderProduct(product) {
   priceRows.forEach((row) => {
     const line = document.createElement("div");
     line.className = "price-row";
-    line.innerHTML = `<span>${row.label}</span><strong>${row.value}</strong>`;
+    const label = document.createElement("span");
+    label.textContent = row.label;
+    const amount = document.createElement("strong");
+    amount.textContent = row.value;
+    line.appendChild(label);
+    line.appendChild(amount);
     elements.priceGrid.appendChild(line);
   });
 
-  elements.productSizes.innerHTML = "";
+  elements.productSizes.replaceChildren();
   if (product.parentCategory?.toLowerCase() === "indumentaria" && product.sizes?.length) {
     elements.productSizes.setAttribute("role", "list");
     product.sizes.forEach((size) => {
@@ -200,11 +206,16 @@ function renderProduct(product) {
 
   if (elements.ctaWhatsapp && config.contact?.whatsapp && !config.contact.whatsapp.startsWith("REEMPLAZAR")) {
     const text = `Hola, quiero consultar por ${product.name} (SKU ${product.sku || state.sku}).`;
-    const url = new URL(config.contact.whatsapp);
-    url.searchParams.set("text", text);
-    elements.ctaWhatsapp.href = url.toString();
+    const safeWhatsappUrl = safeDom.toAllowedHttpsUrl?.(config.contact.whatsapp);
+    if (safeWhatsappUrl) {
+      const url = new URL(safeWhatsappUrl);
+      url.searchParams.set("text", text);
+      safeDom.setSafeUrl?.(elements.ctaWhatsapp, "href", url.toString());
+    } else {
+      elements.ctaWhatsapp.removeAttribute("href");
+    }
   } else if (elements.ctaWhatsapp) {
-    elements.ctaWhatsapp.href = "#";
+    elements.ctaWhatsapp.removeAttribute("href");
   }
 }
 
@@ -437,7 +448,7 @@ function maybeEnableOwnerAppRedirect() {
   const appScheme = (config.appDeepLinkScheme || "tienda").replace("://", "");
   const deepLink = `${appScheme}://product?q=${encodeURIComponent(state.sku)}`;
   elements.ctaOpenApp.hidden = false;
-  elements.ctaOpenApp.href = deepLink;
+  elements.ctaOpenApp.removeAttribute("href");
   elements.ctaOpenApp.addEventListener("click", (event) => {
     event.preventDefault();
     window.location.assign(deepLink);
