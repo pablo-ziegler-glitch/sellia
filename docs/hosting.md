@@ -67,13 +67,14 @@ La web pública resuelve `publicStoreUrl` por tenant usando este orden:
 
 1. `window.__STORE_RUNTIME_CONFIG__` (si el pipeline lo inyecta).
 2. Query param `tenantId` o `TIENDA/tienda` en la URL.
-3. Firestore público `tenant_directory/{tenantId}` leyendo `publicStoreUrl` o `publicDomain`.
+3. Firestore público `public_tenant_directory/{tenantId}` leyendo `publicStoreUrl` o `publicDomain`.
 4. Fallback seguro por tenant (para `valkirja`: `https://valkirja.com.ar/product.html`).
 
 Para mantener consistencia operativa, la app Android guarda dominio/URL pública en:
 
 - `tenants/{tenantId}/config/public_store`
-- `tenant_directory/{tenantId}`
+- `tenant_directory/{tenantId}` (interno / staff)
+- `public_tenant_directory/{tenantId}` (mínimo para discovery web)
 
 Campos persistidos:
 

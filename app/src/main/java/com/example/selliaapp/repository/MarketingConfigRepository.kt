@@ -181,12 +181,26 @@ class MarketingConfigRepository @Inject constructor(
                 .set(updatePayload, SetOptions.merge())
                 .await()
 
+            val directoryUpdate = mapOf(
+                "publicStoreUrl" to publicStoreUrl,
+                "publicDomain" to publicDomain,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+
             firestore.collection("tenant_directory")
+                .document(tenantId)
+                .set(directoryUpdate, SetOptions.merge())
+                .await()
+
+            firestore.collection("public_tenant_directory")
                 .document(tenantId)
                 .set(
                     mapOf(
+                        "id" to tenantId,
+                        "name" to settings.storeName,
                         "publicStoreUrl" to publicStoreUrl,
                         "publicDomain" to publicDomain,
+                        "storeLogoUrl" to settings.storeLogoUrl,
                         "updatedAt" to FieldValue.serverTimestamp()
                     ),
                     SetOptions.merge()

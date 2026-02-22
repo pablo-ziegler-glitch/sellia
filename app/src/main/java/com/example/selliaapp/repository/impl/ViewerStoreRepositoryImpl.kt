@@ -33,7 +33,7 @@ class ViewerStoreRepositoryImpl @Inject constructor(
                 .distinct()
 
             val followedStores = followedStoreIds.mapNotNull { storeId ->
-                val snapshot = firestore.collection("tenant_directory").document(storeId).get().await()
+                val snapshot = firestore.collection("public_tenant_directory").document(storeId).get().await()
                 if (!snapshot.exists()) {
                     return@mapNotNull null
                 }
