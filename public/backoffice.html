@@ -30,6 +30,19 @@
       </div>
       <ul id="maintenance-list" class="bo-list"></ul>
     </section>
+
+    <section>
+      <h2>Backups y restore</h2>
+      <p>El restore nunca se ejecuta directo: primero se crea solicitud y se valida aprobación requerida.</p>
+      <div class="bo-restore-guard">
+        <label>
+          <input id="restore-confirm-check" type="checkbox" />
+          Confirmo que revisé alcance, runId y diff estimado.
+        </label>
+        <button id="restore-request-btn" class="bo-filter" disabled>Solicitar restore</button>
+      </div>
+      <ul id="restore-history-list" class="bo-list"></ul>
+    </section>
   </main>
 
   <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
