@@ -54,12 +54,23 @@ vi.mock("firebase-admin", () => {
     },
   });
 
+  const storage = vi.fn(() => ({
+    bucket: vi.fn(() => ({
+      file: vi.fn(() => ({
+        save: vi.fn(),
+        delete: vi.fn(),
+      })),
+    })),
+  }));
+
   return {
     initializeApp: vi.fn(),
     firestore,
+    storage,
     default: {
       initializeApp: vi.fn(),
       firestore,
+      storage,
     },
   };
 });
@@ -85,6 +96,18 @@ vi.mock("firebase-functions", () => {
     runWith: () => ({
       https: {
         onCall: (handler: any) => handler,
+      },
+      pubsub: {
+        schedule: () => ({
+          timeZone: () => ({
+            onRun: (handler: any) => handler,
+          }),
+        }),
+      },
+      firestore: {
+        document: () => ({
+          onWrite: (handler: any) => handler,
+        }),
       },
     }),
     https: {
