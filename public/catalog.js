@@ -4,7 +4,14 @@ const config = window.STORE_CONFIG || {};
 const firebaseConfig = config.firebase || {};
 const publicCollection = config.publicProductCollection || "public_products";
 const catalogLimit = Number(config.publicCatalogLimit) > 0 ? Number(config.publicCatalogLimit) : 1000;
-const catalogTenantId = (config.tenantId || "").trim();
+const queryParams = new URLSearchParams(window.location.search || "");
+const tenantFromQuery = (
+  queryParams.get("tenantId") ||
+  queryParams.get("tienda") ||
+  queryParams.get("TIENDA") ||
+  ""
+).trim();
+const catalogTenantId = tenantFromQuery;
 
 const { sanitizeText } = window.SafeDom || {};
 
@@ -91,6 +98,14 @@ function buildRunQueryUrl() {
     )}:runQuery?key=${apiKey}`;
   }
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+}
+
+function buildFriendlyFirestoreError(error) {
+  const message = String(error?.message || "");
+  if (message.includes("FAILED_PRECONDITION")) {
+    return "La consulta del catálogo requiere un índice Firestore. Verificá firestore.indexes.json y desplegá índices.";
+  }
+  return message || "Error al cargar catálogo desde Firestore.";
 }
 
 async function fetchFirestoreProducts() {
@@ -206,7 +221,9 @@ function renderProducts() {
 
 async function loadCatalog() {
   try {
-    const tenantLabel = catalogTenantId ? ` de ${catalogTenantId}` : "";
+    const tenantLabel = catalogTenantId
+      ? ` de la tienda ${catalogTenantId}`
+      : " de todas las tiendas";
     setStatus(`Cargando catálogo${tenantLabel} desde Firestore...`);
     state.products = await fetchFirestoreProducts();
     setStatus(state.products.length ? "" : "No hay productos públicos disponibles.");
@@ -214,7 +231,7 @@ async function loadCatalog() {
     renderProducts();
   } catch (error) {
     console.error("No se pudo cargar el catálogo", error);
-    setStatus(error.message || "Error al cargar catálogo desde Firestore.", true);
+    setStatus(buildFriendlyFirestoreError(error), true);
     state.products = [];
     renderStoreFilter();
     renderProducts();
