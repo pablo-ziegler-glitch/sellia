@@ -60,6 +60,34 @@
         <section class="view">
           <h3 id="viewTitle">Panel de uso</h3>
           <p id="viewDescription">Seleccioná un módulo del backoffice.</p>
+
+          <section id="backupPanel" class="backup-panel" hidden>
+            <h4>Resguardo de datos del tenant</h4>
+            <p class="muted">Solicitá un backup puntual y monitoreá su ejecución.</p>
+            <label>
+              Motivo
+              <input id="backupReasonInput" type="text" maxlength="180" placeholder="Ej: antes de una migración de catálogo" />
+            </label>
+            <button id="requestBackupButton" type="button">Solicitar backup ahora</button>
+            <p id="backupMessage" class="banner"></p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Request</th>
+                    <th>Estado</th>
+                    <th>Creado</th>
+                    <th>Usuario</th>
+                    <th>Doc count</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody id="backupRequestsBody">
+                  <tr><td colspan="6">Sin solicitudes recientes.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </section>
 
         <section id="deniedState" class="state denied" hidden>

@@ -140,3 +140,26 @@ button.secondary,
   background: #fff8e8;
   color: #6f4a07;
 }
+
+.backup-panel {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.backup-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.backup-panel th,
+.backup-panel td {
+  border: 1px solid #e2e7f8;
+  padding: 8px;
+  text-align: left;
+}
