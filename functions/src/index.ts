@@ -2010,6 +2010,25 @@ type TenantBackupDocument = {
   data: admin.firestore.DocumentData;
 };
 
+type RestoreScope = "full" | "collection" | "document";
+
+type RestoreRequestStatus =
+  | "requested"
+  | "approved"
+  | "running"
+  | "completed"
+  | "failed";
+
+type RestoreRequestPayload = {
+  tenantId?: unknown;
+  runId?: unknown;
+  scope?: unknown;
+  dryRun?: unknown;
+};
+
+type ApproveRestoreRequestPayload = {
+  tenantId?: unknown;
+  restoreId?: unknown;
 type TenantBackupRunResult = {
   runId: string;
   docCount: number;
@@ -2017,6 +2036,7 @@ type TenantBackupRunResult = {
 
 const BACKUP_RETENTION_COUNT = 7;
 const BACKUP_CHUNK_SIZE = 150;
+const RESTORE_SCOPES = new Set<RestoreScope>(["full", "collection", "document"]);
 const BACKUP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
 
 const normalizeEmail = (value: unknown): string =>
@@ -2025,6 +2045,91 @@ const normalizeEmail = (value: unknown): string =>
 const isAdminRole = (role: unknown): boolean => {
   const normalized = normalizeString(role).toLowerCase();
   return normalized === "admin" || normalized === "owner";
+};
+
+const toBoolean = (value: unknown): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return value.trim().toLowerCase() === "true";
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  return false;
+};
+
+const writeTenantAuditLog = async (
+  tenantId: string,
+  payload: {
+    eventType: "backup" | "restore";
+    action: string;
+    actorUid?: string;
+    scope?: RestoreScope | "full";
+    runId?: string;
+    restoreRequestId?: string;
+    status: string;
+    dryRun?: boolean;
+    diffEstimate?: Record<string, unknown>;
+    result?: Record<string, unknown>;
+    ip?: string;
+    userAgent?: string;
+  }
+): Promise<void> => {
+  const eventRef = db.collection("tenants").doc(tenantId).collection("audit_logs").doc();
+  await eventRef.set({
+    eventType: payload.eventType,
+    action: payload.action,
+    tenantId,
+    actorUid: payload.actorUid ?? null,
+    scope: payload.scope ?? "full",
+    runId: payload.runId ?? null,
+    restoreRequestId: payload.restoreRequestId ?? null,
+    status: payload.status,
+    dryRun: payload.dryRun === true,
+    diffEstimate: payload.diffEstimate ?? null,
+    result: payload.result ?? null,
+    ip: normalizeString(payload.ip) || null,
+    userAgent: normalizeString(payload.userAgent) || null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
+const estimateRestoreDiff = async (
+  tenantId: string,
+  runId: string,
+  scope: RestoreScope
+): Promise<Record<string, unknown>> => {
+  const runRef = db.collection("tenant_backups").doc(tenantId).collection("runs").doc(runId);
+  const runDoc = await runRef.get();
+  if (!runDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "runId no existe para el tenant");
+  }
+
+  const chunkPreview = await runRef.collection("chunks").limit(1).get();
+  const previewPaths = chunkPreview.docs.flatMap((doc) => {
+    const documents = Array.isArray(doc.get("documents"))
+      ? (doc.get("documents") as TenantBackupDocument[])
+      : [];
+    return documents
+      .slice(0, 3)
+      .map((backupDoc) => normalizeString(backupDoc.path))
+      .filter(Boolean);
+  });
+
+  const backupDocCount = Number(runDoc.get("docCount") ?? 0);
+  const chunkCount = Number(runDoc.get("chunkCount") ?? 0);
+
+  return {
+    scope,
+    backupDocCount,
+    chunkCount,
+    previewPaths,
+    estimatedRisk:
+      scope === "full" ? "high" : scope === "collection" ? "medium" : "low",
+    note: "Estimación de bajo costo basada en metadata del backup (sin escaneo completo del tenant actual).",
+  };
 };
 
 const hasModuleAccess = (
@@ -2501,6 +2606,25 @@ const backupTenant = async (
 
   try {
     const serializedPayload = {
+  await writeTenantAuditLog(tenantId, {
+    eventType: "backup",
+    action: "BACKUP_COMPLETED",
+    scope: "full",
+    runId,
+    status: "completed",
+    result: {
+      docCount: filteredDocuments.length,
+      chunkCount: chunks.length,
+      retentionLimit: BACKUP_RETENTION_COUNT,
+    },
+  });
+
+  let batch = db.batch();
+  let counter = 0;
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
+    const chunkRef = runRef.collection("chunks").doc(String(index + 1).padStart(4, "0"));
+    batch.set(chunkRef, {
       tenantId,
       runId,
       exportedAt: new Date().toISOString(),
@@ -2584,6 +2708,9 @@ const userCanRequestTenantBackup = (
   return userRole === "owner" || userRole === "admin";
 };
 
+export const requestTenantRestore = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: RestoreRequestPayload, context) => {
 export const requestTenantBackup = functions
   .runWith({ enforceAppCheck: false })
   .https.onCall(async (data: unknown, context) => {
@@ -2591,6 +2718,88 @@ export const requestTenantBackup = functions
       throw new functions.https.HttpsError("unauthenticated", "auth requerido");
     }
 
+    const tenantId = normalizeString(data?.tenantId);
+    const runId = normalizeString(data?.runId);
+    const scope = normalizeString(data?.scope).toLowerCase() as RestoreScope;
+    const dryRun = toBoolean(data?.dryRun);
+
+    if (!tenantId || !runId || !RESTORE_SCOPES.has(scope)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "tenantId, runId y scope(full|collection|document) son requeridos"
+      );
+    }
+
+    const callerUid = context.auth.uid;
+    const callerDoc = await db.collection("users").doc(callerUid).get();
+    if (!callerDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const callerData = callerDoc.data() || {};
+    const callerRole = normalizeString(callerData.role).toLowerCase();
+    const callerTenantId = normalizeString(callerData.tenantId);
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerData.isSuperAdmin === true ||
+      callerRole === "superadmin";
+
+    if (!isSuperAdmin && (!isAdminRole(callerRole) || callerTenantId !== tenantId)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo owner/admin del tenant o superAdmin pueden solicitar restore"
+      );
+    }
+
+    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+    if (!tenantDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "tenant no existe");
+    }
+
+    const diffEstimate = await estimateRestoreDiff(tenantId, runId, scope);
+    const requiresSuperAdminApproval = !isSuperAdmin;
+    const nextStatus: RestoreRequestStatus = requiresSuperAdminApproval ? "requested" : "approved";
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    const restoreRef = db
+      .collection("tenant_backups")
+      .doc(tenantId)
+      .collection("restore_requests")
+      .doc();
+
+    await restoreRef.set({
+      tenantId,
+      restoreId: restoreRef.id,
+      runId,
+      scope,
+      dryRun,
+      status: nextStatus,
+      requestedBy: callerUid,
+      approvedBy: requiresSuperAdminApproval ? null : callerUid,
+      requiresSuperAdminApproval,
+      diffEstimate,
+      result: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const ip = normalizeString(context.rawRequest?.ip);
+    const userAgent = normalizeString(context.rawRequest?.headers?.["user-agent"]);
+    await writeTenantAuditLog(tenantId, {
+      eventType: "restore",
+      action: "RESTORE_REQUESTED",
+      actorUid: callerUid,
+      scope,
+      runId,
+      restoreRequestId: restoreRef.id,
+      status: nextStatus,
+      dryRun,
+      diffEstimate,
+      result: {
+        requiresSuperAdminApproval,
+      },
+      ip,
+      userAgent,
     const payload = (data ?? {}) as Record<string, unknown>;
     const tenantId = normalizeString(payload.tenantId);
     const reason = normalizeString(payload.reason);
@@ -2649,6 +2858,100 @@ export const requestTenantBackup = functions
 
     return {
       ok: true,
+      tenantId,
+      restoreId: restoreRef.id,
+      runId,
+      scope,
+      dryRun,
+      status: requiresSuperAdminApproval ? "requested" : "approved",
+      requiresSuperAdminApproval,
+      message: requiresSuperAdminApproval
+        ? "Solicitud de restore creada. Requiere aprobación de superAdmin antes de ejecutar."
+        : "Solicitud de restore aprobada (superAdmin). No ejecuta restore automáticamente.",
+    };
+  });
+
+export const approveTenantRestoreRequest = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: ApproveRestoreRequestPayload, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const tenantId = normalizeString(data?.tenantId);
+    const restoreId = normalizeString(data?.restoreId);
+    if (!tenantId || !restoreId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y restoreId son requeridos");
+    }
+
+    const approverUid = context.auth.uid;
+    const approverDoc = await db.collection("users").doc(approverUid).get();
+    if (!approverDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const approverData = approverDoc.data() || {};
+    const approverRole = normalizeString(approverData.role).toLowerCase();
+    const hasSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      approverData.isSuperAdmin === true ||
+      approverRole === "superadmin";
+    if (!hasSuperAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Solo superAdmin puede aprobar restore");
+    }
+
+    const restoreRef = db
+      .collection("tenant_backups")
+      .doc(tenantId)
+      .collection("restore_requests")
+      .doc(restoreId);
+
+    const restoreDoc = await restoreRef.get();
+    if (!restoreDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "restoreId no existe");
+    }
+
+    const currentStatus = normalizeString(restoreDoc.get("status")).toLowerCase();
+    if (currentStatus !== "requested") {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Solo solicitudes en estado requested pueden aprobarse"
+      );
+    }
+
+    await restoreRef.update({
+      status: "approved",
+      approvedBy: approverUid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const ip = normalizeString(context.rawRequest?.ip);
+    const userAgent = normalizeString(context.rawRequest?.headers?.["user-agent"]);
+    await writeTenantAuditLog(tenantId, {
+      eventType: "restore",
+      action: "RESTORE_APPROVED",
+      actorUid: approverUid,
+      scope: (normalizeString(restoreDoc.get("scope")).toLowerCase() as RestoreScope) || "full",
+      runId: normalizeString(restoreDoc.get("runId")),
+      restoreRequestId: restoreId,
+      status: "approved",
+      dryRun: restoreDoc.get("dryRun") === true,
+      diffEstimate: (restoreDoc.get("diffEstimate") as Record<string, unknown>) ?? null,
+      result: {
+        approvedBy: approverUid,
+      },
+      ip,
+      userAgent,
+    });
+
+    return {
+      ok: true,
+      tenantId,
+      restoreId,
+      status: "approved",
+      approvedBy: approverUid,
+      message: "Solicitud aprobada. Restore sigue pendiente de ejecución controlada.",
+    };
       requestId: requestRef.id,
       deduplicated: false,
     };
