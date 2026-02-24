@@ -6,6 +6,7 @@ import { AxiosError } from "axios";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
+import { hasRoleForModule } from "./security/rolePermissionsMatrix";
 import {
   buildUsageOverview,
   getCurrentDayKey,
@@ -2024,6 +2025,29 @@ const isAdminRole = (role: unknown): boolean => {
   return normalized === "admin" || normalized === "owner";
 };
 
+const hasModuleAccess = (
+  userData: admin.firestore.DocumentData,
+  module: "maintenanceRead" | "maintenanceWrite" | "backupsRead" | "backupsWrite"
+): boolean => {
+  const role = normalizeString(userData.role).toLowerCase();
+  if (
+    hasRoleForModule(role, module) ||
+    userData.isAdmin === true ||
+    userData.isSuperAdmin === true
+  ) {
+    return true;
+  }
+
+  const permissions = new Set(normalizeStringList(userData.permissions));
+  if (module === "maintenanceRead") {
+    return permissions.has(MAINTENANCE_READ) || permissions.has(MAINTENANCE_WRITE);
+  }
+  if (module === "maintenanceWrite") {
+    return permissions.has(MAINTENANCE_WRITE);
+  }
+
+  return false;
+};
 
 const MAINTENANCE_READ = "MAINTENANCE_READ";
 const MAINTENANCE_WRITE = "MAINTENANCE_WRITE";
@@ -2045,28 +2069,11 @@ const normalizeStringList = (value: unknown): string[] => {
     .filter(Boolean);
 };
 
-const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean => {
-  const role = normalizeString(userData.role).toLowerCase();
-  const permissions = new Set(normalizeStringList(userData.permissions));
-  return (
-    isAdminRole(role) ||
-    userData.isAdmin === true ||
-    userData.isSuperAdmin === true ||
-    permissions.has(MAINTENANCE_READ) ||
-    permissions.has(MAINTENANCE_WRITE)
-  );
-};
+const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean =>
+  hasModuleAccess(userData, "maintenanceRead");
 
-const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean => {
-  const role = normalizeString(userData.role).toLowerCase();
-  const permissions = new Set(normalizeStringList(userData.permissions));
-  return (
-    isAdminRole(role) ||
-    userData.isAdmin === true ||
-    userData.isSuperAdmin === true ||
-    permissions.has(MAINTENANCE_WRITE)
-  );
-};
+const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean =>
+  hasModuleAccess(userData, "maintenanceWrite");
 
 const sanitizeMaintenanceTaskPayload = (
   payload: Record<string, unknown>,
