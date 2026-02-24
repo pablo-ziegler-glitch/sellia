@@ -7,6 +7,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
+import { hasRoleForModule } from "./security/rolePermissionsMatrix";
 import {
   buildUsageOverview,
   getCurrentDayKey,
@@ -2009,7 +2010,14 @@ type TenantBackupDocument = {
   data: admin.firestore.DocumentData;
 };
 
+type TenantBackupRunResult = {
+  runId: string;
+  docCount: number;
+};
+
 const BACKUP_RETENTION_COUNT = 7;
+const BACKUP_CHUNK_SIZE = 150;
+const BACKUP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
 
 const normalizeEmail = (value: unknown): string =>
   String(value ?? "").trim().toLowerCase();
@@ -2019,6 +2027,29 @@ const isAdminRole = (role: unknown): boolean => {
   return normalized === "admin" || normalized === "owner";
 };
 
+const hasModuleAccess = (
+  userData: admin.firestore.DocumentData,
+  module: "maintenanceRead" | "maintenanceWrite" | "backupsRead" | "backupsWrite"
+): boolean => {
+  const role = normalizeString(userData.role).toLowerCase();
+  if (
+    hasRoleForModule(role, module) ||
+    userData.isAdmin === true ||
+    userData.isSuperAdmin === true
+  ) {
+    return true;
+  }
+
+  const permissions = new Set(normalizeStringList(userData.permissions));
+  if (module === "maintenanceRead") {
+    return permissions.has(MAINTENANCE_READ) || permissions.has(MAINTENANCE_WRITE);
+  }
+  if (module === "maintenanceWrite") {
+    return permissions.has(MAINTENANCE_WRITE);
+  }
+
+  return false;
+};
 
 const MAINTENANCE_READ = "MAINTENANCE_READ";
 const MAINTENANCE_WRITE = "MAINTENANCE_WRITE";
@@ -2040,28 +2071,11 @@ const normalizeStringList = (value: unknown): string[] => {
     .filter(Boolean);
 };
 
-const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean => {
-  const role = normalizeString(userData.role).toLowerCase();
-  const permissions = new Set(normalizeStringList(userData.permissions));
-  return (
-    isAdminRole(role) ||
-    userData.isAdmin === true ||
-    userData.isSuperAdmin === true ||
-    permissions.has(MAINTENANCE_READ) ||
-    permissions.has(MAINTENANCE_WRITE)
-  );
-};
+const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean =>
+  hasModuleAccess(userData, "maintenanceRead");
 
-const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean => {
-  const role = normalizeString(userData.role).toLowerCase();
-  const permissions = new Set(normalizeStringList(userData.permissions));
-  return (
-    isAdminRole(role) ||
-    userData.isAdmin === true ||
-    userData.isSuperAdmin === true ||
-    permissions.has(MAINTENANCE_WRITE)
-  );
-};
+const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean =>
+  hasModuleAccess(userData, "maintenanceWrite");
 
 const sanitizeMaintenanceTaskPayload = (
   payload: Record<string, unknown>,
@@ -2551,7 +2565,140 @@ const backupTenant = async (
     );
     throw error;
   }
+  await cleanupTenantBackupRetention(tenantId);
+  return {
+    runId,
+    docCount: filteredDocuments.length,
+  };
 };
+
+const userCanRequestTenantBackup = (
+  context: functions.https.CallableContext,
+  userData: admin.firestore.DocumentData
+): boolean => {
+  if (context.auth?.token?.superAdmin === true) {
+    return true;
+  }
+
+  const userRole = normalizeString(userData.role).toLowerCase();
+  return userRole === "owner" || userRole === "admin";
+};
+
+export const requestTenantBackup = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const reason = normalizeString(payload.reason);
+
+    if (!tenantId || !reason) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y reason son requeridos");
+    }
+    if (reason.length < 6) {
+      throw new functions.https.HttpsError("invalid-argument", "reason requiere al menos 6 caracteres");
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const userData = userDoc.data() || {};
+    const isSuperAdmin = context.auth.token.superAdmin === true;
+    if (!isSuperAdmin && normalizeString(userData.tenantId) !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "tenant inválido para el usuario");
+    }
+    if (!userCanRequestTenantBackup(context, userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos para solicitar backup");
+    }
+
+    const requestsRef = db.collection("tenant_backups").doc(tenantId).collection("requests");
+    const windowStart = admin.firestore.Timestamp.fromMillis(Date.now() - BACKUP_REQUEST_WINDOW_MS);
+    const recentRequestSnap = await requestsRef
+      .where("createdAt", ">=", windowStart)
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+
+    if (!recentRequestSnap.empty) {
+      const latestRequest = recentRequestSnap.docs[0];
+      return {
+        ok: true,
+        requestId: latestRequest.id,
+        deduplicated: true,
+      };
+    }
+
+    const requestRef = requestsRef.doc();
+    await requestRef.set({
+      tenantId,
+      requestId: requestRef.id,
+      reason,
+      status: "queued",
+      createdByUid: context.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      errorMessage: null,
+      docCount: null,
+      runId: null,
+    });
+
+    return {
+      ok: true,
+      requestId: requestRef.id,
+      deduplicated: false,
+    };
+  });
+
+export const processTenantBackupRequest = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .firestore
+  .document("tenant_backups/{tenantId}/requests/{requestId}")
+  .onCreate(async (snapshot, context) => {
+    const tenantId = normalizeString(context.params.tenantId);
+    const requestId = normalizeString(context.params.requestId);
+    if (!tenantId || !requestId) {
+      return;
+    }
+
+    await snapshot.ref.set(
+      {
+        status: "running",
+        startedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    try {
+      const backupResult = await backupTenant(tenantId);
+      await snapshot.ref.set(
+        {
+          status: "completed",
+          runId: backupResult.runId,
+          docCount: backupResult.docCount,
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          errorMessage: null,
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      await snapshot.ref.set(
+        {
+          status: "failed",
+          errorMessage: error instanceof Error ? error.message : String(error),
+          failedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  });
 
 export const createDailyTenantBackups = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })

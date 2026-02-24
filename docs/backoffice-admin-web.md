@@ -37,6 +37,7 @@ Reglas:
 - `#/settings/marketing`
 - `#/settings/users`
 - `#/settings/cloud-services`
+- `#/settings/integrations` (tokens/secretos con vista enmascarada)
 - `#/maintenance`
 
 `#/maintenance` es explícitamente operativa (sin venta/carrito).
@@ -50,3 +51,11 @@ python3 -m http.server 8080 --directory public
 Abrir:
 - Sitio público: `http://localhost:8080/`
 - Backoffice: `http://localhost:8080/admin/`
+
+
+## Gestión de tokens en backoffice
+
+- El backoffice debe operar como consola principal para alta/rotación/revocación de secretos por tenant.
+- Las vistas muestran solo previews enmascarados por defecto.
+- Revelado completo solo bajo acción explícita, trazado en auditoría y con expiración corta de UI.
+- El almacenamiento del secreto debe resolverse vía Cloud Functions + Secret Manager, evitando persistir token completo en Firestore.
