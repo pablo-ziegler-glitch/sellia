@@ -9,7 +9,17 @@ import {
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { doc, getDoc, getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  collection,
+  doc,
+  getDoc,
+  getFirestore,
+  limit,
+  onSnapshot,
+  orderBy,
+  query
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { INTERNAL_ROLES, hasRouteAccess, rolePermissions } from "./permissions.js";
 
 const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
@@ -33,7 +43,12 @@ const el = {
   viewTitle: document.getElementById("viewTitle"),
   viewDescription: document.getElementById("viewDescription"),
   deniedState: document.getElementById("deniedState"),
-  missingTenantState: document.getElementById("missingTenantState")
+  missingTenantState: document.getElementById("missingTenantState"),
+  backupPanel: document.getElementById("backupPanel"),
+  backupReasonInput: document.getElementById("backupReasonInput"),
+  requestBackupButton: document.getElementById("requestBackupButton"),
+  backupMessage: document.getElementById("backupMessage"),
+  backupRequestsBody: document.getElementById("backupRequestsBody")
 };
 
 const routeViews = {
@@ -66,10 +81,12 @@ const routeViews = {
 const appState = {
   firebaseAuth: null,
   firestore: null,
+  cloudFunctions: null,
   currentUser: null,
   profile: null,
   inactivityTimerId: null,
-  refreshTimerId: null
+  refreshTimerId: null,
+  backupRequestsUnsubscribe: null
 };
 
 bootstrap();
@@ -86,9 +103,11 @@ async function bootstrap() {
   const app = initializeApp(firebaseConfig, "sellia-admin-web");
   const auth = getAuth(app);
   const db = getFirestore(app);
+  const cloudFunctions = getFunctions(app);
 
   appState.firebaseAuth = auth;
   appState.firestore = db;
+  appState.cloudFunctions = cloudFunctions;
 
   await setPersistence(auth, browserLocalPersistence);
 
@@ -131,6 +150,7 @@ function wireEvents() {
   el.loginForm.addEventListener("submit", onEmailLogin);
   el.googleBtn.addEventListener("click", onGoogleLogin);
   el.logoutBtn.addEventListener("click", () => safeLogout("Sesión cerrada correctamente."));
+  el.requestBackupButton.addEventListener("click", onRequestBackupNow);
   window.addEventListener("hashchange", syncRouteWithPermissions);
 
   ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) => {
@@ -215,6 +235,17 @@ function syncRouteWithPermissions() {
   hideDeniedState();
   el.viewTitle.textContent = view.title;
   el.viewDescription.textContent = view.description;
+
+  const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
+  const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
+  el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
+
+  if (el.backupPanel.hidden) {
+    stopBackupRequestsListener();
+    return;
+  }
+
+  startBackupRequestsListener();
 }
 
 function startInactivityGuard() {
@@ -259,7 +290,13 @@ function clearSessionState() {
   clearInterval(appState.refreshTimerId);
   appState.currentUser = null;
   appState.profile = null;
+  if (typeof appState.backupRequestsUnsubscribe === "function") {
+    appState.backupRequestsUnsubscribe();
+  }
+  appState.backupRequestsUnsubscribe = null;
   el.permissionsList.innerHTML = "";
+  el.backupPanel.hidden = true;
+  el.backupRequestsBody.innerHTML = '<tr><td colspan="6">Sin solicitudes recientes.</td></tr>';
 }
 
 function showDeniedState(message) {
@@ -299,6 +336,100 @@ function setSessionBanner(message) {
   el.sessionBanner.textContent = message;
 }
 
+
+function stopBackupRequestsListener() {
+  if (typeof appState.backupRequestsUnsubscribe === "function") {
+    appState.backupRequestsUnsubscribe();
+  }
+  appState.backupRequestsUnsubscribe = null;
+}
+
+function startBackupRequestsListener() {
+  if (appState.backupRequestsUnsubscribe || !appState.profile) return;
+
+  const requestsQuery = query(
+    collection(appState.firestore, "tenant_backups", appState.profile.tenantId, "requests"),
+    orderBy("createdAt", "desc"),
+    limit(12)
+  );
+
+  appState.backupRequestsUnsubscribe = onSnapshot(
+    requestsQuery,
+    (snapshot) => {
+      if (snapshot.empty) {
+        el.backupRequestsBody.innerHTML = "<tr><td colspan=\"6\">Sin solicitudes recientes.</td></tr>";
+        return;
+      }
+
+      el.backupRequestsBody.innerHTML = snapshot.docs
+        .map((requestDoc) => {
+          const row = requestDoc.data();
+          const createdAtMillis = row.createdAt?.toMillis?.() || null;
+          const createdAtLabel = createdAtMillis
+            ? new Date(createdAtMillis).toLocaleString()
+            : "-";
+          const status = (row.status || "queued").toString();
+          const createdByUid = (row.createdByUid || "-").toString();
+          const docCount = Number.isFinite(row.docCount) ? row.docCount : "-";
+          const errorMessage = (row.errorMessage || "-").toString();
+
+          return `
+            <tr>
+              <td>${requestDoc.id}</td>
+              <td>${status}</td>
+              <td>${createdAtLabel}</td>
+              <td>${createdByUid}</td>
+              <td>${docCount}</td>
+              <td>${errorMessage}</td>
+            </tr>
+          `;
+        })
+        .join("");
+    },
+    (error) => {
+      setBackupMessage(`No se pudo cargar historial de backups: ${error.message || error}`);
+    }
+  );
+}
+
+async function onRequestBackupNow() {
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    setBackupMessage("Acción permitida solo para owner/admin.");
+    return;
+  }
+
+  const reason = el.backupReasonInput.value.trim();
+  if (reason.length < 6) {
+    setBackupMessage("Indicá un motivo de al menos 6 caracteres.");
+    return;
+  }
+
+  try {
+    el.requestBackupButton.disabled = true;
+    const callable = httpsCallable(appState.cloudFunctions, "requestTenantBackup");
+    const response = await callable({
+      tenantId: appState.profile.tenantId,
+      reason
+    });
+
+    const deduplicated = response?.data?.deduplicated === true;
+    const requestId = response?.data?.requestId || "-";
+    setBackupMessage(
+      deduplicated
+        ? `Ya existía una solicitud reciente (${requestId}). Se evitó un duplicado.`
+        : `Solicitud creada (${requestId}).`
+    );
+    el.backupReasonInput.value = "";
+  } catch (error) {
+    setBackupMessage(parseAuthError(error));
+  } finally {
+    el.requestBackupButton.disabled = false;
+  }
+}
+
+function setBackupMessage(message) {
+  el.backupMessage.textContent = message || "";
+}
 function parseAuthError(error) {
   if (!error) return "Error de autenticación desconocido.";
 
@@ -306,7 +437,10 @@ function parseAuthError(error) {
     "auth/invalid-credential": "Credenciales inválidas.",
     "auth/popup-closed-by-user": "Login con Google cancelado.",
     "auth/unauthorized-domain": "Dominio no autorizado en Firebase Auth.",
-    "auth/network-request-failed": "Sin conexión de red."
+    "auth/network-request-failed": "Sin conexión de red.",
+    "functions/permission-denied": "No tenés permisos para ejecutar esta acción.",
+    "functions/invalid-argument": "Faltan datos obligatorios para ejecutar la acción.",
+    "functions/unauthenticated": "Tu sesión expiró. Iniciá sesión nuevamente."
   };
 
   return map[error.code] || error.message || "No se pudo iniciar sesión.";

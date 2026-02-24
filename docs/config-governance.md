@@ -45,3 +45,22 @@ Todos los documentos en `tenants/{tenantId}/config/*` deben incluir:
 - `development_options`: `owner`, `admin`.
 
 Esta matriz alinea Android, backoffice web y Firestore Rules para evitar divergencias funcionales.
+
+
+## Gestión de tokens y secretos (integraciones)
+
+Para integraciones sensibles (ej. Mercado Pago) el contrato de `config/*` debe guardar **referencias y estado**, no secretos en texto plano.
+
+- Documento recomendado: `tenants/{tenantId}/config/integrations`.
+- Secretos reales: Google Secret Manager.
+- Lectura en UI: preview enmascarado y acceso completo solo por callable auditado de una sola vez.
+
+Ver diseño operativo completo en `docs/token-management-strategy.md`.
+
+## Enfoque de seguridad gradual (sin cortar operación productiva)
+
+Cuando existan tiendas productivas, el endurecimiento de reglas Firestore debe ser incremental por módulo/tenant:
+
+1. Reglas estrictas primero en rutas nuevas de configuración sensible.
+2. Rollout por flag por tenant (`enforceStrictRules`).
+3. Observabilidad y rollback por tenant sin redeploy.

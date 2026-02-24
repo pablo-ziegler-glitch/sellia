@@ -115,6 +115,23 @@ Para reducir aún más costos y exposición del API key web, se recomienda mover
 
 Esto evita que cada cliente pegue directo a Firestore REST y simplifica la evolución de reglas de seguridad para datos públicos.
 
+
+
+## Estrategia de ramas para release (GitHub)
+
+Para evitar despliegues accidentales a producción, el flujo recomendado es:
+
+1. Abrir PRs técnicos contra `sandbox` (base branch), no contra `main`.
+2. Validar en `sandbox` (QA funcional + smoke de Hosting/Functions).
+3. Promover de `sandbox` a `main` solo con aprobación operativa.
+
+Política sugerida:
+
+- `sandbox`: integración y validación de cambios de configuración/tokens/backoffice.
+- `main`: únicamente cambios listos para producción.
+
+Esto reduce riesgo de cortes en tiendas activas y permite rollback más controlado.
+
 ## 4) Publicar
 
 ```bash
