@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import axios from "axios";
 import { AxiosError } from "axios";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 import { hasRoleForModule } from "./security/rolePermissionsMatrix";
@@ -20,6 +21,7 @@ import {
 admin.initializeApp();
 
 const db = admin.firestore();
+const storage = admin.storage();
 
 type UsageSource = "monitoring" | "bigquery";
 
@@ -2489,14 +2491,6 @@ const listTenantDocumentsRecursively = async (
   }
 };
 
-const splitIntoChunks = <T>(items: T[], size: number): T[][] => {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
-};
-
 const loadPurgedProductIds = async (tenantId: string): Promise<Set<string>> => {
   const deletionsSnap = await db
     .collection("tenants")
@@ -2529,25 +2523,37 @@ const shouldKeepBackupDocument = (
   return true;
 };
 
-const deleteRunWithChunks = async (
-  runRef: admin.firestore.DocumentReference
-): Promise<void> => {
-  const chunkSnap = await runRef.collection("chunks").get();
-  let batch = db.batch();
-  let counter = 0;
+const resolveBackupStorageLocation = (
+  runData: admin.firestore.DocumentData
+): { storageBucket: string; storagePath: string } | null => {
+  const storagePath = normalizeString(runData.storagePath);
+  if (!storagePath) {
+    return null;
+  }
+  const storageBucket = normalizeString(runData.storageBucket) || storage.bucket().name;
+  return { storageBucket, storagePath };
+};
 
-  for (const chunkDoc of chunkSnap.docs) {
-    batch.delete(chunkDoc.ref);
-    counter += 1;
-    if (counter === 450) {
-      await batch.commit();
-      batch = db.batch();
-      counter = 0;
+const deleteRunWithChunks = async (
+  runDoc: admin.firestore.QueryDocumentSnapshot
+): Promise<void> => {
+  const storageLocation = resolveBackupStorageLocation(runDoc.data());
+  if (storageLocation) {
+    try {
+      await storage
+        .bucket(storageLocation.storageBucket)
+        .file(storageLocation.storagePath)
+        .delete({ ignoreNotFound: true });
+    } catch (error) {
+      console.warn("Unable to delete backup artifact from storage", {
+        runPath: runDoc.ref.path,
+        ...storageLocation,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  batch.delete(runRef);
-  await batch.commit();
+  await runDoc.ref.delete();
 };
 
 const cleanupTenantBackupRetention = async (tenantId: string): Promise<void> => {
@@ -2560,11 +2566,14 @@ const cleanupTenantBackupRetention = async (tenantId: string): Promise<void> => 
 
   const staleRuns = runsSnap.docs.slice(BACKUP_RETENTION_COUNT);
   for (const staleRun of staleRuns) {
-    await deleteRunWithChunks(staleRun.ref);
+    await deleteRunWithChunks(staleRun);
   }
 };
 
-const backupTenant = async (tenantId: string): Promise<TenantBackupRunResult> => {
+const backupTenant = async (
+  tenantId: string,
+  actor = "system:createDailyTenantBackups"
+): Promise<void> => {
   const tenantRef = db.collection("tenants").doc(tenantId);
   const documents: TenantBackupDocument[] = [];
   await listTenantDocumentsRecursively(tenantRef, documents);
@@ -2574,24 +2583,29 @@ const backupTenant = async (tenantId: string): Promise<TenantBackupRunResult> =>
   );
 
   const runId = new Date().toISOString().replace(/[.:]/g, "-");
+  const bucket = storage.bucket();
+  const storagePath = `tenant-backups/${tenantId}/${runId}.json.gz`;
   const runRef = db
     .collection("tenant_backups")
     .doc(tenantId)
     .collection("runs")
     .doc(runId);
 
-  const chunks = splitIntoChunks(filteredDocuments, BACKUP_CHUNK_SIZE);
-
   await runRef.set({
     tenantId,
     runId,
-    docCount: filteredDocuments.length,
-    chunkCount: chunks.length,
+    actor,
+    status: "in_progress",
     retentionLimit: BACKUP_RETENTION_COUNT,
-    status: "completed",
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+  const backupFile = bucket.file(storagePath);
+  let backupUploaded = false;
+
+  try {
+    const serializedPayload = {
   await writeTenantAuditLog(tenantId, {
     eventType: "backup",
     action: "BACKUP_COMPLETED",
@@ -2613,21 +2627,68 @@ const backupTenant = async (tenantId: string): Promise<TenantBackupRunResult> =>
     batch.set(chunkRef, {
       tenantId,
       runId,
-      chunkIndex: index,
-      documents: chunk,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    counter += 1;
-    if (counter === 450) {
-      await batch.commit();
-      batch = db.batch();
-      counter = 0;
-    }
-  }
-  if (counter > 0) {
-    await batch.commit();
-  }
+      exportedAt: new Date().toISOString(),
+      documents: filteredDocuments,
+    };
+    const jsonBuffer = Buffer.from(JSON.stringify(serializedPayload));
+    const gzippedBuffer = gzipSync(jsonBuffer);
+    const payloadHash = createHash("sha256").update(gzippedBuffer).digest("hex");
 
+    await backupFile.save(gzippedBuffer, {
+      resumable: false,
+      contentType: "application/json",
+      metadata: {
+        contentEncoding: "gzip",
+        metadata: {
+          tenantId,
+          runId,
+          payloadHash,
+        },
+      },
+    });
+    backupUploaded = true;
+
+    await runRef.set(
+      {
+        status: "completed",
+        docCount: filteredDocuments.length,
+        payloadBytes: jsonBuffer.length,
+        compressedBytes: gzippedBuffer.length,
+        payloadHash,
+        storageBucket: bucket.name,
+        storagePath,
+        storageUri: `gs://${bucket.name}/${storagePath}`,
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await cleanupTenantBackupRetention(tenantId);
+  } catch (error) {
+    if (backupUploaded) {
+      try {
+        await backupFile.delete({ ignoreNotFound: true });
+      } catch (cleanupError) {
+        console.warn("Unable to rollback failed backup artifact", {
+          tenantId,
+          runId,
+          storagePath,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      }
+    }
+
+    await runRef.set(
+      {
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    throw error;
+  }
   await cleanupTenantBackupRetention(tenantId);
   return {
     runId,
@@ -2952,7 +3013,7 @@ export const createDailyTenantBackups = functions
     for (const tenantDoc of tenantsSnapshot.docs) {
       const tenantId = tenantDoc.id;
       try {
-        await backupTenant(tenantId);
+        await backupTenant(tenantId, "system:createDailyTenantBackups");
         console.info("Tenant backup completed", { tenantId });
       } catch (error) {
         console.error("Tenant backup failed", {
@@ -2983,32 +3044,12 @@ export const purgeDeletedProductFromBackups = functions
       return;
     }
 
-    const productRoot = `tenants/${tenantId}/products/${productId}`;
-    const runsSnap = await db
-      .collection("tenant_backups")
-      .doc(tenantId)
-      .collection("runs")
-      .get();
-
-    for (const runDoc of runsSnap.docs) {
-      const chunkSnap = await runDoc.ref.collection("chunks").get();
-      for (const chunkDoc of chunkSnap.docs) {
-        const documents = Array.isArray(chunkDoc.get("documents"))
-          ? (chunkDoc.get("documents") as TenantBackupDocument[])
-          : [];
-        const sanitizedDocuments = documents.filter((doc) => {
-          const path = normalizeString(doc?.path);
-          return !(path === productRoot || path.startsWith(`${productRoot}/`));
-        });
-        if (sanitizedDocuments.length === documents.length) {
-          continue;
-        }
-        await chunkDoc.ref.update({
-          documents: sanitizedDocuments,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
+    const wasPurgeBackup = change.before.exists && change.before.get("purgeBackup") === true;
+    if (wasPurgeBackup) {
+      return;
     }
+
+    await backupTenant(tenantId, "system:purgeDeletedProductFromBackups");
   });
 
 
