@@ -15,19 +15,15 @@
 
 La UI inicial del backoffice de mantenimiento se publica en `/backoffice.html` y opera desacoplada del flujo POS/checkout para reducir acoplamiento operativo y técnico.
 
-## Política de permisos de mantenimiento
+## Política de permisos por módulo
 
-- Permiso lectura: `MAINTENANCE_READ`
-- Permiso escritura: `MAINTENANCE_WRITE`
+La matriz de permisos se centraliza en `docs/security/ROLE_PERMISSIONS_MATRIX.md` y su objeto canónico de runtime en `functions/src/security/rolePermissionsMatrix.ts`.
 
-### Mapeo por rol (política actual)
+### Resumen operativo (backoffice inicial)
 
-| Rol | MAINTENANCE_READ | MAINTENANCE_WRITE |
-|---|---|---|
-| owner | ✅ | ✅ |
-| admin | ✅ | ✅ |
-| manager | ❌* | ❌* |
-| cashier | ❌ | ❌ |
-| viewer | ❌ | ❌ |
-
-`*` manager puede habilitarse más adelante por permiso explícito, pero no por defecto para minimizar riesgo operacional.
+| Módulo | Roles permitidos |
+|---|---|
+| `configuracion` (`pricing`, `marketing`, `cloudServices`) | `owner`, `admin` (+ `manager` solo en `marketing`) |
+| `usuarios` | `owner`, `admin` |
+| `mantenimiento` | `owner`, `admin` (lectura/escritura por rol base) |
+| `reportes/dashboard` | `owner`, `admin`, `manager` |

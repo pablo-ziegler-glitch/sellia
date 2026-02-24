@@ -1,8 +1,11 @@
 # Role Permissions Matrix (Fuente única de verdad)
 
-Esta matriz define el contrato de permisos por rol para **UI Android** y **backend (Cloud Functions/seguridad)**.
+Esta matriz define el contrato de permisos por rol para **backoffice web**, **UI Android** y **backend (Cloud Functions/seguridad)**.
 
-## Matriz de negocio
+- Versión de matriz: `2026-02-24`
+- Objeto canónico compartido en código: `functions/src/security/rolePermissionsMatrix.ts`
+
+## Matriz de negocio (permisos operativos)
 
 | Rol | Permisos |
 |---|---|
@@ -11,6 +14,33 @@ Esta matriz define el contrato de permisos por rol para **UI Android** y **backe
 | `manager` | `VIEW_USAGE_DASHBOARD`, `CASH_OPEN`, `CASH_AUDIT`, `CASH_MOVEMENT`, `CASH_CLOSE`, `VIEW_CASH_REPORT` |
 | `cashier` | `CASH_OPEN`, `CASH_MOVEMENT`, `VIEW_CASH_REPORT` |
 | `viewer` | Sin permisos operativos internos |
+
+## Módulos y acceso por rol
+
+| Módulo | owner | admin | manager | cashier | viewer |
+|---|---|---|---|---|---|
+| dashboard | ✅ | ✅ | ✅ | ❌ | ❌ |
+| pricing | ✅ | ✅ | ❌ | ❌ | ❌ |
+| marketing | ✅ | ✅ | ✅ | ❌ | ❌ |
+| users | ✅ | ✅ | ❌ | ❌ | ❌ |
+| cloudServices | ✅ | ✅ | ❌ | ❌ | ❌ |
+| maintenanceRead | ✅ | ✅ | ❌* | ❌ | ❌ |
+| maintenanceWrite | ✅ | ✅ | ❌* | ❌ | ❌ |
+| backupsRead | ✅ | ✅ | ❌ | ❌ | ❌ |
+| backupsWrite | ✅ | ✅ | ❌ | ❌ | ❌ |
+
+`*` `manager` puede habilitarse a futuro con permiso explícito en `users.permissions`, pero no está habilitado por defecto en matriz.
+
+## Rutas backoffice (mapeo de módulos)
+
+| Ruta | Módulo |
+|---|---|
+| `#/dashboard` | `dashboard` |
+| `#/settings/pricing` | `pricing` |
+| `#/settings/marketing` | `marketing` |
+| `#/settings/users` | `users` |
+| `#/settings/cloud-services` | `cloudServices` |
+| `#/maintenance` | `maintenanceWrite` |
 
 ## Regla de enforcement en Firestore
 
@@ -24,11 +54,6 @@ Esta matriz define el contrato de permisos por rol para **UI Android** y **backe
 2. `owner`, `manager`, `cashier` son **operadores internos** y deben crearse por flujo administrativo.
 3. Cualquier cambio en permisos debe actualizar primero esta matriz y luego sus adaptadores técnicos.
 
-## Implementación actual
-
-- Android consume esta matriz vía `RolePermissionMatrix`.
-- El onboarding público de Auth crea exclusivamente `viewer` para cliente final.
-
 ## Historial de cambios relevantes
 
-- **Breaking change (permisos):** se elimina la capacidad efectiva de `manager` para gestionar usuarios a nivel Firestore. Toda operación administrativa de usuarios requiere `owner` o `admin`.
+- **Breaking change (permisos):** `manager` no tiene acceso por defecto a mantenimiento ni gestión administrativa de usuarios a nivel Firestore. Toda operación administrativa de usuarios requiere `owner` o `admin`.

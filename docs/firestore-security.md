@@ -1,5 +1,15 @@
 # Reglas de seguridad Firestore (multi-tenant)
 
+
+## Fuente de verdad de permisos por rol
+
+La política transversal por módulos se centraliza en:
+
+- `docs/security/ROLE_PERMISSIONS_MATRIX.md`
+- `functions/src/security/rolePermissionsMatrix.ts`
+
+Para Firestore administrativo de usuarios, el módulo aplicable es `users` (permitido solo para `owner` y `admin`).
+
 ## Política vigente para gestión de usuarios
 
 La política final de negocio queda definida así:
