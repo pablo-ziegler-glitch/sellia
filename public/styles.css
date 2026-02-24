@@ -855,3 +855,25 @@ main {
   border-radius: 10px;
   padding: 10px;
 }
+
+.bo-restore-guard {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.bo-restore-item p {
+  margin: 4px 0;
+}
+
+.bo-restore-lock {
+  color: #b42318;
+  font-weight: 600;
+}
+
+#restore-request-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
