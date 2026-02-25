@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -62,6 +63,8 @@ import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.CrossCatalogAdminScreen
 import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
 import com.example.selliaapp.ui.screens.config.AppVersionScreen
+import com.example.selliaapp.ui.screens.config.BackofficeModule
+import com.example.selliaapp.ui.screens.config.ConfigAdminFeatureFlags
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
@@ -157,23 +160,32 @@ fun SelliaApp(
     val accountSummary = remember(authState, accessState) {
         buildAccountSummary(authState, accessState)
     }
-    val isClientFinal = accessState.role == AppRole.VIEWER
-    val navigationItems = remember(isClientFinal) {
-        if (isClientFinal) {
-            listOf(
-                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
-                BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront),
-                BottomNavItem(Routes.More.route, "Cuenta", Icons.Default.Menu)
-            )
-        } else {
-            listOf(
-                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
-                BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true),
-                BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2),
-                BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney),
-                BottomNavItem(Routes.More.route, "Más", Icons.Default.Menu)
-            )
-        }
+    val role = accessState.role
+    val isClientFinal = role == AppRole.VIEWER
+    val navigationUsageStore = remember(context) { NavigationUsageStore(context.applicationContext) }
+    val routeCounts by navigationUsageStore.observeRouteCounts().collectAsStateWithLifecycle()
+    val roleRouteCounts = remember(role, routeCounts) {
+        navigationUsageStore.routeCountsFor(role)
+    }
+    val primaryRoutes = remember(role, roleRouteCounts) {
+        RoleNavigationPolicy.primaryRoutesForRole(role, roleRouteCounts)
+    }
+    val navigationItems = remember(primaryRoutes) {
+        primaryRoutes.map { routeItem ->
+            when (routeItem) {
+                Routes.Home.route -> BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home)
+                Routes.Pos.route -> BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true)
+                Routes.Stock.route -> BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2)
+                Routes.Cash.route -> BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney)
+                Routes.ClientsHub.route -> BottomNavItem(Routes.ClientsHub.route, "Clientes", Icons.Default.ShoppingCart)
+                Routes.PublicProductCatalog.route -> BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront)
+                else -> BottomNavItem(routeItem, routeItem, Icons.Default.Home)
+            }
+        } + BottomNavItem(
+            route = Routes.More.route,
+            label = if (isClientFinal) "Cuenta" else "Más",
+            icon = Icons.Default.Menu
+        )
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -184,6 +196,12 @@ fun SelliaApp(
     val isInsideCart = currentRoute == Routes.Pos.route ||
         currentRoute == Routes.PosCheckout.route ||
         currentRoute == Routes.ScannerForSell.route
+
+    LaunchedEffect(currentRoute, role) {
+        if (currentRoute.isNotBlank()) {
+            navigationUsageStore.onRouteVisible(role, currentRoute)
+        }
+    }
 
     AppScaffold(
         currentDestination = currentDestination,
@@ -196,8 +214,10 @@ fun SelliaApp(
                     Routes.PublicProductScan.route
                 )
             ) {
+                navigationUsageStore.recordNavigationDenied(role, route)
                 return@AppScaffold
             }
+            navigationUsageStore.markNavigationRequested(role, route)
             navController.navigate(route) {
                 launchSingleTop = true
                 restoreState = false
@@ -330,7 +350,6 @@ fun SelliaApp(
             composable(Routes.More.route) {
                 MoreScreen(
                     onStockHistory = { navController.navigate(Routes.StockMovements.route) },
-                    onCustomers = { navController.navigate(Routes.ClientsHub.route) },
                     onProviders = { navController.navigate(Routes.ProvidersHub.route) },
                     onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                     onReports = { navController.navigate(Routes.Reports.route) },
@@ -338,7 +357,7 @@ fun SelliaApp(
                     onSettings = { navController.navigate(Routes.Config.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,
-                    isClientFinal = isClientFinal
+                    role = role
                 )
             }
 
@@ -741,6 +760,7 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
+                val uriHandler = LocalUriHandler.current
                 val tenantManagementVm: TenantManagementViewModel = hiltViewModel()
                 val tenantManagementState by tenantManagementVm.uiState.collectAsStateWithLifecycle()
                 val userProfile = remember(authState, accessState) {
@@ -775,6 +795,11 @@ fun SelliaApp(
                     tenantActionError = tenantManagementState.error,
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = accessState.role == AppRole.ADMIN,
+                    onSupport = { navController.navigate(Routes.AppVersion.route) },
+                    onOpenBackofficeWeb = { module ->
+                        uriHandler.openUri("https://sellia1993.web.app/backoffice/${module.slug}")
+                    },
+                    adminFeatureFlags = ConfigAdminFeatureFlags.MobileFieldOnly,
                     isClientFinal = isClientFinal,
                     onBack = { navController.popBackStack() }
                 )

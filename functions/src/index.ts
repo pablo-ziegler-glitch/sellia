@@ -8,6 +8,7 @@ import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 import { hasRoleForModule } from "./security/rolePermissionsMatrix";
+import { authorizeUsageMetricsAccess } from "./usageMetricsAccess";
 import {
   buildUsageOverview,
   getCurrentDayKey,
@@ -17,6 +18,14 @@ import {
   type UsageMetricResult,
   type UsageServiceMetrics,
 } from "./usageMetrics.helpers";
+import {
+  createApproveTenantRestoreRequestHandler,
+  createRequestTenantBackupHandler,
+  createRequestTenantRestoreHandler,
+  type ApproveRestoreRequestPayload,
+  type RestoreRequestPayload,
+  type RestoreScope,
+} from "./tenantBackup";
 
 admin.initializeApp();
 
@@ -1539,11 +1548,11 @@ export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true 
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
     : 6;
 
-  const snapshot = await db
-    .collection(USAGE_COLLECTION)
-    .orderBy("monthKey", "desc")
-    .limit(limit)
-    .get();
+  const query = decision.scope === "tenant"
+    ? db.collection("tenants").doc(decision.requestedTenantId).collection(USAGE_COLLECTION)
+    : db.collection(USAGE_COLLECTION);
+
+  const snapshot = await query.orderBy("monthKey", "desc").limit(limit).get();
 
   const history: UsageHistoryItem[] = snapshot.docs.map((doc) => {
     const raw = doc.data() as Record<string, unknown>;
@@ -1567,9 +1576,41 @@ export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true 
     };
   });
 
+  const auditPayload = {
+    eventType: "metrics_access",
+    action: "USAGE_METRICS_HISTORY_READ",
+    actorUid: decision.uid,
+    scope: decision.scope,
+    status: "success",
+    targetTenantId: decision.requestedTenantId || null,
+    limit,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (decision.scope === "tenant") {
+    await db
+      .collection("tenants")
+      .doc(decision.requestedTenantId)
+      .collection("audit_logs")
+      .doc()
+      .set(auditPayload);
+  } else {
+    await db.collection("audit_logs").doc().set(auditPayload);
+  }
+
+  console.info("Usage metrics accessed", {
+    uid: decision.uid,
+    role: decision.role,
+    scope: decision.scope,
+    tenantId: decision.requestedTenantId || null,
+    limit,
+  });
+
   return {
     items: history,
     limit,
+    scope: decision.scope,
+    tenantId: decision.requestedTenantId || null,
   };
 });
 
@@ -2060,7 +2101,6 @@ type TenantBackupRunResult = {
 
 const BACKUP_RETENTION_COUNT = 7;
 const BACKUP_CHUNK_SIZE = 150;
-const RESTORE_SCOPES = new Set<RestoreScope>(["full", "collection", "document"]);
 const BACKUP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
 
 const APP_CHECK_REJECT_COLLECTION = "securityTelemetry";
@@ -2437,6 +2477,35 @@ const sanitizeMaintenanceTaskPayload = (
       source: "cloud_function",
     },
   };
+};
+
+const writeMaintenanceAuditLog = async ({
+  tenantId,
+  taskId,
+  actorUid,
+  action,
+  before,
+  after,
+}: {
+  tenantId: string;
+  taskId: string;
+  actorUid: string;
+  action: "create" | "update";
+  before?: admin.firestore.DocumentData | null;
+  after: admin.firestore.DocumentData;
+}): Promise<void> => {
+  await db.collection("tenants").doc(tenantId).collection("maintenance_audit").add({
+    tenantId,
+    taskId,
+    action,
+    actorUid,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    change: {
+      before: before ?? null,
+      after,
+    },
+    source: "cloud_function",
+  });
 };
 
 const resolveTargetUserId = async (
@@ -3118,36 +3187,33 @@ export const requestTenantBackup = functions
       throw new functions.https.HttpsError("permission-denied", "sin permisos para solicitar backup");
     }
 
-    const requestsRef = db.collection("tenant_backups").doc(tenantId).collection("requests");
-    const windowStart = admin.firestore.Timestamp.fromMillis(Date.now() - BACKUP_REQUEST_WINDOW_MS);
-    const recentRequestSnap = await requestsRef
-      .where("createdAt", ">=", windowStart)
-      .orderBy("createdAt", "desc")
-      .limit(1)
-      .get();
+const requestTenantRestoreHandler = createRequestTenantRestoreHandler({
+  db,
+  normalizeString,
+  toBoolean,
+  isAdminRole,
+  userCanRequestTenantBackup,
+  estimateRestoreDiff,
+  writeTenantAuditLog,
+  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+});
 
-    if (!recentRequestSnap.empty) {
-      const latestRequest = recentRequestSnap.docs[0];
-      return {
-        ok: true,
-        requestId: latestRequest.id,
-        deduplicated: true,
-      };
-    }
+const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHandler({
+  db,
+  normalizeString,
+  toBoolean,
+  isAdminRole,
+  userCanRequestTenantBackup,
+  estimateRestoreDiff,
+  writeTenantAuditLog,
+  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+});
 
-    const requestRef = requestsRef.doc();
-    await requestRef.set({
-      tenantId,
-      requestId: requestRef.id,
-      reason,
-      status: "queued",
-      createdByUid: context.auth.uid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      errorMessage: null,
-      docCount: null,
-      runId: null,
-    });
+export const requestTenantRestore = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall((data: RestoreRequestPayload, context) =>
+    requestTenantRestoreHandler(data, context)
+  );
 
     return {
       ok: true,
@@ -3386,6 +3452,13 @@ export const createMaintenanceTask = functions
     const taskRef = db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc();
     const taskData = sanitizeMaintenanceTaskPayload(payload, tenantId, context.auth.uid);
     await taskRef.set(taskData, { merge: false });
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId: taskRef.id,
+      actorUid: context.auth.uid,
+      action: "create",
+      after: taskData,
+    });
     return { ok: true, taskId: taskRef.id };
   });
 
@@ -3432,13 +3505,22 @@ export const updateMaintenanceTask = functions
       throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
     }
 
+    const previousData = taskDoc.data() || null;
     const nextData = sanitizeMaintenanceTaskPayload(
-      { ...taskDoc.data(), ...payload },
+      { ...previousData, ...payload },
       tenantId,
       context.auth.uid,
-      taskDoc.data()
+      previousData || undefined
     );
 
     await taskDoc.ref.set(nextData, { merge: false });
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId,
+      actorUid: context.auth.uid,
+      action: "update",
+      before: previousData,
+      after: nextData,
+    });
     return { ok: true, taskId };
   });

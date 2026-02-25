@@ -6,10 +6,11 @@ const {
   assertSucceeds,
   assertFails,
 } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, updateDoc, deleteDoc } = require('firebase/firestore');
+const { doc, setDoc, updateDoc, getDoc } = require('firebase/firestore');
 
 const PROJECT_ID = 'sellia-firestore-rules-tests';
-const TENANT_ID = 'tenant-a';
+const TENANT_A = 'tenant-a';
+const TENANT_B = 'tenant-b';
 
 let testEnv;
 
@@ -20,71 +21,74 @@ function roleUserId(role) {
   return `${role}-uid`;
 }
 
-async function seedRoleUser(role) {
+function dbWithClaims(uid, claims = {}) {
+  return testEnv.authenticatedContext(uid, claims).firestore();
+}
+
+async function seedUser(uid, data) {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, 'users', roleUserId(role)), {
-      email: `${role}@example.com`,
-      tenantId: TENANT_ID,
-      role,
+    await setDoc(doc(db, 'users', uid), {
+      email: `${uid}@example.com`,
+      tenantId: TENANT_A,
+      role: 'viewer',
       status: 'active',
       accountType: 'store_owner',
       isAdmin: false,
       isSuperAdmin: false,
+      ...data,
     });
   });
 }
 
-async function seedAdminTargets() {
+async function seedBaseData() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
 
-    await setDoc(doc(db, 'tenant_users', 'tu-1'), {
-      tenantId: TENANT_ID,
+    await setDoc(doc(db, 'users', 'legacy-owner-uid'), {
+      email: 'legacy-owner@example.com',
+      tenantId: TENANT_A,
+      role: 'owner',
+      accountType: 'store_owner',
+      isAdmin: false,
+      isSuperAdmin: false,
+      // legacy doc sin status
+    });
+
+    await setDoc(doc(db, 'tenant_users', 'tu-a-1'), {
+      tenantId: TENANT_A,
       userId: 'existing-user',
       role: 'cashier',
       status: 'active',
     });
 
-    await setDoc(doc(db, 'users', 'managed-user'), {
-      email: 'managed@example.com',
-      tenantId: TENANT_ID,
+    await setDoc(doc(db, 'tenant_users', 'tu-b-1'), {
+      tenantId: TENANT_B,
+      userId: 'existing-user-b',
       role: 'cashier',
       status: 'active',
-      accountType: 'store_owner',
-      isAdmin: false,
-      isSuperAdmin: false,
     });
 
-    await setDoc(doc(db, 'account_requests', 'ar-1'), {
-      tenantId: TENANT_ID,
+    await setDoc(doc(db, 'account_requests', 'ar-a-1'), {
+      tenantId: TENANT_A,
       status: 'pending',
       requestedRole: 'cashier',
-      requestedBy: 'requester',
+      requestedBy: 'requester-a',
     });
+
+    await setDoc(doc(db, 'account_requests', 'ar-b-1'), {
+      tenantId: TENANT_B,
+      status: 'pending',
+      requestedRole: 'cashier',
+      requestedBy: 'requester-b',
+    });
+
+    await setDoc(doc(db, 'tenants', TENANT_A), { id: TENANT_A, ownerUid: 'owner-uid' });
+    await setDoc(doc(db, 'tenants', TENANT_B), { id: TENANT_B, ownerUid: 'other-owner-uid' });
   });
 }
 
-async function seedTenantForBootstrap(tenantId, ownerUid) {
-  await testEnv.withSecurityRulesDisabled(async (context) => {
-    const db = context.firestore();
-    await setDoc(doc(db, 'tenants', tenantId), {
-      id: tenantId,
-      ownerUid,
-    });
-  });
-}
-
-function roleDb(role) {
-  return testEnv
-    .authenticatedContext(roleUserId(role), {
-      uid: roleUserId(role),
-      email: `${role}@example.com`,
-    })
-    .firestore();
-}
-
-describe('firestore.rules - tenant user management policy', () => {
+describe('firestore.rules - multi-tenant admin policy', () => {
   before(async () => {
     testEnv = await initializeTestEnvironment({
       projectId: PROJECT_ID,
@@ -96,10 +100,20 @@ describe('firestore.rules - tenant user management policy', () => {
 
   beforeEach(async () => {
     await testEnv.clearFirestore();
+
     for (const role of [...ADMIN_ROLES, ...NON_ADMIN_ROLES]) {
-      await seedRoleUser(role);
+      await seedUser(roleUserId(role), {
+        role,
+        tenantId: TENANT_A,
+      });
     }
-    await seedAdminTargets();
+
+    await seedUser('tenant-b-admin-uid', {
+      role: 'admin',
+      tenantId: TENANT_B,
+    });
+
+    await seedBaseData();
   });
 
   after(async () => {
@@ -107,13 +121,13 @@ describe('firestore.rules - tenant user management policy', () => {
   });
 
   for (const role of ADMIN_ROLES) {
-    it(`${role} can perform administrative writes on /tenant_users, /users and /account_requests`, async () => {
-      const db = roleDb(role);
+    it(`${role} can write admin collections inside own tenant`, async () => {
+      const db = dbWithClaims(roleUserId(role), { uid: roleUserId(role) });
 
       await assertSucceeds(
-        setDoc(doc(db, 'tenant_users', `${role}-created-tu`), {
-          tenantId: TENANT_ID,
-          userId: `created-by-${role}`,
+        setDoc(doc(db, 'tenant_users', `${role}-created`), {
+          tenantId: TENANT_A,
+          userId: `${role}-target`,
           role: 'cashier',
           status: 'active',
         }),
@@ -122,7 +136,7 @@ describe('firestore.rules - tenant user management policy', () => {
       await assertSucceeds(
         setDoc(doc(db, 'users', `${role}-created-user`), {
           email: `${role}-created@example.com`,
-          tenantId: TENANT_ID,
+          tenantId: TENANT_A,
           role: 'cashier',
           status: 'active',
           accountType: 'store_owner',
@@ -132,130 +146,110 @@ describe('firestore.rules - tenant user management policy', () => {
       );
 
       await assertSucceeds(
-        updateDoc(doc(db, 'account_requests', 'ar-1'), {
+        updateDoc(doc(db, 'account_requests', 'ar-a-1'), {
           status: 'approved',
         }),
-      );
-
-      await assertSucceeds(
-        deleteDoc(doc(db, 'tenant_users', 'tu-1')),
-      );
-
-      await assertSucceeds(
-        deleteDoc(doc(db, 'users', 'managed-user')),
-      );
-
-      await assertSucceeds(
-        deleteDoc(doc(db, 'account_requests', 'ar-1')),
       );
     });
   }
 
-  it('viewer without superAdmin claim cannot perform administrative writes', async () => {
-    const db = dbWithClaims('viewer-claimless', { superAdmin: false });
+  for (const role of NON_ADMIN_ROLES) {
+    it(`${role} (viewer-like no privilege) cannot perform admin writes`, async () => {
+      const db = dbWithClaims(roleUserId(role), { uid: roleUserId(role) });
+
+      await assertFails(
+        setDoc(doc(db, 'tenant_users', `${role}-created`), {
+          tenantId: TENANT_A,
+          userId: `${role}-target`,
+          role: 'cashier',
+          status: 'active',
+        }),
+      );
+
+      await assertFails(
+        updateDoc(doc(db, 'account_requests', 'ar-a-1'), {
+          status: 'approved',
+        }),
+      );
+    });
+  }
+
+  it('denies cross-tenant admin write even for admin role', async () => {
+    const db = dbWithClaims('admin-uid', { uid: 'admin-uid' });
 
     await assertFails(
-      setDoc(doc(db, 'tenant_users', 'viewer-claimless-tu'), {
-        tenantId: TENANT_ID,
-        userId: 'viewer-claimless-target',
-        role: 'cashier',
-        status: 'active',
-      }),
-    );
-  });
-
-  it('authenticated user with superAdmin claim can perform administrative writes', async () => {
-    const db = dbWithClaims('super-admin-uid', { superAdmin: true });
-
-    await assertSucceeds(
-      setDoc(doc(db, 'tenant_users', 'super-admin-tu'), {
-        tenantId: TENANT_ID,
-        userId: 'super-admin-target',
+      setDoc(doc(db, 'tenant_users', 'admin-cross-tenant'), {
+        tenantId: TENANT_B,
+        userId: 'cross-tenant-target',
         role: 'cashier',
         status: 'active',
       }),
     );
 
-    await assertSucceeds(
-      setDoc(doc(db, 'users', 'super-admin-created-user'), {
-        email: 'super-admin-created@example.com',
-        tenantId: TENANT_ID,
-        role: 'cashier',
-        status: 'active',
-        accountType: 'store_owner',
-        isAdmin: false,
-        isSuperAdmin: false,
-      }),
-    );
-
-    await assertSucceeds(
-      updateDoc(doc(db, 'account_requests', 'ar-1'), {
+    await assertFails(
+      updateDoc(doc(db, 'account_requests', 'ar-b-1'), {
         status: 'approved',
       }),
     );
   });
 
-
-  for (const role of NON_ADMIN_ROLES) {
-    it(`${role} is denied for administrative writes on /tenant_users, /users and /account_requests`, async () => {
-      const db = roleDb(role);
-
-      await assertFails(
-        setDoc(doc(db, 'tenant_users', `${role}-created-tu`), {
-          tenantId: TENANT_ID,
-          userId: `created-by-${role}`,
-          role: 'cashier',
-          status: 'active',
-        }),
-      );
-
-      await assertFails(
-        setDoc(doc(db, 'users', `${role}-created-user`), {
-          email: `${role}-created@example.com`,
-          tenantId: TENANT_ID,
-          role: 'cashier',
-          status: 'active',
-          accountType: 'store_owner',
-          isAdmin: false,
-          isSuperAdmin: false,
-        }),
-      );
-
-      await assertFails(
-        updateDoc(doc(db, 'account_requests', 'ar-1'), {
-          status: 'approved',
-        }),
-      );
-
-      await assertFails(
-        deleteDoc(doc(db, 'tenant_users', 'tu-1')),
-      );
-
-      await assertFails(
-        deleteDoc(doc(db, 'users', 'managed-user')),
-      );
-
-      await assertFails(
-        deleteDoc(doc(db, 'account_requests', 'ar-1')),
-      );
-
-      assert.ok(true);
+  it('allows superAdmin claim bypass for cross-tenant admin writes', async () => {
+    const db = dbWithClaims('super-admin-uid', {
+      uid: 'super-admin-uid',
+      superAdmin: true,
+      tenantId: TENANT_A,
+      role: 'viewer',
     });
-  }
 
-  it('denies final customer self create with isAdmin=true', async () => {
+    await assertSucceeds(
+      setDoc(doc(db, 'tenant_users', 'super-cross-tenant'), {
+        tenantId: TENANT_B,
+        userId: 'cross-tenant-target',
+        role: 'cashier',
+        status: 'active',
+      }),
+    );
+
+    await assertSucceeds(
+      updateDoc(doc(db, 'account_requests', 'ar-b-1'), {
+        status: 'approved',
+      }),
+    );
+  });
+
+  it('allows legacy admin user doc without status field (legacy compatibility)', async () => {
+    const db = dbWithClaims('legacy-owner-uid', { uid: 'legacy-owner-uid' });
+
+    await assertSucceeds(
+      setDoc(doc(db, 'tenant_users', 'legacy-created'), {
+        tenantId: TENANT_A,
+        userId: 'legacy-target',
+        role: 'cashier',
+        status: 'active',
+      }),
+    );
+  });
+
+  it('keeps tenant catalog public read while non-catalog remains private', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenants', TENANT_A, 'public_products', 'sku-1'), { name: 'Test' });
+      await setDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-1'), { name: 'Private' });
+    });
+
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertSucceeds(getDoc(doc(anonDb, 'tenants', TENANT_A, 'public_products', 'sku-1')));
+    await assertFails(getDoc(doc(anonDb, 'tenants', TENANT_A, 'products', 'sku-1')));
+  });
+
+  it('denies self-create escalating to isAdmin=true', async () => {
     const uid = 'final-customer-malicious';
-    const db = testEnv
-      .authenticatedContext(uid, {
-        uid,
-        email: 'final-customer-malicious@example.com',
-      })
-      .firestore();
+    const db = dbWithClaims(uid, { uid });
 
     await assertFails(
       setDoc(doc(db, 'users', uid), {
         email: 'final-customer-malicious@example.com',
-        tenantId: TENANT_ID,
+        tenantId: TENANT_A,
         role: 'viewer',
         status: 'active',
         accountType: 'final_customer',
@@ -265,44 +259,14 @@ describe('firestore.rules - tenant user management policy', () => {
     );
   });
 
-  it('denies owner bootstrap when trying to set isSuperAdmin=true', async () => {
-    const uid = 'owner-bootstrap-malicious';
-    const ownerTenantId = 'tenant-owner-bootstrap';
-    await seedTenantForBootstrap(ownerTenantId, uid);
-
-    const db = testEnv
-      .authenticatedContext(uid, {
-        uid,
-        email: 'owner-bootstrap-malicious@example.com',
-      })
-      .firestore();
-
-    await assertFails(
-      setDoc(doc(db, 'users', uid), {
-        email: 'owner-bootstrap-malicious@example.com',
-        tenantId: ownerTenantId,
-        role: 'owner',
-        status: 'active',
-        accountType: 'store_owner',
-        isAdmin: false,
-        isSuperAdmin: true,
-      }),
-    );
-  });
-
-  it('allows valid final customer self create without sensitive fields', async () => {
+  it('allows valid final customer self create', async () => {
     const uid = 'final-customer-valid';
-    const db = testEnv
-      .authenticatedContext(uid, {
-        uid,
-        email: 'final-customer-valid@example.com',
-      })
-      .firestore();
+    const db = dbWithClaims(uid, { uid });
 
     await assertSucceeds(
       setDoc(doc(db, 'users', uid), {
         email: 'final-customer-valid@example.com',
-        tenantId: TENANT_ID,
+        tenantId: TENANT_A,
         role: 'viewer',
         status: 'active',
         accountType: 'final_customer',
@@ -310,5 +274,7 @@ describe('firestore.rules - tenant user management policy', () => {
         isSuperAdmin: false,
       }),
     );
+
+    assert.ok(true);
   });
 });

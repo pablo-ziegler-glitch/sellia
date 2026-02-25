@@ -28,6 +28,11 @@
         <button data-filter="overdue" class="bo-filter">Vencidas</button>
         <button data-filter="blocker" class="bo-filter">Bloqueantes operativas</button>
       </div>
+      <div class="bo-maintenance-actions">
+        <button id="maintenance-create-btn" class="bo-filter">Crear tarea</button>
+        <button id="maintenance-retry-btn" class="bo-filter">Reintentar carga</button>
+      </div>
+      <p id="maintenance-status" class="bo-maintenance-status" role="status" aria-live="polite"></p>
       <ul id="maintenance-list" class="bo-list"></ul>
     </section>
 
@@ -47,6 +52,7 @@
 
   <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
   <script src="/safe-dom.js" defer></script>
-  <script src="/backoffice.js" defer></script>
+  <script src="/config.js" defer></script>
+  <script type="module" src="/backoffice.js"></script>
 </body>
 </html>
