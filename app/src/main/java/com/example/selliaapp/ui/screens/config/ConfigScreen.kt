@@ -8,22 +8,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -76,6 +74,9 @@ fun ConfigScreen(
     tenantActionError: String?,
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
+    onSupport: () -> Unit,
+    onOpenBackofficeWeb: (BackofficeModule) -> Unit,
+    adminFeatureFlags: ConfigAdminFeatureFlags,
     isClientFinal: Boolean,
     onBack: () -> Unit
 ) {
@@ -144,16 +145,10 @@ fun ConfigScreen(
                     return@Column
                 }
 
-                // Menú
-                SettingsItem(
-                    icon = Icons.Filled.Campaign,
-                    title = "Configuraciones de tienda",
-                    onClick = onMarketingConfig
-                )
-                SettingsItem(
-                    icon = Icons.Filled.UploadFile,
-                    title = "Cargas masivas y ABMs",
-                    onClick = onBulkData
+                Text(
+                    text = "Operativas (campo)",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
                 SettingsItem(
                     icon = Icons.Filled.CloudSync,
@@ -161,64 +156,104 @@ fun ConfigScreen(
                     onClick = onSync
                 )
                 SettingsItem(
-                    icon = Icons.Filled.QrCode2,
-                    title = "QRs Productos",
-                    onClick = onProductQrs
-                )
-                SettingsItem(
-                    icon = Icons.Filled.ChevronRight,
-                    title = "Pricing y costos",
-                    onClick = onPricingConfig
-                )
-                SettingsItem(
-                    icon = Icons.Filled.Lock,
-                    title = "Seguridad y accesos",
-                    onClick = onSecuritySettings
-                )
-                SettingsItem(
                     icon = Icons.Filled.Notifications,
-                    title = "Alertas de uso",
+                    title = "Estado de cuenta",
                     onClick = onUsageAlerts
+                )
+                SettingsItem(
+                    icon = Icons.Filled.Info,
+                    title = "Soporte",
+                    onClick = onSupport
                 )
                 SettingsItem(
                     icon = Icons.Filled.Info,
                     title = "Versión de la app",
                     onClick = onAppVersion
                 )
-                if (canManageUsers) {
+
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "Administrativas (Backoffice Web)",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                AdminActionItem(
+                    title = "Usuarios y roles",
+                    module = BackofficeModule.USERS_AND_ROLES,
+                    mobileEnabled = adminFeatureFlags.usersAndRolesEnabled && canManageUsers,
+                    onMobileClick = onManageUsers,
+                    onWebClick = onOpenBackofficeWeb
+                )
+                AdminActionItem(
+                    title = "Servicios en la nube",
+                    module = BackofficeModule.CLOUD_SERVICES,
+                    mobileEnabled = adminFeatureFlags.cloudServicesEnabled && canManageCloudServices,
+                    onMobileClick = onCloudServicesAdmin,
+                    onWebClick = onOpenBackofficeWeb
+                )
+                AdminActionItem(
+                    title = "Pricing global",
+                    module = BackofficeModule.GLOBAL_PRICING,
+                    mobileEnabled = adminFeatureFlags.globalPricingEnabled,
+                    onMobileClick = onPricingConfig,
+                    onWebClick = onOpenBackofficeWeb
+                )
+                AdminActionItem(
+                    title = "Tenant lifecycle",
+                    module = BackofficeModule.TENANT_LIFECYCLE,
+                    mobileEnabled = adminFeatureFlags.tenantLifecycleEnabled,
+                    onMobileClick = onTenantDeactivation,
+                    onWebClick = onOpenBackofficeWeb
+                )
+                AdminActionItem(
+                    title = "Cargas masivas y ABMs",
+                    module = BackofficeModule.BULK_ABM,
+                    mobileEnabled = adminFeatureFlags.bulkAbmEnabled,
+                    onMobileClick = onBulkData,
+                    onWebClick = onOpenBackofficeWeb
+                )
+
+                if (adminFeatureFlags.marketingConfigEnabled) {
                     SettingsItem(
-                        icon = Icons.Filled.Badge,
-                        title = "Usuarios y roles",
-                        onClick = onManageUsers
+                        icon = Icons.Filled.Campaign,
+                        title = "Configuraciones de tienda",
+                        onClick = onMarketingConfig
                     )
                 }
-                SettingsItem(
-                    icon = Icons.Filled.Lock,
-                    title = "Dar de baja tienda (lógica)",
-                    onClick = onTenantDeactivation
-                )
-                SettingsItem(
-                    icon = Icons.Filled.Lock,
-                    title = "Solicitar reactivación tienda",
-                    onClick = onTenantReactivation
-                )
-                SettingsItem(
-                    icon = Icons.Filled.Lock,
-                    title = "Eliminar tienda (doble check)",
-                    onClick = { showDeleteDialog = true }
-                )
+
+                if (adminFeatureFlags.productQrsEnabled) {
+                    SettingsItem(
+                        icon = Icons.Filled.QrCode2,
+                        title = "QRs Productos",
+                        onClick = onProductQrs
+                    )
+                }
+                if (adminFeatureFlags.securitySettingsEnabled) {
+                    SettingsItem(
+                        icon = Icons.Filled.Lock,
+                        title = "Seguridad y accesos",
+                        onClick = onSecuritySettings
+                    )
+                }
+
+                if (adminFeatureFlags.tenantLifecycleEnabled) {
+                    SettingsItem(
+                        icon = Icons.Filled.Lock,
+                        title = "Solicitar reactivación tienda",
+                        onClick = onTenantReactivation
+                    )
+                    SettingsItem(
+                        icon = Icons.Filled.Lock,
+                        title = "Eliminar tienda (doble check)",
+                        onClick = { showDeleteDialog = true }
+                    )
+                }
                 tenantActionFeedback?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
                 tenantActionError?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
-                if (canManageCloudServices) {
-                    SettingsItem(
-                        icon = Icons.Filled.AdminPanelSettings,
-                        title = "Servicios en la nube (Admin)",
-                        onClick = onCloudServicesAdmin
-                    )
                 }
                 if (showDevelopmentOptions) {
                     SettingsItem(
@@ -295,6 +330,67 @@ fun ConfigScreen(
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") }
             }
+        )
+    }
+}
+
+
+enum class BackofficeModule(val slug: String) {
+    USERS_AND_ROLES("users_roles"),
+    CLOUD_SERVICES("cloud_services"),
+    GLOBAL_PRICING("global_pricing"),
+    TENANT_LIFECYCLE("tenant_lifecycle"),
+    BULK_ABM("bulk_abm")
+}
+
+data class ConfigAdminFeatureFlags(
+    val usersAndRolesEnabled: Boolean,
+    val cloudServicesEnabled: Boolean,
+    val globalPricingEnabled: Boolean,
+    val tenantLifecycleEnabled: Boolean,
+    val bulkAbmEnabled: Boolean,
+    val marketingConfigEnabled: Boolean,
+    val productQrsEnabled: Boolean,
+    val securitySettingsEnabled: Boolean
+) {
+    companion object {
+        /**
+         * Estado objetivo: mobile sólo para operación de campo.
+         * Dejar flags en false permite apagar módulos admin sin romper navegación
+         * porque cada acción conserva fallback "Abrir en Backoffice Web".
+         */
+        val MobileFieldOnly = ConfigAdminFeatureFlags(
+            usersAndRolesEnabled = false,
+            cloudServicesEnabled = false,
+            globalPricingEnabled = false,
+            tenantLifecycleEnabled = false,
+            bulkAbmEnabled = false,
+            marketingConfigEnabled = false,
+            productQrsEnabled = false,
+            securitySettingsEnabled = false
+        )
+    }
+}
+
+@Composable
+private fun AdminActionItem(
+    title: String,
+    module: BackofficeModule,
+    mobileEnabled: Boolean,
+    onMobileClick: () -> Unit,
+    onWebClick: (BackofficeModule) -> Unit
+) {
+    if (mobileEnabled) {
+        SettingsItem(
+            icon = Icons.Filled.AdminPanelSettings,
+            title = "$title (Mobile heredado)",
+            onClick = onMobileClick
+        )
+    } else {
+        SettingsItem(
+            icon = Icons.Filled.OpenInNew,
+            title = "$title · Abrir en Backoffice Web",
+            onClick = { onWebClick(module) }
         )
     }
 }
