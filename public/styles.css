@@ -54,6 +54,13 @@ button:focus-visible {
 
 .nav {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.nav-links {
+  display: flex;
   gap: 1.5rem;
   justify-content: center;
   font-size: 0.9rem;
@@ -63,6 +70,14 @@ button:focus-visible {
 
 .nav-link {
   color: var(--muted);
+}
+
+.nav-login {
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.9rem;
 }
 
 main {
@@ -715,9 +730,32 @@ main {
   transform: translateY(0);
 }
 
+
+@media (max-width: 560px) {
+  .nav {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .nav-links {
+    width: 100%;
+    justify-content: center;
+    gap: 1rem;
+    font-size: 0.8rem;
+  }
+
+  .nav-login {
+    margin-left: auto;
+  }
+}
+
 @media (min-width: 768px) {
   .site-header {
     padding: 1.5rem 3rem 0;
+  }
+
+  .nav {
+    gap: 1.5rem;
   }
 
   main {
