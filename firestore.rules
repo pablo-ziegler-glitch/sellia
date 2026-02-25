@@ -2,10 +2,183 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Modo temporal para destrabar desarrollo/integración.
-    // TODO: reintroducir reglas por tenant/rol de forma incremental.
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function requesterUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function requesterData() {
+      return requesterUserDoc().data;
+    }
+
+    function normalizeRole(value) {
+      return lower(trim(value is string ? value : ''));
+    }
+
+    function hasSuperAdminClaim() {
+      return isAuthenticated() && request.auth.token.superAdmin == true;
+    }
+
+    function effectiveTenantId() {
+      return isAuthenticated()
+        ? (
+            request.auth.token.tenantId is string
+              ? request.auth.token.tenantId
+              : (requesterUserDoc().exists && requesterData().tenantId is string ? requesterData().tenantId : '')
+          )
+        : '';
+    }
+
+    function isActiveUser() {
+      return isAuthenticated() && (
+        !requesterUserDoc().exists ||
+        !(requesterData().status is string) ||
+        normalizeRole(requesterData().status) == 'active'
+      );
+    }
+
+    function normalizedRole() {
+      return isAuthenticated()
+        ? (
+            request.auth.token.role is string
+              ? normalizeRole(request.auth.token.role)
+              : (requesterUserDoc().exists && requesterData().role is string ? normalizeRole(requesterData().role) : '')
+          )
+        : '';
+    }
+
+    function isTenantMember(tenantId) {
+      return isAuthenticated() && isActiveUser() && (
+        hasSuperAdminClaim() ||
+        effectiveTenantId() == tenantId ||
+        exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + request.auth.uid))
+      );
+    }
+
+    function isAdminRole() {
+      return normalizedRole() in ['owner', 'admin'];
+    }
+
+    function isTenantAdmin(tenantId) {
+      return hasSuperAdminClaim() || (isTenantMember(tenantId) && isAdminRole());
+    }
+
+    function isOwnUserDoc(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isSafeSelfSignupPayload() {
+      return request.resource.data.accountType == 'final_customer' &&
+        request.resource.data.role == 'viewer' &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.isAdmin == false &&
+        request.resource.data.isSuperAdmin == false;
+    }
+
+    function isOwnerBootstrap(userId) {
+      return isOwnUserDoc(userId) &&
+        request.resource.data.accountType == 'store_owner' &&
+        request.resource.data.role == 'owner' &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.isAdmin == false &&
+        request.resource.data.isSuperAdmin == false &&
+        request.resource.data.tenantId is string &&
+        get(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId)).data.ownerUid == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwnUserDoc(userId) ||
+        (isAuthenticated() && requesterUserDoc().exists && isTenantAdmin(resource.data.tenantId));
+
+      allow create: if hasSuperAdminClaim() ||
+        (isOwnUserDoc(userId) && (isSafeSelfSignupPayload() || isOwnerBootstrap(userId))) ||
+        (isAuthenticated() && isTenantAdmin(request.resource.data.tenantId));
+
+      allow update, delete: if hasSuperAdminClaim() ||
+        (isAuthenticated() && isTenantAdmin(resource.data.tenantId));
+    }
+
+    match /tenant_users/{tenantUserId} {
+      allow read: if isAuthenticated() && (
+        hasSuperAdminClaim() ||
+        (resource.data.tenantId is string && isTenantMember(resource.data.tenantId))
+      );
+      allow create: if isAuthenticated() && request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId);
+      allow update, delete: if isAuthenticated() && resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId);
+    }
+
+    match /account_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        hasSuperAdminClaim() ||
+        resource.data.requestedBy == request.auth.uid ||
+        (resource.data.tenantId is string && isTenantMember(resource.data.tenantId))
+      );
+      allow create: if isAuthenticated() && request.resource.data.requestedBy == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        hasSuperAdminClaim() ||
+        (resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId))
+      );
+    }
+
+    match /tenants/{tenantId} {
+      allow read: if isTenantMember(tenantId);
+      allow write: if isTenantAdmin(tenantId);
+
+      match /public_products/{productId} {
+        allow read: if true;
+        allow write: if isTenantAdmin(tenantId);
+      }
+
+      match /config/public_store {
+        allow read: if true;
+        allow write: if isTenantAdmin(tenantId);
+      }
+
+      match /config/cloud_services {
+        allow read: if isTenantMember(tenantId);
+        allow write: if isTenantAdmin(tenantId);
+      }
+
+      match /config/{configId} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if isTenantAdmin(tenantId);
+      }
+
+      match /{document=**} {
+        allow read, write: if isTenantMember(tenantId);
+      }
+    }
+
+    match /tenant_backups/{tenantId} {
+      allow read: if isTenantAdmin(tenantId);
+      allow write: if isTenantAdmin(tenantId);
+
+      match /requests/{requestId} {
+        allow read: if isTenantAdmin(tenantId);
+        allow write: if isTenantAdmin(tenantId);
+      }
+
+      match /restore_requests/{restoreId} {
+        allow read: if isTenantAdmin(tenantId);
+        allow write: if isTenantAdmin(tenantId) || hasSuperAdminClaim();
+      }
+    }
+
+    match /public_products/{productId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /cross_catalog/{barcode} {
+      allow read: if isAuthenticated();
+      allow write: if hasSuperAdminClaim();
+    }
+
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
