@@ -171,6 +171,7 @@ describe("mpWebhook", () => {
 
     const req: any = {
       method: "POST",
+      ip: "34.195.82.184",
       query: { "data.id": paymentId },
       body: {},
       get: (headerName: string) => {
