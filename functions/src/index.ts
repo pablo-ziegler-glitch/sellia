@@ -8,6 +8,7 @@ import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 import { hasRoleForModule } from "./security/rolePermissionsMatrix";
+import { authorizeUsageMetricsAccess } from "./usageMetricsAccess";
 import {
   buildUsageOverview,
   getCurrentDayKey,
@@ -1524,17 +1525,20 @@ type UsageHistoryItem = {
   updatedAt: string | null;
 };
 
-export const getUsageMetricsHistory = functions.https.onCall(async (data) => {
-  const requestedLimit = Number((data as { limit?: number } | undefined)?.limit ?? 6);
+export const getUsageMetricsHistory = functions.https.onCall(async (data, context) => {
+  const payload = (data ?? {}) as { limit?: number; tenantId?: unknown };
+  const decision = authorizeUsageMetricsAccess(payload, context, (await db.collection("users").doc(context.auth!.uid).get()).data());
+
+  const requestedLimit = Number(payload.limit ?? 6);
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
     : 6;
 
-  const snapshot = await db
-    .collection(USAGE_COLLECTION)
-    .orderBy("monthKey", "desc")
-    .limit(limit)
-    .get();
+  const query = decision.scope === "tenant"
+    ? db.collection("tenants").doc(decision.requestedTenantId).collection(USAGE_COLLECTION)
+    : db.collection(USAGE_COLLECTION);
+
+  const snapshot = await query.orderBy("monthKey", "desc").limit(limit).get();
 
   const history: UsageHistoryItem[] = snapshot.docs.map((doc) => {
     const raw = doc.data() as Record<string, unknown>;
@@ -1558,9 +1562,41 @@ export const getUsageMetricsHistory = functions.https.onCall(async (data) => {
     };
   });
 
+  const auditPayload = {
+    eventType: "metrics_access",
+    action: "USAGE_METRICS_HISTORY_READ",
+    actorUid: decision.uid,
+    scope: decision.scope,
+    status: "success",
+    targetTenantId: decision.requestedTenantId || null,
+    limit,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (decision.scope === "tenant") {
+    await db
+      .collection("tenants")
+      .doc(decision.requestedTenantId)
+      .collection("audit_logs")
+      .doc()
+      .set(auditPayload);
+  } else {
+    await db.collection("audit_logs").doc().set(auditPayload);
+  }
+
+  console.info("Usage metrics accessed", {
+    uid: decision.uid,
+    role: decision.role,
+    scope: decision.scope,
+    tenantId: decision.requestedTenantId || null,
+    limit,
+  });
+
   return {
     items: history,
     limit,
+    scope: decision.scope,
+    tenantId: decision.requestedTenantId || null,
   };
 });
 
