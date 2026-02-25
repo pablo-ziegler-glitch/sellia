@@ -116,6 +116,15 @@ const BILLING_PROJECT_ID_PARAM = defineString("BILLING_PROJECT_ID");
 const BILLING_BIGQUERY_PROJECT_PARAM = defineString("BILLING_BIGQUERY_PROJECT");
 const BILLING_BIGQUERY_DATASET_PARAM = defineString("BILLING_BIGQUERY_DATASET");
 const BILLING_BIGQUERY_TABLE_PARAM = defineString("BILLING_BIGQUERY_TABLE");
+const APP_CHECK_ENFORCEMENT_MODE_PARAM = defineString("APP_CHECK_ENFORCEMENT_MODE", {
+  default: "monitor",
+});
+const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
+  default: "",
+});
+const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
+  default: "20",
+});
 
 const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
   try {
@@ -1400,13 +1409,13 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
 };
 
 export const createPaymentPreference =
-  functions.runWith({ enforceAppCheck: false }).https.onCall(createPaymentPreferenceHandler);
+  functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentPreferenceHandler);
 
 /**
  * @deprecated Use `createPaymentPreference`. This alias will be retired on 2026-03-31.
  */
 export const createPreference = functions
-  .runWith({ enforceAppCheck: false })
+  .runWith({ enforceAppCheck: true })
   .https.onCall(async (data: unknown, context) => {
     console.warn("Deprecated Cloud Function alias invoked: createPreference", {
       canonicalEndpoint: "createPaymentPreference",
@@ -1524,7 +1533,7 @@ type UsageHistoryItem = {
   updatedAt: string | null;
 };
 
-export const getUsageMetricsHistory = functions.https.onCall(async (data) => {
+export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data) => {
   const requestedLimit = Number((data as { limit?: number } | undefined)?.limit ?? 6);
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
@@ -1582,6 +1591,19 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
   const signatureHeader = req.get("x-signature") ?? "";
   const requestId = req.get("x-request-id") ?? "";
   const dataId = getDataId(req);
+  const sourceIp = normalizeString(req.ip);
+  const isIpAllowed = getIpAllowlist().some((cidr) => isIpInCidr(sourceIp, cidr));
+
+  if (!isIpAllowed) {
+    console.info("Mercado Pago webhook rejected", {
+      reason: "ip_not_allowlisted",
+      sourceIp: sourceIp || "n/a",
+      requestId: requestId || "n/a",
+      paymentId: dataId || "n/a",
+    });
+    res.status(401).send("Invalid signature");
+    return;
+  }
 
   const signatureValidation = validateMpSignature({
     signatureHeader,
@@ -2029,6 +2051,8 @@ type RestoreRequestPayload = {
 type ApproveRestoreRequestPayload = {
   tenantId?: unknown;
   restoreId?: unknown;
+};
+
 type TenantBackupRunResult = {
   runId: string;
   docCount: number;
@@ -2038,6 +2062,186 @@ const BACKUP_RETENTION_COUNT = 7;
 const BACKUP_CHUNK_SIZE = 150;
 const RESTORE_SCOPES = new Set<RestoreScope>(["full", "collection", "document"]);
 const BACKUP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
+
+const APP_CHECK_REJECT_COLLECTION = "securityTelemetry";
+const ADMIN_RATE_LIMIT_COLLECTION = "adminRateLimits";
+const MP_DEFAULT_ALLOWED_CIDRS = [
+  "34.195.82.184/32",
+  "100.24.156.160/32",
+  "35.196.38.56/32",
+  "44.217.34.150/32",
+  "44.219.124.34/32",
+] as const;
+
+type AppCheckEnforcementMode = "monitor" | "enforce";
+
+const getAppCheckEnforcementMode = (): AppCheckEnforcementMode => {
+  const configured =
+    process.env.APP_CHECK_ENFORCEMENT_MODE ??
+    getOptionalParam(APP_CHECK_ENFORCEMENT_MODE_PARAM) ??
+    "monitor";
+
+  return configured.trim().toLowerCase() === "enforce" ? "enforce" : "monitor";
+};
+
+const getAdminRateLimitPerMinute = (): number => {
+  const configured =
+    process.env.ADMIN_RATE_LIMIT_PER_MINUTE ??
+    getOptionalParam(ADMIN_RATE_LIMIT_PER_MINUTE_PARAM) ??
+    "20";
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed)) {
+    return 20;
+  }
+  return Math.min(Math.max(Math.trunc(parsed), 5), 300);
+};
+
+const ipToUint32 = (ip: string): number | null => {
+  const octets = ip.split(".").map((segment) => Number(segment));
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return null;
+  }
+
+  return (((octets[0] << 24) >>> 0) + ((octets[1] << 16) >>> 0) + ((octets[2] << 8) >>> 0) + octets[3]) >>> 0;
+};
+
+const isIpInCidr = (ip: string, cidr: string): boolean => {
+  const [rawNetwork, rawMask] = cidr.split("/");
+  const network = ipToUint32(rawNetwork.trim());
+  const target = ipToUint32(ip.trim());
+  const maskBits = Number(rawMask);
+
+  if (network === null || target === null || !Number.isInteger(maskBits) || maskBits < 0 || maskBits > 32) {
+    return false;
+  }
+
+  if (maskBits === 0) {
+    return true;
+  }
+
+  const mask = (0xffffffff << (32 - maskBits)) >>> 0;
+  return (network & mask) === (target & mask);
+};
+
+const getIpAllowlist = (): string[] => {
+  const configured =
+    process.env.MP_WEBHOOK_IP_ALLOWLIST ?? getOptionalParam(MP_WEBHOOK_IP_ALLOWLIST_PARAM) ?? "";
+
+  const parsed = configured
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return parsed.length > 0 ? parsed : [...MP_DEFAULT_ALLOWED_CIDRS];
+};
+
+const getRequestIp = (context: functions.https.CallableContext): string =>
+  normalizeString(context.rawRequest?.ip);
+
+const recordAppCheckRejection = async (params: {
+  operation: string;
+  uid: string;
+  tenantId: string;
+  ip: string;
+  appId: string;
+  reason: string;
+}): Promise<void> => {
+  const docRef = db.collection(APP_CHECK_REJECT_COLLECTION).doc("app_check").collection("events").doc();
+  await docRef.set({
+    operation: params.operation,
+    uid: params.uid,
+    tenantId: params.tenantId || null,
+    ip: params.ip || null,
+    appId: params.appId || null,
+    reason: params.reason,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
+const assertAppCheckForInternalCallable = async (params: {
+  operation: string;
+  context: functions.https.CallableContext;
+  tenantId?: string;
+}): Promise<void> => {
+  const mode = getAppCheckEnforcementMode();
+  const appId = normalizeString(params.context.app?.appId);
+  if (appId) {
+    return;
+  }
+
+  const uid = normalizeString(params.context.auth?.uid);
+  const tenantId = normalizeString(params.tenantId);
+  const ip = getRequestIp(params.context);
+
+  await recordAppCheckRejection({
+    operation: params.operation,
+    uid,
+    tenantId,
+    ip,
+    appId,
+    reason: mode === "enforce" ? "missing_app_check_enforced" : "missing_app_check_monitor",
+  });
+
+  if (mode === "enforce") {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "App Check token requerido para este endpoint"
+    );
+  }
+};
+
+const enforceAdminRateLimit = async (params: {
+  operation: string;
+  uid: string;
+  tenantId: string;
+  ip: string;
+}): Promise<void> => {
+  const uid = normalizeString(params.uid);
+  const tenantId = normalizeString(params.tenantId);
+  if (!uid || !tenantId) {
+    return;
+  }
+
+  const ip = normalizeString(params.ip) || "unknown";
+  const now = Date.now();
+  const windowStartMs = now - 60_000;
+  const bucketMinute = Math.floor(now / 60_000);
+  const idSource = `${params.operation}|${uid}|${tenantId}|${ip}|${bucketMinute}`;
+  const bucketId = createHash("sha256").update(idSource).digest("hex");
+  const bucketRef = db.collection(ADMIN_RATE_LIMIT_COLLECTION).doc(bucketId);
+
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(bucketRef);
+    const count = Number(snapshot.get("count") ?? 0) + 1;
+    const limit = getAdminRateLimitPerMinute();
+
+    if (count > limit) {
+      throw new functions.https.HttpsError(
+        "resource-exhausted",
+        `Rate limit excedido para ${params.operation}`
+      );
+    }
+
+    tx.set(
+      bucketRef,
+      {
+        operation: params.operation,
+        uid,
+        tenantId,
+        ip,
+        minuteBucket: bucketMinute,
+        count,
+        windowStartAt: admin.firestore.Timestamp.fromMillis(windowStartMs),
+        expiresAt: admin.firestore.Timestamp.fromMillis(now + 10 * 60_000),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: snapshot.exists
+          ? snapshot.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+};
 
 const normalizeEmail = (value: unknown): string =>
   String(value ?? "").trim().toLowerCase();
@@ -2340,6 +2544,19 @@ export const manageTenantOwnership = functions
       );
     }
 
+    await assertAppCheckForInternalCallable({
+      operation: "manageTenantOwnership",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "manageTenantOwnership",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
     const allowedActions: TenantOwnershipAction[] = [
       "ASSOCIATE_OWNER",
       "TRANSFER_PRIMARY_OWNER",
@@ -2573,7 +2790,7 @@ const cleanupTenantBackupRetention = async (tenantId: string): Promise<void> => 
 const backupTenant = async (
   tenantId: string,
   actor = "system:createDailyTenantBackups"
-): Promise<void> => {
+): Promise<TenantBackupRunResult> => {
   const tenantRef = db.collection("tenants").doc(tenantId);
   const documents: TenantBackupDocument[] = [];
   await listTenantDocumentsRecursively(tenantRef, documents);
@@ -2601,35 +2818,50 @@ const backupTenant = async (
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+  const chunks: TenantBackupDocument[][] = [];
+  for (let index = 0; index < filteredDocuments.length; index += BACKUP_CHUNK_SIZE) {
+    chunks.push(filteredDocuments.slice(index, index + BACKUP_CHUNK_SIZE));
+  }
+
   const backupFile = bucket.file(storagePath);
   let backupUploaded = false;
 
   try {
-    const serializedPayload = {
-  await writeTenantAuditLog(tenantId, {
-    eventType: "backup",
-    action: "BACKUP_COMPLETED",
-    scope: "full",
-    runId,
-    status: "completed",
-    result: {
-      docCount: filteredDocuments.length,
-      chunkCount: chunks.length,
-      retentionLimit: BACKUP_RETENTION_COUNT,
-    },
-  });
+    let batch = db.batch();
+    let batchCount = 0;
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
+      const chunkRef = runRef.collection("chunks").doc(String(index + 1).padStart(4, "0"));
+      batch.set(chunkRef, {
+        tenantId,
+        runId,
+        chunkIndex: index,
+        exportedAt: new Date().toISOString(),
+        documents: chunk,
+      });
+      batchCount += 1;
 
-  let batch = db.batch();
-  let counter = 0;
-  for (let index = 0; index < chunks.length; index += 1) {
-    const chunk = chunks[index];
-    const chunkRef = runRef.collection("chunks").doc(String(index + 1).padStart(4, "0"));
-    batch.set(chunkRef, {
+      if (batchCount >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+
+    const serializedPayload = {
       tenantId,
       runId,
+      actor,
       exportedAt: new Date().toISOString(),
+      docCount: filteredDocuments.length,
+      chunkCount: chunks.length,
       documents: filteredDocuments,
     };
+
     const jsonBuffer = Buffer.from(JSON.stringify(serializedPayload));
     const gzippedBuffer = gzipSync(jsonBuffer);
     const payloadHash = createHash("sha256").update(gzippedBuffer).digest("hex");
@@ -2652,6 +2884,7 @@ const backupTenant = async (
       {
         status: "completed",
         docCount: filteredDocuments.length,
+        chunkCount: chunks.length,
         payloadBytes: jsonBuffer.length,
         compressedBytes: gzippedBuffer.length,
         payloadHash,
@@ -2663,6 +2896,19 @@ const backupTenant = async (
       },
       { merge: true }
     );
+
+    await writeTenantAuditLog(tenantId, {
+      eventType: "backup",
+      action: "BACKUP_COMPLETED",
+      scope: "full",
+      runId,
+      status: "completed",
+      result: {
+        docCount: filteredDocuments.length,
+        chunkCount: chunks.length,
+        retentionLimit: BACKUP_RETENTION_COUNT,
+      },
+    });
 
     await cleanupTenantBackupRetention(tenantId);
   } catch (error) {
@@ -2689,7 +2935,7 @@ const backupTenant = async (
     );
     throw error;
   }
-  await cleanupTenantBackupRetention(tenantId);
+
   return {
     runId,
     docCount: filteredDocuments.length,
@@ -2711,9 +2957,6 @@ const userCanRequestTenantBackup = (
 export const requestTenantRestore = functions
   .runWith({ enforceAppCheck: false })
   .https.onCall(async (data: RestoreRequestPayload, context) => {
-export const requestTenantBackup = functions
-  .runWith({ enforceAppCheck: false })
-  .https.onCall(async (data: unknown, context) => {
     if (!context.auth?.uid) {
       throw new functions.https.HttpsError("unauthenticated", "auth requerido");
     }
@@ -2730,11 +2973,24 @@ export const requestTenantBackup = functions
       );
     }
 
+    await assertAppCheckForInternalCallable({
+      operation: "requestTenantRestore",
+      context,
+      tenantId,
+    });
+
     const callerUid = context.auth.uid;
     const callerDoc = await db.collection("users").doc(callerUid).get();
     if (!callerDoc.exists) {
       throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
     }
+
+    await enforceAdminRateLimit({
+      operation: "requestTenantRestore",
+      uid: callerUid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
 
     const callerData = callerDoc.data() || {};
     const callerRole = normalizeString(callerData.role).toLowerCase();
@@ -2783,7 +3039,7 @@ export const requestTenantBackup = functions
       updatedAt: now,
     });
 
-    const ip = normalizeString(context.rawRequest?.ip);
+    const ip = getRequestIp(context);
     const userAgent = normalizeString(context.rawRequest?.headers?.["user-agent"]);
     await writeTenantAuditLog(tenantId, {
       eventType: "restore",
@@ -2800,6 +3056,30 @@ export const requestTenantBackup = functions
       },
       ip,
       userAgent,
+    });
+
+    return {
+      ok: true,
+      tenantId,
+      restoreId: restoreRef.id,
+      runId,
+      scope,
+      dryRun,
+      status: requiresSuperAdminApproval ? "requested" : "approved",
+      requiresSuperAdminApproval,
+      message: requiresSuperAdminApproval
+        ? "Solicitud de restore creada. Requiere aprobación de superAdmin antes de ejecutar."
+        : "Solicitud de restore aprobada (superAdmin). No ejecuta restore automáticamente.",
+    };
+  });
+
+export const requestTenantBackup = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
     const payload = (data ?? {}) as Record<string, unknown>;
     const tenantId = normalizeString(payload.tenantId);
     const reason = normalizeString(payload.reason);
@@ -2811,10 +3091,23 @@ export const requestTenantBackup = functions
       throw new functions.https.HttpsError("invalid-argument", "reason requiere al menos 6 caracteres");
     }
 
+    await assertAppCheckForInternalCallable({
+      operation: "requestTenantBackup",
+      context,
+      tenantId,
+    });
+
     const userDoc = await db.collection("users").doc(context.auth.uid).get();
     if (!userDoc.exists) {
       throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
     }
+
+    await enforceAdminRateLimit({
+      operation: "requestTenantBackup",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
 
     const userData = userDoc.data() || {};
     const isSuperAdmin = context.auth.token.superAdmin === true;
@@ -2858,16 +3151,8 @@ export const requestTenantBackup = functions
 
     return {
       ok: true,
-      tenantId,
-      restoreId: restoreRef.id,
-      runId,
-      scope,
-      dryRun,
-      status: requiresSuperAdminApproval ? "requested" : "approved",
-      requiresSuperAdminApproval,
-      message: requiresSuperAdminApproval
-        ? "Solicitud de restore creada. Requiere aprobación de superAdmin antes de ejecutar."
-        : "Solicitud de restore aprobada (superAdmin). No ejecuta restore automáticamente.",
+      requestId: requestRef.id,
+      deduplicated: false,
     };
   });
 
@@ -2884,7 +3169,20 @@ export const approveTenantRestoreRequest = functions
       throw new functions.https.HttpsError("invalid-argument", "tenantId y restoreId son requeridos");
     }
 
+    await assertAppCheckForInternalCallable({
+      operation: "approveTenantRestoreRequest",
+      context,
+      tenantId,
+    });
+
     const approverUid = context.auth.uid;
+    await enforceAdminRateLimit({
+      operation: "approveTenantRestoreRequest",
+      uid: approverUid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
     const approverDoc = await db.collection("users").doc(approverUid).get();
     if (!approverDoc.exists) {
       throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
@@ -2951,9 +3249,6 @@ export const approveTenantRestoreRequest = functions
       status: "approved",
       approvedBy: approverUid,
       message: "Solicitud aprobada. Restore sigue pendiente de ejecución controlada.",
-    };
-      requestId: requestRef.id,
-      deduplicated: false,
     };
   });
 
@@ -3066,6 +3361,19 @@ export const createMaintenanceTask = functions
       throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
     }
 
+    await assertAppCheckForInternalCallable({
+      operation: "createMaintenanceTask",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "createMaintenanceTask",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
     const userDoc = await db.collection("users").doc(context.auth.uid).get();
     if (!userDoc.exists) {
       throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
@@ -3094,6 +3402,19 @@ export const updateMaintenanceTask = functions
     if (!tenantId || !taskId) {
       throw new functions.https.HttpsError("invalid-argument", "tenantId y taskId requeridos");
     }
+
+    await assertAppCheckForInternalCallable({
+      operation: "updateMaintenanceTask",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "updateMaintenanceTask",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
 
     const [userDoc, taskDoc] = await Promise.all([
       db.collection("users").doc(context.auth.uid).get(),
