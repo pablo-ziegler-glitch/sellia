@@ -2259,6 +2259,35 @@ const sanitizeMaintenanceTaskPayload = (
   };
 };
 
+const writeMaintenanceAuditLog = async ({
+  tenantId,
+  taskId,
+  actorUid,
+  action,
+  before,
+  after,
+}: {
+  tenantId: string;
+  taskId: string;
+  actorUid: string;
+  action: "create" | "update";
+  before?: admin.firestore.DocumentData | null;
+  after: admin.firestore.DocumentData;
+}): Promise<void> => {
+  await db.collection("tenants").doc(tenantId).collection("maintenance_audit").add({
+    tenantId,
+    taskId,
+    action,
+    actorUid,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    change: {
+      before: before ?? null,
+      after,
+    },
+    source: "cloud_function",
+  });
+};
+
 const resolveTargetUserId = async (
   payload: ManageTenantOwnershipPayload
 ): Promise<string> => {
@@ -2928,6 +2957,13 @@ export const createMaintenanceTask = functions
     const taskRef = db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc();
     const taskData = sanitizeMaintenanceTaskPayload(payload, tenantId, context.auth.uid);
     await taskRef.set(taskData, { merge: false });
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId: taskRef.id,
+      actorUid: context.auth.uid,
+      action: "create",
+      after: taskData,
+    });
     return { ok: true, taskId: taskRef.id };
   });
 
@@ -2961,13 +2997,22 @@ export const updateMaintenanceTask = functions
       throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
     }
 
+    const previousData = taskDoc.data() || null;
     const nextData = sanitizeMaintenanceTaskPayload(
-      { ...taskDoc.data(), ...payload },
+      { ...previousData, ...payload },
       tenantId,
       context.auth.uid,
-      taskDoc.data()
+      previousData || undefined
     );
 
     await taskDoc.ref.set(nextData, { merge: false });
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId,
+      actorUid: context.auth.uid,
+      action: "update",
+      before: previousData,
+      after: nextData,
+    });
     return { ok: true, taskId };
   });
