@@ -107,6 +107,7 @@ vi.mock("firebase-functions", () => {
       firestore: {
         document: () => ({
           onWrite: (handler: any) => handler,
+          onCreate: (handler: any) => handler,
         }),
       },
     }),
@@ -126,6 +127,7 @@ vi.mock("firebase-functions", () => {
     firestore: {
       document: () => ({
         onWrite: (handler: any) => handler,
+        onCreate: (handler: any) => handler,
       }),
     },
   };
