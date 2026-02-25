@@ -157,23 +157,32 @@ fun SelliaApp(
     val accountSummary = remember(authState, accessState) {
         buildAccountSummary(authState, accessState)
     }
-    val isClientFinal = accessState.role == AppRole.VIEWER
-    val navigationItems = remember(isClientFinal) {
-        if (isClientFinal) {
-            listOf(
-                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
-                BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront),
-                BottomNavItem(Routes.More.route, "Cuenta", Icons.Default.Menu)
-            )
-        } else {
-            listOf(
-                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
-                BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true),
-                BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2),
-                BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney),
-                BottomNavItem(Routes.More.route, "Más", Icons.Default.Menu)
-            )
-        }
+    val role = accessState.role
+    val isClientFinal = role == AppRole.VIEWER
+    val navigationUsageStore = remember(context) { NavigationUsageStore(context.applicationContext) }
+    val routeCounts by navigationUsageStore.observeRouteCounts().collectAsStateWithLifecycle()
+    val roleRouteCounts = remember(role, routeCounts) {
+        navigationUsageStore.routeCountsFor(role)
+    }
+    val primaryRoutes = remember(role, roleRouteCounts) {
+        RoleNavigationPolicy.primaryRoutesForRole(role, roleRouteCounts)
+    }
+    val navigationItems = remember(primaryRoutes) {
+        primaryRoutes.map { routeItem ->
+            when (routeItem) {
+                Routes.Home.route -> BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home)
+                Routes.Pos.route -> BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true)
+                Routes.Stock.route -> BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2)
+                Routes.Cash.route -> BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney)
+                Routes.ClientsHub.route -> BottomNavItem(Routes.ClientsHub.route, "Clientes", Icons.Default.ShoppingCart)
+                Routes.PublicProductCatalog.route -> BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront)
+                else -> BottomNavItem(routeItem, routeItem, Icons.Default.Home)
+            }
+        } + BottomNavItem(
+            route = Routes.More.route,
+            label = if (isClientFinal) "Cuenta" else "Más",
+            icon = Icons.Default.Menu
+        )
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -184,6 +193,12 @@ fun SelliaApp(
     val isInsideCart = currentRoute == Routes.Pos.route ||
         currentRoute == Routes.PosCheckout.route ||
         currentRoute == Routes.ScannerForSell.route
+
+    LaunchedEffect(currentRoute, role) {
+        if (currentRoute.isNotBlank()) {
+            navigationUsageStore.onRouteVisible(role, currentRoute)
+        }
+    }
 
     AppScaffold(
         currentDestination = currentDestination,
@@ -196,8 +211,10 @@ fun SelliaApp(
                     Routes.PublicProductScan.route
                 )
             ) {
+                navigationUsageStore.recordNavigationDenied(role, route)
                 return@AppScaffold
             }
+            navigationUsageStore.markNavigationRequested(role, route)
             navController.navigate(route) {
                 launchSingleTop = true
                 restoreState = false
@@ -330,7 +347,6 @@ fun SelliaApp(
             composable(Routes.More.route) {
                 MoreScreen(
                     onStockHistory = { navController.navigate(Routes.StockMovements.route) },
-                    onCustomers = { navController.navigate(Routes.ClientsHub.route) },
                     onProviders = { navController.navigate(Routes.ProvidersHub.route) },
                     onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                     onReports = { navController.navigate(Routes.Reports.route) },
@@ -338,7 +354,7 @@ fun SelliaApp(
                     onSettings = { navController.navigate(Routes.Config.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,
-                    isClientFinal = isClientFinal
+                    role = role
                 )
             }
 
