@@ -107,6 +107,7 @@ vi.mock("firebase-functions", () => {
       firestore: {
         document: () => ({
           onWrite: (handler: any) => handler,
+          onCreate: (handler: any) => handler,
         }),
       },
     }),
@@ -126,6 +127,7 @@ vi.mock("firebase-functions", () => {
     firestore: {
       document: () => ({
         onWrite: (handler: any) => handler,
+        onCreate: (handler: any) => handler,
       }),
     },
   };
@@ -169,6 +171,7 @@ describe("mpWebhook", () => {
 
     const req: any = {
       method: "POST",
+      ip: "34.195.82.184",
       query: { "data.id": paymentId },
       body: {},
       get: (headerName: string) => {
