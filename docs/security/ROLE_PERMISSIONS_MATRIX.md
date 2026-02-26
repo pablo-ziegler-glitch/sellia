@@ -2,6 +2,9 @@
 
 Esta matriz define el contrato de permisos por rol para **backoffice web**, **UI Android** y **backend (Cloud Functions/seguridad)**.
 
+> Fuente canónica única: `functions/src/security/rolePermissionsMatrix.ts`.
+> `public/admin/permissions.js` y esta documentación son proyecciones sincronizadas y validadas en CI.
+
 - Versión de matriz: `2026-02-24`
 - Objeto canónico compartido en código: `functions/src/security/rolePermissionsMatrix.ts`
 
@@ -9,8 +12,8 @@ Esta matriz define el contrato de permisos por rol para **backoffice web**, **UI
 
 | Rol | Permisos |
 |---|---|
-| `admin` | Todos los permisos (`MANAGE_USERS`, `MANAGE_CLOUD_SERVICES`, `VIEW_USAGE_DASHBOARD`, `CASH_OPEN`, `CASH_AUDIT`, `CASH_MOVEMENT`, `CASH_CLOSE`, `VIEW_CASH_REPORT`) |
-| `owner` | Todos los permisos (`MANAGE_USERS`, `MANAGE_CLOUD_SERVICES`, `VIEW_USAGE_DASHBOARD`, `CASH_OPEN`, `CASH_AUDIT`, `CASH_MOVEMENT`, `CASH_CLOSE`, `VIEW_CASH_REPORT`) |
+| `admin` | Todos los permisos (`MANAGE_USERS`, `MANAGE_CLOUD_SERVICES`, `VIEW_USAGE_DASHBOARD`, `REQUEST_TENANT_BACKUP`, `CASH_OPEN`, `CASH_AUDIT`, `CASH_MOVEMENT`, `CASH_CLOSE`, `VIEW_CASH_REPORT`) |
+| `owner` | Todos los permisos (`MANAGE_USERS`, `MANAGE_CLOUD_SERVICES`, `VIEW_USAGE_DASHBOARD`, `REQUEST_TENANT_BACKUP`, `CASH_OPEN`, `CASH_AUDIT`, `CASH_MOVEMENT`, `CASH_CLOSE`, `VIEW_CASH_REPORT`) |
 | `manager` | `VIEW_USAGE_DASHBOARD`, `CASH_OPEN`, `CASH_AUDIT`, `CASH_MOVEMENT`, `CASH_CLOSE`, `VIEW_CASH_REPORT` |
 | `cashier` | `CASH_OPEN`, `CASH_MOVEMENT`, `VIEW_CASH_REPORT` |
 | `viewer` | Sin permisos operativos internos |
