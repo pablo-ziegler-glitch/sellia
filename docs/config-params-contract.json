@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "parameters": [
+    {
+      "name": "MP_ACCESS_TOKEN",
+      "origin": "Firebase Functions params / env",
+      "default": null,
+      "environments": ["staging", "production"],
+      "securityImpact": "high",
+      "description": "Credencial de API de Mercado Pago para crear/consultar pagos."
+    },
+    {
+      "name": "MP_WEBHOOK_SECRET",
+      "origin": "Firebase Functions params / env",
+      "default": null,
+      "environments": ["staging", "production"],
+      "securityImpact": "high",
+      "description": "Secreto fallback para validar firma del webhook de Mercado Pago."
+    },
+    {
+      "name": "MP_WEBHOOK_SECRET_REFS",
+      "origin": "Firebase Functions params / env",
+      "default": "",
+      "environments": ["staging", "production"],
+      "securityImpact": "high",
+      "description": "Referencias a Secret Manager para rotación de secretos de webhook."
+    },
+    {
+      "name": "MP_WEBHOOK_SIGNATURE_WINDOW_MS",
+      "origin": "Firebase Functions params / env",
+      "default": "300000",
+      "environments": ["staging", "production"],
+      "securityImpact": "medium",
+      "description": "Ventana temporal permitida para prevenir replay attacks en webhook."
+    },
+    {
+      "name": "MP_WEBHOOK_REPLAY_TTL_MS",
+      "origin": "Firebase Functions params / env",
+      "default": "86400000",
+      "environments": ["staging", "production"],
+      "securityImpact": "medium",
+      "description": "TTL de deduplicación para eventos webhook ya procesados."
+    },
+    {
+      "name": "MP_WEBHOOK_IP_ALLOWLIST",
+      "origin": "Firebase Functions params / env",
+      "default": "",
+      "environments": ["staging", "production"],
+      "securityImpact": "medium",
+      "description": "CIDRs permitidos para tráfico webhook de Mercado Pago."
+    },
+    {
+      "name": "APP_CHECK_ENFORCEMENT_MODE",
+      "origin": "Firebase Functions params / env",
+      "default": "monitor",
+      "environments": ["dev", "staging", "production"],
+      "securityImpact": "high",
+      "description": "Controla si App Check se monitorea o se aplica en modo estricto."
+    },
+    {
+      "name": "ADMIN_RATE_LIMIT_PER_MINUTE",
+      "origin": "Firebase Functions params / env",
+      "default": "20",
+      "environments": ["staging", "production"],
+      "securityImpact": "medium",
+      "description": "Límite de invocaciones administrativas por minuto."
+    },
+    {
+      "name": "MP_RECONCILIATION_PENDING_MINUTES",
+      "origin": "Firebase Functions params / env",
+      "default": "15",
+      "environments": ["staging", "production"],
+      "securityImpact": "low",
+      "description": "Umbral mínimo de antigüedad para reconciliar pagos pendientes."
+    },
+    {
+      "name": "MP_RECONCILIATION_BATCH_SIZE",
+      "origin": "Firebase Functions params / env",
+      "default": "100",
+      "environments": ["staging", "production"],
+      "securityImpact": "low",
+      "description": "Cantidad máxima de pagos reconciliados por ejecución."
+    },
+    {
+      "name": "MP_AGED_PENDING_ALERT_MINUTES",
+      "origin": "Firebase Functions params / env",
+      "default": "120",
+      "environments": ["staging", "production"],
+      "securityImpact": "low",
+      "description": "Umbral de minutos para alertar pagos pendientes envejecidos."
+    },
+    {
+      "name": "BILLING_SOURCE",
+      "origin": "Firebase Functions params / env",
+      "default": "monitoring",
+      "environments": ["staging", "production"],
+      "securityImpact": "low",
+      "description": "Origen de métricas de costos (monitoring/bigquery)."
+    },
+    {
+      "name": "BILLING_PROJECT_ID",
+      "origin": "Firebase Functions params / env",
+      "default": null,
+      "environments": ["staging", "production"],
+      "securityImpact": "medium",
+      "description": "Proyecto GCP fuente para consulta de métricas de uso/costo."
+    },
+    {
+      "name": "BILLING_BIGQUERY_PROJECT",
+      "origin": "Firebase Functions params / env",
+      "default": null,
+      "environments": ["staging", "production"],
+      "securityImpact": "low",
+      "description": "Proyecto BigQuery opcional para export de billing."
+    },
+    {
+      "name": "BILLING_BIGQUERY_DATASET",
+      "origin": "Firebase Functions params / env",
+      "default": null,
+      "environments": ["staging", "production"],
+      "securityImpact": "low",
+      "description": "Dataset BigQuery de billing (cuando BILLING_SOURCE=bigquery)."
+    },
+    {
+      "name": "BILLING_BIGQUERY_TABLE",
+      "origin": "Firebase Functions params / env",
+      "default": null,
+      "environments": ["staging", "production"],
+      "securityImpact": "low",
+      "description": "Tabla BigQuery de billing (cuando BILLING_SOURCE=bigquery)."
+    }
+  ]
+}

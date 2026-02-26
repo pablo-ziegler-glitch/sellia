@@ -23,6 +23,9 @@ jobs:
       - name: Validate permissions matrix drift
         run: node functions/scripts/check-role-permissions-drift.js
 
+      - name: Validate cross-platform config contract consistency
+        run: npm run check:config-consistency
+
       - name: Install functions dependencies
         run: npm ci
         working-directory: functions
