@@ -48,7 +48,11 @@ const el = {
   backupReasonInput: document.getElementById("backupReasonInput"),
   requestBackupButton: document.getElementById("requestBackupButton"),
   backupMessage: document.getElementById("backupMessage"),
-  backupRequestsBody: document.getElementById("backupRequestsBody")
+  backupRequestsBody: document.getElementById("backupRequestsBody"),
+  tenantPolicyPanel: document.getElementById("tenantPolicyPanel"),
+  tenantActivationModeSelect: document.getElementById("tenantActivationModeSelect"),
+  saveTenantPolicyButton: document.getElementById("saveTenantPolicyButton"),
+  tenantPolicyMessage: document.getElementById("tenantPolicyMessage")
 };
 
 const routeViews = {
@@ -135,6 +139,7 @@ async function bootstrap() {
       appState.profile = profile;
 
       renderSession(profile);
+      await loadTenantOnboardingPolicy();
       switchToApp();
       hideHardStates();
       syncRouteWithPermissions();
@@ -151,6 +156,7 @@ function wireEvents() {
   el.googleBtn.addEventListener("click", onGoogleLogin);
   el.logoutBtn.addEventListener("click", () => safeLogout("Sesión cerrada correctamente."));
   el.requestBackupButton.addEventListener("click", onRequestBackupNow);
+  el.saveTenantPolicyButton?.addEventListener("click", onSaveTenantOnboardingPolicy);
   window.addEventListener("hashchange", syncRouteWithPermissions);
 
   ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) => {
@@ -238,14 +244,15 @@ function syncRouteWithPermissions() {
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
+  const canManageOnboardingPolicy = appState.profile.role === "owner";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
+  el.tenantPolicyPanel.hidden = !(canManageOnboardingPolicy && isCloudServicesRoute);
 
   if (el.backupPanel.hidden) {
     stopBackupRequestsListener();
-    return;
+  } else {
+    startBackupRequestsListener();
   }
-
-  startBackupRequestsListener();
 }
 
 function startInactivityGuard() {
@@ -296,7 +303,9 @@ function clearSessionState() {
   appState.backupRequestsUnsubscribe = null;
   el.permissionsList.innerHTML = "";
   el.backupPanel.hidden = true;
+  if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = true;
   el.backupRequestsBody.innerHTML = '<tr><td colspan="6">Sin solicitudes recientes.</td></tr>';
+  setTenantPolicyMessage("");
 }
 
 function showDeniedState(message) {
@@ -430,6 +439,55 @@ async function onRequestBackupNow() {
 function setBackupMessage(message) {
   el.backupMessage.textContent = message || "";
 }
+
+
+async function loadTenantOnboardingPolicy() {
+  if (!appState.profile || appState.profile.role !== "owner") return;
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "getTenantOnboardingPolicy");
+    const response = await callable({});
+    const mode = response?.data?.tenantActivationMode === "manual" ? "manual" : "auto";
+    if (el.tenantActivationModeSelect) {
+      el.tenantActivationModeSelect.value = mode;
+    }
+    setTenantPolicyMessage(
+      mode === "manual"
+        ? "Modo actual: aprobación manual para nuevas tiendas."
+        : "Modo actual: activación automática para nuevas tiendas."
+    );
+  } catch (error) {
+    setTenantPolicyMessage(`No se pudo cargar política: ${parseAuthError(error)}`);
+  }
+}
+
+async function onSaveTenantOnboardingPolicy() {
+  if (!appState.profile || appState.profile.role !== "owner") {
+    setTenantPolicyMessage("Solo owner puede cambiar esta política global.");
+    return;
+  }
+
+  const mode = el.tenantActivationModeSelect?.value === "manual" ? "manual" : "auto";
+  try {
+    el.saveTenantPolicyButton.disabled = true;
+    const callable = httpsCallable(appState.cloudFunctions, "setTenantOnboardingPolicy");
+    await callable({ tenantActivationMode: mode });
+    setTenantPolicyMessage(
+      mode === "manual"
+        ? "Guardado. Nuevas tiendas requerirán aprobación manual."
+        : "Guardado. Nuevas tiendas quedarán activas por defecto."
+    );
+  } catch (error) {
+    setTenantPolicyMessage(parseAuthError(error));
+  } finally {
+    el.saveTenantPolicyButton.disabled = false;
+  }
+}
+
+function setTenantPolicyMessage(message) {
+  if (!el.tenantPolicyMessage) return;
+  el.tenantPolicyMessage.textContent = message || "";
+}
+
 function parseAuthError(error) {
   if (!error) return "Error de autenticación desconocido.";
 
