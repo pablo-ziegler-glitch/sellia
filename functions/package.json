@@ -19,8 +19,7 @@
     "admin:grant:dry": "node scripts/manage-admin-access.js --dry-run",
     "admin:grant": "node scripts/manage-admin-access.js",
     "check:permissions-drift": "node scripts/check-role-permissions-drift.js",
-    "test:permissions-regression": "vitest run test/rolePermissionsMatrix.test.ts",
-    "check:permissions-governance": "node scripts/check-role-permissions-drift.js"
+    "test:security:bo": "vitest run test/backofficeSecurity.integration.test.ts"
   },
   "dependencies": {
     "axios": "^1.6.7",

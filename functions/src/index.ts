@@ -8,6 +8,7 @@ import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 import { hasRoleForModule } from "./security/rolePermissionsMatrix";
+import { resolveFieldVisibility, type PiiRole } from "./security/piiPolicy";
 import { authorizeUsageMetricsAccess } from "./usageMetricsAccess";
 import {
   buildUsageOverview,
@@ -18,14 +19,6 @@ import {
   type UsageMetricResult,
   type UsageServiceMetrics,
 } from "./usageMetrics.helpers";
-import {
-  createApproveTenantRestoreRequestHandler,
-  createRequestTenantBackupHandler,
-  createRequestTenantRestoreHandler,
-  type ApproveRestoreRequestPayload,
-  type RestoreRequestPayload,
-  type RestoreScope,
-} from "./tenantBackup";
 
 admin.initializeApp();
 
@@ -134,6 +127,11 @@ const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
 const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
   default: "20",
 });
+
+const TENANT_ONBOARDING_POLICY_DOC = "tenant_onboarding";
+const TENANT_ONBOARDING_POLICY_COLLECTION = "platform_config";
+const TENANT_ACTIVATION_MODE_AUTO = "auto";
+const TENANT_ACTIVATION_MODE_MANUAL = "manual";
 
 const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
   try {
@@ -504,6 +502,14 @@ const normalizeString = (value: unknown): string => {
   }
   return "";
 };
+
+const normalizeTenantActivationMode = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  return normalized === TENANT_ACTIVATION_MODE_MANUAL
+    ? TENANT_ACTIVATION_MODE_MANUAL
+    : TENANT_ACTIVATION_MODE_AUTO;
+};
+
 
 const extractTenantId = (payment: unknown): string => {
   const source = (payment ?? {}) as Record<string, unknown>;
@@ -1542,7 +1548,10 @@ type UsageHistoryItem = {
   updatedAt: string | null;
 };
 
-export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data) => {
+export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
+  const uid = normalizeString(context.auth?.uid);
+  const userDoc = uid ? await db.collection("users").doc(uid).get() : null;
+  const decision = authorizeUsageMetricsAccess(data as { tenantId?: unknown } | undefined, context, userDoc?.data());
   const requestedLimit = Number((data as { limit?: number } | undefined)?.limit ?? 6);
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
@@ -1599,7 +1608,13 @@ export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true 
   }
 
   console.info("Usage metrics accessed", {
-    uid: decision.uid,
+    ...sanitizePiiForLog({
+      domain: "logs",
+      role: "auditor",
+      fields: {
+        actorUid: decision.uid,
+      },
+    }),
     role: decision.role,
     scope: decision.scope,
     tenantId: decision.requestedTenantId || null,
@@ -1838,13 +1853,24 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     res.status(200).send("ok");
   } catch (error) {
     const mpError = summarizeMercadoPagoError(error);
+    const sanitizedError = sanitizePiiForLog({
+      domain: "logs",
+      role: "support",
+      fields: {
+        payerEmail: (mpError.data as Record<string, unknown> | null | undefined)?.payer_email,
+      },
+    });
+
     console.error("Mercado Pago webhook processing failed", {
       paymentId,
       requestId: requestId || "n/a",
       status: mpError.status,
       code: mpError.code,
       message: mpError.message,
-      response: mpError.data,
+      response: {
+        ...((mpError.data as Record<string, unknown> | null) ?? {}),
+        ...sanitizedError,
+      },
     });
     res.status(500).send("error");
   }
@@ -2082,6 +2108,8 @@ type RestoreRequestStatus =
   | "completed"
   | "failed";
 
+const RESTORE_SCOPES = new Set<RestoreScope>(["full", "collection", "document"]);
+
 type RestoreRequestPayload = {
   tenantId?: unknown;
   runId?: unknown;
@@ -2177,6 +2205,61 @@ const getIpAllowlist = (): string[] => {
 
 const getRequestIp = (context: functions.https.CallableContext): string =>
   normalizeString(context.rawRequest?.ip);
+
+const maskWithPattern = (value: string, keepStart: number, keepEnd: number): string => {
+  const normalized = normalizeString(value);
+  if (!normalized) return "";
+  if (normalized.length <= keepStart + keepEnd) {
+    return "*".repeat(Math.max(normalized.length, 4));
+  }
+  return `${normalized.slice(0, keepStart)}${"*".repeat(normalized.length - keepStart - keepEnd)}${normalized.slice(-keepEnd)}`;
+};
+
+const maskEmail = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  const [local, domain] = normalized.split("@");
+  if (!local || !domain) return maskWithPattern(normalized, 1, 1);
+  return `${maskWithPattern(local, 1, 1)}@${domain}`;
+};
+
+const maskIp = (value: unknown): string => {
+  const ip = normalizeString(value);
+  const parts = ip.split(".");
+  if (parts.length !== 4) return maskWithPattern(ip, 2, 0);
+  return `${parts[0]}.${parts[1]}.*.*`;
+};
+
+const maskUid = (value: unknown): string => maskWithPattern(normalizeString(value), 4, 2);
+
+const sanitizePiiForLog = (params: {
+  domain: "users" | "customers" | "logs" | "exports";
+  role?: PiiRole | null;
+  fields: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const role = params.role ?? null;
+  return Object.fromEntries(
+    Object.entries(params.fields).map(([key, rawValue]) => {
+      const visibility = resolveFieldVisibility(params.domain, key, role);
+      if (rawValue === null || rawValue === undefined) {
+        return [key, null];
+      }
+      const stringValue = normalizeString(rawValue);
+      if (visibility === "full") {
+        return [key, rawValue];
+      }
+      if (key.toLowerCase().includes("email")) {
+        return [key, visibility === "partial" ? maskEmail(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("ip")) {
+        return [key, visibility === "partial" ? maskIp(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("uid")) {
+        return [key, visibility === "partial" ? maskUid(stringValue) : "***MASKED***"];
+      }
+      return [key, visibility === "partial" ? maskWithPattern(stringValue, 1, 1) : "***MASKED***"];
+    })
+  );
+};
 
 const recordAppCheckRejection = async (params: {
   operation: string;
@@ -2322,11 +2405,20 @@ const writeTenantAuditLog = async (
   }
 ): Promise<void> => {
   const eventRef = db.collection("tenants").doc(tenantId).collection("audit_logs").doc();
+  const piiSafeFields = sanitizePiiForLog({
+    domain: "logs",
+    role: "auditor",
+    fields: {
+      actorUid: payload.actorUid ?? null,
+      requesterIp: normalizeString(payload.ip) || null,
+    },
+  });
+
   await eventRef.set({
     eventType: payload.eventType,
     action: payload.action,
     tenantId,
-    actorUid: payload.actorUid ?? null,
+    actorUid: piiSafeFields.actorUid,
     scope: payload.scope ?? "full",
     runId: payload.runId ?? null,
     restoreRequestId: payload.restoreRequestId ?? null,
@@ -2334,7 +2426,7 @@ const writeTenantAuditLog = async (
     dryRun: payload.dryRun === true,
     diffEstimate: payload.diffEstimate ?? null,
     result: payload.result ?? null,
-    ip: normalizeString(payload.ip) || null,
+    ip: piiSafeFields.requesterIp,
     userAgent: normalizeString(payload.userAgent) || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -2490,7 +2582,7 @@ const writeMaintenanceAuditLog = async ({
   tenantId: string;
   taskId: string;
   actorUid: string;
-  action: "create" | "update";
+  action: "create" | "update" | "delete";
   before?: admin.firestore.DocumentData | null;
   after: admin.firestore.DocumentData;
 }): Promise<void> => {
@@ -2498,6 +2590,10 @@ const writeMaintenanceAuditLog = async ({
     tenantId,
     taskId,
     action,
+    actor: {
+      uid: actorUid,
+      tenantId,
+    },
     actorUid,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     change: {
@@ -3011,6 +3107,13 @@ const backupTenant = async (
   };
 };
 
+const logBoSecurityEvent = async (payload: { operation: string; result: string; reason: string; uid?: string; tenantId?: string }): Promise<void> => {
+  await db.collection(APP_CHECK_REJECT_COLLECTION).doc("bo_callable_guards").collection("events").add({
+    ...payload,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
 const userCanRequestTenantBackup = (
   context: functions.https.CallableContext,
   userData: admin.firestore.DocumentData
@@ -3023,300 +3126,55 @@ const userCanRequestTenantBackup = (
   return userRole === "owner" || userRole === "admin";
 };
 
-export const requestTenantRestore = functions
-  .runWith({ enforceAppCheck: false })
-  .https.onCall(async (data: RestoreRequestPayload, context) => {
-    if (!context.auth?.uid) {
-      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
-    }
-
-    const tenantId = normalizeString(data?.tenantId);
-    const runId = normalizeString(data?.runId);
-    const scope = normalizeString(data?.scope).toLowerCase() as RestoreScope;
-    const dryRun = toBoolean(data?.dryRun);
-
-    if (!tenantId || !runId || !RESTORE_SCOPES.has(scope)) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "tenantId, runId y scope(full|collection|document) son requeridos"
-      );
-    }
-
-    await assertAppCheckForInternalCallable({
-      operation: "requestTenantRestore",
-      context,
-      tenantId,
-    });
-
-    const callerUid = context.auth.uid;
-    const callerDoc = await db.collection("users").doc(callerUid).get();
-    if (!callerDoc.exists) {
-      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
-    }
-
-    await enforceAdminRateLimit({
-      operation: "requestTenantRestore",
-      uid: callerUid,
-      tenantId,
-      ip: getRequestIp(context),
-    });
-
-    const callerData = callerDoc.data() || {};
-    const callerRole = normalizeString(callerData.role).toLowerCase();
-    const callerTenantId = normalizeString(callerData.tenantId);
-    const isSuperAdmin =
-      context.auth.token.superAdmin === true ||
-      callerData.isSuperAdmin === true ||
-      callerRole === "superadmin";
-
-    if (!isSuperAdmin && (!isAdminRole(callerRole) || callerTenantId !== tenantId)) {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "Solo owner/admin del tenant o superAdmin pueden solicitar restore"
-      );
-    }
-
-    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
-    if (!tenantDoc.exists) {
-      throw new functions.https.HttpsError("not-found", "tenant no existe");
-    }
-
-    const diffEstimate = await estimateRestoreDiff(tenantId, runId, scope);
-    const requiresSuperAdminApproval = !isSuperAdmin;
-    const nextStatus: RestoreRequestStatus = requiresSuperAdminApproval ? "requested" : "approved";
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
-    const restoreRef = db
-      .collection("tenant_backups")
-      .doc(tenantId)
-      .collection("restore_requests")
-      .doc();
-
-    await restoreRef.set({
-      tenantId,
-      restoreId: restoreRef.id,
-      runId,
-      scope,
-      dryRun,
-      status: nextStatus,
-      requestedBy: callerUid,
-      approvedBy: requiresSuperAdminApproval ? null : callerUid,
-      requiresSuperAdminApproval,
-      diffEstimate,
-      result: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const ip = getRequestIp(context);
-    const userAgent = normalizeString(context.rawRequest?.headers?.["user-agent"]);
-    await writeTenantAuditLog(tenantId, {
-      eventType: "restore",
-      action: "RESTORE_REQUESTED",
-      actorUid: callerUid,
-      scope,
-      runId,
-      restoreRequestId: restoreRef.id,
-      status: nextStatus,
-      dryRun,
-      diffEstimate,
-      result: {
-        requiresSuperAdminApproval,
-      },
-      ip,
-      userAgent,
-    });
-
-    return {
-      ok: true,
-      tenantId,
-      restoreId: restoreRef.id,
-      runId,
-      scope,
-      dryRun,
-      status: requiresSuperAdminApproval ? "requested" : "approved",
-      requiresSuperAdminApproval,
-      message: requiresSuperAdminApproval
-        ? "Solicitud de restore creada. Requiere aprobación de superAdmin antes de ejecutar."
-        : "Solicitud de restore aprobada (superAdmin). No ejecuta restore automáticamente.",
-    };
-  });
-
-export const requestTenantBackup = functions
-  .runWith({ enforceAppCheck: false })
-  .https.onCall(async (data: unknown, context) => {
-    if (!context.auth?.uid) {
-      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
-    }
-
-    const payload = (data ?? {}) as Record<string, unknown>;
-    const tenantId = normalizeString(payload.tenantId);
-    const reason = normalizeString(payload.reason);
-
-    if (!tenantId || !reason) {
-      throw new functions.https.HttpsError("invalid-argument", "tenantId y reason son requeridos");
-    }
-    if (reason.length < 6) {
-      throw new functions.https.HttpsError("invalid-argument", "reason requiere al menos 6 caracteres");
-    }
-
-    await assertAppCheckForInternalCallable({
-      operation: "requestTenantBackup",
-      context,
-      tenantId,
-    });
-
-    const userDoc = await db.collection("users").doc(context.auth.uid).get();
-    if (!userDoc.exists) {
-      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
-    }
-
-    await enforceAdminRateLimit({
-      operation: "requestTenantBackup",
-      uid: context.auth.uid,
-      tenantId,
-      ip: getRequestIp(context),
-    });
-
-    const userData = userDoc.data() || {};
-    const isSuperAdmin = context.auth.token.superAdmin === true;
-    if (!isSuperAdmin && normalizeString(userData.tenantId) !== tenantId) {
-      throw new functions.https.HttpsError("permission-denied", "tenant inválido para el usuario");
-    }
-    if (!userCanRequestTenantBackup(context, userData)) {
-      throw new functions.https.HttpsError("permission-denied", "sin permisos para solicitar backup");
-    }
+const requestTenantBackupHandler = createRequestTenantBackupHandler({
+  db,
+  normalizeString,
+  toBoolean,
+  userCanRequestTenantBackup,
+  estimateRestoreDiff,
+  writeTenantAuditLog,
+  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
+});
 
 const requestTenantRestoreHandler = createRequestTenantRestoreHandler({
   db,
   normalizeString,
   toBoolean,
-  isAdminRole,
   userCanRequestTenantBackup,
   estimateRestoreDiff,
   writeTenantAuditLog,
   backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
 });
 
 const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHandler({
   db,
   normalizeString,
   toBoolean,
-  isAdminRole,
   userCanRequestTenantBackup,
   estimateRestoreDiff,
   writeTenantAuditLog,
   backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
 });
+
+export const requestTenantBackup = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall((data: unknown, context) => requestTenantBackupHandler(data, context));
 
 export const requestTenantRestore = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall((data: RestoreRequestPayload, context) =>
-    requestTenantRestoreHandler(data, context)
-  );
-
-    return {
-      ok: true,
-      requestId: requestRef.id,
-      deduplicated: false,
-    };
-  });
+  .https.onCall((data: RestoreRequestPayload, context) => requestTenantRestoreHandler(data, context));
 
 export const approveTenantRestoreRequest = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall(async (data: ApproveRestoreRequestPayload, context) => {
-    if (!context.auth?.uid) {
-      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
-    }
-
-    const tenantId = normalizeString(data?.tenantId);
-    const restoreId = normalizeString(data?.restoreId);
-    if (!tenantId || !restoreId) {
-      throw new functions.https.HttpsError("invalid-argument", "tenantId y restoreId son requeridos");
-    }
-
-    await assertAppCheckForInternalCallable({
-      operation: "approveTenantRestoreRequest",
-      context,
-      tenantId,
-    });
-
-    const approverUid = context.auth.uid;
-    await enforceAdminRateLimit({
-      operation: "approveTenantRestoreRequest",
-      uid: approverUid,
-      tenantId,
-      ip: getRequestIp(context),
-    });
-
-    const approverDoc = await db.collection("users").doc(approverUid).get();
-    if (!approverDoc.exists) {
-      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
-    }
-
-    const approverData = approverDoc.data() || {};
-    const approverRole = normalizeString(approverData.role).toLowerCase();
-    const hasSuperAdmin =
-      context.auth.token.superAdmin === true ||
-      approverData.isSuperAdmin === true ||
-      approverRole === "superadmin";
-    if (!hasSuperAdmin) {
-      throw new functions.https.HttpsError("permission-denied", "Solo superAdmin puede aprobar restore");
-    }
-
-    const restoreRef = db
-      .collection("tenant_backups")
-      .doc(tenantId)
-      .collection("restore_requests")
-      .doc(restoreId);
-
-    const restoreDoc = await restoreRef.get();
-    if (!restoreDoc.exists) {
-      throw new functions.https.HttpsError("not-found", "restoreId no existe");
-    }
-
-    const currentStatus = normalizeString(restoreDoc.get("status")).toLowerCase();
-    if (currentStatus !== "requested") {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "Solo solicitudes en estado requested pueden aprobarse"
-      );
-    }
-
-    await restoreRef.update({
-      status: "approved",
-      approvedBy: approverUid,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    const ip = normalizeString(context.rawRequest?.ip);
-    const userAgent = normalizeString(context.rawRequest?.headers?.["user-agent"]);
-    await writeTenantAuditLog(tenantId, {
-      eventType: "restore",
-      action: "RESTORE_APPROVED",
-      actorUid: approverUid,
-      scope: (normalizeString(restoreDoc.get("scope")).toLowerCase() as RestoreScope) || "full",
-      runId: normalizeString(restoreDoc.get("runId")),
-      restoreRequestId: restoreId,
-      status: "approved",
-      dryRun: restoreDoc.get("dryRun") === true,
-      diffEstimate: (restoreDoc.get("diffEstimate") as Record<string, unknown>) ?? null,
-      result: {
-        approvedBy: approverUid,
-      },
-      ip,
-      userAgent,
-    });
-
-    return {
-      ok: true,
-      tenantId,
-      restoreId,
-      status: "approved",
-      approvedBy: approverUid,
-      message: "Solicitud aprobada. Restore sigue pendiente de ejecución controlada.",
-    };
-  });
+  .https.onCall((data: ApproveRestoreRequestPayload, context) =>
+    approveTenantRestoreRequestHandler(data, context)
+  );
 
 export const processTenantBackupRequest = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
@@ -3362,6 +3220,83 @@ export const processTenantBackupRequest = functions
         { merge: true }
       );
     }
+  });
+
+export const getTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (_data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true ||
+      callerUserDoc.get("isAdmin") === true;
+
+    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+      throw new functions.https.HttpsError("permission-denied", "Acceso restringido");
+    }
+
+    const policyDoc = await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .get();
+
+    const tenantActivationMode = normalizeTenantActivationMode(policyDoc.get("tenantActivationMode"));
+
+    return {
+      tenantActivationMode,
+      updatedAt: policyDoc.get("updatedAt") ?? null,
+      updatedBy: normalizeString(policyDoc.get("updatedBy")) || null,
+    };
+  });
+
+export const setTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const mode = normalizeTenantActivationMode((data as Record<string, unknown> | null)?.tenantActivationMode);
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true;
+
+    if (!isSuperAdmin && role !== "owner") {
+      throw new functions.https.HttpsError("permission-denied", "Solo owner/superAdmin puede cambiar política");
+    }
+
+    await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .set(
+        {
+          schemaVersion: 1,
+          tenantActivationMode: mode,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: context.auth.uid,
+        },
+        { merge: true }
+      );
+
+    return {
+      ok: true,
+      tenantActivationMode: mode,
+    };
   });
 
 export const createDailyTenantBackups = functions
@@ -3411,6 +3346,132 @@ export const purgeDeletedProductFromBackups = functions
     }
 
     await backupTenant(tenantId, "system:purgeDeletedProductFromBackups");
+  });
+
+
+export const getMaintenanceTasks = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const pageSize = Math.min(Math.max(Number(payload.pageSize) || 20, 1), 50);
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "getMaintenanceTasks",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "getMaintenanceTasks",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canReadMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
+    }
+
+    const tasksSnapshot = await db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("maintenance_tasks")
+      .orderBy("updatedAt", "desc")
+      .limit(pageSize)
+      .get();
+
+    const tasks = tasksSnapshot.docs.map((docSnapshot) => {
+      const row = docSnapshot.data();
+      const updatedAt = row.updatedAt as admin.firestore.Timestamp | undefined;
+      return {
+        id: docSnapshot.id,
+        title: normalizeString(row.title),
+        status: normalizeString(row.status).toLowerCase() || "pending",
+        priority: normalizeString(row.priority).toLowerCase() || "medium",
+        assigneeUid: normalizeString(row.assigneeUid) || null,
+        updatedAtMillis: updatedAt?.toMillis?.() ?? null,
+      };
+    });
+
+    return { ok: true, tasks };
+  });
+
+export const deleteMaintenanceTask = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const taskId = normalizeString(payload.taskId);
+    const confirmationText = normalizeString(payload.confirmationText);
+    if (!tenantId || !taskId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y taskId requeridos");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "deleteMaintenanceTask",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "deleteMaintenanceTask",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const [userDoc, taskDoc] = await Promise.all([
+      db.collection("users").doc(context.auth.uid).get(),
+      db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc(taskId).get(),
+    ]);
+
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    if (!taskDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "task no existe");
+    }
+
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canWriteMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
+    }
+
+    const before = taskDoc.data() || {};
+    const currentTitle = normalizeString(before.title);
+    if (!confirmationText || confirmationText !== currentTitle) {
+      throw new functions.https.HttpsError("failed-precondition", "confirmación inválida para eliminar la tarea");
+    }
+
+    await taskDoc.ref.delete();
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId,
+      actorUid: context.auth.uid,
+      action: "delete",
+      before,
+      after: { deleted: true },
+    });
+
+    return { ok: true, taskId };
   });
 
 

@@ -2,11 +2,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import {
   addDoc,
   collection,
+  getDocs,
   getFirestore,
   onSnapshot,
+  limit,
   orderBy,
   query,
-  serverTimestamp
+  serverTimestamp,
+  startAfter
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
@@ -57,14 +60,20 @@ const list = document.getElementById("maintenance-list");
 const retryBtn = document.getElementById("maintenance-retry-btn");
 const createBtn = document.getElementById("maintenance-create-btn");
 const statusEl = document.getElementById("maintenance-status");
+const loadMoreBtn = document.getElementById("maintenance-load-more-btn");
 const restoreHistoryList = document.getElementById("restore-history-list");
 const restoreConfirmCheck = document.getElementById("restore-confirm-check");
 const restoreRequestBtn = document.getElementById("restore-request-btn");
+
+const PAGE_SIZE = 25;
 
 const state = {
   tasks: [],
   activeFilter: "pending",
   loading: false,
+  loadingMore: false,
+  hasMoreTasks: false,
+  lastVisibleTask: null,
   errorMessage: "",
   unsubscribeTasks: null,
   tenantId: "",
@@ -87,6 +96,7 @@ async function bootstrap() {
   wireFilters();
   wireRetry();
   wireCreate();
+  wireLoadMore();
   wireRestoreGuards();
   renderRestoreHistory();
 
@@ -216,6 +226,7 @@ function render() {
     item.textContent = "Cargando tareas de mantenimiento…";
     fragment.appendChild(item);
     list.replaceChildren(fragment);
+    toggleLoadMoreButton();
     setStatus("Cargando tareas…", "loading");
     return;
   }
@@ -225,6 +236,7 @@ function render() {
     item.textContent = `No se pudo cargar mantenimiento: ${state.errorMessage}`;
     fragment.appendChild(item);
     list.replaceChildren(fragment);
+    toggleLoadMoreButton();
     setStatus("Error de carga. Podés reintentar.", "error");
     return;
   }
@@ -237,6 +249,7 @@ function render() {
     item.textContent = "No hay tareas para este filtro.";
     fragment.appendChild(item);
     list.replaceChildren(fragment);
+    toggleLoadMoreButton();
     setStatus("Estado vacío: todavía no hay tareas para mostrar.", "warning");
     return;
   }
@@ -245,7 +258,16 @@ function render() {
     fragment.appendChild(renderTask(task));
   });
   list.replaceChildren(fragment);
+  toggleLoadMoreButton();
   setStatus(`${filtered.length} tareas visibles (${state.activeFilter}).`, "ok");
+}
+
+function toggleLoadMoreButton() {
+  if (!loadMoreBtn) return;
+  const show = !state.useMockData && state.hasMoreTasks && state.activeFilter === "pending";
+  loadMoreBtn.hidden = !show;
+  loadMoreBtn.disabled = state.loadingMore;
+  loadMoreBtn.textContent = state.loadingMore ? "Cargando…" : "Cargar más tareas";
 }
 
 function setStatus(message, tone) {
@@ -261,10 +283,12 @@ function subscribeTasks(firestore) {
 
   state.loading = true;
   state.errorMessage = "";
+  state.lastVisibleTask = null;
+  state.hasMoreTasks = false;
   render();
 
   const tasksRef = collection(firestore, "tenants", state.tenantId, "maintenance_tasks");
-  const q = query(tasksRef, orderBy("updatedAt", "desc"));
+  const q = query(tasksRef, orderBy("updatedAt", "desc"), limit(PAGE_SIZE));
 
   state.unsubscribeTasks = onSnapshot(
     q,
@@ -272,6 +296,8 @@ function subscribeTasks(firestore) {
       state.loading = false;
       state.errorMessage = "";
       state.tasks = snapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() }));
+      state.lastVisibleTask = snapshot.docs.at(-1) || null;
+      state.hasMoreTasks = snapshot.docs.length === PAGE_SIZE;
       render();
     },
     (error) => {
@@ -309,6 +335,39 @@ function wireRetry() {
 function wireCreate() {
   if (!createBtn) return;
   createBtn.addEventListener("click", () => createQuickTask());
+}
+
+function wireLoadMore() {
+  if (!loadMoreBtn) return;
+  loadMoreBtn.addEventListener("click", () => {
+    void loadMoreTasks();
+  });
+}
+
+async function loadMoreTasks() {
+  if (state.useMockData || !state.firestore || state.loadingMore || !state.hasMoreTasks || !state.lastVisibleTask) {
+    return;
+  }
+
+  state.loadingMore = true;
+  setStatus("Cargando más tareas…", "loading");
+
+  try {
+    const tasksRef = collection(state.firestore, "tenants", state.tenantId, "maintenance_tasks");
+    const nextQuery = query(tasksRef, orderBy("updatedAt", "desc"), startAfter(state.lastVisibleTask), limit(PAGE_SIZE));
+    const nextSnapshot = await getDocs(nextQuery);
+    const nextTasks = nextSnapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() }));
+    state.tasks = state.tasks.concat(nextTasks);
+    state.lastVisibleTask = nextSnapshot.docs.at(-1) || state.lastVisibleTask;
+    state.hasMoreTasks = nextSnapshot.docs.length === PAGE_SIZE;
+    setStatus(`Se cargaron ${nextTasks.length} tareas adicionales.`, "ok");
+  } catch (error) {
+    state.errorMessage = buildUiError(error);
+    setStatus(state.errorMessage, "error");
+  } finally {
+    state.loadingMore = false;
+    render();
+  }
 }
 
 async function createQuickTask() {

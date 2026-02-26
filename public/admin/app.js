@@ -44,37 +44,58 @@ const el = {
   viewDescription: document.getElementById("viewDescription"),
   deniedState: document.getElementById("deniedState"),
   missingTenantState: document.getElementById("missingTenantState"),
+  dashboardPanel: document.getElementById("dashboardPanel"),
+  dashboardRetryButton: document.getElementById("dashboardRetryButton"),
+  dashboardErrorRetryButton: document.getElementById("dashboardErrorRetryButton"),
+  dashboardLoading: document.getElementById("dashboardLoading"),
+  dashboardEmpty: document.getElementById("dashboardEmpty"),
+  dashboardError: document.getElementById("dashboardError"),
+  dashboardFeedback: document.getElementById("dashboardFeedback"),
+  dashboardContent: document.getElementById("dashboardContent"),
+  dashboardPeriod: document.getElementById("dashboardPeriod"),
+  dashboardReads: document.getElementById("dashboardReads"),
+  dashboardWrites: document.getElementById("dashboardWrites"),
+  dashboardStorage: document.getElementById("dashboardStorage"),
+  dashboardFunctions: document.getElementById("dashboardFunctions"),
+  dashboardErrors: document.getElementById("dashboardErrors"),
+  maintenancePanel: document.getElementById("maintenancePanel"),
+  maintenanceRetryButton: document.getElementById("maintenanceRetryButton"),
+  maintenanceErrorRetryButton: document.getElementById("maintenanceErrorRetryButton"),
+  maintenanceLoading: document.getElementById("maintenanceLoading"),
+  maintenanceEmpty: document.getElementById("maintenanceEmpty"),
+  maintenanceError: document.getElementById("maintenanceError"),
+  maintenanceFeedback: document.getElementById("maintenanceFeedback"),
+  maintenanceCreateForm: document.getElementById("maintenanceCreateForm"),
+  maintenanceCreateButton: document.getElementById("maintenanceCreateButton"),
+  maintenanceTitleInput: document.getElementById("maintenanceTitleInput"),
+  maintenancePriorityInput: document.getElementById("maintenancePriorityInput"),
+  maintenanceBody: document.getElementById("maintenanceBody"),
   backupPanel: document.getElementById("backupPanel"),
   backupReasonInput: document.getElementById("backupReasonInput"),
   requestBackupButton: document.getElementById("requestBackupButton"),
   backupMessage: document.getElementById("backupMessage"),
-  backupRequestsBody: document.getElementById("backupRequestsBody")
+  backupRequestsBody: document.getElementById("backupRequestsBody"),
+  tenantPolicyPanel: document.getElementById("tenantPolicyPanel"),
+  tenantActivationModeSelect: document.getElementById("tenantActivationModeSelect"),
+  saveTenantPolicyButton: document.getElementById("saveTenantPolicyButton"),
+  tenantPolicyMessage: document.getElementById("tenantPolicyMessage")
 };
 
 const routeViews = {
   "#/dashboard": {
     title: "Panel de uso",
-    description: "Monitoreá métricas operativas del tenant con foco en disponibilidad y costos."
+    description: "Métricas reales del tenant obtenidas desde backend con control de permisos."
   },
-  "#/settings/pricing": {
-    title: "Configuración de pricing",
-    description: "Definí reglas de precio y márgenes para el equipo interno, sin mezclar con UX pública."
-  },
-  "#/settings/marketing": {
-    title: "Configuración de marketing",
-    description: "Gestioná campañas y contenido promocional de forma centralizada para el backoffice."
-  },
-  "#/settings/users": {
-    title: "Gestión de usuarios",
-    description: "Administrá altas/bajas de operadores internos y su rol por tenant."
-  },
+  "#/settings/pricing": { title: "Configuración de pricing", description: "Módulo en migración." },
+  "#/settings/marketing": { title: "Configuración de marketing", description: "Módulo en migración." },
+  "#/settings/users": { title: "Gestión de usuarios", description: "Módulo en migración." },
   "#/settings/cloud-services": {
     title: "Servicios cloud",
-    description: "Revisá estado de integraciones Firebase, storage y automatizaciones internas."
+    description: "Gestión de backups y estado cloud del tenant."
   },
   "#/maintenance": {
     title: "Mantenimiento",
-    description: "Sección reservada para tareas operativas. Sin venta, sin carrito y sin catálogo público."
+    description: "Tareas operativas multi-tenant con auditoría de cambios."
   }
 };
 
@@ -86,7 +107,8 @@ const appState = {
   profile: null,
   inactivityTimerId: null,
   refreshTimerId: null,
-  backupRequestsUnsubscribe: null
+  backupRequestsUnsubscribe: null,
+  maintenanceTasks: []
 };
 
 bootstrap();
@@ -94,34 +116,26 @@ bootstrap();
 async function bootstrap() {
   await Promise.resolve(window.__STORE_CONFIG_READY__);
   const firebaseConfig = window.STORE_CONFIG?.firebase || {};
-
   if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
     setAuthError("Falta configuración de Firebase para iniciar el backoffice.");
     return;
   }
 
   const app = initializeApp(firebaseConfig, "sellia-admin-web");
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-  const cloudFunctions = getFunctions(app);
-
-  appState.firebaseAuth = auth;
-  appState.firestore = db;
-  appState.cloudFunctions = cloudFunctions;
-
-  await setPersistence(auth, browserLocalPersistence);
-
+  appState.firebaseAuth = getAuth(app);
+  appState.firestore = getFirestore(app);
+  appState.cloudFunctions = getFunctions(app);
+  await setPersistence(appState.firebaseAuth, browserLocalPersistence);
   wireEvents();
 
-  onAuthStateChanged(auth, async (user) => {
+  onAuthStateChanged(appState.firebaseAuth, async (user) => {
     try {
       if (!user) {
         clearSessionState();
         switchToAuth();
         return;
       }
-
-      const profile = await loadProfile(db, user.uid);
+      const profile = await loadProfile(appState.firestore, user.uid);
       const validation = validateProfile(profile);
       if (!validation.ok) {
         clearSessionState();
@@ -133,11 +147,11 @@ async function bootstrap() {
 
       appState.currentUser = user;
       appState.profile = profile;
-
       renderSession(profile);
+      await loadTenantOnboardingPolicy();
       switchToApp();
       hideHardStates();
-      syncRouteWithPermissions();
+      await syncRouteWithPermissions();
       startInactivityGuard();
       startTokenRefresh();
     } catch (error) {
@@ -151,7 +165,14 @@ function wireEvents() {
   el.googleBtn.addEventListener("click", onGoogleLogin);
   el.logoutBtn.addEventListener("click", () => safeLogout("Sesión cerrada correctamente."));
   el.requestBackupButton.addEventListener("click", onRequestBackupNow);
+  el.saveTenantPolicyButton?.addEventListener("click", onSaveTenantOnboardingPolicy);
+  el.dashboardRetryButton.addEventListener("click", loadDashboard);
+  el.dashboardErrorRetryButton.addEventListener("click", loadDashboard);
+  el.maintenanceRetryButton.addEventListener("click", loadMaintenanceTasks);
+  el.maintenanceErrorRetryButton.addEventListener("click", loadMaintenanceTasks);
+  el.maintenanceCreateForm.addEventListener("submit", onCreateMaintenanceTask);
   window.addEventListener("hashchange", syncRouteWithPermissions);
+  el.maintenanceBody.addEventListener("click", onMaintenanceActions);
 
   ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) => {
     window.addEventListener(eventName, resetInactivityTimer, { passive: true });
@@ -161,14 +182,9 @@ function wireEvents() {
 async function onEmailLogin(event) {
   event.preventDefault();
   setAuthError("");
-
   const email = el.emailInput.value.trim();
   const password = el.passwordInput.value.trim();
-  if (!email || !password) {
-    setAuthError("Ingresá email y contraseña.");
-    return;
-  }
-
+  if (!email || !password) return setAuthError("Ingresá email y contraseña.");
   try {
     await signInWithEmailAndPassword(appState.firebaseAuth, email, password);
   } catch (error) {
@@ -179,8 +195,7 @@ async function onEmailLogin(event) {
 async function onGoogleLogin() {
   setAuthError("");
   try {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(appState.firebaseAuth, provider);
+    await signInWithPopup(appState.firebaseAuth, new GoogleAuthProvider());
   } catch (error) {
     setAuthError(parseAuthError(error));
   }
@@ -188,9 +203,7 @@ async function onGoogleLogin() {
 
 async function loadProfile(db, uid) {
   const snapshot = await getDoc(doc(db, "users", uid));
-  if (!snapshot.exists()) {
-    throw new Error("No existe perfil de usuario en users/{uid}.");
-  }
+  if (!snapshot.exists()) throw new Error("No existe perfil de usuario en users/{uid}.");
   return snapshot.data();
 }
 
@@ -198,11 +211,9 @@ function validateProfile(profile) {
   const tenantId = (profile?.tenantId || "").trim();
   const role = (profile?.role || "").trim();
   const status = (profile?.status || "").trim().toLowerCase();
-
   if (!tenantId) return { ok: false, message: "Usuario sin tenant asignado." };
   if (!INTERNAL_ROLES.has(role)) return { ok: false, message: "Rol no habilitado para backoffice." };
   if (status !== "active") return { ok: false, message: "Usuario inactivo o bloqueado." };
-
   return { ok: true };
 }
 
@@ -210,49 +221,199 @@ function renderSession(profile) {
   el.tenantBadge.textContent = profile.tenantId;
   el.roleBadge.textContent = profile.role;
   el.statusBadge.textContent = profile.status;
-
   const permissions = rolePermissions(profile.role);
   el.permissionsList.innerHTML = permissions.length
     ? permissions.map((permission) => `<li>${permission}</li>`).join("")
     : "<li>Sin permisos internos.</li>";
 }
 
-function syncRouteWithPermissions() {
+async function syncRouteWithPermissions() {
   if (!appState.profile) return;
-
   const currentRoute = window.location.hash || DEFAULT_ROUTE;
   const hasAccess = hasRouteAccess(appState.profile.role, currentRoute);
   const view = routeViews[currentRoute] || routeViews[DEFAULT_ROUTE];
 
   if (!hasAccess) {
     showDeniedState(`No tenés permisos para acceder a ${currentRoute.replace("#/", "")}.`);
-    if (!routeViews[currentRoute]) {
-      window.location.hash = DEFAULT_ROUTE;
-    }
+    if (!routeViews[currentRoute]) window.location.hash = DEFAULT_ROUTE;
     return;
   }
 
   hideDeniedState();
   el.viewTitle.textContent = view.title;
   el.viewDescription.textContent = view.description;
+  toggleModulePanels(currentRoute);
+
+  if (currentRoute === "#/dashboard") {
+    await loadDashboard();
+  }
+  if (currentRoute === "#/maintenance") {
+    await loadMaintenanceTasks();
+  }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
+  const canManageOnboardingPolicy = appState.profile.role === "owner";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
+  el.tenantPolicyPanel.hidden = !(canManageOnboardingPolicy && isCloudServicesRoute);
 
   if (el.backupPanel.hidden) {
     stopBackupRequestsListener();
+  } else {
+    startBackupRequestsListener();
+  }
+  }
+}
+
+function toggleModulePanels(route) {
+  el.dashboardPanel.hidden = route !== "#/dashboard";
+  el.maintenancePanel.hidden = route !== "#/maintenance";
+}
+
+async function loadDashboard() {
+  if (!appState.profile) return;
+  setDashboardState({ loading: true, empty: false, error: false, content: false, feedback: "" });
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "getUsageMetrics");
+    const response = await callable({ tenantId: appState.profile.tenantId });
+    const payload = response?.data || {};
+    const overview = payload.overview || {};
+    const hasData = Number(overview.totalUsageValue || 0) > 0 || Number(payload.errors?.count || 0) > 0;
+    if (!hasData) {
+      setDashboardState({ loading: false, empty: true, error: false, content: false, feedback: "" });
+      return;
+    }
+
+    el.dashboardPeriod.textContent = payload.periodKey || "-";
+    el.dashboardReads.textContent = formatNumber((overview.serviceTotals || {}).firestore || 0);
+    el.dashboardWrites.textContent = formatNumber((payload.services || []).find((s) => s.metricType?.includes("write_count"))?.value || 0);
+    el.dashboardStorage.textContent = formatNumber((overview.serviceTotals || {}).storage || 0);
+    el.dashboardFunctions.textContent = formatNumber((overview.serviceTotals || {}).functions || 0);
+    el.dashboardErrors.textContent = String(payload.errors?.count || 0);
+    setDashboardState({ loading: false, empty: false, error: false, content: true, feedback: "Datos actualizados." });
+  } catch (error) {
+    setDashboardState({ loading: false, empty: false, error: true, content: false, feedback: parseAuthError(error) });
+  }
+}
+
+function setDashboardState({ loading, empty, error, content, feedback }) {
+  el.dashboardLoading.hidden = !loading;
+  el.dashboardEmpty.hidden = !empty;
+  el.dashboardError.hidden = !error;
+  el.dashboardContent.hidden = !content;
+  el.dashboardFeedback.textContent = feedback || "";
+}
+
+async function loadMaintenanceTasks() {
+  if (!appState.profile) return;
+  setMaintenanceState({ loading: true, empty: false, error: false, feedback: "" });
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "getMaintenanceTasks");
+    const response = await callable({ tenantId: appState.profile.tenantId, pageSize: 25 });
+    appState.maintenanceTasks = Array.isArray(response?.data?.tasks) ? response.data.tasks : [];
+    if (!appState.maintenanceTasks.length) {
+      el.maintenanceBody.innerHTML = '<tr><td colspan="6">Sin tareas.</td></tr>';
+      setMaintenanceState({ loading: false, empty: true, error: false, feedback: "" });
+      return;
+    }
+
+    el.maintenanceBody.innerHTML = appState.maintenanceTasks
+      .map((task) => {
+        const updatedAt = task.updatedAtMillis ? new Date(task.updatedAtMillis).toLocaleString() : "-";
+        return `<tr>
+          <td>${task.id}</td>
+          <td>${escapeHtml(task.title || "-")}</td>
+          <td>${escapeHtml(task.status || "pending")}</td>
+          <td>${escapeHtml(task.priority || "medium")}</td>
+          <td>${updatedAt}</td>
+          <td>
+            <button data-action="complete" data-task-id="${task.id}" class="secondary" type="button">Completar</button>
+            <button data-action="delete" data-task-id="${task.id}" type="button">Eliminar</button>
+          </td>
+        </tr>`;
+      })
+      .join("");
+    setMaintenanceState({ loading: false, empty: false, error: false, feedback: "Tareas sincronizadas." });
+  } catch (error) {
+    setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
+  }
+}
+
+function setMaintenanceState({ loading, empty, error, feedback }) {
+  el.maintenanceLoading.hidden = !loading;
+  el.maintenanceEmpty.hidden = !empty;
+  el.maintenanceError.hidden = !error;
+  el.maintenanceFeedback.textContent = feedback || "";
+}
+
+async function onCreateMaintenanceTask(event) {
+  event.preventDefault();
+  if (!appState.profile) return;
+  const title = el.maintenanceTitleInput.value.trim();
+  if (title.length < 3) {
+    setMaintenanceState({ loading: false, empty: false, error: true, feedback: "Título demasiado corto." });
     return;
   }
 
-  startBackupRequestsListener();
+  el.maintenanceCreateButton.disabled = true;
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "createMaintenanceTask");
+    await callable({ tenantId: appState.profile.tenantId, title, priority: el.maintenancePriorityInput.value });
+    el.maintenanceTitleInput.value = "";
+    setMaintenanceState({ loading: false, empty: false, error: false, feedback: "Tarea creada correctamente." });
+    await loadMaintenanceTasks();
+  } catch (error) {
+    setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
+  } finally {
+    el.maintenanceCreateButton.disabled = false;
+  }
+}
+
+async function onMaintenanceActions(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button || !appState.profile) return;
+  const taskId = button.dataset.taskId;
+  const action = button.dataset.action;
+  if (!taskId || !action) return;
+
+  if (action === "complete") {
+    await updateMaintenanceTask(taskId, { status: "completed" }, "Tarea marcada como completada.");
+    return;
+  }
+
+  if (action === "delete") {
+    const task = appState.maintenanceTasks.find((item) => item.id === taskId);
+    if (!window.confirm(`Vas a eliminar la tarea ${taskId}. Esta acción no se puede deshacer.`)) return;
+    const challenge = window.prompt("Doble validación: escribí el título exacto de la tarea para confirmar.");
+    if ((challenge || "").trim() !== (task?.title || "").trim()) {
+      setMaintenanceState({ loading: false, empty: false, error: true, feedback: "Validación fallida. La tarea no fue eliminada." });
+      return;
+    }
+    try {
+      const callable = httpsCallable(appState.cloudFunctions, "deleteMaintenanceTask");
+      await callable({ tenantId: appState.profile.tenantId, taskId, confirmationText: challenge });
+      setMaintenanceState({ loading: false, empty: false, error: false, feedback: "Tarea eliminada correctamente." });
+      await loadMaintenanceTasks();
+    } catch (error) {
+      setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
+    }
+  }
+}
+
+async function updateMaintenanceTask(taskId, changes, successMessage) {
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "updateMaintenanceTask");
+    await callable({ tenantId: appState.profile.tenantId, taskId, ...changes });
+    setMaintenanceState({ loading: false, empty: false, error: false, feedback: successMessage });
+    await loadMaintenanceTasks();
+  } catch (error) {
+    setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
+  }
 }
 
 function startInactivityGuard() {
   clearTimeout(appState.inactivityTimerId);
-  appState.inactivityTimerId = setTimeout(() => {
-    safeLogout("Sesión expirada por inactividad.");
-  }, INACTIVITY_LIMIT_MS);
+  appState.inactivityTimerId = setTimeout(() => safeLogout("Sesión expirada por inactividad."), INACTIVITY_LIMIT_MS);
 }
 
 function resetInactivityTimer() {
@@ -267,7 +428,7 @@ function startTokenRefresh() {
     try {
       await appState.currentUser.getIdToken(true);
       setSessionBanner("Token renovado automáticamente.");
-    } catch (error) {
+    } catch {
       await safeLogout("No se pudo renovar token. Iniciá sesión nuevamente.");
     }
   }, TOKEN_REFRESH_MS);
@@ -275,9 +436,7 @@ function startTokenRefresh() {
 
 async function safeLogout(message) {
   try {
-    if (appState.firebaseAuth?.currentUser) {
-      await signOut(appState.firebaseAuth);
-    }
+    if (appState.firebaseAuth?.currentUser) await signOut(appState.firebaseAuth);
   } finally {
     clearSessionState();
     setSessionBanner(message);
@@ -290,63 +449,40 @@ function clearSessionState() {
   clearInterval(appState.refreshTimerId);
   appState.currentUser = null;
   appState.profile = null;
-  if (typeof appState.backupRequestsUnsubscribe === "function") {
-    appState.backupRequestsUnsubscribe();
-  }
+  appState.maintenanceTasks = [];
+  if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
   el.permissionsList.innerHTML = "";
   el.backupPanel.hidden = true;
+  if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = true;
+  el.dashboardPanel.hidden = true;
+  el.maintenancePanel.hidden = true;
   el.backupRequestsBody.innerHTML = '<tr><td colspan="6">Sin solicitudes recientes.</td></tr>';
+  setTenantPolicyMessage("");
 }
 
 function showDeniedState(message) {
   el.deniedState.hidden = false;
   el.deniedState.querySelector("p").textContent = message;
 }
-
-function hideDeniedState() {
-  el.deniedState.hidden = true;
-}
-
+function hideDeniedState() { el.deniedState.hidden = true; }
 function showMissingTenantState(message) {
   el.missingTenantState.hidden = false;
   el.missingTenantState.querySelector("p").textContent = message;
 }
-
-function hideHardStates() {
-  hideDeniedState();
-  el.missingTenantState.hidden = true;
-}
-
-function switchToAuth() {
-  el.authPanel.hidden = false;
-  el.appPanel.hidden = true;
-}
-
-function switchToApp() {
-  el.authPanel.hidden = true;
-  el.appPanel.hidden = false;
-}
-
-function setAuthError(message) {
-  el.authError.textContent = message;
-}
-
-function setSessionBanner(message) {
-  el.sessionBanner.textContent = message;
-}
-
+function hideHardStates() { hideDeniedState(); el.missingTenantState.hidden = true; }
+function switchToAuth() { el.authPanel.hidden = false; el.appPanel.hidden = true; }
+function switchToApp() { el.authPanel.hidden = true; el.appPanel.hidden = false; }
+function setAuthError(message) { el.authError.textContent = message; }
+function setSessionBanner(message) { el.sessionBanner.textContent = message; }
 
 function stopBackupRequestsListener() {
-  if (typeof appState.backupRequestsUnsubscribe === "function") {
-    appState.backupRequestsUnsubscribe();
-  }
+  if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
 }
 
 function startBackupRequestsListener() {
   if (appState.backupRequestsUnsubscribe || !appState.profile) return;
-
   const requestsQuery = query(
     collection(appState.firestore, "tenant_backups", appState.profile.tenantId, "requests"),
     orderBy("createdAt", "desc"),
@@ -360,35 +496,17 @@ function startBackupRequestsListener() {
         el.backupRequestsBody.innerHTML = "<tr><td colspan=\"6\">Sin solicitudes recientes.</td></tr>";
         return;
       }
-
-      el.backupRequestsBody.innerHTML = snapshot.docs
-        .map((requestDoc) => {
-          const row = requestDoc.data();
-          const createdAtMillis = row.createdAt?.toMillis?.() || null;
-          const createdAtLabel = createdAtMillis
-            ? new Date(createdAtMillis).toLocaleString()
-            : "-";
-          const status = (row.status || "queued").toString();
-          const createdByUid = (row.createdByUid || "-").toString();
-          const docCount = Number.isFinite(row.docCount) ? row.docCount : "-";
-          const errorMessage = (row.errorMessage || "-").toString();
-
-          return `
-            <tr>
-              <td>${requestDoc.id}</td>
-              <td>${status}</td>
-              <td>${createdAtLabel}</td>
-              <td>${createdByUid}</td>
-              <td>${docCount}</td>
-              <td>${errorMessage}</td>
-            </tr>
-          `;
-        })
-        .join("");
+      el.backupRequestsBody.innerHTML = snapshot.docs.map((requestDoc) => {
+        const row = requestDoc.data();
+        const createdAtMillis = row.createdAt?.toMillis?.() || null;
+        return `<tr>
+          <td>${requestDoc.id}</td><td>${row.status || "queued"}</td>
+          <td>${createdAtMillis ? new Date(createdAtMillis).toLocaleString() : "-"}</td>
+          <td>${row.createdByUid || "-"}</td><td>${Number.isFinite(row.docCount) ? row.docCount : "-"}</td><td>${row.errorMessage || "-"}</td>
+        </tr>`;
+      }).join("");
     },
-    (error) => {
-      setBackupMessage(`No se pudo cargar historial de backups: ${error.message || error}`);
-    }
+    (error) => setBackupMessage(`No se pudo cargar historial de backups: ${error.message || error}`)
   );
 }
 
@@ -399,26 +517,15 @@ async function onRequestBackupNow() {
   }
 
   const reason = el.backupReasonInput.value.trim();
-  if (reason.length < 6) {
-    setBackupMessage("Indicá un motivo de al menos 6 caracteres.");
-    return;
-  }
+  if (reason.length < 6) return setBackupMessage("Indicá un motivo de al menos 6 caracteres.");
 
   try {
     el.requestBackupButton.disabled = true;
     const callable = httpsCallable(appState.cloudFunctions, "requestTenantBackup");
-    const response = await callable({
-      tenantId: appState.profile.tenantId,
-      reason
-    });
-
+    const response = await callable({ tenantId: appState.profile.tenantId, reason });
     const deduplicated = response?.data?.deduplicated === true;
     const requestId = response?.data?.requestId || "-";
-    setBackupMessage(
-      deduplicated
-        ? `Ya existía una solicitud reciente (${requestId}). Se evitó un duplicado.`
-        : `Solicitud creada (${requestId}).`
-    );
+    setBackupMessage(deduplicated ? `Ya existía una solicitud reciente (${requestId}).` : `Solicitud creada (${requestId}).`);
     el.backupReasonInput.value = "";
   } catch (error) {
     setBackupMessage(parseAuthError(error));
@@ -430,9 +537,58 @@ async function onRequestBackupNow() {
 function setBackupMessage(message) {
   el.backupMessage.textContent = message || "";
 }
+
+
+async function loadTenantOnboardingPolicy() {
+  if (!appState.profile || appState.profile.role !== "owner") return;
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "getTenantOnboardingPolicy");
+    const response = await callable({});
+    const mode = response?.data?.tenantActivationMode === "manual" ? "manual" : "auto";
+    if (el.tenantActivationModeSelect) {
+      el.tenantActivationModeSelect.value = mode;
+    }
+    setTenantPolicyMessage(
+      mode === "manual"
+        ? "Modo actual: aprobación manual para nuevas tiendas."
+        : "Modo actual: activación automática para nuevas tiendas."
+    );
+  } catch (error) {
+    setTenantPolicyMessage(`No se pudo cargar política: ${parseAuthError(error)}`);
+  }
+}
+
+async function onSaveTenantOnboardingPolicy() {
+  if (!appState.profile || appState.profile.role !== "owner") {
+    setTenantPolicyMessage("Solo owner puede cambiar esta política global.");
+    return;
+  }
+
+  const mode = el.tenantActivationModeSelect?.value === "manual" ? "manual" : "auto";
+  try {
+    el.saveTenantPolicyButton.disabled = true;
+    const callable = httpsCallable(appState.cloudFunctions, "setTenantOnboardingPolicy");
+    await callable({ tenantActivationMode: mode });
+    setTenantPolicyMessage(
+      mode === "manual"
+        ? "Guardado. Nuevas tiendas requerirán aprobación manual."
+        : "Guardado. Nuevas tiendas quedarán activas por defecto."
+    );
+  } catch (error) {
+    setTenantPolicyMessage(parseAuthError(error));
+  } finally {
+    el.saveTenantPolicyButton.disabled = false;
+  }
+}
+
+function setTenantPolicyMessage(message) {
+  if (!el.tenantPolicyMessage) return;
+  el.tenantPolicyMessage.textContent = message || "";
+}
+function setBackupMessage(message) { el.backupMessage.textContent = message || ""; }
+
 function parseAuthError(error) {
   if (!error) return "Error de autenticación desconocido.";
-
   const map = {
     "auth/invalid-credential": "Credenciales inválidas.",
     "auth/popup-closed-by-user": "Login con Google cancelado.",
@@ -442,6 +598,18 @@ function parseAuthError(error) {
     "functions/invalid-argument": "Faltan datos obligatorios para ejecutar la acción.",
     "functions/unauthenticated": "Tu sesión expiró. Iniciá sesión nuevamente."
   };
-
   return map[error.code] || error.message || "No se pudo iniciar sesión.";
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
