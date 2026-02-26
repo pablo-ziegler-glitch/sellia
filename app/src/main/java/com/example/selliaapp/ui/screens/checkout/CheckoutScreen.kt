@@ -39,6 +39,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -422,7 +423,7 @@ fun CheckoutScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = state.canCheckout && !paymentState.isLoading && !isProcessing,
+                enabled = state.canCheckout && !paymentState.isLoading && !isProcessing && !paymentState.isAwaitingConfirmation,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondary,
                     disabledContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
@@ -436,6 +437,43 @@ fun CheckoutScreen(
                     )
                 } else {
                     Text("Pagar con Mercado Pago")
+                }
+            }
+
+            if (paymentState.isAwaitingConfirmation || paymentState.paymentStatus == "pending_confirmation") {
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Esperando confirmación del pago",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "No cierres la venta hasta recibir confirmación server-side.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (!paymentState.orderId.isNullOrBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Orden: ${paymentState.orderId}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (paymentState.canRetry) {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(onClick = { paymentVm.retryPendingConfirmation() }) {
+                                Text("Reintentar confirmación")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -453,7 +491,11 @@ fun CheckoutScreen(
                 }
                 Button(
                     onClick = {
-                        if (!state.canCheckout) {
+                        if (paymentState.isAwaitingConfirmation || paymentState.paymentStatus == "pending_confirmation") {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Esperá la confirmación del pago antes de cerrar la venta.")
+                            }
+                        } else if (!state.canCheckout) {
                             scope.launch {
                                 snackbarHostState.showSnackbar("No podés cobrar hasta corregir el stock.")
                             }
@@ -491,7 +533,7 @@ fun CheckoutScreen(
                             )
                         }
                     },
-                    enabled = state.items.isNotEmpty() && !isProcessing,
+                    enabled = state.items.isNotEmpty() && !isProcessing && !paymentState.isAwaitingConfirmation,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,

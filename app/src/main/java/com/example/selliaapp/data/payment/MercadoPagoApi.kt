@@ -44,7 +44,10 @@ class MercadoPagoApi @Inject constructor(
             initPoint = initPoint,
             preferenceId = data["preference_id"] as? String ?: data["preferenceId"] as? String,
             sandboxInitPoint = data["sandbox_init_point"] as? String
-                ?: data["sandboxInitPoint"] as? String
+                ?: data["sandboxInitPoint"] as? String,
+            orderId = data["order_id"] as? String ?: data["orderId"] as? String,
+            idempotencyKey = data["idempotency_key"] as? String ?: data["idempotencyKey"] as? String,
+            paymentStatus = data["payment_status"] as? String ?: data["paymentStatus"] as? String
         )
     }
 

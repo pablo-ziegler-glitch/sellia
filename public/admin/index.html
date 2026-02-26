@@ -61,6 +61,32 @@
           <h3 id="viewTitle">Panel de uso</h3>
           <p id="viewDescription">Seleccioná un módulo del backoffice.</p>
 
+
+          <section id="costDashboardPanel" class="cost-dashboard" hidden>
+            <h4>Costo cloud por tenant y servicio</h4>
+            <p class="muted">Visibilidad mensual de costo y desvíos contra presupuesto.</p>
+            <div class="cost-summary">
+              <span>Presupuesto mensual: <strong id="budgetTotalValue">-</strong></span>
+              <span>Costo actual: <strong id="currentCostTotalValue">-</strong></span>
+              <span>Desvío: <strong id="costDeltaValue">-</strong></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Servicio</th>
+                    <th>Costo actual</th>
+                    <th>Presupuesto</th>
+                    <th>% uso</th>
+                  </tr>
+                </thead>
+                <tbody id="costByServiceBody">
+                  <tr><td colspan="4">Sin datos de costo.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section id="backupPanel" class="backup-panel" hidden>
             <h4>Resguardo de datos del tenant</h4>
             <p class="muted">Solicitá un backup puntual y monitoreá su ejecución.</p>
@@ -149,6 +175,22 @@
             </div>
           </section>
         </section>
+        
+
+          <section id="tenantPolicyPanel" class="backup-panel" hidden>
+            <h4>Política global de activación de nuevas tiendas</h4>
+            <p class="muted">Por defecto las nuevas tiendas quedan activas automáticamente. Solo impacta cuentas nuevas.</p>
+            <label>
+              Modo de activación
+              <select id="tenantActivationModeSelect">
+                <option value="auto">Auto (default, activa al crear)</option>
+                <option value="manual">Manual (requiere aprobación)</option>
+              </select>
+            </label>
+            <button id="saveTenantPolicyButton" type="button">Guardar política</button>
+            <p id="tenantPolicyMessage" class="banner"></p>
+          </section>
+</section>
 
         <section id="deniedState" class="state denied" hidden>
           <h4>Acceso denegado</h4>

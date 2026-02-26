@@ -25,8 +25,9 @@ Este esquema define el modelo de **órdenes** y **pagos** para el flujo de check
 | --- | --- | --- | --- |
 | `orderId` | string | sí | ID de la orden asociada. |
 | `provider` | string | sí | Proveedor de pagos. **Valor fijo:** `mercado_pago`. |
-| `status` | string | sí | `pending` / `approved` / `rejected` / `failed`. |
+| `status` | string | sí | `PENDING` / `APPROVED` / `REJECTED` / `FAILED` (normalizado interno). |
 | `raw` | map | sí | Resumen del payload recibido del provider (solo campos necesarios). |
+| `reconciliation` | map | no | Evidencia de conciliación (`lastReconciledAt`, `officialStatus`, `internalStatus`, `reasons`, `officialSummary`, `error`). |
 | `createdAt` | timestamp | sí | Fecha de creación (serverTimestamp). |
 | `updatedAt` | timestamp | sí | Fecha de última actualización (serverTimestamp). |
 
@@ -67,3 +68,25 @@ Ver propuesta completa en `docs/customers-multitenant.md`.
 
 - **Implementado ahora (operacional):** persistencia accionable de clientes en `tenants/{tenantId}/customers/{customerId}` (alta/edición/baja con fallback outbox).
 - **Siguiente paso recomendado:** sumar `customer_profiles/{customerId}` para identidad global compartida entre N tiendas.
+
+
+## 6) Cola de revisión de discrepancias
+
+**Ruta:** `tenants/{tenantId}/payment_disputes/{disputeId}`
+
+| Campo | Tipo | Obligatorio | Descripción |
+| --- | --- | --- | --- |
+| `paymentId` | string | sí | Pago en conflicto. |
+| `orderId` | string | no | Orden asociada si existe. |
+| `status` | string | sí | Estado de revisión (`open`, `in_review`, `resolved`). |
+| `reasons` | string[] | sí | Lista de discrepancias (`status_mismatch`, `amount_mismatch`, etc.). |
+| `officialSummary` | map | sí | Resumen de respuesta oficial de MP usado como evidencia. |
+| `runId` | string | sí | Ejecución de conciliación que detectó el conflicto. |
+| `createdAt` | timestamp | sí | Alta del caso en la cola. |
+| `updatedAt` | timestamp | sí | Última actualización. |
+
+## 7) Auditoría de conciliación
+
+**Ruta:** `payment_reconciliation_runs/{runId}`
+
+Cada ejecución del scheduler guarda contadores (`scanned`, `reconciled`, `disputes`, `agedAlerts`, `officialFetchErrors`) y timestamps (`startedAt`, `finishedAt`) para trazabilidad operativa.
