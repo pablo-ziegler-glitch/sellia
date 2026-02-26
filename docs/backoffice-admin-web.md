@@ -59,3 +59,7 @@ Abrir:
 - Las vistas muestran solo previews enmascarados por defecto.
 - Revelado completo solo bajo acción explícita, trazado en auditoría y con expiración corta de UI.
 - El almacenamiento del secreto debe resolverse vía Cloud Functions + Secret Manager, evitando persistir token completo en Firestore.
+
+## Rollout recomendado por feature flags
+
+Ver `docs/backoffice-rollout-feature-flags.md` para la secuencia de activación por tenant, ventana de observación 24–48h, rollback instantáneo y deshabilitación administrativa en mobile.
