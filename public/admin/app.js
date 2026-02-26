@@ -48,7 +48,12 @@ const el = {
   backupReasonInput: document.getElementById("backupReasonInput"),
   requestBackupButton: document.getElementById("requestBackupButton"),
   backupMessage: document.getElementById("backupMessage"),
-  backupRequestsBody: document.getElementById("backupRequestsBody")
+  backupRequestsBody: document.getElementById("backupRequestsBody"),
+  costDashboardPanel: document.getElementById("costDashboardPanel"),
+  budgetTotalValue: document.getElementById("budgetTotalValue"),
+  currentCostTotalValue: document.getElementById("currentCostTotalValue"),
+  costDeltaValue: document.getElementById("costDeltaValue"),
+  costByServiceBody: document.getElementById("costByServiceBody")
 };
 
 const routeViews = {
@@ -237,15 +242,20 @@ function syncRouteWithPermissions() {
   el.viewDescription.textContent = view.description;
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
+  const canViewCosts = ["owner", "admin", "manager"].includes(appState.profile.role);
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
+  el.costDashboardPanel.hidden = !(canViewCosts && isCloudServicesRoute);
 
   if (el.backupPanel.hidden) {
     stopBackupRequestsListener();
-    return;
+  } else {
+    startBackupRequestsListener();
   }
 
-  startBackupRequestsListener();
+  if (!el.costDashboardPanel.hidden) {
+    void loadCostDashboard();
+  }
 }
 
 function startInactivityGuard() {
@@ -296,7 +306,12 @@ function clearSessionState() {
   appState.backupRequestsUnsubscribe = null;
   el.permissionsList.innerHTML = "";
   el.backupPanel.hidden = true;
+  el.costDashboardPanel.hidden = true;
   el.backupRequestsBody.innerHTML = '<tr><td colspan="6">Sin solicitudes recientes.</td></tr>';
+  el.costByServiceBody.innerHTML = '<tr><td colspan="4">Sin datos de costo.</td></tr>';
+  el.budgetTotalValue.textContent = '-';
+  el.currentCostTotalValue.textContent = '-';
+  el.costDeltaValue.textContent = '-';
 }
 
 function showDeniedState(message) {
@@ -430,6 +445,63 @@ async function onRequestBackupNow() {
 function setBackupMessage(message) {
   el.backupMessage.textContent = message || "";
 }
+
+async function loadCostDashboard() {
+  if (!appState.profile) return;
+
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "getTenantCostDashboard");
+    const response = await callable({ tenantId: appState.profile.tenantId });
+    const data = response?.data || {};
+    const budgetTotal = Number(data?.budget?.total || 0);
+    const currentTotal = Number(data?.currentCost?.total || 0);
+    const deltaPercent = budgetTotal > 0 ? Math.round((currentTotal / budgetTotal) * 100) : 0;
+
+    el.budgetTotalValue.textContent = formatMoney(budgetTotal);
+    el.currentCostTotalValue.textContent = formatMoney(currentTotal);
+    el.costDeltaValue.textContent = budgetTotal > 0 ? `${deltaPercent}%` : "-";
+
+    const budgetByService = data?.budget?.byService || {};
+    const costByService = data?.currentCost?.byService || {};
+    const services = new Set([...Object.keys(budgetByService), ...Object.keys(costByService)]);
+
+    if (!services.size) {
+      el.costByServiceBody.innerHTML = '<tr><td colspan="4">Sin datos de costo.</td></tr>';
+      return;
+    }
+
+    el.costByServiceBody.innerHTML = [...services]
+      .sort((a, b) => a.localeCompare(b))
+      .map((service) => {
+        const budget = Number(budgetByService[service] || 0);
+        const current = Number(costByService[service] || 0);
+        const usage = budget > 0 ? `${Math.round((current / budget) * 100)}%` : "-";
+
+        return `
+          <tr>
+            <td>${service}</td>
+            <td>${formatMoney(current)}</td>
+            <td>${formatMoney(budget)}</td>
+            <td>${usage}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  } catch (error) {
+    el.costByServiceBody.innerHTML = '<tr><td colspan="4">No se pudo cargar dashboard de costos.</td></tr>';
+    setBackupMessage(`No se pudo cargar dashboard de costos: ${parseAuthError(error)}`);
+  }
+}
+
+function formatMoney(value) {
+  if (!Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function parseAuthError(error) {
   if (!error) return "Error de autenticación desconocido.";
 
