@@ -70,6 +70,8 @@ const baseDeps = {
   estimateRestoreDiff: vi.fn(async () => ({ diff: true })),
   writeTenantAuditLog: vi.fn(async () => undefined),
   backupRequestWindowMs: 10 * 60 * 1000,
+  enforceAdminRateLimit: vi.fn(async () => undefined),
+  logSecurityEvent: vi.fn(async () => undefined),
 };
 
 describe("tenantBackup integration handlers", () => {
@@ -84,23 +86,13 @@ describe("tenantBackup integration handlers", () => {
     const db: any = {
       collection: (name: string) => {
         if (name === "users") {
-          return {
-            doc: () => ({
-              get: async () => makeSnapshot({ role: "admin", tenantId: "tenant-a" }),
-            }),
-          };
+          return { doc: () => ({ get: async () => makeSnapshot({ role: "admin", tenantId: "tenant-a" }) }) };
         }
         if (name === "tenant_backups") {
           return {
             doc: () => ({
               collection: () => ({
-                where: () => ({
-                  orderBy: () => ({
-                    limit: () => ({
-                      get: async () => ({ empty: false, docs: [latestRequest] }),
-                    }),
-                  }),
-                }),
+                where: () => ({ orderBy: () => ({ limit: () => ({ get: async () => ({ empty: false, docs: [latestRequest] }) }) }) }),
                 doc: () => ({ id: "new-id", set: requestSet }),
               }),
             }),
@@ -113,10 +105,7 @@ describe("tenantBackup integration handlers", () => {
     const { createRequestTenantBackupHandler } = await import("../src/tenantBackup");
     const handler = createRequestTenantBackupHandler({ ...baseDeps, db });
 
-    const result = await handler(
-      { tenantId: "tenant-a", reason: "backup mensual" },
-      { auth: { uid: "u1", token: {} } } as any
-    );
+    const result = await handler({ tenantId: "tenant-a", reason: "backup mensual" }, { auth: { uid: "u1", token: {} } } as any);
 
     expect(result).toEqual({ ok: true, requestId: "req-existing", deduplicated: true });
     expect(requestSet).not.toHaveBeenCalled();
@@ -124,37 +113,18 @@ describe("tenantBackup integration handlers", () => {
 
   it("aprueba restore como superAdmin", async () => {
     const restoreUpdate = vi.fn(async () => undefined);
-
     const db: any = {
       collection: (name: string) => {
-        if (name === "users") {
-          return {
-            doc: () => ({
-              get: async () => makeSnapshot({ role: "superadmin" }),
-            }),
-          };
-        }
+        if (name === "users") return { doc: () => ({ get: async () => makeSnapshot({ role: "superadmin" }) }) };
         if (name === "tenant_backups") {
           return {
             doc: (tenantId: string) => ({
-              collection: (sub: string) => {
-                if (sub !== "restore_requests") throw new Error("unexpected");
-                return {
-                  doc: (restoreId: string) => ({
-                    get: async () =>
-                      makeSnapshot({
-                        tenantId,
-                        restoreId,
-                        status: "requested",
-                        scope: "full",
-                        runId: "run-1",
-                        dryRun: false,
-                        diffEstimate: { changed: 1 },
-                      }),
-                    update: restoreUpdate,
-                  }),
-                };
-              },
+              collection: () => ({
+                doc: (restoreId: string) => ({
+                  get: async () => makeSnapshot({ tenantId, restoreId, status: "requested", scope: "full", runId: "run-1", dryRun: false, diffEstimate: { changed: 1 } }),
+                  update: restoreUpdate,
+                }),
+              }),
             }),
           };
         }
@@ -170,44 +140,15 @@ describe("tenantBackup integration handlers", () => {
       { auth: { uid: "sa-1", token: { superAdmin: true } }, rawRequest: { headers: {} } } as any
     );
 
-    expect(restoreUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "approved", approvedBy: "sa-1" })
-    );
-    expect(result).toEqual(
-      expect.objectContaining({
-        ok: true,
-        tenantId: "tenant-a",
-        restoreId: "restore-1",
-        status: "approved",
-        approvedBy: "sa-1",
-      })
-    );
+    expect(restoreUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: "approved", approvedBy: "sa-1" }));
+    expect(result).toEqual(expect.objectContaining({ ok: true, tenantId: "tenant-a", restoreId: "restore-1", status: "approved", approvedBy: "sa-1" }));
   });
 
   it("rechaza tenant mismatch en requestTenantBackup", async () => {
     const db: any = {
       collection: (name: string) => {
-        if (name === "users") {
-          return {
-            doc: () => ({
-              get: async () => makeSnapshot({ role: "admin", tenantId: "tenant-a" }),
-            }),
-          };
-        }
-        if (name === "tenant_backups") {
-          return {
-            doc: () => ({
-              collection: () => ({
-                where: () => ({
-                  orderBy: () => ({
-                    limit: () => ({ get: async () => ({ empty: true, docs: [] }) }),
-                  }),
-                }),
-                doc: () => ({ id: "new-id", set: vi.fn() }),
-              }),
-            }),
-          };
-        }
+        if (name === "users") return { doc: () => ({ get: async () => makeSnapshot({ role: "admin", tenantId: "tenant-a" }) }) };
+        if (name === "tenant_backups") return { doc: () => ({ collection: () => ({ where: () => ({ orderBy: () => ({ limit: () => ({ get: async () => ({ empty: true, docs: [] }) }) }) }), doc: () => ({ id: "new-id", set: vi.fn() }) }) }) };
         throw new Error(`unexpected collection ${name}`);
       },
     };
@@ -215,25 +156,42 @@ describe("tenantBackup integration handlers", () => {
     const { createRequestTenantBackupHandler } = await import("../src/tenantBackup");
     const handler = createRequestTenantBackupHandler({ ...baseDeps, db });
 
-    await expect(
-      handler(
-        { tenantId: "tenant-b", reason: "backup mensual" },
-        { auth: { uid: "u1", token: {} } } as any
-      )
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(handler({ tenantId: "tenant-b", reason: "backup mensual" }, { auth: { uid: "u1", token: {} } } as any)).rejects.toMatchObject({ code: "permission-denied" });
   });
 
   it("valida payload inválido en requestTenantRestore", async () => {
     const db: any = { collection: vi.fn() };
-
     const { createRequestTenantRestoreHandler } = await import("../src/tenantBackup");
     const handler = createRequestTenantRestoreHandler({ ...baseDeps, db });
 
+    await expect(handler({ tenantId: "tenant-a", runId: "run-1", scope: "invalid" }, { auth: { uid: "u1", token: {} } } as any)).rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
+  it("rechaza cuando falta auth", async () => {
+    const db: any = { collection: vi.fn() };
+    const { createRequestTenantBackupHandler } = await import("../src/tenantBackup");
+    const handler = createRequestTenantBackupHandler({ ...baseDeps, db });
+
+    await expect(handler({ tenantId: "tenant-a", reason: "backup mensual" }, { auth: null } as any)).rejects.toMatchObject({ code: "unauthenticated" });
+  });
+
+  it("rechaza aprobación restore sin superAdmin", async () => {
+    const db: any = {
+      collection: (name: string) => {
+        if (name === "users") return { doc: () => ({ get: async () => makeSnapshot({ role: "admin", tenantId: "tenant-a" }) }) };
+        if (name === "tenant_backups") return { doc: () => ({ collection: () => ({ doc: () => ({ get: async () => makeSnapshot({ status: "requested" }) }) }) }) };
+        throw new Error(`unexpected collection ${name}`);
+      },
+    };
+
+    const { createApproveTenantRestoreRequestHandler } = await import("../src/tenantBackup");
+    const handler = createApproveTenantRestoreRequestHandler({ ...baseDeps, db });
+
     await expect(
       handler(
-        { tenantId: "tenant-a", runId: "run-1", scope: "invalid" },
-        { auth: { uid: "u1", token: {} } } as any
+        { tenantId: "tenant-a", restoreId: "restore-1" },
+        { auth: { uid: "admin-1", token: {} }, rawRequest: { headers: {} } } as any
       )
-    ).rejects.toMatchObject({ code: "invalid-argument" });
+    ).rejects.toMatchObject({ code: "permission-denied" });
   });
 });

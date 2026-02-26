@@ -44,7 +44,8 @@ label {
   font-weight: 600;
 }
 
-input {
+input,
+select {
   border: 1px solid #d4daea;
   border-radius: 10px;
   padding: 10px;
@@ -64,6 +65,11 @@ button.secondary,
 .google-btn {
   background: #f0f3ff;
   color: #1e2d58;
+}
+
+button[disabled] {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .topbar {
@@ -131,6 +137,60 @@ button.secondary,
   border: 1px solid #dbe2ff;
 }
 
+.module-panel {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.module-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.inline-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 200px auto;
+  align-items: end;
+}
+
+.state-inline {
+  border: 1px dashed #dbe2ff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+}
+
+.inline-link {
+  border: none;
+  background: transparent;
+  color: #3345ff;
+  text-decoration: underline;
+  padding: 0;
+  font-weight: 600;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.stats-grid article {
+  border: 1px solid #e2e7f8;
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.stats-grid span {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
 .state.denied {
   background: #fff1f2;
   color: #8e1324;
@@ -151,14 +211,14 @@ button.secondary,
   overflow-x: auto;
 }
 
-.backup-panel table {
+table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
 }
 
-.backup-panel th,
-.backup-panel td {
+th,
+td {
   border: 1px solid #e2e7f8;
   padding: 8px;
   text-align: left;

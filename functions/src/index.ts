@@ -8,6 +8,7 @@ import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 import { hasRoleForModule } from "./security/rolePermissionsMatrix";
+import { resolveFieldVisibility, type PiiRole } from "./security/piiPolicy";
 import { authorizeUsageMetricsAccess } from "./usageMetricsAccess";
 import {
   buildUsageOverview,
@@ -18,14 +19,6 @@ import {
   type UsageMetricResult,
   type UsageServiceMetrics,
 } from "./usageMetrics.helpers";
-import {
-  createApproveTenantRestoreRequestHandler,
-  createRequestTenantBackupHandler,
-  createRequestTenantRestoreHandler,
-  type ApproveRestoreRequestPayload,
-  type RestoreRequestPayload,
-  type RestoreScope,
-} from "./tenantBackup";
 
 admin.initializeApp();
 
@@ -134,6 +127,11 @@ const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
 const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
   default: "20",
 });
+
+const TENANT_ONBOARDING_POLICY_DOC = "tenant_onboarding";
+const TENANT_ONBOARDING_POLICY_COLLECTION = "platform_config";
+const TENANT_ACTIVATION_MODE_AUTO = "auto";
+const TENANT_ACTIVATION_MODE_MANUAL = "manual";
 
 const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
   try {
@@ -504,6 +502,14 @@ const normalizeString = (value: unknown): string => {
   }
   return "";
 };
+
+const normalizeTenantActivationMode = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  return normalized === TENANT_ACTIVATION_MODE_MANUAL
+    ? TENANT_ACTIVATION_MODE_MANUAL
+    : TENANT_ACTIVATION_MODE_AUTO;
+};
+
 
 const extractTenantId = (payment: unknown): string => {
   const source = (payment ?? {}) as Record<string, unknown>;
@@ -1614,7 +1620,13 @@ export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true 
   }
 
   console.info("Usage metrics accessed", {
-    uid: decision.uid,
+    ...sanitizePiiForLog({
+      domain: "logs",
+      role: "auditor",
+      fields: {
+        actorUid: decision.uid,
+      },
+    }),
     role: decision.role,
     scope: decision.scope,
     tenantId: decision.requestedTenantId || null,
@@ -1853,13 +1865,24 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     res.status(200).send("ok");
   } catch (error) {
     const mpError = summarizeMercadoPagoError(error);
+    const sanitizedError = sanitizePiiForLog({
+      domain: "logs",
+      role: "support",
+      fields: {
+        payerEmail: (mpError.data as Record<string, unknown> | null | undefined)?.payer_email,
+      },
+    });
+
     console.error("Mercado Pago webhook processing failed", {
       paymentId,
       requestId: requestId || "n/a",
       status: mpError.status,
       code: mpError.code,
       message: mpError.message,
-      response: mpError.data,
+      response: {
+        ...((mpError.data as Record<string, unknown> | null) ?? {}),
+        ...sanitizedError,
+      },
     });
     res.status(500).send("error");
   }
@@ -2206,6 +2229,61 @@ const getIpAllowlist = (): string[] => {
 const getRequestIp = (context: functions.https.CallableContext): string =>
   normalizeString(context.rawRequest?.ip);
 
+const maskWithPattern = (value: string, keepStart: number, keepEnd: number): string => {
+  const normalized = normalizeString(value);
+  if (!normalized) return "";
+  if (normalized.length <= keepStart + keepEnd) {
+    return "*".repeat(Math.max(normalized.length, 4));
+  }
+  return `${normalized.slice(0, keepStart)}${"*".repeat(normalized.length - keepStart - keepEnd)}${normalized.slice(-keepEnd)}`;
+};
+
+const maskEmail = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  const [local, domain] = normalized.split("@");
+  if (!local || !domain) return maskWithPattern(normalized, 1, 1);
+  return `${maskWithPattern(local, 1, 1)}@${domain}`;
+};
+
+const maskIp = (value: unknown): string => {
+  const ip = normalizeString(value);
+  const parts = ip.split(".");
+  if (parts.length !== 4) return maskWithPattern(ip, 2, 0);
+  return `${parts[0]}.${parts[1]}.*.*`;
+};
+
+const maskUid = (value: unknown): string => maskWithPattern(normalizeString(value), 4, 2);
+
+const sanitizePiiForLog = (params: {
+  domain: "users" | "customers" | "logs" | "exports";
+  role?: PiiRole | null;
+  fields: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const role = params.role ?? null;
+  return Object.fromEntries(
+    Object.entries(params.fields).map(([key, rawValue]) => {
+      const visibility = resolveFieldVisibility(params.domain, key, role);
+      if (rawValue === null || rawValue === undefined) {
+        return [key, null];
+      }
+      const stringValue = normalizeString(rawValue);
+      if (visibility === "full") {
+        return [key, rawValue];
+      }
+      if (key.toLowerCase().includes("email")) {
+        return [key, visibility === "partial" ? maskEmail(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("ip")) {
+        return [key, visibility === "partial" ? maskIp(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("uid")) {
+        return [key, visibility === "partial" ? maskUid(stringValue) : "***MASKED***"];
+      }
+      return [key, visibility === "partial" ? maskWithPattern(stringValue, 1, 1) : "***MASKED***"];
+    })
+  );
+};
+
 const recordAppCheckRejection = async (params: {
   operation: string;
   uid: string;
@@ -2350,11 +2428,20 @@ const writeTenantAuditLog = async (
   }
 ): Promise<void> => {
   const eventRef = db.collection("tenants").doc(tenantId).collection("audit_logs").doc();
+  const piiSafeFields = sanitizePiiForLog({
+    domain: "logs",
+    role: "auditor",
+    fields: {
+      actorUid: payload.actorUid ?? null,
+      requesterIp: normalizeString(payload.ip) || null,
+    },
+  });
+
   await eventRef.set({
     eventType: payload.eventType,
     action: payload.action,
     tenantId,
-    actorUid: payload.actorUid ?? null,
+    actorUid: piiSafeFields.actorUid,
     scope: payload.scope ?? "full",
     runId: payload.runId ?? null,
     restoreRequestId: payload.restoreRequestId ?? null,
@@ -2362,7 +2449,7 @@ const writeTenantAuditLog = async (
     dryRun: payload.dryRun === true,
     diffEstimate: payload.diffEstimate ?? null,
     result: payload.result ?? null,
-    ip: normalizeString(payload.ip) || null,
+    ip: piiSafeFields.requesterIp,
     userAgent: normalizeString(payload.userAgent) || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -2518,7 +2605,7 @@ const writeMaintenanceAuditLog = async ({
   tenantId: string;
   taskId: string;
   actorUid: string;
-  action: "create" | "update";
+  action: "create" | "update" | "delete";
   before?: admin.firestore.DocumentData | null;
   after: admin.firestore.DocumentData;
 }): Promise<void> => {
@@ -2526,6 +2613,10 @@ const writeMaintenanceAuditLog = async ({
     tenantId,
     taskId,
     action,
+    actor: {
+      uid: actorUid,
+      tenantId,
+    },
     actorUid,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     change: {
@@ -3215,6 +3306,13 @@ const backupTenant = async (
   };
 };
 
+const logBoSecurityEvent = async (payload: { operation: string; result: string; reason: string; uid?: string; tenantId?: string }): Promise<void> => {
+  await db.collection(APP_CHECK_REJECT_COLLECTION).doc("bo_callable_guards").collection("events").add({
+    ...payload,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
 const userCanRequestTenantBackup = (
   context: functions.https.CallableContext,
   userData: admin.firestore.DocumentData
@@ -3242,22 +3340,24 @@ const requestTenantRestoreHandler = createRequestTenantRestoreHandler({
   db,
   normalizeString,
   toBoolean,
-  isAdminRole,
   userCanRequestTenantBackup,
   estimateRestoreDiff,
   writeTenantAuditLog,
   backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
 });
 
 const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHandler({
   db,
   normalizeString,
   toBoolean,
-  isAdminRole,
   userCanRequestTenantBackup,
   estimateRestoreDiff,
   writeTenantAuditLog,
   backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
 });
 
 export const requestTenantBackup = functions
@@ -3266,9 +3366,7 @@ export const requestTenantBackup = functions
 
 export const requestTenantRestore = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall((data: RestoreRequestPayload, context) =>
-    requestTenantRestoreHandler(data, context)
-  );
+  .https.onCall((data: unknown, context) => requestTenantBackupHandler(data, context));
 
 export const approveTenantRestoreRequest = functions
   .runWith({ enforceAppCheck: false })
@@ -3320,6 +3418,83 @@ export const processTenantBackupRequest = functions
         { merge: true }
       );
     }
+  });
+
+export const getTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (_data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true ||
+      callerUserDoc.get("isAdmin") === true;
+
+    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+      throw new functions.https.HttpsError("permission-denied", "Acceso restringido");
+    }
+
+    const policyDoc = await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .get();
+
+    const tenantActivationMode = normalizeTenantActivationMode(policyDoc.get("tenantActivationMode"));
+
+    return {
+      tenantActivationMode,
+      updatedAt: policyDoc.get("updatedAt") ?? null,
+      updatedBy: normalizeString(policyDoc.get("updatedBy")) || null,
+    };
+  });
+
+export const setTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const mode = normalizeTenantActivationMode((data as Record<string, unknown> | null)?.tenantActivationMode);
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true;
+
+    if (!isSuperAdmin && role !== "owner") {
+      throw new functions.https.HttpsError("permission-denied", "Solo owner/superAdmin puede cambiar política");
+    }
+
+    await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .set(
+        {
+          schemaVersion: 1,
+          tenantActivationMode: mode,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: context.auth.uid,
+        },
+        { merge: true }
+      );
+
+    return {
+      ok: true,
+      tenantActivationMode: mode,
+    };
   });
 
 export const createDailyTenantBackups = functions
