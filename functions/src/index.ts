@@ -26,11 +26,14 @@ import {
   type RestoreRequestPayload,
   type RestoreScope,
 } from "./tenantBackup";
+import { PaymentsCoreService } from "./payments/payments-core";
+import { createMpPaymentIntent, fetchMpPayment } from "./payments/payments-mp-adapter";
 
 admin.initializeApp();
 
 const db = admin.firestore();
 const storage = admin.storage();
+const paymentsCore = new PaymentsCoreService(db);
 
 type UsageSource = "monitoring" | "bigquery";
 
@@ -1416,6 +1419,206 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
     sandbox_init_point: response.data?.sandbox_init_point,
   };
 };
+
+const requireAuthenticatedUser = (context: functions.https.CallableContext): string => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError("unauthenticated", "Authentication required.");
+  }
+  return context.auth.uid;
+};
+
+const createPaymentIntentHandler = async (
+  data: unknown,
+  context: functions.https.CallableContext
+) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const orderId = normalizeString(payload.orderId);
+  const amount = Number(payload.amount);
+  const currency = normalizeString(payload.currency) || "ARS";
+  const description = normalizeString(payload.description);
+  const payerEmail = normalizeString(payload.payerEmail ?? payload.payer_email);
+  const items: PreferenceItemInput[] = Array.isArray(payload.items)
+    ? (payload.items as PreferenceItemInput[])
+    : [];
+  const metadata =
+    typeof payload.metadata === "object" && payload.metadata !== null
+      ? (payload.metadata as Record<string, unknown>)
+      : {};
+
+  if (!tenantId || !orderId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId and orderId are required."
+    );
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new functions.https.HttpsError("invalid-argument", "amount must be a positive number.");
+  }
+
+  if (items.length === 0) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "items must contain at least one entry."
+    );
+  }
+
+  const { accessToken } = getMpConfig();
+  const { intentId, attemptId } = await paymentsCore.createPaymentIntent({
+    tenantId,
+    orderId,
+    amount,
+    currency,
+    provider: "mercado_pago",
+    metadata,
+    actorUid,
+  });
+
+  try {
+    const mp = await createMpPaymentIntent({
+      accessToken,
+      tenantId,
+      orderId,
+      intentId,
+      amount,
+      currency,
+      description,
+      payerEmail,
+      items,
+      metadata,
+    });
+
+    await paymentsCore.registerProviderAttempt({
+      tenantId,
+      intentId,
+      attemptId,
+      providerPreferenceId: mp.preferenceId,
+    });
+
+    return {
+      intentId,
+      attemptId,
+      provider: "mercado_pago",
+      preferenceId: mp.preferenceId,
+      initPoint: mp.initPoint,
+      sandboxInitPoint: mp.sandboxInitPoint,
+    };
+  } catch (error) {
+    const mpError = summarizeMercadoPagoError(error);
+    console.error("createPaymentIntent provider call failed", {
+      tenantId,
+      orderId,
+      intentId,
+      attemptId,
+      status: mpError.status,
+      code: mpError.code,
+      message: mpError.message,
+    });
+
+    throw new functions.https.HttpsError(
+      mapMercadoPagoStatusToHttpsCode(mpError.status),
+      `Mercado Pago error: ${mpError.message}`,
+      {
+        provider: "mercado_pago",
+        status: mpError.status,
+        code: mpError.code,
+      }
+    );
+  }
+};
+
+const confirmByWebhookHandler = async (data: unknown, context: functions.https.CallableContext) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const intentId = normalizeString(payload.intentId);
+  const attemptId = normalizeString(payload.attemptId);
+  const providerPaymentId = normalizeString(payload.providerPaymentId ?? payload.paymentId);
+  const providerStatus = normalizeString(payload.providerStatus ?? payload.status);
+  const providerEventId = normalizeString(payload.providerEventId ?? payload.eventId);
+  const requestId = normalizeString(payload.requestId);
+  const rawProviderPayload =
+    typeof payload.rawProviderPayload === "object" && payload.rawProviderPayload !== null
+      ? (payload.rawProviderPayload as Record<string, unknown>)
+      : {};
+
+  if (!tenantId || !intentId || !attemptId || !providerPaymentId || !providerStatus) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId, intentId, attemptId, providerPaymentId and providerStatus are required."
+    );
+  }
+
+  return paymentsCore.confirmByWebhook({
+    tenantId,
+    intentId,
+    attemptId,
+    providerPaymentId,
+    providerStatus,
+    providerEventId: providerEventId || undefined,
+    requestId: requestId || undefined,
+    rawProviderPayload,
+    source: "webhook",
+    actorUid,
+  });
+};
+
+const reconcilePaymentHandler = async (data: unknown, context: functions.https.CallableContext) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const attemptId = normalizeString(payload.attemptId);
+  const providerPaymentId = normalizeString(payload.providerPaymentId ?? payload.paymentId);
+  const { accessToken } = getMpConfig();
+
+  if (!tenantId || !attemptId || !providerPaymentId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId, attemptId and providerPaymentId are required."
+    );
+  }
+
+  const canonicalPayment = await fetchMpPayment(accessToken, providerPaymentId);
+  const intentId = canonicalPayment.intentId;
+
+  if (!intentId) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Unable to reconcile payment without intentId in provider payload."
+    );
+  }
+
+  const result = await paymentsCore.confirmByWebhook({
+    tenantId,
+    intentId,
+    attemptId,
+    providerPaymentId,
+    providerStatus: canonicalPayment.providerStatus,
+    amount: canonicalPayment.amount,
+    currency: canonicalPayment.currency,
+    rawProviderPayload: canonicalPayment.rawProviderPayload,
+    source: "reconciliation",
+    actorUid,
+  });
+
+  return {
+    transitionApplied: result.transitionApplied,
+    providerStatus: canonicalPayment.providerStatus,
+    orderId: canonicalPayment.orderId,
+    intentId,
+  };
+};
+
+export const createPaymentIntent =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentIntentHandler);
+
+export const confirmByWebhook =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(confirmByWebhookHandler);
+
+export const reconcilePayment =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(reconcilePaymentHandler);
 
 export const createPaymentPreference =
   functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentPreferenceHandler);
