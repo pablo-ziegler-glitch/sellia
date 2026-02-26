@@ -1,5 +1,4 @@
 import * as functions from "firebase-functions";
-import { defineString } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import axios from "axios";
 import { AxiosError } from "axios";
@@ -30,6 +29,20 @@ import {
 import { buildRoleScopedOwnershipResponse, maskEmail, maskPhone, redactObject } from "./redaction";
 import { PaymentsCoreService } from "./payments/payments-core";
 import { createMpPaymentIntent, fetchMpPayment } from "./payments/payments-mp-adapter";
+import {
+  getAdminRateLimitPerMinute as cfgGetAdminRateLimitPerMinute,
+  getAgedPendingAlertMinutes as cfgGetAgedPendingAlertMinutes,
+  getAppCheckEnforcementMode as cfgGetAppCheckEnforcementMode,
+  getBillingConfig as cfgGetBillingConfig,
+  getFallbackWebhookSecret as cfgGetFallbackWebhookSecret,
+  getIpAllowlist as cfgGetIpAllowlist,
+  getMpConfig as cfgGetMpConfig,
+  getMpPendingReconciliationMinutes as cfgGetMpPendingReconciliationMinutes,
+  getMpReconciliationBatchSize as cfgGetMpReconciliationBatchSize,
+  getMpWebhookReplayTtlMs as cfgGetMpWebhookReplayTtlMs,
+  getMpWebhookSignatureWindowMs as cfgGetMpWebhookSignatureWindowMs,
+  parseWebhookSecretRefs as cfgParseWebhookSecretRefs,
+} from "./config/getters";
 
 admin.initializeApp();
 
@@ -138,36 +151,8 @@ const MANUAL_RECONCILIATION_RECOMMENDATIONS: Record<PaymentStatus, PaymentAction
   FAILED: "reintentar",
 };
 
-const MP_SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
 const CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE = "2026-03-31";
 
-const MP_ACCESS_TOKEN_PARAM = defineString("MP_ACCESS_TOKEN");
-const MP_WEBHOOK_SECRET_PARAM = defineString("MP_WEBHOOK_SECRET");
-const BILLING_SOURCE_PARAM = defineString("BILLING_SOURCE", {
-  default: "monitoring",
-});
-const BILLING_PROJECT_ID_PARAM = defineString("BILLING_PROJECT_ID");
-const BILLING_BIGQUERY_PROJECT_PARAM = defineString("BILLING_BIGQUERY_PROJECT");
-const BILLING_BIGQUERY_DATASET_PARAM = defineString("BILLING_BIGQUERY_DATASET");
-const BILLING_BIGQUERY_TABLE_PARAM = defineString("BILLING_BIGQUERY_TABLE");
-const APP_CHECK_ENFORCEMENT_MODE_PARAM = defineString("APP_CHECK_ENFORCEMENT_MODE", {
-  default: "monitor",
-});
-const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
-  default: "",
-});
-const MP_WEBHOOK_SECRET_REFS_PARAM = defineString("MP_WEBHOOK_SECRET_REFS", {
-  default: "",
-});
-const MP_WEBHOOK_SIGNATURE_WINDOW_MS_PARAM = defineString("MP_WEBHOOK_SIGNATURE_WINDOW_MS", {
-  default: "300000",
-});
-const MP_WEBHOOK_REPLAY_TTL_MS_PARAM = defineString("MP_WEBHOOK_REPLAY_TTL_MS", {
-  default: "86400000",
-});
-const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
-  default: "20",
-});
 const GLOBAL_FLAGS_COLLECTION = "config";
 const GLOBAL_FLAGS_DOC_ID = "runtime_flags";
 const TENANT_FLAGS_SUBCOLLECTION = "config";
@@ -175,18 +160,6 @@ const TENANT_FLAGS_DOC_ID = "runtime_flags";
 const MP_FALLBACK_PAYMENT_METHOD = "TRANSFERENCIA";
 const MP_GLOBAL_FLAG_PATH = "payments.mp.enabled";
 const MP_TENANT_FLAG_PATH = "tenant.payments.mp.enabled";
-const MP_RECONCILIATION_PENDING_MINUTES_PARAM = defineString(
-  "MP_RECONCILIATION_PENDING_MINUTES",
-  {
-    default: "15",
-  }
-);
-const MP_RECONCILIATION_BATCH_SIZE_PARAM = defineString("MP_RECONCILIATION_BATCH_SIZE", {
-  default: "100",
-});
-const MP_AGED_PENDING_ALERT_MINUTES_PARAM = defineString("MP_AGED_PENDING_ALERT_MINUTES", {
-  default: "120",
-});
 
 const TENANT_ONBOARDING_POLICY_DOC = "tenant_onboarding";
 const TENANT_ONBOARDING_POLICY_COLLECTION = "platform_config";
@@ -194,26 +167,12 @@ const TENANT_ACTIVATION_MODE_AUTO = "auto";
 const TENANT_ACTIVATION_MODE_MANUAL = "manual";
 
 const WEBHOOK_SECRET_CACHE_TTL_MS = 60_000;
-const DEFAULT_WEBHOOK_REPLAY_TTL_MS = 24 * 60 * 60 * 1000;
 
 let cachedWebhookSecrets: {
   expiresAtMs: number;
   value: string[];
 } | null = null;
 
-
-const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
-  try {
-    const value = param.value();
-    if (typeof value !== "string") {
-      return undefined;
-    }
-    const normalized = value.trim();
-    return normalized.length > 0 ? normalized : undefined;
-  } catch (_error) {
-    return undefined;
-  }
-};
 
 const parseBooleanFlagValue = (value: unknown, defaultValue: boolean): boolean => {
   if (typeof value === "boolean") return value;
@@ -573,54 +532,13 @@ const buildPublicProductPayload = (
   };
 };
 
-const getMpConfig = (): MpConfig => {
-  const accessToken =
-    process.env.MP_ACCESS_TOKEN?.trim() ??
-    getOptionalParam(MP_ACCESS_TOKEN_PARAM);
+const getMpConfig = (): MpConfig => cfgGetMpConfig();
 
-  if (!accessToken) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Mercado Pago access token is missing."
-    );
-  }
+const getMpWebhookSignatureWindowMs = (): number => cfgGetMpWebhookSignatureWindowMs();
 
-  return { accessToken };
-};
+const getMpWebhookReplayTtlMs = (): number => cfgGetMpWebhookReplayTtlMs();
 
-const getMpWebhookSignatureWindowMs = (): number => {
-  const configured =
-    process.env.MP_WEBHOOK_SIGNATURE_WINDOW_MS ??
-    getOptionalParam(MP_WEBHOOK_SIGNATURE_WINDOW_MS_PARAM) ??
-    String(MP_SIGNATURE_WINDOW_MS);
-  const parsed = Number(configured);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return MP_SIGNATURE_WINDOW_MS;
-  }
-  return Math.min(Math.trunc(parsed), 30 * 60 * 1000);
-};
-
-const getMpWebhookReplayTtlMs = (): number => {
-  const configured =
-    process.env.MP_WEBHOOK_REPLAY_TTL_MS ??
-    getOptionalParam(MP_WEBHOOK_REPLAY_TTL_MS_PARAM) ??
-    String(DEFAULT_WEBHOOK_REPLAY_TTL_MS);
-  const parsed = Number(configured);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_WEBHOOK_REPLAY_TTL_MS;
-  }
-  return Math.min(Math.max(Math.trunc(parsed), 60_000), 7 * 24 * 60 * 60 * 1000);
-};
-
-const parseWebhookSecretRefs = (): string[] => {
-  const configured =
-    process.env.MP_WEBHOOK_SECRET_REFS ?? getOptionalParam(MP_WEBHOOK_SECRET_REFS_PARAM) ?? "";
-
-  return configured
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-};
+const parseWebhookSecretRefs = (): string[] => cfgParseWebhookSecretRefs();
 
 const getMpWebhookSecrets = async (): Promise<string[]> => {
   const cached = cachedWebhookSecrets;
@@ -629,7 +547,7 @@ const getMpWebhookSecrets = async (): Promise<string[]> => {
   }
 
   const fallbackSecret =
-    process.env.MP_WEBHOOK_SECRET?.trim() ?? getOptionalParam(MP_WEBHOOK_SECRET_PARAM) ?? "";
+    cfgGetFallbackWebhookSecret();
 
   const refs = parseWebhookSecretRefs();
   const secretSet = new Set<string>();
@@ -682,39 +600,7 @@ const getMpWebhookSecrets = async (): Promise<string[]> => {
   return secrets;
 };
 
-const getBillingConfig = (): BillingConfig => {
-  const projectId =
-    process.env.GCP_PROJECT ??
-    process.env.GCLOUD_PROJECT ??
-    process.env.BILLING_PROJECT_ID ??
-    getOptionalParam(BILLING_PROJECT_ID_PARAM) ??
-    "";
-  if (!projectId) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Billing projectId is missing."
-    );
-  }
-  const rawSource =
-    process.env.BILLING_SOURCE ??
-    getOptionalParam(BILLING_SOURCE_PARAM) ??
-    "monitoring";
-  const source: UsageSource = rawSource === "bigquery" ? "bigquery" : "monitoring";
-
-  return {
-    source,
-    projectId,
-    bigqueryProjectId:
-      process.env.BILLING_BIGQUERY_PROJECT ??
-      getOptionalParam(BILLING_BIGQUERY_PROJECT_PARAM),
-    bigqueryDataset:
-      process.env.BILLING_BIGQUERY_DATASET ??
-      getOptionalParam(BILLING_BIGQUERY_DATASET_PARAM),
-    bigqueryTable:
-      process.env.BILLING_BIGQUERY_TABLE ??
-      getOptionalParam(BILLING_BIGQUERY_TABLE_PARAM),
-  };
-};
+const getBillingConfig = (): BillingConfig => cfgGetBillingConfig();
 
 const normalizeString = (value: unknown): string => {
   if (typeof value === "string") {
@@ -2996,81 +2882,20 @@ const BACKUP_POLICY_BY_CRITICALITY: Record<BackupCriticality, TenantBackupPolicy
 
 const APP_CHECK_REJECT_COLLECTION = "securityTelemetry";
 const ADMIN_RATE_LIMIT_COLLECTION = "adminRateLimits";
-const MP_DEFAULT_ALLOWED_CIDRS = [
-  "34.195.82.184/32",
-  "100.24.156.160/32",
-  "35.196.38.56/32",
-  "44.217.34.150/32",
-  "44.219.124.34/32",
-] as const;
 const PAYMENT_RECONCILIATION_RUNS_COLLECTION = "payment_reconciliation_runs";
 const PAYMENT_DISPUTES_COLLECTION = "payment_disputes";
 
 type AppCheckEnforcementMode = "monitor" | "enforce";
 
-const getAppCheckEnforcementMode = (): AppCheckEnforcementMode => {
-  const configured =
-    process.env.APP_CHECK_ENFORCEMENT_MODE ??
-    getOptionalParam(APP_CHECK_ENFORCEMENT_MODE_PARAM) ??
-    "monitor";
+const getAppCheckEnforcementMode = (): AppCheckEnforcementMode => cfgGetAppCheckEnforcementMode();
 
-  return configured.trim().toLowerCase() === "enforce" ? "enforce" : "monitor";
-};
+const getAdminRateLimitPerMinute = (): number => cfgGetAdminRateLimitPerMinute();
 
-const getAdminRateLimitPerMinute = (): number => {
-  const configured =
-    process.env.ADMIN_RATE_LIMIT_PER_MINUTE ??
-    getOptionalParam(ADMIN_RATE_LIMIT_PER_MINUTE_PARAM) ??
-    "20";
-  const parsed = Number(configured);
-  if (!Number.isFinite(parsed)) {
-    return 20;
-  }
-  return Math.min(Math.max(Math.trunc(parsed), 5), 300);
-};
+const getMpPendingReconciliationMinutes = (): number => cfgGetMpPendingReconciliationMinutes();
 
-const parseBoundedInteger = (
-  value: string | undefined,
-  fallback: number,
-  min: number,
-  max: number
-): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-  return Math.min(Math.max(Math.trunc(parsed), min), max);
-};
+const getMpReconciliationBatchSize = (): number => cfgGetMpReconciliationBatchSize();
 
-const getMpPendingReconciliationMinutes = (): number =>
-  parseBoundedInteger(
-    process.env.MP_RECONCILIATION_PENDING_MINUTES ??
-      getOptionalParam(MP_RECONCILIATION_PENDING_MINUTES_PARAM) ??
-      "15",
-    15,
-    5,
-    1440
-  );
-
-const getMpReconciliationBatchSize = (): number =>
-  parseBoundedInteger(
-    process.env.MP_RECONCILIATION_BATCH_SIZE ??
-      getOptionalParam(MP_RECONCILIATION_BATCH_SIZE_PARAM) ??
-      "100",
-    100,
-    1,
-    500
-  );
-
-const getAgedPendingAlertMinutes = (): number =>
-  parseBoundedInteger(
-    process.env.MP_AGED_PENDING_ALERT_MINUTES ??
-      getOptionalParam(MP_AGED_PENDING_ALERT_MINUTES_PARAM) ??
-      "120",
-    120,
-    10,
-    10080
-  );
+const getAgedPendingAlertMinutes = (): number => cfgGetAgedPendingAlertMinutes();
 
 const buildMercadoPagoSummary = (payment: Record<string, unknown>) => ({
   id: normalizeString(payment.id),
@@ -3178,17 +3003,7 @@ const isIpInCidr = (ip: string, cidr: string): boolean => {
   return (network & mask) === (target & mask);
 };
 
-const getIpAllowlist = (): string[] => {
-  const configured =
-    process.env.MP_WEBHOOK_IP_ALLOWLIST ?? getOptionalParam(MP_WEBHOOK_IP_ALLOWLIST_PARAM) ?? "";
-
-  const parsed = configured
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-
-  return parsed.length > 0 ? parsed : [...MP_DEFAULT_ALLOWED_CIDRS];
-};
+const getIpAllowlist = (): string[] => cfgGetIpAllowlist();
 
 const getRequestIp = (context: functions.https.CallableContext): string =>
   normalizeString(context.rawRequest?.ip);
