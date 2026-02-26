@@ -128,6 +128,11 @@ const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MIN
   default: "20",
 });
 
+const TENANT_ONBOARDING_POLICY_DOC = "tenant_onboarding";
+const TENANT_ONBOARDING_POLICY_COLLECTION = "platform_config";
+const TENANT_ACTIVATION_MODE_AUTO = "auto";
+const TENANT_ACTIVATION_MODE_MANUAL = "manual";
+
 const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
   try {
     const value = param.value();
@@ -497,6 +502,14 @@ const normalizeString = (value: unknown): string => {
   }
   return "";
 };
+
+const normalizeTenantActivationMode = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  return normalized === TENANT_ACTIVATION_MODE_MANUAL
+    ? TENANT_ACTIVATION_MODE_MANUAL
+    : TENANT_ACTIVATION_MODE_AUTO;
+};
+
 
 const extractTenantId = (payment: unknown): string => {
   const source = (payment ?? {}) as Record<string, unknown>;
@@ -3207,6 +3220,83 @@ export const processTenantBackupRequest = functions
         { merge: true }
       );
     }
+  });
+
+export const getTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (_data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true ||
+      callerUserDoc.get("isAdmin") === true;
+
+    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+      throw new functions.https.HttpsError("permission-denied", "Acceso restringido");
+    }
+
+    const policyDoc = await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .get();
+
+    const tenantActivationMode = normalizeTenantActivationMode(policyDoc.get("tenantActivationMode"));
+
+    return {
+      tenantActivationMode,
+      updatedAt: policyDoc.get("updatedAt") ?? null,
+      updatedBy: normalizeString(policyDoc.get("updatedBy")) || null,
+    };
+  });
+
+export const setTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const mode = normalizeTenantActivationMode((data as Record<string, unknown> | null)?.tenantActivationMode);
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true;
+
+    if (!isSuperAdmin && role !== "owner") {
+      throw new functions.https.HttpsError("permission-denied", "Solo owner/superAdmin puede cambiar política");
+    }
+
+    await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .set(
+        {
+          schemaVersion: 1,
+          tenantActivationMode: mode,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: context.auth.uid,
+        },
+        { merge: true }
+      );
+
+    return {
+      ok: true,
+      tenantActivationMode: mode,
+    };
   });
 
 export const createDailyTenantBackups = functions

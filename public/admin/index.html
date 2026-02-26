@@ -157,7 +157,22 @@
               </table>
             </div>
           </section>
-        </section>
+        
+
+          <section id="tenantPolicyPanel" class="backup-panel" hidden>
+            <h4>Política global de activación de nuevas tiendas</h4>
+            <p class="muted">Por defecto las nuevas tiendas quedan activas automáticamente. Solo impacta cuentas nuevas.</p>
+            <label>
+              Modo de activación
+              <select id="tenantActivationModeSelect">
+                <option value="auto">Auto (default, activa al crear)</option>
+                <option value="manual">Manual (requiere aprobación)</option>
+              </select>
+            </label>
+            <button id="saveTenantPolicyButton" type="button">Guardar política</button>
+            <p id="tenantPolicyMessage" class="banner"></p>
+          </section>
+</section>
 
         <section id="deniedState" class="state denied" hidden>
           <h4>Acceso denegado</h4>

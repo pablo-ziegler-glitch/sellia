@@ -10,6 +10,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -21,6 +22,7 @@ import javax.inject.Singleton
 class AuthOnboardingRepositoryImpl @Inject constructor(
     private val auth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
+    private val functions: FirebaseFunctions,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) : AuthOnboardingRepository {
 
@@ -29,6 +31,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         const val ACCOUNT_TYPE_FINAL_CUSTOMER = "final_customer"
         const val ACCOUNT_ORIGIN_PUBLIC_SIGN_UP = "public_sign_up"
         const val ACCOUNT_ORIGIN_ADMIN_FLOW = "admin_flow"
+        const val TENANT_ACTIVATION_MODE_AUTO = "auto"
+        const val TENANT_ACTIVATION_MODE_MANUAL = "manual"
     }
 
     override suspend fun registerStore(
@@ -46,6 +50,12 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             val batch = firestore.batch()
             val createdAt = FieldValue.serverTimestamp()
             val resolvedSkuPrefix = normalizeSkuPrefix(skuPrefix) ?: deriveSkuPrefix(storeName)
+            val activationMode = resolveTenantActivationMode()
+            val requiresManualApproval = activationMode == TENANT_ACTIVATION_MODE_MANUAL
+            val accountStatus = if (requiresManualApproval) "pending" else "active"
+            val tenantStatus = if (requiresManualApproval) "pending_approval" else "active"
+            val activationPolicy = if (requiresManualApproval) "manual_admin_approval" else "auto_active"
+            val loginEnabled = !requiresManualApproval
 
             val userRef = firestore.collection("users").document(user.uid)
             batch.set(
@@ -56,9 +66,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "email" to email,
                     "role" to AppRole.OWNER.raw,
                     "accountType" to ACCOUNT_TYPE_STORE_OWNER,
-                    "status" to "pending",
+                    "status" to accountStatus,
                     "createdAt" to createdAt,
-                    "accountOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW
+                    "accountOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW,
+                    "isActive" to loginEnabled
                 )
             )
 
@@ -72,9 +83,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "phone" to storePhone,
                     "ownerUid" to user.uid,
                     "ownerEmail" to email,
-                    "status" to "pending",
-                    "activationPolicy" to "manual_admin_approval",
-                    "loginEnabled" to false,
+                    "status" to tenantStatus,
+                    "activationPolicy" to activationPolicy,
+                    "loginEnabled" to loginEnabled,
+                    "isActive" to loginEnabled,
                     "enabledModules" to defaultEnabledModules(),
                     "skuPrefix" to resolvedSkuPrefix,
                     "createdAt" to createdAt,
@@ -112,9 +124,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "uid" to user.uid,
                     "email" to email,
                     "accountType" to ACCOUNT_TYPE_STORE_OWNER,
-                    "status" to "pending",
-                    "activationPolicy" to "manual_admin_approval",
-                    "loginEnabled" to false,
+                    "status" to accountStatus,
+                    "activationPolicy" to activationPolicy,
+                    "loginEnabled" to loginEnabled,
+                    "isActive" to loginEnabled,
                     "tenantId" to tenantId,
                     "storeName" to storeName,
                     "storeAddress" to storeAddress,
@@ -136,7 +149,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "name" to storeName,
                     "email" to email.trim().lowercase(),
                     "role" to AppRole.OWNER.raw,
-                    "isActive" to true,
+                    "isActive" to loginEnabled,
                     "updatedAt" to createdAt,
                     "provisioningFlow" to ACCOUNT_ORIGIN_ADMIN_FLOW
                 ),
@@ -328,4 +341,21 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         "cash" to true,
         "marketing" to false
     )
+
+    private suspend fun resolveTenantActivationMode(): String {
+        return runCatching {
+            val result = functions
+                .getHttpsCallable("getTenantOnboardingPolicy")
+                .call()
+                .await()
+            val data = result.data as? Map<*, *> ?: emptyMap<Any, Any>()
+            val mode = (data["tenantActivationMode"] as? String)?.trim()?.lowercase().orEmpty()
+            when (mode) {
+                TENANT_ACTIVATION_MODE_MANUAL -> TENANT_ACTIVATION_MODE_MANUAL
+                else -> TENANT_ACTIVATION_MODE_AUTO
+            }
+        }.getOrElse {
+            TENANT_ACTIVATION_MODE_AUTO
+        }
+    }
 }
