@@ -174,6 +174,8 @@ class CheckoutViewModel @Inject constructor(
 
     fun consumeFallbackPaymentMethod() {
         _paymentState.update { it.copy(fallbackPaymentMethod = null) }
+    }
+
     fun retryPendingConfirmation() {
         if (_paymentState.value.orderId.isNullOrBlank()) return
         _paymentState.update {
@@ -308,7 +310,6 @@ data class PaymentUiState(
     val initPoint: String? = null,
     val preferenceId: String? = null,
     val fallbackPaymentMethod: String? = null,
-    val errorMessage: String? = null
     val errorMessage: String? = null,
     val orderId: String? = null,
     val idempotencyKey: String? = null,
