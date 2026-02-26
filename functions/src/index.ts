@@ -4212,28 +4212,224 @@ const userCanRequestTenantBackup = (
   return userRole === "owner" || userRole === "admin";
 };
 
-const requestTenantBackupHandler = createRequestTenantBackupHandler({
-  db,
-  normalizeString,
-  toBoolean,
-  isAdminRole,
-  userCanRequestTenantBackup,
-  estimateRestoreDiff,
-  writeTenantAuditLog,
-  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
-});
+export const requestTenantRestore = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: RestoreRequestPayload, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
 
-const requestTenantRestoreHandler = createRequestTenantRestoreHandler({
-  db,
-  normalizeString,
-  toBoolean,
-  userCanRequestTenantBackup,
-  estimateRestoreDiff,
-  writeTenantAuditLog,
-  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
-  enforceAdminRateLimit,
-  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
-});
+    const tenantId = normalizeString(data?.tenantId);
+    const runId = normalizeString(data?.runId);
+    const scope = normalizeString(data?.scope).toLowerCase() as RestoreScope;
+    const dryRun = toBoolean(data?.dryRun);
+
+    if (!tenantId || !runId || !RESTORE_SCOPES.has(scope)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "tenantId, runId y scope(full|collection|document) son requeridos"
+      );
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "requestTenantRestore",
+      context,
+      tenantId,
+    });
+
+    const callerUid = context.auth.uid;
+    const callerDoc = await db.collection("users").doc(callerUid).get();
+    if (!callerDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    await enforceAdminRateLimit({
+      operation: "requestTenantRestore",
+      uid: callerUid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const callerData = callerDoc.data() || {};
+    const callerRole = normalizeString(callerData.role).toLowerCase();
+    const callerTenantId = normalizeString(callerData.tenantId);
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerData.isSuperAdmin === true ||
+      callerRole === "superadmin";
+
+    if (!isSuperAdmin && (!isAdminRole(callerRole) || callerTenantId !== tenantId)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo owner/admin del tenant o superAdmin pueden solicitar restore"
+      );
+    }
+
+    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+    if (!tenantDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "tenant no existe");
+    }
+
+    const diffEstimate = await estimateRestoreDiff(tenantId, runId, scope);
+    const requiresSuperAdminApproval = !isSuperAdmin;
+    const nextStatus: RestoreRequestStatus = requiresSuperAdminApproval ? "requested" : "approved";
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    const restoreRef = db
+      .collection("tenant_backups")
+      .doc(tenantId)
+      .collection("restore_requests")
+      .doc();
+
+    await restoreRef.set({
+      tenantId,
+      restoreId: restoreRef.id,
+      runId,
+      scope,
+      dryRun,
+      status: nextStatus,
+      requestedBy: callerUid,
+      approvedBy: requiresSuperAdminApproval ? null : callerUid,
+      requiresSuperAdminApproval,
+      diffEstimate,
+      result: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const ip = getRequestIp(context);
+    const userAgent = normalizeString(context.rawRequest?.headers?.["user-agent"]);
+    await writeTenantAuditLog(tenantId, {
+      eventType: "restore",
+      action: "RESTORE_REQUESTED",
+      actorUid: callerUid,
+      scope,
+      runId,
+      restoreRequestId: restoreRef.id,
+      status: nextStatus,
+      dryRun,
+      diffEstimate,
+      result: {
+        requiresSuperAdminApproval,
+      },
+      ip,
+      userAgent,
+    });
+
+    return {
+      ok: true,
+      tenantId,
+      restoreId: restoreRef.id,
+      runId,
+      scope,
+      dryRun,
+      status: requiresSuperAdminApproval ? "requested" : "approved",
+      requiresSuperAdminApproval,
+      message: requiresSuperAdminApproval
+        ? "Solicitud de restore creada. Requiere aprobación de superAdmin antes de ejecutar."
+        : "Solicitud de restore aprobada (superAdmin). No ejecuta restore automáticamente.",
+    };
+  });
+
+export const requestTenantBackup = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const reason = normalizeString(payload.reason);
+
+    if (!tenantId || !reason) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y reason son requeridos");
+    }
+    if (reason.length < 6) {
+      throw new functions.https.HttpsError("invalid-argument", "reason requiere al menos 6 caracteres");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "requestTenantBackup",
+      context,
+      tenantId,
+    });
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    await enforceAdminRateLimit({
+      operation: "requestTenantBackup",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const userData = userDoc.data() || {};
+    const isSuperAdmin = context.auth.token.superAdmin === true;
+    if (!isSuperAdmin && normalizeString(userData.tenantId) !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "tenant inválido para el usuario");
+    }
+    if (!userCanRequestTenantBackup(context, userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos para solicitar backup");
+    }
+
+    return {
+      ok: true,
+      requestId: requestRef.id,
+      deduplicated: false,
+    };
+  });
+
+export const approveTenantRestoreRequest = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: ApproveRestoreRequestPayload, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const tenantId = normalizeString(data?.tenantId);
+    const restoreId = normalizeString(data?.restoreId);
+    if (!tenantId || !restoreId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y restoreId son requeridos");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "approveTenantRestoreRequest",
+      context,
+      tenantId,
+    });
+
+    const approverUid = context.auth.uid;
+    await enforceAdminRateLimit({
+      operation: "approveTenantRestoreRequest",
+      uid: approverUid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const approverDoc = await db.collection("users").doc(approverUid).get();
+    if (!approverDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const approverData = approverDoc.data() || {};
+    const approverRole = normalizeString(approverData.role).toLowerCase();
+    const hasSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      approverData.isSuperAdmin === true ||
+      approverRole === "superadmin";
+    if (!hasSuperAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Solo superAdmin puede aprobar restore");
+    }
+
+    const restoreRef = db
+      .collection("tenant_backups")
+      .doc(tenantId)
+      .collection("restore_requests")
+      .doc(restoreId);
 
 const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHandler({
   db,
