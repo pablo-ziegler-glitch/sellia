@@ -2490,7 +2490,7 @@ const writeMaintenanceAuditLog = async ({
   tenantId: string;
   taskId: string;
   actorUid: string;
-  action: "create" | "update";
+  action: "create" | "update" | "delete";
   before?: admin.firestore.DocumentData | null;
   after: admin.firestore.DocumentData;
 }): Promise<void> => {
@@ -2498,6 +2498,10 @@ const writeMaintenanceAuditLog = async ({
     tenantId,
     taskId,
     action,
+    actor: {
+      uid: actorUid,
+      tenantId,
+    },
     actorUid,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     change: {
@@ -3411,6 +3415,132 @@ export const purgeDeletedProductFromBackups = functions
     }
 
     await backupTenant(tenantId, "system:purgeDeletedProductFromBackups");
+  });
+
+
+export const getMaintenanceTasks = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const pageSize = Math.min(Math.max(Number(payload.pageSize) || 20, 1), 50);
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "getMaintenanceTasks",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "getMaintenanceTasks",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canReadMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
+    }
+
+    const tasksSnapshot = await db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("maintenance_tasks")
+      .orderBy("updatedAt", "desc")
+      .limit(pageSize)
+      .get();
+
+    const tasks = tasksSnapshot.docs.map((docSnapshot) => {
+      const row = docSnapshot.data();
+      const updatedAt = row.updatedAt as admin.firestore.Timestamp | undefined;
+      return {
+        id: docSnapshot.id,
+        title: normalizeString(row.title),
+        status: normalizeString(row.status).toLowerCase() || "pending",
+        priority: normalizeString(row.priority).toLowerCase() || "medium",
+        assigneeUid: normalizeString(row.assigneeUid) || null,
+        updatedAtMillis: updatedAt?.toMillis?.() ?? null,
+      };
+    });
+
+    return { ok: true, tasks };
+  });
+
+export const deleteMaintenanceTask = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const taskId = normalizeString(payload.taskId);
+    const confirmationText = normalizeString(payload.confirmationText);
+    if (!tenantId || !taskId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y taskId requeridos");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "deleteMaintenanceTask",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "deleteMaintenanceTask",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const [userDoc, taskDoc] = await Promise.all([
+      db.collection("users").doc(context.auth.uid).get(),
+      db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc(taskId).get(),
+    ]);
+
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    if (!taskDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "task no existe");
+    }
+
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canWriteMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
+    }
+
+    const before = taskDoc.data() || {};
+    const currentTitle = normalizeString(before.title);
+    if (!confirmationText || confirmationText !== currentTitle) {
+      throw new functions.https.HttpsError("failed-precondition", "confirmación inválida para eliminar la tarea");
+    }
+
+    await taskDoc.ref.delete();
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId,
+      actorUid: context.auth.uid,
+      action: "delete",
+      before,
+      after: { deleted: true },
+    });
+
+    return { ok: true, taskId };
   });
 
 
