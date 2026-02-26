@@ -959,3 +959,8 @@ main {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+
+.bo-load-more {
+  margin-top: 10px;
+}
