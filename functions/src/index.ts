@@ -144,6 +144,18 @@ const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
 const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
   default: "20",
 });
+const MP_RECONCILIATION_PENDING_MINUTES_PARAM = defineString(
+  "MP_RECONCILIATION_PENDING_MINUTES",
+  {
+    default: "15",
+  }
+);
+const MP_RECONCILIATION_BATCH_SIZE_PARAM = defineString("MP_RECONCILIATION_BATCH_SIZE", {
+  default: "100",
+});
+const MP_AGED_PENDING_ALERT_MINUTES_PARAM = defineString("MP_AGED_PENDING_ALERT_MINUTES", {
+  default: "120",
+});
 
 const TENANT_ONBOARDING_POLICY_DOC = "tenant_onboarding";
 const TENANT_ONBOARDING_POLICY_COLLECTION = "platform_config";
@@ -2156,6 +2168,201 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
   }
 });
 
+export const reconcilePendingPayments = functions.pubsub
+  .schedule("every 10 minutes")
+  .timeZone("UTC")
+  .onRun(async () => {
+    let config: MpConfig;
+    try {
+      config = getMpConfig();
+    } catch {
+      console.warn("Skipping pending payment reconciliation due to missing Mercado Pago credentials");
+      return null;
+    }
+
+    const now = Date.now();
+    const pendingMinutes = getMpPendingReconciliationMinutes();
+    const alertMinutes = getAgedPendingAlertMinutes();
+    const batchSize = getMpReconciliationBatchSize();
+    const threshold = admin.firestore.Timestamp.fromMillis(now - pendingMinutes * 60_000);
+    const runRef = db.collection(PAYMENT_RECONCILIATION_RUNS_COLLECTION).doc();
+    const runId = runRef.id;
+
+    const statusVariants = ["PENDING", "pending"];
+    const candidateRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+
+    for (const status of statusVariants) {
+      const snapshot = await db
+        .collectionGroup("payments")
+        .where("status", "==", status)
+        .where("createdAt", "<=", threshold)
+        .limit(batchSize)
+        .get();
+
+      for (const doc of snapshot.docs) {
+        candidateRefs.set(doc.ref.path, doc.ref);
+        if (candidateRefs.size >= batchSize) {
+          break;
+        }
+      }
+
+      if (candidateRefs.size >= batchSize) {
+        break;
+      }
+    }
+
+    const candidates = await Promise.all(Array.from(candidateRefs.values()).map((ref) => ref.get()));
+
+    const summary = {
+      runId,
+      pendingMinutes,
+      alertMinutes,
+      batchSize,
+      scanned: candidates.length,
+      reconciled: 0,
+      disputes: 0,
+      agedAlerts: 0,
+      officialFetchErrors: 0,
+      startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      finishedAt: null as admin.firestore.FieldValue | admin.firestore.Timestamp | null,
+    };
+
+    for (const paymentDoc of candidates) {
+      const paymentData = (paymentDoc.data() ?? {}) as Record<string, unknown>;
+      const paymentId = paymentDoc.id;
+      const tenantId = paymentDoc.ref.parent.parent?.id ?? "";
+      const orderId = normalizeString(paymentData.orderId);
+
+      if (!tenantId) {
+        console.warn("Skipping reconciliation candidate without tenant context", {
+          paymentId,
+          path: paymentDoc.ref.path,
+          runId,
+        });
+        continue;
+      }
+
+      const createdAt = paymentData.createdAt as admin.firestore.Timestamp | undefined;
+      const createdAtMs = createdAt?.toMillis?.() ?? now;
+      const ageMinutes = Math.max(0, Math.floor((now - createdAtMs) / 60_000));
+      const internalStatus = parseStoredPaymentStatus(paymentData.status) ?? "PENDING";
+
+      try {
+        const paymentResponse = await axios.get(`${MERCADOPAGO_API}/v1/payments/${paymentId}`, {
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        });
+
+        const officialPayment = (paymentResponse.data ?? {}) as Record<string, unknown>;
+        const officialStatus = mapPaymentStatus(officialPayment.status);
+        const officialSummary = buildMercadoPagoSummary(officialPayment);
+        const statusMismatch = officialStatus !== internalStatus;
+        const amountMismatch =
+          Number.isFinite(Number(paymentData.amount)) &&
+          Number.isFinite(Number(officialPayment.transaction_amount)) &&
+          Number(paymentData.amount) !== Number(officialPayment.transaction_amount);
+        const reasons: string[] = [];
+        if (statusMismatch) {
+          reasons.push("status_mismatch");
+        }
+        if (amountMismatch) {
+          reasons.push("amount_mismatch");
+        }
+
+        await paymentDoc.ref.set(
+          {
+            status: canApplyPaymentTransition(internalStatus, officialStatus) ? officialStatus : internalStatus,
+            reconciliation: {
+              lastRunId: runId,
+              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+              pendingAgeMinutes: ageMinutes,
+              officialStatus,
+              internalStatus,
+              discrepancy: reasons.length > 0,
+              reasons,
+              officialSummary,
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (reasons.length > 0) {
+          await upsertPaymentDispute({
+            tenantId,
+            paymentId,
+            orderId,
+            reasons,
+            officialSummary,
+            runId,
+          });
+          summary.disputes += 1;
+        }
+
+        if (ageMinutes >= alertMinutes) {
+          await upsertAgedPendingOperationalAlert({
+            tenantId,
+            paymentId,
+            orderId,
+            ageMinutes,
+            thresholdMinutes: alertMinutes,
+            runId,
+          });
+          summary.agedAlerts += 1;
+        }
+
+        summary.reconciled += 1;
+      } catch (error) {
+        summary.officialFetchErrors += 1;
+        const mpError = summarizeMercadoPagoError(error);
+
+        await paymentDoc.ref.set(
+          {
+            reconciliation: {
+              lastRunId: runId,
+              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+              pendingAgeMinutes: ageMinutes,
+              error: {
+                status: mpError.status,
+                code: mpError.code,
+                message: mpError.message,
+              },
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        console.error("Mercado Pago reconciliation fetch failed", {
+          runId,
+          tenantId,
+          paymentId,
+          status: mpError.status,
+          code: mpError.code,
+          message: mpError.message,
+        });
+      }
+    }
+
+    summary.finishedAt = admin.firestore.FieldValue.serverTimestamp();
+    await runRef.set(summary, { merge: true });
+
+    console.info("Pending payments reconciliation finished", {
+      runId,
+      scanned: summary.scanned,
+      reconciled: summary.reconciled,
+      disputes: summary.disputes,
+      agedAlerts: summary.agedAlerts,
+      officialFetchErrors: summary.officialFetchErrors,
+      pendingMinutes,
+      alertMinutes,
+      batchSize,
+    });
+
+    return null;
+  });
+
 export const evaluateUsageAlerts = functions.pubsub
   .schedule("every 1 hours")
   .onRun(async () => {
@@ -2431,6 +2638,8 @@ const MP_DEFAULT_ALLOWED_CIDRS = [
   "44.217.34.150/32",
   "44.219.124.34/32",
 ] as const;
+const PAYMENT_RECONCILIATION_RUNS_COLLECTION = "payment_reconciliation_runs";
+const PAYMENT_DISPUTES_COLLECTION = "payment_disputes";
 
 type AppCheckEnforcementMode = "monitor" | "enforce";
 
@@ -2453,6 +2662,128 @@ const getAdminRateLimitPerMinute = (): number => {
     return 20;
   }
   return Math.min(Math.max(Math.trunc(parsed), 5), 300);
+};
+
+const parseBoundedInteger = (
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number
+): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+};
+
+const getMpPendingReconciliationMinutes = (): number =>
+  parseBoundedInteger(
+    process.env.MP_RECONCILIATION_PENDING_MINUTES ??
+      getOptionalParam(MP_RECONCILIATION_PENDING_MINUTES_PARAM) ??
+      "15",
+    15,
+    5,
+    1440
+  );
+
+const getMpReconciliationBatchSize = (): number =>
+  parseBoundedInteger(
+    process.env.MP_RECONCILIATION_BATCH_SIZE ??
+      getOptionalParam(MP_RECONCILIATION_BATCH_SIZE_PARAM) ??
+      "100",
+    100,
+    1,
+    500
+  );
+
+const getAgedPendingAlertMinutes = (): number =>
+  parseBoundedInteger(
+    process.env.MP_AGED_PENDING_ALERT_MINUTES ??
+      getOptionalParam(MP_AGED_PENDING_ALERT_MINUTES_PARAM) ??
+      "120",
+    120,
+    10,
+    10080
+  );
+
+const buildMercadoPagoSummary = (payment: Record<string, unknown>) => ({
+  id: normalizeString(payment.id),
+  status: normalizeString(payment.status),
+  statusDetail: normalizeString(payment.status_detail),
+  transactionAmount: Number(payment.transaction_amount ?? NaN),
+  currencyId: normalizeString(payment.currency_id),
+  approvedAt: normalizeString(payment.date_approved),
+  createdAt: normalizeString(payment.date_created),
+  externalReference: normalizeString(payment.external_reference),
+});
+
+const upsertAgedPendingOperationalAlert = async (params: {
+  tenantId: string;
+  paymentId: string;
+  orderId: string;
+  ageMinutes: number;
+  thresholdMinutes: number;
+  runId: string;
+}): Promise<void> => {
+  const alertId = sanitizeAlertId(`payment_pending_aged_${params.paymentId}`);
+  const alertRef = db
+    .collection("tenants")
+    .doc(params.tenantId)
+    .collection("alerts")
+    .doc(alertId);
+
+  await alertRef.set(
+    {
+      tenantId: params.tenantId,
+      category: "payment_operations",
+      type: "PAYMENT_PENDING_AGED",
+      paymentId: params.paymentId,
+      orderId: params.orderId || null,
+      status: "active",
+      severity: "warning",
+      title: "Pago pendiente envejecido",
+      message: `El pago ${params.paymentId} sigue pendiente hace ${params.ageMinutes} minutos.`,
+      thresholdMinutes: params.thresholdMinutes,
+      ageMinutes: params.ageMinutes,
+      runId: params.runId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      readBy: [],
+    },
+    { merge: true }
+  );
+};
+
+const upsertPaymentDispute = async (params: {
+  tenantId: string;
+  paymentId: string;
+  orderId: string;
+  reasons: string[];
+  officialSummary: ReturnType<typeof buildMercadoPagoSummary>;
+  runId: string;
+}): Promise<void> => {
+  const disputeId = sanitizeAlertId(`${params.paymentId}_${params.reasons.join("_")}`);
+  await db
+    .collection("tenants")
+    .doc(params.tenantId)
+    .collection(PAYMENT_DISPUTES_COLLECTION)
+    .doc(disputeId)
+    .set(
+      {
+        tenantId: params.tenantId,
+        paymentId: params.paymentId,
+        orderId: params.orderId || null,
+        queue: PAYMENT_DISPUTES_COLLECTION,
+        status: "open",
+        reasons: params.reasons,
+        officialSummary: params.officialSummary,
+        runId: params.runId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 };
 
 const ipToUint32 = (ip: string): number | null => {
