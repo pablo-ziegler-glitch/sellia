@@ -66,7 +66,6 @@ type BillingConfig = {
 
 type MpConfig = {
   accessToken: string;
-  webhookSecret: string;
 };
 
 type PreferenceItemInput = {
@@ -131,9 +130,27 @@ const APP_CHECK_ENFORCEMENT_MODE_PARAM = defineString("APP_CHECK_ENFORCEMENT_MOD
 const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
   default: "",
 });
+const MP_WEBHOOK_SECRET_REFS_PARAM = defineString("MP_WEBHOOK_SECRET_REFS", {
+  default: "",
+});
+const MP_WEBHOOK_SIGNATURE_WINDOW_MS_PARAM = defineString("MP_WEBHOOK_SIGNATURE_WINDOW_MS", {
+  default: "300000",
+});
+const MP_WEBHOOK_REPLAY_TTL_MS_PARAM = defineString("MP_WEBHOOK_REPLAY_TTL_MS", {
+  default: "86400000",
+});
 const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
   default: "20",
 });
+
+const WEBHOOK_SECRET_CACHE_TTL_MS = 60_000;
+const DEFAULT_WEBHOOK_REPLAY_TTL_MS = 24 * 60 * 60 * 1000;
+
+let cachedWebhookSecrets: {
+  expiresAtMs: number;
+  value: string[];
+} | null = null;
+
 
 const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
   try {
@@ -447,18 +464,109 @@ const getMpConfig = (): MpConfig => {
   const accessToken =
     process.env.MP_ACCESS_TOKEN?.trim() ??
     getOptionalParam(MP_ACCESS_TOKEN_PARAM);
-  const webhookSecret =
-    process.env.MP_WEBHOOK_SECRET?.trim() ??
-    getOptionalParam(MP_WEBHOOK_SECRET_PARAM);
 
-  if (!accessToken || !webhookSecret) {
+  if (!accessToken) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "Mercado Pago credentials are missing."
+      "Mercado Pago access token is missing."
     );
   }
 
-  return { accessToken, webhookSecret };
+  return { accessToken };
+};
+
+const getMpWebhookSignatureWindowMs = (): number => {
+  const configured =
+    process.env.MP_WEBHOOK_SIGNATURE_WINDOW_MS ??
+    getOptionalParam(MP_WEBHOOK_SIGNATURE_WINDOW_MS_PARAM) ??
+    String(MP_SIGNATURE_WINDOW_MS);
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return MP_SIGNATURE_WINDOW_MS;
+  }
+  return Math.min(Math.trunc(parsed), 30 * 60 * 1000);
+};
+
+const getMpWebhookReplayTtlMs = (): number => {
+  const configured =
+    process.env.MP_WEBHOOK_REPLAY_TTL_MS ??
+    getOptionalParam(MP_WEBHOOK_REPLAY_TTL_MS_PARAM) ??
+    String(DEFAULT_WEBHOOK_REPLAY_TTL_MS);
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_WEBHOOK_REPLAY_TTL_MS;
+  }
+  return Math.min(Math.max(Math.trunc(parsed), 60_000), 7 * 24 * 60 * 60 * 1000);
+};
+
+const parseWebhookSecretRefs = (): string[] => {
+  const configured =
+    process.env.MP_WEBHOOK_SECRET_REFS ?? getOptionalParam(MP_WEBHOOK_SECRET_REFS_PARAM) ?? "";
+
+  return configured
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const getMpWebhookSecrets = async (): Promise<string[]> => {
+  const cached = cachedWebhookSecrets;
+  if (cached && cached.expiresAtMs > Date.now() && cached.value.length > 0) {
+    return cached.value;
+  }
+
+  const fallbackSecret =
+    process.env.MP_WEBHOOK_SECRET?.trim() ?? getOptionalParam(MP_WEBHOOK_SECRET_PARAM) ?? "";
+
+  const refs = parseWebhookSecretRefs();
+  const secretSet = new Set<string>();
+
+  if (fallbackSecret) {
+    secretSet.add(fallbackSecret);
+  }
+
+  if (refs.length > 0) {
+    const auth = await google.auth.getClient({
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    });
+    google.options({ auth });
+    const secretManager = google.secretmanager("v1");
+
+    await Promise.all(
+      refs.map(async (ref) => {
+        try {
+          const response = await secretManager.projects.secrets.versions.access({
+            name: ref,
+          });
+          const payload = response.data.payload?.data ?? "";
+          const secretValue = Buffer.from(payload, "base64").toString("utf8").trim();
+          if (secretValue) {
+            secretSet.add(secretValue);
+          }
+        } catch (error) {
+          console.error("Failed to load Mercado Pago webhook secret from Secret Manager", {
+            ref,
+            error: summarizeError(error),
+          });
+        }
+      })
+    );
+  }
+
+  const secrets = [...secretSet];
+  if (secrets.length === 0) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Mercado Pago webhook secrets are missing."
+    );
+  }
+
+  cachedWebhookSecrets = {
+    value: secrets,
+    expiresAtMs: Date.now() + WEBHOOK_SECRET_CACHE_TTL_MS,
+  };
+
+  return secrets;
 };
 
 const getBillingConfig = (): BillingConfig => {
@@ -933,6 +1041,7 @@ const validateMpSignature = (input: {
   requestId: string;
   dataId: string;
   webhookSecret: string;
+  maxAgeMs: number;
 }): { isValid: boolean; reason?: string; ts: number } => {
   const parsedHeader = parseMpSignatureHeader(input.signatureHeader);
   if (!parsedHeader) {
@@ -944,7 +1053,7 @@ const validateMpSignature = (input: {
   }
 
   const ageMs = Math.abs(Date.now() - parsedHeader.ts * 1000);
-  if (ageMs > MP_SIGNATURE_WINDOW_MS) {
+  if (ageMs > input.maxAgeMs) {
     return {
       isValid: false,
       reason: "signature_out_of_window",
@@ -985,56 +1094,84 @@ const validateMpSignature = (input: {
   };
 };
 
-const consumeWebhookNonce = async ({
-  tenantId,
-  paymentId,
-  requestId,
-  ts,
-}: {
-  tenantId: string;
-  paymentId: string;
-  requestId: string;
-  ts: number;
-}): Promise<boolean> => {
-  const nonceId = `${requestId}.${ts}`;
-  const nonceRef = db
-    .collection("tenants")
-    .doc(tenantId)
-    .collection("payments")
-    .doc(paymentId)
-    .collection("webhookNonces")
-    .doc(nonceId);
+const getWebhookEventId = (req: functions.https.Request): string => {
+  const eventId =
+    req.get("x-event-id") ??
+    req.body?.id ??
+    req.body?.event_id ??
+    req.query?.id ??
+    "";
+  return normalizeString(eventId);
+};
 
+const logWebhookSecurityEvent = async (payload: {
+  reason: string;
+  requestId: string;
+  paymentId: string;
+  sourceIp: string;
+  eventId: string;
+  signatureTs?: number;
+}): Promise<void> => {
+  try {
+    await db.collection(APP_CHECK_REJECT_COLLECTION).doc().set({
+      type: "mp_webhook_signature_failure",
+      reason: payload.reason,
+      requestId: payload.requestId || null,
+      paymentId: payload.paymentId || null,
+      eventId: payload.eventId || null,
+      sourceIp: payload.sourceIp || null,
+      signatureTs: payload.signatureTs ?? null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Failed to persist webhook security event", {
+      reason: payload.reason,
+      requestId: payload.requestId || "n/a",
+      paymentId: payload.paymentId || "n/a",
+      error: summarizeError(error),
+    });
+  }
+};
+
+const consumeWebhookReplayGuard = async ({
+  eventId,
+  requestId,
+  paymentId,
+  signatureTs,
+}: {
+  eventId: string;
+  requestId: string;
+  paymentId: string;
+  signatureTs: number;
+}): Promise<boolean> => {
+  const replayId = createHash("sha256")
+    .update(`${eventId}|${requestId}`)
+    .digest("hex");
+  const replayRef = db.collection("webhookReplayGuards").doc(replayId);
   const nowMs = Date.now();
-  const expiresAt = admin.firestore.Timestamp.fromMillis(
-    nowMs + MP_SIGNATURE_WINDOW_MS
-  );
+  const expiresAt = admin.firestore.Timestamp.fromMillis(nowMs + getMpWebhookReplayTtlMs());
 
   return db.runTransaction(async (transaction) => {
-    const nonceDoc = await transaction.get(nonceRef);
-    const existingExpiresAt = nonceDoc.get(
-      "expiresAt"
-    ) as admin.firestore.Timestamp | undefined;
+    const replayDoc = await transaction.get(replayRef);
+    const existingExpiresAt = replayDoc.get("expiresAt") as admin.firestore.Timestamp | undefined;
 
-    if (
-      nonceDoc.exists &&
-      existingExpiresAt &&
-      existingExpiresAt.toMillis() > nowMs
-    ) {
+    if (replayDoc.exists && existingExpiresAt && existingExpiresAt.toMillis() > nowMs) {
       return false;
     }
 
     transaction.set(
-      nonceRef,
+      replayRef,
       {
+        replayId,
+        eventId,
         requestId,
-        ts,
-        nonceId,
+        paymentId,
+        signatureTs,
         expiresAt,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: nonceDoc.exists
-          ? nonceDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
+        createdAt: replayDoc.exists
+          ? replayDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
           : admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -1646,24 +1783,83 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     return;
   }
 
-  const signatureValidation = validateMpSignature({
-    signatureHeader,
-    requestId,
-    dataId,
-    webhookSecret: config.webhookSecret,
-  });
+  const paymentId = String(dataId);
+  const eventId = getWebhookEventId(req) || paymentId;
+
+  const signatureWindowMs = getMpWebhookSignatureWindowMs();
+  let webhookSecrets: string[];
+  try {
+    webhookSecrets = await getMpWebhookSecrets();
+  } catch {
+    console.info("Mercado Pago webhook secrets missing for webhook validation.");
+    res.status(500).send("Configuration error");
+    return;
+  }
+
+  const signatureValidation = webhookSecrets
+    .map((webhookSecret) =>
+      validateMpSignature({
+        signatureHeader,
+        requestId,
+        dataId,
+        webhookSecret,
+        maxAgeMs: signatureWindowMs,
+      })
+    )
+    .find((result) => result.isValid) ??
+    validateMpSignature({
+      signatureHeader,
+      requestId,
+      dataId,
+      webhookSecret: webhookSecrets[0],
+      maxAgeMs: signatureWindowMs,
+    });
 
   if (!signatureValidation.isValid) {
+    await logWebhookSecurityEvent({
+      reason: signatureValidation.reason ?? "invalid_signature",
+      requestId,
+      paymentId,
+      sourceIp,
+      eventId,
+      signatureTs: signatureValidation.ts,
+    });
+
     console.info("Mercado Pago webhook rejected", {
       reason: signatureValidation.reason ?? "invalid_signature",
       requestId: requestId || "n/a",
       paymentId: dataId || "n/a",
+      eventId: eventId || "n/a",
     });
     res.status(401).send("Invalid signature");
     return;
   }
 
-  const paymentId = String(dataId);
+  const replayAccepted = await consumeWebhookReplayGuard({
+    eventId,
+    requestId,
+    paymentId,
+    signatureTs: signatureValidation.ts,
+  });
+
+  if (!replayAccepted) {
+    await logWebhookSecurityEvent({
+      reason: "replay_detected",
+      requestId,
+      paymentId,
+      sourceIp,
+      eventId,
+      signatureTs: signatureValidation.ts,
+    });
+    console.info("Mercado Pago webhook rejected", {
+      reason: "replay_detected",
+      requestId: requestId || "n/a",
+      paymentId: paymentId || "n/a",
+      eventId: eventId || "n/a",
+    });
+    res.status(401).send("Invalid signature");
+    return;
+  }
 
   try {
     const paymentResponse = await axios.get(
@@ -1694,24 +1890,6 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
         orderId: orderId || "n/a",
       });
       res.status(200).send("ok");
-      return;
-    }
-
-    const nonceAccepted = await consumeWebhookNonce({
-      tenantId,
-      paymentId,
-      requestId,
-      ts: signatureValidation.ts,
-    });
-
-    if (!nonceAccepted) {
-      console.info("Mercado Pago webhook rejected", {
-        reason: "signature_reused",
-        tenantId,
-        paymentId,
-        requestId,
-      });
-      res.status(401).send("Invalid signature");
       return;
     }
 
