@@ -27,6 +27,7 @@ import {
   type RestoreRequestPayload,
   type RestoreScope,
 } from "./tenantBackup";
+import { buildRoleScopedOwnershipResponse, maskEmail, maskPhone, redactObject } from "./redaction";
 import { PaymentsCoreService } from "./payments/payments-core";
 import { createMpPaymentIntent, fetchMpPayment } from "./payments/payments-mp-adapter";
 
@@ -1603,7 +1604,9 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
       status: mpError.status,
       code: mpError.code,
       message: mpError.message,
-      response: mpError.data,
+      responseSummary: redactObject(mpError.data),
+      payerEmail: maskEmail(payerEmail),
+      payerPhone: maskPhone(payload.payer_phone ?? payload.payerPhone),
     });
     throw new functions.https.HttpsError(
       mapMercadoPagoStatusToHttpsCode(mpError.status),
@@ -1612,7 +1615,7 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
         provider: "mercado_pago",
         status: mpError.status,
         code: mpError.code,
-        response: mpError.data,
+        response: redactObject(mpError.data),
       }
     );
   }
@@ -1961,6 +1964,24 @@ type UsageHistoryItem = {
 };
 
 export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
+  const uid = normalizeString(context.auth?.uid);
+  if (!uid) {
+    throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+  }
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+  }
+
+  const decision = authorizeUsageMetricsAccess(
+    data as { tenantId?: unknown } | undefined,
+    context as unknown as {
+      auth?: { uid?: string; token?: { superAdmin?: boolean } };
+    },
+    userDoc.data() || {}
+  );
+
   const requestedLimit = Number((data as { limit?: number } | undefined)?.limit ?? 6);
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
@@ -2764,6 +2785,7 @@ type TenantBackupDocument = {
   data: admin.firestore.DocumentData;
 };
 
+
 type TenantBackupRunResult = {
   runId: string;
   docCount: number;
@@ -3548,8 +3570,12 @@ export const manageTenantOwnership = functions
 
     const callerRole = normalizeString(callerUserDoc.get("role")).toLowerCase();
     const callerTenantId = normalizeString(callerUserDoc.get("tenantId"));
-    const hasAdminClaim =
+    const isGlobalAdminActor =
       context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true ||
+      callerRole === "superadmin";
+    const hasAdminClaim =
+      isGlobalAdminActor ||
       context.auth.token.admin === true ||
       context.auth.token.role === "admin";
 
@@ -3642,13 +3668,20 @@ export const manageTenantOwnership = functions
       await upsertTenantUserMembership(tenantId, targetUid, "owner");
     }
 
+    const visibility = buildRoleScopedOwnershipResponse(
+      {
+        tenantId,
+        action,
+        targetUid,
+        ownerUids: result.ownerUids,
+        delegatedStoreUids: result.delegatedStoreUids,
+      },
+      isGlobalAdminActor
+    );
+
     return {
       ok: true,
-      tenantId,
-      action,
-      targetUid,
-      ownerUids: result.ownerUids,
-      delegatedStoreUids: result.delegatedStoreUids,
+      ...visibility,
       note:
         "Cambio aplicado sin mover datos operativos del tenant. Inventario, ventas e histórico permanecen intactos.",
     };
@@ -4138,6 +4171,10 @@ const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHand
 });
 
 export const requestTenantBackup = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall((data: unknown, context) => requestTenantBackupHandler(data, context));
+
+export const requestTenantRestore = functions
   .runWith({ enforceAppCheck: false })
   .https.onCall((data: unknown, context) => requestTenantBackupHandler(data, context));
 
