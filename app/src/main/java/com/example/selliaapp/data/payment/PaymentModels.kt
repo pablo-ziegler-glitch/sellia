@@ -24,5 +24,8 @@ data class PaymentItem(
 data class PaymentPreferenceResult(
     val initPoint: String,
     val preferenceId: String? = null,
-    val sandboxInitPoint: String? = null
+    val sandboxInitPoint: String? = null,
+    val orderId: String? = null,
+    val idempotencyKey: String? = null,
+    val paymentStatus: String? = null
 )

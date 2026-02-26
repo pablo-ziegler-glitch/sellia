@@ -83,6 +83,12 @@ type PreferenceItemInput = {
   currencyId?: string;
 };
 
+type OrderPaymentLifecycleStatus =
+  | "pending_confirmation"
+  | "approved"
+  | "rejected"
+  | "failed";
+
 type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
 
 type PaymentWebhookTransactionResult = {
@@ -540,6 +546,9 @@ const extractTenantId = (payment: unknown): string => {
 const buildExternalReference = (tenantId: string, orderId: string): string =>
   `tenant:${tenantId}|order:${orderId}`;
 
+const buildPreferenceIdempotencyKey = (tenantId: string, orderId: string): string =>
+  createHash("sha256").update(`${tenantId}|${orderId}|checkout_preference`).digest("hex");
+
 const parseExternalReference = (externalReference: unknown): ExternalReferenceData => {
   const raw = normalizeString(externalReference);
   if (!raw) {
@@ -613,6 +622,15 @@ const mapPaymentStatus = (status: unknown): PaymentStatus => {
     return "REJECTED";
   }
   return "FAILED";
+};
+
+const mapOrderPaymentLifecycleStatus = (
+  paymentStatus: PaymentStatus
+): OrderPaymentLifecycleStatus => {
+  if (paymentStatus === "APPROVED") return "approved";
+  if (paymentStatus === "REJECTED") return "rejected";
+  if (paymentStatus === "FAILED") return "failed";
+  return "pending_confirmation";
 };
 
 const parseStoredPaymentStatus = (status: unknown): PaymentStatus | null => {
@@ -1334,6 +1352,13 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
   );
   const requiredTenantId = tenantId || metadataTenantId;
   const payerEmail = normalizeString(payload.payer_email ?? payload.payerEmail);
+  const providedOrderId = normalizeString(payload.orderId ?? payload.order_id ?? orderId);
+  const orderDocId = providedOrderId || db.collection("_").doc().id;
+  const providedIdempotencyKey = normalizeString(
+    payload.idempotencyKey ?? payload.idempotency_key
+  );
+  const idempotencyKey =
+    providedIdempotencyKey || buildPreferenceIdempotencyKey(requiredTenantId, orderDocId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new functions.https.HttpsError(
@@ -1376,10 +1401,33 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
 
   const metadata = {
     ...metadataInput,
-    orderId: orderId || undefined,
+    orderId: orderDocId,
+    idempotencyKey,
     tenantId: requiredTenantId,
   };
-  const externalReference = buildExternalReference(requiredTenantId, orderId);
+  const externalReference = buildExternalReference(requiredTenantId, orderDocId);
+  const tenantRef = db.collection("tenants").doc(requiredTenantId);
+  const orderRef = tenantRef.collection("orders").doc(orderDocId);
+
+  await orderRef.set(
+    {
+      status: "pending_confirmation",
+      paymentStatus: "pending_confirmation",
+      amount,
+      currency: "ARS",
+      provider: "mercado_pago",
+      orderId: orderDocId,
+      idempotencyKey,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      checkoutStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastPreferenceRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      checkoutAttempts: admin.firestore.FieldValue.increment(1),
+      statusDetail: "checkout_started",
+      metadata,
+      externalReference,
+    },
+    { merge: true }
+  );
 
   let response;
   try {
@@ -1394,6 +1442,7 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          "X-Idempotency-Key": idempotencyKey,
         },
       }
     );
@@ -1431,6 +1480,9 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
     init_point: initPoint,
     preference_id: response.data?.id,
     sandbox_init_point: response.data?.sandbox_init_point,
+    order_id: orderDocId,
+    idempotency_key: idempotencyKey,
+    payment_status: "pending_confirmation",
   };
 };
 
@@ -2053,12 +2105,17 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     if (orderId) {
+      const lifecycleStatus = mapOrderPaymentLifecycleStatus(paymentStatus);
       await tenantRef
         .collection("orders")
         .doc(orderId)
         .set(
           {
             paymentId,
+            paymentStatus: lifecycleStatus,
+            status: lifecycleStatus,
+            statusDetail: payment?.status_detail ?? null,
+            updatedAtMillis: Date.now(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
