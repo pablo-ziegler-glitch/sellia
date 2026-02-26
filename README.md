@@ -73,6 +73,10 @@ Backoffice separado (operación interna):
 - `http://localhost:8080/admin/`
 - Requiere Firebase Auth + perfil en `users/{uid}` (tenant/role/status).
 
+Backoffice legacy (mantenimiento puntual / compatibilidad):
+- `http://localhost:8080/backoffice.html`
+- No reemplaza el flujo principal de `admin/`; mantener solo para transición controlada.
+
 ## 🚀 Despliegue a producción (secuencia única y obligatoria)
 > Esta secuencia es **obligatoria** para evitar desalineación entre reglas/índices, funciones y hosting. No cambiar el orden.
 
