@@ -223,3 +223,29 @@ td {
   padding: 8px;
   text-align: left;
 }
+
+.cost-dashboard {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.cost-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.92rem;
+}
+
+.cost-dashboard table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.cost-dashboard th,
+.cost-dashboard td {
+  border: 1px solid #e2e7f8;
+  padding: 8px;
+  text-align: left;
+}

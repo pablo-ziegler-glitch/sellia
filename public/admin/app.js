@@ -75,10 +75,11 @@ const el = {
   requestBackupButton: document.getElementById("requestBackupButton"),
   backupMessage: document.getElementById("backupMessage"),
   backupRequestsBody: document.getElementById("backupRequestsBody"),
-  tenantPolicyPanel: document.getElementById("tenantPolicyPanel"),
-  tenantActivationModeSelect: document.getElementById("tenantActivationModeSelect"),
-  saveTenantPolicyButton: document.getElementById("saveTenantPolicyButton"),
-  tenantPolicyMessage: document.getElementById("tenantPolicyMessage")
+  costDashboardPanel: document.getElementById("costDashboardPanel"),
+  budgetTotalValue: document.getElementById("budgetTotalValue"),
+  currentCostTotalValue: document.getElementById("currentCostTotalValue"),
+  costDeltaValue: document.getElementById("costDeltaValue"),
+  costByServiceBody: document.getElementById("costByServiceBody")
 };
 
 const routeViews = {
@@ -252,162 +253,20 @@ async function syncRouteWithPermissions() {
   }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
+  const canViewCosts = ["owner", "admin", "manager"].includes(appState.profile.role);
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
   const canManageOnboardingPolicy = appState.profile.role === "owner";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
-  el.tenantPolicyPanel.hidden = !(canManageOnboardingPolicy && isCloudServicesRoute);
+  el.costDashboardPanel.hidden = !(canViewCosts && isCloudServicesRoute);
 
   if (el.backupPanel.hidden) {
     stopBackupRequestsListener();
   } else {
     startBackupRequestsListener();
   }
-  }
-}
 
-function toggleModulePanels(route) {
-  el.dashboardPanel.hidden = route !== "#/dashboard";
-  el.maintenancePanel.hidden = route !== "#/maintenance";
-}
-
-async function loadDashboard() {
-  if (!appState.profile) return;
-  setDashboardState({ loading: true, empty: false, error: false, content: false, feedback: "" });
-  try {
-    const callable = httpsCallable(appState.cloudFunctions, "getUsageMetrics");
-    const response = await callable({ tenantId: appState.profile.tenantId });
-    const payload = response?.data || {};
-    const overview = payload.overview || {};
-    const hasData = Number(overview.totalUsageValue || 0) > 0 || Number(payload.errors?.count || 0) > 0;
-    if (!hasData) {
-      setDashboardState({ loading: false, empty: true, error: false, content: false, feedback: "" });
-      return;
-    }
-
-    el.dashboardPeriod.textContent = payload.periodKey || "-";
-    el.dashboardReads.textContent = formatNumber((overview.serviceTotals || {}).firestore || 0);
-    el.dashboardWrites.textContent = formatNumber((payload.services || []).find((s) => s.metricType?.includes("write_count"))?.value || 0);
-    el.dashboardStorage.textContent = formatNumber((overview.serviceTotals || {}).storage || 0);
-    el.dashboardFunctions.textContent = formatNumber((overview.serviceTotals || {}).functions || 0);
-    el.dashboardErrors.textContent = String(payload.errors?.count || 0);
-    setDashboardState({ loading: false, empty: false, error: false, content: true, feedback: "Datos actualizados." });
-  } catch (error) {
-    setDashboardState({ loading: false, empty: false, error: true, content: false, feedback: parseAuthError(error) });
-  }
-}
-
-function setDashboardState({ loading, empty, error, content, feedback }) {
-  el.dashboardLoading.hidden = !loading;
-  el.dashboardEmpty.hidden = !empty;
-  el.dashboardError.hidden = !error;
-  el.dashboardContent.hidden = !content;
-  el.dashboardFeedback.textContent = feedback || "";
-}
-
-async function loadMaintenanceTasks() {
-  if (!appState.profile) return;
-  setMaintenanceState({ loading: true, empty: false, error: false, feedback: "" });
-  try {
-    const callable = httpsCallable(appState.cloudFunctions, "getMaintenanceTasks");
-    const response = await callable({ tenantId: appState.profile.tenantId, pageSize: 25 });
-    appState.maintenanceTasks = Array.isArray(response?.data?.tasks) ? response.data.tasks : [];
-    if (!appState.maintenanceTasks.length) {
-      el.maintenanceBody.innerHTML = '<tr><td colspan="6">Sin tareas.</td></tr>';
-      setMaintenanceState({ loading: false, empty: true, error: false, feedback: "" });
-      return;
-    }
-
-    el.maintenanceBody.innerHTML = appState.maintenanceTasks
-      .map((task) => {
-        const updatedAt = task.updatedAtMillis ? new Date(task.updatedAtMillis).toLocaleString() : "-";
-        return `<tr>
-          <td>${task.id}</td>
-          <td>${escapeHtml(task.title || "-")}</td>
-          <td>${escapeHtml(task.status || "pending")}</td>
-          <td>${escapeHtml(task.priority || "medium")}</td>
-          <td>${updatedAt}</td>
-          <td>
-            <button data-action="complete" data-task-id="${task.id}" class="secondary" type="button">Completar</button>
-            <button data-action="delete" data-task-id="${task.id}" type="button">Eliminar</button>
-          </td>
-        </tr>`;
-      })
-      .join("");
-    setMaintenanceState({ loading: false, empty: false, error: false, feedback: "Tareas sincronizadas." });
-  } catch (error) {
-    setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
-  }
-}
-
-function setMaintenanceState({ loading, empty, error, feedback }) {
-  el.maintenanceLoading.hidden = !loading;
-  el.maintenanceEmpty.hidden = !empty;
-  el.maintenanceError.hidden = !error;
-  el.maintenanceFeedback.textContent = feedback || "";
-}
-
-async function onCreateMaintenanceTask(event) {
-  event.preventDefault();
-  if (!appState.profile) return;
-  const title = el.maintenanceTitleInput.value.trim();
-  if (title.length < 3) {
-    setMaintenanceState({ loading: false, empty: false, error: true, feedback: "Título demasiado corto." });
-    return;
-  }
-
-  el.maintenanceCreateButton.disabled = true;
-  try {
-    const callable = httpsCallable(appState.cloudFunctions, "createMaintenanceTask");
-    await callable({ tenantId: appState.profile.tenantId, title, priority: el.maintenancePriorityInput.value });
-    el.maintenanceTitleInput.value = "";
-    setMaintenanceState({ loading: false, empty: false, error: false, feedback: "Tarea creada correctamente." });
-    await loadMaintenanceTasks();
-  } catch (error) {
-    setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
-  } finally {
-    el.maintenanceCreateButton.disabled = false;
-  }
-}
-
-async function onMaintenanceActions(event) {
-  const button = event.target.closest("button[data-action]");
-  if (!button || !appState.profile) return;
-  const taskId = button.dataset.taskId;
-  const action = button.dataset.action;
-  if (!taskId || !action) return;
-
-  if (action === "complete") {
-    await updateMaintenanceTask(taskId, { status: "completed" }, "Tarea marcada como completada.");
-    return;
-  }
-
-  if (action === "delete") {
-    const task = appState.maintenanceTasks.find((item) => item.id === taskId);
-    if (!window.confirm(`Vas a eliminar la tarea ${taskId}. Esta acción no se puede deshacer.`)) return;
-    const challenge = window.prompt("Doble validación: escribí el título exacto de la tarea para confirmar.");
-    if ((challenge || "").trim() !== (task?.title || "").trim()) {
-      setMaintenanceState({ loading: false, empty: false, error: true, feedback: "Validación fallida. La tarea no fue eliminada." });
-      return;
-    }
-    try {
-      const callable = httpsCallable(appState.cloudFunctions, "deleteMaintenanceTask");
-      await callable({ tenantId: appState.profile.tenantId, taskId, confirmationText: challenge });
-      setMaintenanceState({ loading: false, empty: false, error: false, feedback: "Tarea eliminada correctamente." });
-      await loadMaintenanceTasks();
-    } catch (error) {
-      setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
-    }
-  }
-}
-
-async function updateMaintenanceTask(taskId, changes, successMessage) {
-  try {
-    const callable = httpsCallable(appState.cloudFunctions, "updateMaintenanceTask");
-    await callable({ tenantId: appState.profile.tenantId, taskId, ...changes });
-    setMaintenanceState({ loading: false, empty: false, error: false, feedback: successMessage });
-    await loadMaintenanceTasks();
-  } catch (error) {
-    setMaintenanceState({ loading: false, empty: false, error: true, feedback: parseAuthError(error) });
+  if (!el.costDashboardPanel.hidden) {
+    void loadCostDashboard();
   }
 }
 
@@ -454,11 +313,12 @@ function clearSessionState() {
   appState.backupRequestsUnsubscribe = null;
   el.permissionsList.innerHTML = "";
   el.backupPanel.hidden = true;
-  if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = true;
-  el.dashboardPanel.hidden = true;
-  el.maintenancePanel.hidden = true;
+  el.costDashboardPanel.hidden = true;
   el.backupRequestsBody.innerHTML = '<tr><td colspan="6">Sin solicitudes recientes.</td></tr>';
-  setTenantPolicyMessage("");
+  el.costByServiceBody.innerHTML = '<tr><td colspan="4">Sin datos de costo.</td></tr>';
+  el.budgetTotalValue.textContent = '-';
+  el.currentCostTotalValue.textContent = '-';
+  el.costDeltaValue.textContent = '-';
 }
 
 function showDeniedState(message) {
@@ -538,54 +398,61 @@ function setBackupMessage(message) {
   el.backupMessage.textContent = message || "";
 }
 
+async function loadCostDashboard() {
+  if (!appState.profile) return;
 
-async function loadTenantOnboardingPolicy() {
-  if (!appState.profile || appState.profile.role !== "owner") return;
   try {
-    const callable = httpsCallable(appState.cloudFunctions, "getTenantOnboardingPolicy");
-    const response = await callable({});
-    const mode = response?.data?.tenantActivationMode === "manual" ? "manual" : "auto";
-    if (el.tenantActivationModeSelect) {
-      el.tenantActivationModeSelect.value = mode;
+    const callable = httpsCallable(appState.cloudFunctions, "getTenantCostDashboard");
+    const response = await callable({ tenantId: appState.profile.tenantId });
+    const data = response?.data || {};
+    const budgetTotal = Number(data?.budget?.total || 0);
+    const currentTotal = Number(data?.currentCost?.total || 0);
+    const deltaPercent = budgetTotal > 0 ? Math.round((currentTotal / budgetTotal) * 100) : 0;
+
+    el.budgetTotalValue.textContent = formatMoney(budgetTotal);
+    el.currentCostTotalValue.textContent = formatMoney(currentTotal);
+    el.costDeltaValue.textContent = budgetTotal > 0 ? `${deltaPercent}%` : "-";
+
+    const budgetByService = data?.budget?.byService || {};
+    const costByService = data?.currentCost?.byService || {};
+    const services = new Set([...Object.keys(budgetByService), ...Object.keys(costByService)]);
+
+    if (!services.size) {
+      el.costByServiceBody.innerHTML = '<tr><td colspan="4">Sin datos de costo.</td></tr>';
+      return;
     }
-    setTenantPolicyMessage(
-      mode === "manual"
-        ? "Modo actual: aprobación manual para nuevas tiendas."
-        : "Modo actual: activación automática para nuevas tiendas."
-    );
+
+    el.costByServiceBody.innerHTML = [...services]
+      .sort((a, b) => a.localeCompare(b))
+      .map((service) => {
+        const budget = Number(budgetByService[service] || 0);
+        const current = Number(costByService[service] || 0);
+        const usage = budget > 0 ? `${Math.round((current / budget) * 100)}%` : "-";
+
+        return `
+          <tr>
+            <td>${service}</td>
+            <td>${formatMoney(current)}</td>
+            <td>${formatMoney(budget)}</td>
+            <td>${usage}</td>
+          </tr>
+        `;
+      })
+      .join("");
   } catch (error) {
-    setTenantPolicyMessage(`No se pudo cargar política: ${parseAuthError(error)}`);
+    el.costByServiceBody.innerHTML = '<tr><td colspan="4">No se pudo cargar dashboard de costos.</td></tr>';
+    setBackupMessage(`No se pudo cargar dashboard de costos: ${parseAuthError(error)}`);
   }
 }
 
-async function onSaveTenantOnboardingPolicy() {
-  if (!appState.profile || appState.profile.role !== "owner") {
-    setTenantPolicyMessage("Solo owner puede cambiar esta política global.");
-    return;
-  }
-
-  const mode = el.tenantActivationModeSelect?.value === "manual" ? "manual" : "auto";
-  try {
-    el.saveTenantPolicyButton.disabled = true;
-    const callable = httpsCallable(appState.cloudFunctions, "setTenantOnboardingPolicy");
-    await callable({ tenantActivationMode: mode });
-    setTenantPolicyMessage(
-      mode === "manual"
-        ? "Guardado. Nuevas tiendas requerirán aprobación manual."
-        : "Guardado. Nuevas tiendas quedarán activas por defecto."
-    );
-  } catch (error) {
-    setTenantPolicyMessage(parseAuthError(error));
-  } finally {
-    el.saveTenantPolicyButton.disabled = false;
-  }
+function formatMoney(value) {
+  if (!Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
 }
-
-function setTenantPolicyMessage(message) {
-  if (!el.tenantPolicyMessage) return;
-  el.tenantPolicyMessage.textContent = message || "";
-}
-function setBackupMessage(message) { el.backupMessage.textContent = message || ""; }
 
 function parseAuthError(error) {
   if (!error) return "Error de autenticación desconocido.";
