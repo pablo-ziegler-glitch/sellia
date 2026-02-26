@@ -140,6 +140,7 @@ En App Hosting, configurá como raíz del servicio la carpeta del repositorio (`
 
 Guía recomendada para producción con QR público (web + app):
 - `docs/produccion-qr-web-app.md`
+- `docs/sre-sli-slo-alerting-runbooks.md` (SLI/SLO, alertas, runbooks, MTTR y postmortems)
 
 ## 🖼️ Reemplazo de assets
 - Para reemplazar imágenes, agregalas dentro de `public/assets/` en formato `.webp`.
