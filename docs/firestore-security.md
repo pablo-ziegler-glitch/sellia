@@ -5,8 +5,9 @@
 
 La política transversal por módulos se centraliza en:
 
-- `docs/security/ROLE_PERMISSIONS_MATRIX.md`
-- `functions/src/security/rolePermissionsMatrix.ts`
+- `functions/src/security/rolePermissionsMatrix.ts` (**canónica runtime única**)
+- `public/admin/permissions.js` (proyección frontend)
+- `docs/security/ROLE_PERMISSIONS_MATRIX.md` (proyección documental)
 
 Para Firestore administrativo de usuarios, el módulo aplicable es `users` (permitido solo para `owner` y `admin`).
 
@@ -41,7 +42,7 @@ Se revisaron y dejaron consistentes los `match` administrativos que dependen de 
 - `match /users/{userId}` (paths administrativos)
 - `match /account_requests/{requestId}`
 
-Con esta consolidación, cualquier cambio futuro de política por rol debe tocar una sola fuente de verdad (`hasManageUsersRole`).
+Con esta consolidación, cualquier cambio futuro de política por rol debe tocar una sola fuente de verdad (`functions/src/security/rolePermissionsMatrix.ts`) y luego actualizar changelog + revisión de seguridad en `docs/security/PERMISSIONS_CHANGELOG.md`.
 
 ## Validación con Emulator
 
@@ -79,3 +80,10 @@ npm run claims:super-admin:revoke -- --uid <UID>
 ```
 
 Tras actualizar claims, el cliente debe refrescar el ID token para que Firestore/Storage apliquen la nueva autorización.
+
+
+## Gobernanza y control en CI
+
+- Validación automática docs/runtime/frontend: `node functions/scripts/check-role-permissions-drift.js`.
+- El pipeline `Permissions Governance` falla si hay drift sin aprobación temporal vigente (`docs/security/permissions-drift-approvals.json`).
+- Toda versión nueva debe registrar su cambio en `docs/security/PERMISSIONS_CHANGELOG.md` con `Security review: APPROVED`.
