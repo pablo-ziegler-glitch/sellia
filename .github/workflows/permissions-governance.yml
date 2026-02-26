@@ -1,0 +1,32 @@
+name: Permissions Governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  permissions-governance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Validate permissions matrix drift
+        run: node functions/scripts/check-role-permissions-drift.js
+
+      - name: Install functions dependencies
+        run: npm ci
+        working-directory: functions
+
+      - name: Run critical permissions regression tests
+        run: npm run test:permissions-regression
+        working-directory: functions

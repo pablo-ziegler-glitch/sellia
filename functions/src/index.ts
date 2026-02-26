@@ -8,6 +8,7 @@ import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 import { hasRoleForModule } from "./security/rolePermissionsMatrix";
+import { resolveFieldVisibility, type PiiRole } from "./security/piiPolicy";
 import { authorizeUsageMetricsAccess } from "./usageMetricsAccess";
 import {
   buildUsageOverview,
@@ -27,11 +28,14 @@ import {
   type RestoreScope,
 } from "./tenantBackup";
 import { buildRoleScopedOwnershipResponse, maskEmail, maskPhone, redactObject } from "./redaction";
+import { PaymentsCoreService } from "./payments/payments-core";
+import { createMpPaymentIntent, fetchMpPayment } from "./payments/payments-mp-adapter";
 
 admin.initializeApp();
 
 const db = admin.firestore();
 const storage = admin.storage();
+const paymentsCore = new PaymentsCoreService(db);
 
 type UsageSource = "monitoring" | "bigquery";
 
@@ -67,7 +71,6 @@ type BillingConfig = {
 
 type MpConfig = {
   accessToken: string;
-  webhookSecret: string;
 };
 
 type PreferenceItemInput = {
@@ -79,6 +82,12 @@ type PreferenceItemInput = {
   currency_id?: string;
   currencyId?: string;
 };
+
+type OrderPaymentLifecycleStatus =
+  | "pending_confirmation"
+  | "approved"
+  | "rejected"
+  | "failed";
 
 type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
 
@@ -132,9 +141,44 @@ const APP_CHECK_ENFORCEMENT_MODE_PARAM = defineString("APP_CHECK_ENFORCEMENT_MOD
 const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
   default: "",
 });
+const MP_WEBHOOK_SECRET_REFS_PARAM = defineString("MP_WEBHOOK_SECRET_REFS", {
+  default: "",
+});
+const MP_WEBHOOK_SIGNATURE_WINDOW_MS_PARAM = defineString("MP_WEBHOOK_SIGNATURE_WINDOW_MS", {
+  default: "300000",
+});
+const MP_WEBHOOK_REPLAY_TTL_MS_PARAM = defineString("MP_WEBHOOK_REPLAY_TTL_MS", {
+  default: "86400000",
+});
 const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
   default: "20",
 });
+const MP_RECONCILIATION_PENDING_MINUTES_PARAM = defineString(
+  "MP_RECONCILIATION_PENDING_MINUTES",
+  {
+    default: "15",
+  }
+);
+const MP_RECONCILIATION_BATCH_SIZE_PARAM = defineString("MP_RECONCILIATION_BATCH_SIZE", {
+  default: "100",
+});
+const MP_AGED_PENDING_ALERT_MINUTES_PARAM = defineString("MP_AGED_PENDING_ALERT_MINUTES", {
+  default: "120",
+});
+
+const TENANT_ONBOARDING_POLICY_DOC = "tenant_onboarding";
+const TENANT_ONBOARDING_POLICY_COLLECTION = "platform_config";
+const TENANT_ACTIVATION_MODE_AUTO = "auto";
+const TENANT_ACTIVATION_MODE_MANUAL = "manual";
+
+const WEBHOOK_SECRET_CACHE_TTL_MS = 60_000;
+const DEFAULT_WEBHOOK_REPLAY_TTL_MS = 24 * 60 * 60 * 1000;
+
+let cachedWebhookSecrets: {
+  expiresAtMs: number;
+  value: string[];
+} | null = null;
+
 
 const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
   try {
@@ -448,18 +492,109 @@ const getMpConfig = (): MpConfig => {
   const accessToken =
     process.env.MP_ACCESS_TOKEN?.trim() ??
     getOptionalParam(MP_ACCESS_TOKEN_PARAM);
-  const webhookSecret =
-    process.env.MP_WEBHOOK_SECRET?.trim() ??
-    getOptionalParam(MP_WEBHOOK_SECRET_PARAM);
 
-  if (!accessToken || !webhookSecret) {
+  if (!accessToken) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "Mercado Pago credentials are missing."
+      "Mercado Pago access token is missing."
     );
   }
 
-  return { accessToken, webhookSecret };
+  return { accessToken };
+};
+
+const getMpWebhookSignatureWindowMs = (): number => {
+  const configured =
+    process.env.MP_WEBHOOK_SIGNATURE_WINDOW_MS ??
+    getOptionalParam(MP_WEBHOOK_SIGNATURE_WINDOW_MS_PARAM) ??
+    String(MP_SIGNATURE_WINDOW_MS);
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return MP_SIGNATURE_WINDOW_MS;
+  }
+  return Math.min(Math.trunc(parsed), 30 * 60 * 1000);
+};
+
+const getMpWebhookReplayTtlMs = (): number => {
+  const configured =
+    process.env.MP_WEBHOOK_REPLAY_TTL_MS ??
+    getOptionalParam(MP_WEBHOOK_REPLAY_TTL_MS_PARAM) ??
+    String(DEFAULT_WEBHOOK_REPLAY_TTL_MS);
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_WEBHOOK_REPLAY_TTL_MS;
+  }
+  return Math.min(Math.max(Math.trunc(parsed), 60_000), 7 * 24 * 60 * 60 * 1000);
+};
+
+const parseWebhookSecretRefs = (): string[] => {
+  const configured =
+    process.env.MP_WEBHOOK_SECRET_REFS ?? getOptionalParam(MP_WEBHOOK_SECRET_REFS_PARAM) ?? "";
+
+  return configured
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const getMpWebhookSecrets = async (): Promise<string[]> => {
+  const cached = cachedWebhookSecrets;
+  if (cached && cached.expiresAtMs > Date.now() && cached.value.length > 0) {
+    return cached.value;
+  }
+
+  const fallbackSecret =
+    process.env.MP_WEBHOOK_SECRET?.trim() ?? getOptionalParam(MP_WEBHOOK_SECRET_PARAM) ?? "";
+
+  const refs = parseWebhookSecretRefs();
+  const secretSet = new Set<string>();
+
+  if (fallbackSecret) {
+    secretSet.add(fallbackSecret);
+  }
+
+  if (refs.length > 0) {
+    const auth = await google.auth.getClient({
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    });
+    google.options({ auth });
+    const secretManager = google.secretmanager("v1");
+
+    await Promise.all(
+      refs.map(async (ref) => {
+        try {
+          const response = await secretManager.projects.secrets.versions.access({
+            name: ref,
+          });
+          const payload = response.data.payload?.data ?? "";
+          const secretValue = Buffer.from(payload, "base64").toString("utf8").trim();
+          if (secretValue) {
+            secretSet.add(secretValue);
+          }
+        } catch (error) {
+          console.error("Failed to load Mercado Pago webhook secret from Secret Manager", {
+            ref,
+            error: summarizeError(error),
+          });
+        }
+      })
+    );
+  }
+
+  const secrets = [...secretSet];
+  if (secrets.length === 0) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Mercado Pago webhook secrets are missing."
+    );
+  }
+
+  cachedWebhookSecrets = {
+    value: secrets,
+    expiresAtMs: Date.now() + WEBHOOK_SECRET_CACHE_TTL_MS,
+  };
+
+  return secrets;
 };
 
 const getBillingConfig = (): BillingConfig => {
@@ -506,6 +641,14 @@ const normalizeString = (value: unknown): string => {
   return "";
 };
 
+const normalizeTenantActivationMode = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  return normalized === TENANT_ACTIVATION_MODE_MANUAL
+    ? TENANT_ACTIVATION_MODE_MANUAL
+    : TENANT_ACTIVATION_MODE_AUTO;
+};
+
+
 const extractTenantId = (payment: unknown): string => {
   const source = (payment ?? {}) as Record<string, unknown>;
   const metadata = (source.metadata ?? {}) as Record<string, unknown>;
@@ -523,6 +666,9 @@ const extractTenantId = (payment: unknown): string => {
 
 const buildExternalReference = (tenantId: string, orderId: string): string =>
   `tenant:${tenantId}|order:${orderId}`;
+
+const buildPreferenceIdempotencyKey = (tenantId: string, orderId: string): string =>
+  createHash("sha256").update(`${tenantId}|${orderId}|checkout_preference`).digest("hex");
 
 const parseExternalReference = (externalReference: unknown): ExternalReferenceData => {
   const raw = normalizeString(externalReference);
@@ -597,6 +743,15 @@ const mapPaymentStatus = (status: unknown): PaymentStatus => {
     return "REJECTED";
   }
   return "FAILED";
+};
+
+const mapOrderPaymentLifecycleStatus = (
+  paymentStatus: PaymentStatus
+): OrderPaymentLifecycleStatus => {
+  if (paymentStatus === "APPROVED") return "approved";
+  if (paymentStatus === "REJECTED") return "rejected";
+  if (paymentStatus === "FAILED") return "failed";
+  return "pending_confirmation";
 };
 
 const parseStoredPaymentStatus = (status: unknown): PaymentStatus | null => {
@@ -934,6 +1089,7 @@ const validateMpSignature = (input: {
   requestId: string;
   dataId: string;
   webhookSecret: string;
+  maxAgeMs: number;
 }): { isValid: boolean; reason?: string; ts: number } => {
   const parsedHeader = parseMpSignatureHeader(input.signatureHeader);
   if (!parsedHeader) {
@@ -945,7 +1101,7 @@ const validateMpSignature = (input: {
   }
 
   const ageMs = Math.abs(Date.now() - parsedHeader.ts * 1000);
-  if (ageMs > MP_SIGNATURE_WINDOW_MS) {
+  if (ageMs > input.maxAgeMs) {
     return {
       isValid: false,
       reason: "signature_out_of_window",
@@ -986,56 +1142,84 @@ const validateMpSignature = (input: {
   };
 };
 
-const consumeWebhookNonce = async ({
-  tenantId,
-  paymentId,
-  requestId,
-  ts,
-}: {
-  tenantId: string;
-  paymentId: string;
-  requestId: string;
-  ts: number;
-}): Promise<boolean> => {
-  const nonceId = `${requestId}.${ts}`;
-  const nonceRef = db
-    .collection("tenants")
-    .doc(tenantId)
-    .collection("payments")
-    .doc(paymentId)
-    .collection("webhookNonces")
-    .doc(nonceId);
+const getWebhookEventId = (req: functions.https.Request): string => {
+  const eventId =
+    req.get("x-event-id") ??
+    req.body?.id ??
+    req.body?.event_id ??
+    req.query?.id ??
+    "";
+  return normalizeString(eventId);
+};
 
+const logWebhookSecurityEvent = async (payload: {
+  reason: string;
+  requestId: string;
+  paymentId: string;
+  sourceIp: string;
+  eventId: string;
+  signatureTs?: number;
+}): Promise<void> => {
+  try {
+    await db.collection(APP_CHECK_REJECT_COLLECTION).doc().set({
+      type: "mp_webhook_signature_failure",
+      reason: payload.reason,
+      requestId: payload.requestId || null,
+      paymentId: payload.paymentId || null,
+      eventId: payload.eventId || null,
+      sourceIp: payload.sourceIp || null,
+      signatureTs: payload.signatureTs ?? null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Failed to persist webhook security event", {
+      reason: payload.reason,
+      requestId: payload.requestId || "n/a",
+      paymentId: payload.paymentId || "n/a",
+      error: summarizeError(error),
+    });
+  }
+};
+
+const consumeWebhookReplayGuard = async ({
+  eventId,
+  requestId,
+  paymentId,
+  signatureTs,
+}: {
+  eventId: string;
+  requestId: string;
+  paymentId: string;
+  signatureTs: number;
+}): Promise<boolean> => {
+  const replayId = createHash("sha256")
+    .update(`${eventId}|${requestId}`)
+    .digest("hex");
+  const replayRef = db.collection("webhookReplayGuards").doc(replayId);
   const nowMs = Date.now();
-  const expiresAt = admin.firestore.Timestamp.fromMillis(
-    nowMs + MP_SIGNATURE_WINDOW_MS
-  );
+  const expiresAt = admin.firestore.Timestamp.fromMillis(nowMs + getMpWebhookReplayTtlMs());
 
   return db.runTransaction(async (transaction) => {
-    const nonceDoc = await transaction.get(nonceRef);
-    const existingExpiresAt = nonceDoc.get(
-      "expiresAt"
-    ) as admin.firestore.Timestamp | undefined;
+    const replayDoc = await transaction.get(replayRef);
+    const existingExpiresAt = replayDoc.get("expiresAt") as admin.firestore.Timestamp | undefined;
 
-    if (
-      nonceDoc.exists &&
-      existingExpiresAt &&
-      existingExpiresAt.toMillis() > nowMs
-    ) {
+    if (replayDoc.exists && existingExpiresAt && existingExpiresAt.toMillis() > nowMs) {
       return false;
     }
 
     transaction.set(
-      nonceRef,
+      replayRef,
       {
+        replayId,
+        eventId,
         requestId,
-        ts,
-        nonceId,
+        paymentId,
+        signatureTs,
         expiresAt,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: nonceDoc.exists
-          ? nonceDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
+        createdAt: replayDoc.exists
+          ? replayDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
           : admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -1318,6 +1502,13 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
   );
   const requiredTenantId = tenantId || metadataTenantId;
   const payerEmail = normalizeString(payload.payer_email ?? payload.payerEmail);
+  const providedOrderId = normalizeString(payload.orderId ?? payload.order_id ?? orderId);
+  const orderDocId = providedOrderId || db.collection("_").doc().id;
+  const providedIdempotencyKey = normalizeString(
+    payload.idempotencyKey ?? payload.idempotency_key
+  );
+  const idempotencyKey =
+    providedIdempotencyKey || buildPreferenceIdempotencyKey(requiredTenantId, orderDocId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new functions.https.HttpsError(
@@ -1360,10 +1551,33 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
 
   const metadata = {
     ...metadataInput,
-    orderId: orderId || undefined,
+    orderId: orderDocId,
+    idempotencyKey,
     tenantId: requiredTenantId,
   };
-  const externalReference = buildExternalReference(requiredTenantId, orderId);
+  const externalReference = buildExternalReference(requiredTenantId, orderDocId);
+  const tenantRef = db.collection("tenants").doc(requiredTenantId);
+  const orderRef = tenantRef.collection("orders").doc(orderDocId);
+
+  await orderRef.set(
+    {
+      status: "pending_confirmation",
+      paymentStatus: "pending_confirmation",
+      amount,
+      currency: "ARS",
+      provider: "mercado_pago",
+      orderId: orderDocId,
+      idempotencyKey,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      checkoutStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastPreferenceRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      checkoutAttempts: admin.firestore.FieldValue.increment(1),
+      statusDetail: "checkout_started",
+      metadata,
+      externalReference,
+    },
+    { merge: true }
+  );
 
   let response;
   try {
@@ -1378,6 +1592,7 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          "X-Idempotency-Key": idempotencyKey,
         },
       }
     );
@@ -1417,8 +1632,211 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
     init_point: initPoint,
     preference_id: response.data?.id,
     sandbox_init_point: response.data?.sandbox_init_point,
+    order_id: orderDocId,
+    idempotency_key: idempotencyKey,
+    payment_status: "pending_confirmation",
   };
 };
+
+const requireAuthenticatedUser = (context: functions.https.CallableContext): string => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError("unauthenticated", "Authentication required.");
+  }
+  return context.auth.uid;
+};
+
+const createPaymentIntentHandler = async (
+  data: unknown,
+  context: functions.https.CallableContext
+) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const orderId = normalizeString(payload.orderId);
+  const amount = Number(payload.amount);
+  const currency = normalizeString(payload.currency) || "ARS";
+  const description = normalizeString(payload.description);
+  const payerEmail = normalizeString(payload.payerEmail ?? payload.payer_email);
+  const items: PreferenceItemInput[] = Array.isArray(payload.items)
+    ? (payload.items as PreferenceItemInput[])
+    : [];
+  const metadata =
+    typeof payload.metadata === "object" && payload.metadata !== null
+      ? (payload.metadata as Record<string, unknown>)
+      : {};
+
+  if (!tenantId || !orderId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId and orderId are required."
+    );
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new functions.https.HttpsError("invalid-argument", "amount must be a positive number.");
+  }
+
+  if (items.length === 0) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "items must contain at least one entry."
+    );
+  }
+
+  const { accessToken } = getMpConfig();
+  const { intentId, attemptId } = await paymentsCore.createPaymentIntent({
+    tenantId,
+    orderId,
+    amount,
+    currency,
+    provider: "mercado_pago",
+    metadata,
+    actorUid,
+  });
+
+  try {
+    const mp = await createMpPaymentIntent({
+      accessToken,
+      tenantId,
+      orderId,
+      intentId,
+      amount,
+      currency,
+      description,
+      payerEmail,
+      items,
+      metadata,
+    });
+
+    await paymentsCore.registerProviderAttempt({
+      tenantId,
+      intentId,
+      attemptId,
+      providerPreferenceId: mp.preferenceId,
+    });
+
+    return {
+      intentId,
+      attemptId,
+      provider: "mercado_pago",
+      preferenceId: mp.preferenceId,
+      initPoint: mp.initPoint,
+      sandboxInitPoint: mp.sandboxInitPoint,
+    };
+  } catch (error) {
+    const mpError = summarizeMercadoPagoError(error);
+    console.error("createPaymentIntent provider call failed", {
+      tenantId,
+      orderId,
+      intentId,
+      attemptId,
+      status: mpError.status,
+      code: mpError.code,
+      message: mpError.message,
+    });
+
+    throw new functions.https.HttpsError(
+      mapMercadoPagoStatusToHttpsCode(mpError.status),
+      `Mercado Pago error: ${mpError.message}`,
+      {
+        provider: "mercado_pago",
+        status: mpError.status,
+        code: mpError.code,
+      }
+    );
+  }
+};
+
+const confirmByWebhookHandler = async (data: unknown, context: functions.https.CallableContext) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const intentId = normalizeString(payload.intentId);
+  const attemptId = normalizeString(payload.attemptId);
+  const providerPaymentId = normalizeString(payload.providerPaymentId ?? payload.paymentId);
+  const providerStatus = normalizeString(payload.providerStatus ?? payload.status);
+  const providerEventId = normalizeString(payload.providerEventId ?? payload.eventId);
+  const requestId = normalizeString(payload.requestId);
+  const rawProviderPayload =
+    typeof payload.rawProviderPayload === "object" && payload.rawProviderPayload !== null
+      ? (payload.rawProviderPayload as Record<string, unknown>)
+      : {};
+
+  if (!tenantId || !intentId || !attemptId || !providerPaymentId || !providerStatus) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId, intentId, attemptId, providerPaymentId and providerStatus are required."
+    );
+  }
+
+  return paymentsCore.confirmByWebhook({
+    tenantId,
+    intentId,
+    attemptId,
+    providerPaymentId,
+    providerStatus,
+    providerEventId: providerEventId || undefined,
+    requestId: requestId || undefined,
+    rawProviderPayload,
+    source: "webhook",
+    actorUid,
+  });
+};
+
+const reconcilePaymentHandler = async (data: unknown, context: functions.https.CallableContext) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const attemptId = normalizeString(payload.attemptId);
+  const providerPaymentId = normalizeString(payload.providerPaymentId ?? payload.paymentId);
+  const { accessToken } = getMpConfig();
+
+  if (!tenantId || !attemptId || !providerPaymentId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId, attemptId and providerPaymentId are required."
+    );
+  }
+
+  const canonicalPayment = await fetchMpPayment(accessToken, providerPaymentId);
+  const intentId = canonicalPayment.intentId;
+
+  if (!intentId) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Unable to reconcile payment without intentId in provider payload."
+    );
+  }
+
+  const result = await paymentsCore.confirmByWebhook({
+    tenantId,
+    intentId,
+    attemptId,
+    providerPaymentId,
+    providerStatus: canonicalPayment.providerStatus,
+    amount: canonicalPayment.amount,
+    currency: canonicalPayment.currency,
+    rawProviderPayload: canonicalPayment.rawProviderPayload,
+    source: "reconciliation",
+    actorUid,
+  });
+
+  return {
+    transitionApplied: result.transitionApplied,
+    providerStatus: canonicalPayment.providerStatus,
+    orderId: canonicalPayment.orderId,
+    intentId,
+  };
+};
+
+export const createPaymentIntent =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentIntentHandler);
+
+export const confirmByWebhook =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(confirmByWebhookHandler);
+
+export const reconcilePayment =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(reconcilePaymentHandler);
 
 export const createPaymentPreference =
   functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentPreferenceHandler);
@@ -1569,6 +1987,21 @@ export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true 
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
     : 6;
 
+  const uid = normalizeString(context.auth?.uid);
+  const userDoc = await db.collection("users").doc(uid).get();
+  const decision = authorizeUsageMetricsAccess(
+    data as { tenantId?: unknown } | undefined,
+    {
+      auth: {
+        uid,
+        token: {
+          superAdmin: context.auth?.token?.superAdmin === true,
+        },
+      },
+    },
+    userDoc.exists ? userDoc.data() : undefined
+  );
+
   const query = decision.scope === "tenant"
     ? db.collection("tenants").doc(decision.requestedTenantId).collection(USAGE_COLLECTION)
     : db.collection(USAGE_COLLECTION);
@@ -1620,7 +2053,13 @@ export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true 
   }
 
   console.info("Usage metrics accessed", {
-    uid: decision.uid,
+    ...sanitizePiiForLog({
+      domain: "logs",
+      role: "auditor",
+      fields: {
+        actorUid: decision.uid,
+      },
+    }),
     role: decision.role,
     scope: decision.scope,
     tenantId: decision.requestedTenantId || null,
@@ -1667,24 +2106,83 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     return;
   }
 
-  const signatureValidation = validateMpSignature({
-    signatureHeader,
-    requestId,
-    dataId,
-    webhookSecret: config.webhookSecret,
-  });
+  const paymentId = String(dataId);
+  const eventId = getWebhookEventId(req) || paymentId;
+
+  const signatureWindowMs = getMpWebhookSignatureWindowMs();
+  let webhookSecrets: string[];
+  try {
+    webhookSecrets = await getMpWebhookSecrets();
+  } catch {
+    console.info("Mercado Pago webhook secrets missing for webhook validation.");
+    res.status(500).send("Configuration error");
+    return;
+  }
+
+  const signatureValidation = webhookSecrets
+    .map((webhookSecret) =>
+      validateMpSignature({
+        signatureHeader,
+        requestId,
+        dataId,
+        webhookSecret,
+        maxAgeMs: signatureWindowMs,
+      })
+    )
+    .find((result) => result.isValid) ??
+    validateMpSignature({
+      signatureHeader,
+      requestId,
+      dataId,
+      webhookSecret: webhookSecrets[0],
+      maxAgeMs: signatureWindowMs,
+    });
 
   if (!signatureValidation.isValid) {
+    await logWebhookSecurityEvent({
+      reason: signatureValidation.reason ?? "invalid_signature",
+      requestId,
+      paymentId,
+      sourceIp,
+      eventId,
+      signatureTs: signatureValidation.ts,
+    });
+
     console.info("Mercado Pago webhook rejected", {
       reason: signatureValidation.reason ?? "invalid_signature",
       requestId: requestId || "n/a",
       paymentId: dataId || "n/a",
+      eventId: eventId || "n/a",
     });
     res.status(401).send("Invalid signature");
     return;
   }
 
-  const paymentId = String(dataId);
+  const replayAccepted = await consumeWebhookReplayGuard({
+    eventId,
+    requestId,
+    paymentId,
+    signatureTs: signatureValidation.ts,
+  });
+
+  if (!replayAccepted) {
+    await logWebhookSecurityEvent({
+      reason: "replay_detected",
+      requestId,
+      paymentId,
+      sourceIp,
+      eventId,
+      signatureTs: signatureValidation.ts,
+    });
+    console.info("Mercado Pago webhook rejected", {
+      reason: "replay_detected",
+      requestId: requestId || "n/a",
+      paymentId: paymentId || "n/a",
+      eventId: eventId || "n/a",
+    });
+    res.status(401).send("Invalid signature");
+    return;
+  }
 
   try {
     const paymentResponse = await axios.get(
@@ -1715,24 +2213,6 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
         orderId: orderId || "n/a",
       });
       res.status(200).send("ok");
-      return;
-    }
-
-    const nonceAccepted = await consumeWebhookNonce({
-      tenantId,
-      paymentId,
-      requestId,
-      ts: signatureValidation.ts,
-    });
-
-    if (!nonceAccepted) {
-      console.info("Mercado Pago webhook rejected", {
-        reason: "signature_reused",
-        tenantId,
-        paymentId,
-        requestId,
-      });
-      res.status(401).send("Invalid signature");
       return;
     }
 
@@ -1836,12 +2316,17 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     if (orderId) {
+      const lifecycleStatus = mapOrderPaymentLifecycleStatus(paymentStatus);
       await tenantRef
         .collection("orders")
         .doc(orderId)
         .set(
           {
             paymentId,
+            paymentStatus: lifecycleStatus,
+            status: lifecycleStatus,
+            statusDetail: payment?.status_detail ?? null,
+            updatedAtMillis: Date.now(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -1859,17 +2344,223 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     res.status(200).send("ok");
   } catch (error) {
     const mpError = summarizeMercadoPagoError(error);
+    const sanitizedError = sanitizePiiForLog({
+      domain: "logs",
+      role: "support",
+      fields: {
+        payerEmail: (mpError.data as Record<string, unknown> | null | undefined)?.payer_email,
+      },
+    });
+
     console.error("Mercado Pago webhook processing failed", {
       paymentId,
       requestId: requestId || "n/a",
       status: mpError.status,
       code: mpError.code,
       message: mpError.message,
-      response: mpError.data,
+      response: {
+        ...((mpError.data as Record<string, unknown> | null) ?? {}),
+        ...sanitizedError,
+      },
     });
     res.status(500).send("error");
   }
 });
+
+export const reconcilePendingPayments = functions.pubsub
+  .schedule("every 10 minutes")
+  .timeZone("UTC")
+  .onRun(async () => {
+    let config: MpConfig;
+    try {
+      config = getMpConfig();
+    } catch {
+      console.warn("Skipping pending payment reconciliation due to missing Mercado Pago credentials");
+      return null;
+    }
+
+    const now = Date.now();
+    const pendingMinutes = getMpPendingReconciliationMinutes();
+    const alertMinutes = getAgedPendingAlertMinutes();
+    const batchSize = getMpReconciliationBatchSize();
+    const threshold = admin.firestore.Timestamp.fromMillis(now - pendingMinutes * 60_000);
+    const runRef = db.collection(PAYMENT_RECONCILIATION_RUNS_COLLECTION).doc();
+    const runId = runRef.id;
+
+    const statusVariants = ["PENDING", "pending"];
+    const candidateRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+
+    for (const status of statusVariants) {
+      const snapshot = await db
+        .collectionGroup("payments")
+        .where("status", "==", status)
+        .where("createdAt", "<=", threshold)
+        .limit(batchSize)
+        .get();
+
+      for (const doc of snapshot.docs) {
+        candidateRefs.set(doc.ref.path, doc.ref);
+        if (candidateRefs.size >= batchSize) {
+          break;
+        }
+      }
+
+      if (candidateRefs.size >= batchSize) {
+        break;
+      }
+    }
+
+    const candidates = await Promise.all(Array.from(candidateRefs.values()).map((ref) => ref.get()));
+
+    const summary = {
+      runId,
+      pendingMinutes,
+      alertMinutes,
+      batchSize,
+      scanned: candidates.length,
+      reconciled: 0,
+      disputes: 0,
+      agedAlerts: 0,
+      officialFetchErrors: 0,
+      startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      finishedAt: null as admin.firestore.FieldValue | admin.firestore.Timestamp | null,
+    };
+
+    for (const paymentDoc of candidates) {
+      const paymentData = (paymentDoc.data() ?? {}) as Record<string, unknown>;
+      const paymentId = paymentDoc.id;
+      const tenantId = paymentDoc.ref.parent.parent?.id ?? "";
+      const orderId = normalizeString(paymentData.orderId);
+
+      if (!tenantId) {
+        console.warn("Skipping reconciliation candidate without tenant context", {
+          paymentId,
+          path: paymentDoc.ref.path,
+          runId,
+        });
+        continue;
+      }
+
+      const createdAt = paymentData.createdAt as admin.firestore.Timestamp | undefined;
+      const createdAtMs = createdAt?.toMillis?.() ?? now;
+      const ageMinutes = Math.max(0, Math.floor((now - createdAtMs) / 60_000));
+      const internalStatus = parseStoredPaymentStatus(paymentData.status) ?? "PENDING";
+
+      try {
+        const paymentResponse = await axios.get(`${MERCADOPAGO_API}/v1/payments/${paymentId}`, {
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        });
+
+        const officialPayment = (paymentResponse.data ?? {}) as Record<string, unknown>;
+        const officialStatus = mapPaymentStatus(officialPayment.status);
+        const officialSummary = buildMercadoPagoSummary(officialPayment);
+        const statusMismatch = officialStatus !== internalStatus;
+        const amountMismatch =
+          Number.isFinite(Number(paymentData.amount)) &&
+          Number.isFinite(Number(officialPayment.transaction_amount)) &&
+          Number(paymentData.amount) !== Number(officialPayment.transaction_amount);
+        const reasons: string[] = [];
+        if (statusMismatch) {
+          reasons.push("status_mismatch");
+        }
+        if (amountMismatch) {
+          reasons.push("amount_mismatch");
+        }
+
+        await paymentDoc.ref.set(
+          {
+            status: canApplyPaymentTransition(internalStatus, officialStatus) ? officialStatus : internalStatus,
+            reconciliation: {
+              lastRunId: runId,
+              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+              pendingAgeMinutes: ageMinutes,
+              officialStatus,
+              internalStatus,
+              discrepancy: reasons.length > 0,
+              reasons,
+              officialSummary,
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (reasons.length > 0) {
+          await upsertPaymentDispute({
+            tenantId,
+            paymentId,
+            orderId,
+            reasons,
+            officialSummary,
+            runId,
+          });
+          summary.disputes += 1;
+        }
+
+        if (ageMinutes >= alertMinutes) {
+          await upsertAgedPendingOperationalAlert({
+            tenantId,
+            paymentId,
+            orderId,
+            ageMinutes,
+            thresholdMinutes: alertMinutes,
+            runId,
+          });
+          summary.agedAlerts += 1;
+        }
+
+        summary.reconciled += 1;
+      } catch (error) {
+        summary.officialFetchErrors += 1;
+        const mpError = summarizeMercadoPagoError(error);
+
+        await paymentDoc.ref.set(
+          {
+            reconciliation: {
+              lastRunId: runId,
+              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+              pendingAgeMinutes: ageMinutes,
+              error: {
+                status: mpError.status,
+                code: mpError.code,
+                message: mpError.message,
+              },
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        console.error("Mercado Pago reconciliation fetch failed", {
+          runId,
+          tenantId,
+          paymentId,
+          status: mpError.status,
+          code: mpError.code,
+          message: mpError.message,
+        });
+      }
+    }
+
+    summary.finishedAt = admin.firestore.FieldValue.serverTimestamp();
+    await runRef.set(summary, { merge: true });
+
+    console.info("Pending payments reconciliation finished", {
+      runId,
+      scanned: summary.scanned,
+      reconciled: summary.reconciled,
+      disputes: summary.disputes,
+      agedAlerts: summary.agedAlerts,
+      officialFetchErrors: summary.officialFetchErrors,
+      pendingMinutes,
+      alertMinutes,
+      batchSize,
+    });
+
+    return null;
+  });
 
 export const evaluateUsageAlerts = functions.pubsub
   .schedule("every 1 hours")
@@ -2100,9 +2791,43 @@ type TenantBackupRunResult = {
   docCount: number;
 };
 
+type BackupCriticality = "hot" | "warm" | "cold";
+
+type TenantBackupPolicy = {
+  criticality: BackupCriticality;
+  retentionCount: number;
+  archiveAfterDays: number;
+  purgeAfterDays: number;
+  archiveStorageClass: "NEARLINE" | "COLDLINE" | "ARCHIVE";
+};
+
 const BACKUP_RETENTION_COUNT = 7;
 const BACKUP_CHUNK_SIZE = 150;
 const BACKUP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
+const BACKUP_DEDUP_LOOKBACK = 12;
+const BACKUP_POLICY_BY_CRITICALITY: Record<BackupCriticality, TenantBackupPolicy> = {
+  hot: {
+    criticality: "hot",
+    retentionCount: 14,
+    archiveAfterDays: 3,
+    purgeAfterDays: 30,
+    archiveStorageClass: "NEARLINE",
+  },
+  warm: {
+    criticality: "warm",
+    retentionCount: 10,
+    archiveAfterDays: 7,
+    purgeAfterDays: 60,
+    archiveStorageClass: "COLDLINE",
+  },
+  cold: {
+    criticality: "cold",
+    retentionCount: 6,
+    archiveAfterDays: 14,
+    purgeAfterDays: 120,
+    archiveStorageClass: "ARCHIVE",
+  },
+};
 
 const APP_CHECK_REJECT_COLLECTION = "securityTelemetry";
 const ADMIN_RATE_LIMIT_COLLECTION = "adminRateLimits";
@@ -2113,6 +2838,8 @@ const MP_DEFAULT_ALLOWED_CIDRS = [
   "44.217.34.150/32",
   "44.219.124.34/32",
 ] as const;
+const PAYMENT_RECONCILIATION_RUNS_COLLECTION = "payment_reconciliation_runs";
+const PAYMENT_DISPUTES_COLLECTION = "payment_disputes";
 
 type AppCheckEnforcementMode = "monitor" | "enforce";
 
@@ -2135,6 +2862,128 @@ const getAdminRateLimitPerMinute = (): number => {
     return 20;
   }
   return Math.min(Math.max(Math.trunc(parsed), 5), 300);
+};
+
+const parseBoundedInteger = (
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number
+): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+};
+
+const getMpPendingReconciliationMinutes = (): number =>
+  parseBoundedInteger(
+    process.env.MP_RECONCILIATION_PENDING_MINUTES ??
+      getOptionalParam(MP_RECONCILIATION_PENDING_MINUTES_PARAM) ??
+      "15",
+    15,
+    5,
+    1440
+  );
+
+const getMpReconciliationBatchSize = (): number =>
+  parseBoundedInteger(
+    process.env.MP_RECONCILIATION_BATCH_SIZE ??
+      getOptionalParam(MP_RECONCILIATION_BATCH_SIZE_PARAM) ??
+      "100",
+    100,
+    1,
+    500
+  );
+
+const getAgedPendingAlertMinutes = (): number =>
+  parseBoundedInteger(
+    process.env.MP_AGED_PENDING_ALERT_MINUTES ??
+      getOptionalParam(MP_AGED_PENDING_ALERT_MINUTES_PARAM) ??
+      "120",
+    120,
+    10,
+    10080
+  );
+
+const buildMercadoPagoSummary = (payment: Record<string, unknown>) => ({
+  id: normalizeString(payment.id),
+  status: normalizeString(payment.status),
+  statusDetail: normalizeString(payment.status_detail),
+  transactionAmount: Number(payment.transaction_amount ?? NaN),
+  currencyId: normalizeString(payment.currency_id),
+  approvedAt: normalizeString(payment.date_approved),
+  createdAt: normalizeString(payment.date_created),
+  externalReference: normalizeString(payment.external_reference),
+});
+
+const upsertAgedPendingOperationalAlert = async (params: {
+  tenantId: string;
+  paymentId: string;
+  orderId: string;
+  ageMinutes: number;
+  thresholdMinutes: number;
+  runId: string;
+}): Promise<void> => {
+  const alertId = sanitizeAlertId(`payment_pending_aged_${params.paymentId}`);
+  const alertRef = db
+    .collection("tenants")
+    .doc(params.tenantId)
+    .collection("alerts")
+    .doc(alertId);
+
+  await alertRef.set(
+    {
+      tenantId: params.tenantId,
+      category: "payment_operations",
+      type: "PAYMENT_PENDING_AGED",
+      paymentId: params.paymentId,
+      orderId: params.orderId || null,
+      status: "active",
+      severity: "warning",
+      title: "Pago pendiente envejecido",
+      message: `El pago ${params.paymentId} sigue pendiente hace ${params.ageMinutes} minutos.`,
+      thresholdMinutes: params.thresholdMinutes,
+      ageMinutes: params.ageMinutes,
+      runId: params.runId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      readBy: [],
+    },
+    { merge: true }
+  );
+};
+
+const upsertPaymentDispute = async (params: {
+  tenantId: string;
+  paymentId: string;
+  orderId: string;
+  reasons: string[];
+  officialSummary: ReturnType<typeof buildMercadoPagoSummary>;
+  runId: string;
+}): Promise<void> => {
+  const disputeId = sanitizeAlertId(`${params.paymentId}_${params.reasons.join("_")}`);
+  await db
+    .collection("tenants")
+    .doc(params.tenantId)
+    .collection(PAYMENT_DISPUTES_COLLECTION)
+    .doc(disputeId)
+    .set(
+      {
+        tenantId: params.tenantId,
+        paymentId: params.paymentId,
+        orderId: params.orderId || null,
+        queue: PAYMENT_DISPUTES_COLLECTION,
+        status: "open",
+        reasons: params.reasons,
+        officialSummary: params.officialSummary,
+        runId: params.runId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 };
 
 const ipToUint32 = (ip: string): number | null => {
@@ -2178,6 +3027,61 @@ const getIpAllowlist = (): string[] => {
 
 const getRequestIp = (context: functions.https.CallableContext): string =>
   normalizeString(context.rawRequest?.ip);
+
+const maskWithPattern = (value: string, keepStart: number, keepEnd: number): string => {
+  const normalized = normalizeString(value);
+  if (!normalized) return "";
+  if (normalized.length <= keepStart + keepEnd) {
+    return "*".repeat(Math.max(normalized.length, 4));
+  }
+  return `${normalized.slice(0, keepStart)}${"*".repeat(normalized.length - keepStart - keepEnd)}${normalized.slice(-keepEnd)}`;
+};
+
+const maskEmail = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  const [local, domain] = normalized.split("@");
+  if (!local || !domain) return maskWithPattern(normalized, 1, 1);
+  return `${maskWithPattern(local, 1, 1)}@${domain}`;
+};
+
+const maskIp = (value: unknown): string => {
+  const ip = normalizeString(value);
+  const parts = ip.split(".");
+  if (parts.length !== 4) return maskWithPattern(ip, 2, 0);
+  return `${parts[0]}.${parts[1]}.*.*`;
+};
+
+const maskUid = (value: unknown): string => maskWithPattern(normalizeString(value), 4, 2);
+
+const sanitizePiiForLog = (params: {
+  domain: "users" | "customers" | "logs" | "exports";
+  role?: PiiRole | null;
+  fields: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const role = params.role ?? null;
+  return Object.fromEntries(
+    Object.entries(params.fields).map(([key, rawValue]) => {
+      const visibility = resolveFieldVisibility(params.domain, key, role);
+      if (rawValue === null || rawValue === undefined) {
+        return [key, null];
+      }
+      const stringValue = normalizeString(rawValue);
+      if (visibility === "full") {
+        return [key, rawValue];
+      }
+      if (key.toLowerCase().includes("email")) {
+        return [key, visibility === "partial" ? maskEmail(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("ip")) {
+        return [key, visibility === "partial" ? maskIp(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("uid")) {
+        return [key, visibility === "partial" ? maskUid(stringValue) : "***MASKED***"];
+      }
+      return [key, visibility === "partial" ? maskWithPattern(stringValue, 1, 1) : "***MASKED***"];
+    })
+  );
+};
 
 const recordAppCheckRejection = async (params: {
   operation: string;
@@ -2323,11 +3227,20 @@ const writeTenantAuditLog = async (
   }
 ): Promise<void> => {
   const eventRef = db.collection("tenants").doc(tenantId).collection("audit_logs").doc();
+  const piiSafeFields = sanitizePiiForLog({
+    domain: "logs",
+    role: "auditor",
+    fields: {
+      actorUid: payload.actorUid ?? null,
+      requesterIp: normalizeString(payload.ip) || null,
+    },
+  });
+
   await eventRef.set({
     eventType: payload.eventType,
     action: payload.action,
     tenantId,
-    actorUid: payload.actorUid ?? null,
+    actorUid: piiSafeFields.actorUid,
     scope: payload.scope ?? "full",
     runId: payload.runId ?? null,
     restoreRequestId: payload.restoreRequestId ?? null,
@@ -2335,7 +3248,7 @@ const writeTenantAuditLog = async (
     dryRun: payload.dryRun === true,
     diffEstimate: payload.diffEstimate ?? null,
     result: payload.result ?? null,
-    ip: normalizeString(payload.ip) || null,
+    ip: piiSafeFields.requesterIp,
     userAgent: normalizeString(payload.userAgent) || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -2491,7 +3404,7 @@ const writeMaintenanceAuditLog = async ({
   tenantId: string;
   taskId: string;
   actorUid: string;
-  action: "create" | "update";
+  action: "create" | "update" | "delete";
   before?: admin.firestore.DocumentData | null;
   after: admin.firestore.DocumentData;
 }): Promise<void> => {
@@ -2499,6 +3412,10 @@ const writeMaintenanceAuditLog = async ({
     tenantId,
     taskId,
     action,
+    actor: {
+      uid: actorUid,
+      tenantId,
+    },
     actorUid,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     change: {
@@ -2854,15 +3771,139 @@ const deleteRunWithChunks = async (
   await runDoc.ref.delete();
 };
 
-const cleanupTenantBackupRetention = async (tenantId: string): Promise<void> => {
-  const runsRef = db.collection("tenant_backups").doc(tenantId).collection("runs");
-  const runsSnap = await runsRef.orderBy("createdAt", "desc").get();
+const resolveBackupCriticality = (tenantData: admin.firestore.DocumentData): BackupCriticality => {
+  const raw = normalizeString(tenantData.backupCriticality || tenantData?.config?.backupCriticality).toLowerCase();
+  if (raw === "hot" || raw === "warm" || raw === "cold") {
+    return raw;
+  }
+  return "warm";
+};
 
-  if (runsSnap.size <= BACKUP_RETENTION_COUNT) {
+const resolveTenantBackupPolicy = async (tenantId: string): Promise<TenantBackupPolicy> => {
+  const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+  const tenantData = tenantDoc.data() || {};
+  const criticality = resolveBackupCriticality(tenantData);
+  const basePolicy = BACKUP_POLICY_BY_CRITICALITY[criticality];
+
+  const customPolicy = tenantData.backupPolicy as Record<string, unknown> | undefined;
+  const customRetention = Number(customPolicy?.retentionCount);
+  const customArchiveDays = Number(customPolicy?.archiveAfterDays);
+  const customPurgeDays = Number(customPolicy?.purgeAfterDays);
+  const customStorageClass = normalizeString(customPolicy?.archiveStorageClass).toUpperCase();
+
+  return {
+    criticality,
+    retentionCount: Number.isFinite(customRetention)
+      ? Math.min(Math.max(Math.trunc(customRetention), 3), 120)
+      : basePolicy.retentionCount,
+    archiveAfterDays: Number.isFinite(customArchiveDays)
+      ? Math.min(Math.max(Math.trunc(customArchiveDays), 1), 365)
+      : basePolicy.archiveAfterDays,
+    purgeAfterDays: Number.isFinite(customPurgeDays)
+      ? Math.min(Math.max(Math.trunc(customPurgeDays), 7), 3650)
+      : basePolicy.purgeAfterDays,
+    archiveStorageClass:
+      customStorageClass === "NEARLINE" || customStorageClass === "COLDLINE" || customStorageClass === "ARCHIVE"
+        ? (customStorageClass as TenantBackupPolicy["archiveStorageClass"])
+        : basePolicy.archiveStorageClass,
+  };
+};
+
+const resolveRunTimestamp = (runData: admin.firestore.DocumentData): Date | null => {
+  const createdAt = runData.createdAt as admin.firestore.Timestamp | undefined;
+  if (createdAt?.toDate) {
+    return createdAt.toDate();
+  }
+
+  const completedAt = runData.completedAt as admin.firestore.Timestamp | undefined;
+  if (completedAt?.toDate) {
+    return completedAt.toDate();
+  }
+
+  const runId = normalizeString(runData.runId);
+  if (!runId) {
+    return null;
+  }
+  const parsed = new Date(runId.replace(/-/g, ":"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const maybeArchiveBackupRun = async (
+  runDoc: admin.firestore.QueryDocumentSnapshot,
+  policy: TenantBackupPolicy,
+  nowMs: number
+): Promise<void> => {
+  const runData = runDoc.data();
+  if (normalizeString(runData.status).toLowerCase() !== "completed") {
     return;
   }
 
-  const staleRuns = runsSnap.docs.slice(BACKUP_RETENTION_COUNT);
+  if (runData.archivedAt) {
+    return;
+  }
+
+  const createdAt = resolveRunTimestamp(runData);
+  if (!createdAt) {
+    return;
+  }
+
+  const ageDays = (nowMs - createdAt.getTime()) / (24 * 60 * 60 * 1000);
+  if (ageDays < policy.archiveAfterDays) {
+    return;
+  }
+
+  const storageLocation = resolveBackupStorageLocation(runData);
+  if (!storageLocation) {
+    return;
+  }
+
+  try {
+    await storage
+      .bucket(storageLocation.storageBucket)
+      .file(storageLocation.storagePath)
+      .setMetadata({ storageClass: policy.archiveStorageClass });
+
+    await runDoc.ref.set(
+      {
+        archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        archivedStorageClass: policy.archiveStorageClass,
+        archiveAgeDays: Math.floor(ageDays),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.warn("Unable to archive backup artifact", {
+      runPath: runDoc.ref.path,
+      storagePath: storageLocation.storagePath,
+      archiveStorageClass: policy.archiveStorageClass,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+const shouldPurgeRunByAge = (
+  runData: admin.firestore.DocumentData,
+  policy: TenantBackupPolicy,
+  nowMs: number
+): boolean => {
+  const createdAt = resolveRunTimestamp(runData);
+  if (!createdAt) {
+    return false;
+  }
+
+  const ageDays = (nowMs - createdAt.getTime()) / (24 * 60 * 60 * 1000);
+  return ageDays >= policy.purgeAfterDays;
+};
+
+const cleanupTenantBackupRetention = async (
+  tenantId: string,
+  policy: TenantBackupPolicy
+): Promise<void> => {
+  const runsRef = db.collection("tenant_backups").doc(tenantId).collection("runs");
+  const runsSnap = await runsRef.orderBy("createdAt", "desc").get();
+
+  const staleRuns = runsSnap.docs.slice(policy.retentionCount);
   for (const staleRun of staleRuns) {
     await deleteRunWithChunks(staleRun);
   }
@@ -2872,6 +3913,7 @@ const backupTenant = async (
   tenantId: string,
   actor = "system:createDailyTenantBackups"
 ): Promise<TenantBackupRunResult> => {
+  const policy = await resolveTenantBackupPolicy(tenantId);
   const tenantRef = db.collection("tenants").doc(tenantId);
   const documents: TenantBackupDocument[] = [];
   await listTenantDocumentsRecursively(tenantRef, documents);
@@ -2894,7 +3936,7 @@ const backupTenant = async (
     runId,
     actor,
     status: "in_progress",
-    retentionLimit: BACKUP_RETENTION_COUNT,
+    retentionLimit: policy.retentionCount,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -2908,6 +3950,67 @@ const backupTenant = async (
   let backupUploaded = false;
 
   try {
+    const serializedPayload = {
+      tenantId,
+      runId,
+      actor,
+      exportedAt: new Date().toISOString(),
+      docCount: filteredDocuments.length,
+      chunkCount: chunks.length,
+      documents: filteredDocuments,
+    };
+
+    const jsonBuffer = Buffer.from(JSON.stringify(serializedPayload));
+    const gzippedBuffer = gzipSync(jsonBuffer);
+    const payloadHash = createHash("sha256").update(gzippedBuffer).digest("hex");
+
+    const recentRunsSnap = await runRef.parent
+      .where("status", "==", "completed")
+      .orderBy("createdAt", "desc")
+      .limit(BACKUP_DEDUP_LOOKBACK)
+      .get();
+
+    const deduplicatedRun = recentRunsSnap.docs.find((doc) => {
+      if (doc.id === runId) return false;
+      return normalizeString(doc.get("payloadHash")) === payloadHash;
+    });
+
+    if (deduplicatedRun) {
+      await runRef.set(
+        {
+          status: "deduplicated",
+          docCount: filteredDocuments.length,
+          chunkCount: 0,
+          payloadBytes: jsonBuffer.length,
+          compressedBytes: gzippedBuffer.length,
+          payloadHash,
+          deduplicated: true,
+          deduplicatedFromRunId: deduplicatedRun.id,
+          deduplicatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await writeTenantAuditLog(tenantId, {
+        eventType: "backup",
+        action: "BACKUP_DEDUPLICATED",
+        scope: "full",
+        runId,
+        status: "deduplicated",
+        result: {
+          deduplicatedFromRunId: deduplicatedRun.id,
+          retentionLimit: policy.retentionCount,
+        },
+      });
+
+      await cleanupTenantBackupRetention(tenantId, policy);
+      return {
+        runId,
+        docCount: filteredDocuments.length,
+      };
+    }
+
     let batch = db.batch();
     let batchCount = 0;
     for (let index = 0; index < chunks.length; index += 1) {
@@ -2933,20 +4036,6 @@ const backupTenant = async (
       await batch.commit();
     }
 
-    const serializedPayload = {
-      tenantId,
-      runId,
-      actor,
-      exportedAt: new Date().toISOString(),
-      docCount: filteredDocuments.length,
-      chunkCount: chunks.length,
-      documents: filteredDocuments,
-    };
-
-    const jsonBuffer = Buffer.from(JSON.stringify(serializedPayload));
-    const gzippedBuffer = gzipSync(jsonBuffer);
-    const payloadHash = createHash("sha256").update(gzippedBuffer).digest("hex");
-
     await backupFile.save(gzippedBuffer, {
       resumable: false,
       contentType: "application/json",
@@ -2969,6 +4058,10 @@ const backupTenant = async (
         payloadBytes: jsonBuffer.length,
         compressedBytes: gzippedBuffer.length,
         payloadHash,
+        criticality: policy.criticality,
+        archiveAfterDays: policy.archiveAfterDays,
+        purgeAfterDays: policy.purgeAfterDays,
+        archiveStorageClass: policy.archiveStorageClass,
         storageBucket: bucket.name,
         storagePath,
         storageUri: `gs://${bucket.name}/${storagePath}`,
@@ -2987,11 +4080,11 @@ const backupTenant = async (
       result: {
         docCount: filteredDocuments.length,
         chunkCount: chunks.length,
-        retentionLimit: BACKUP_RETENTION_COUNT,
+        retentionLimit: policy.retentionCount,
       },
     });
 
-    await cleanupTenantBackupRetention(tenantId);
+    await cleanupTenantBackupRetention(tenantId, policy);
   } catch (error) {
     if (backupUploaded) {
       try {
@@ -3023,6 +4116,13 @@ const backupTenant = async (
   };
 };
 
+const logBoSecurityEvent = async (payload: { operation: string; result: string; reason: string; uid?: string; tenantId?: string }): Promise<void> => {
+  await db.collection(APP_CHECK_REJECT_COLLECTION).doc("bo_callable_guards").collection("events").add({
+    ...payload,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
 const userCanRequestTenantBackup = (
   context: functions.https.CallableContext,
   userData: admin.firestore.DocumentData
@@ -3050,22 +4150,24 @@ const requestTenantRestoreHandler = createRequestTenantRestoreHandler({
   db,
   normalizeString,
   toBoolean,
-  isAdminRole,
   userCanRequestTenantBackup,
   estimateRestoreDiff,
   writeTenantAuditLog,
   backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
 });
 
 const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHandler({
   db,
   normalizeString,
   toBoolean,
-  isAdminRole,
   userCanRequestTenantBackup,
   estimateRestoreDiff,
   writeTenantAuditLog,
   backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload) => logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason, uid: payload.uid, tenantId: payload.tenantId }),
 });
 
 export const requestTenantBackup = functions
@@ -3074,9 +4176,11 @@ export const requestTenantBackup = functions
 
 export const requestTenantRestore = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall((data: RestoreRequestPayload, context) =>
-    requestTenantRestoreHandler(data, context)
-  );
+  .https.onCall((data: unknown, context) => requestTenantBackupHandler(data, context));
+
+export const requestTenantRestore = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall((data: unknown, context) => requestTenantBackupHandler(data, context));
 
 export const approveTenantRestoreRequest = functions
   .runWith({ enforceAppCheck: false })
@@ -3130,6 +4234,83 @@ export const processTenantBackupRequest = functions
     }
   });
 
+export const getTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (_data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true ||
+      callerUserDoc.get("isAdmin") === true;
+
+    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+      throw new functions.https.HttpsError("permission-denied", "Acceso restringido");
+    }
+
+    const policyDoc = await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .get();
+
+    const tenantActivationMode = normalizeTenantActivationMode(policyDoc.get("tenantActivationMode"));
+
+    return {
+      tenantActivationMode,
+      updatedAt: policyDoc.get("updatedAt") ?? null,
+      updatedBy: normalizeString(policyDoc.get("updatedBy")) || null,
+    };
+  });
+
+export const setTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const mode = normalizeTenantActivationMode((data as Record<string, unknown> | null)?.tenantActivationMode);
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true;
+
+    if (!isSuperAdmin && role !== "owner") {
+      throw new functions.https.HttpsError("permission-denied", "Solo owner/superAdmin puede cambiar política");
+    }
+
+    await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .set(
+        {
+          schemaVersion: 1,
+          tenantActivationMode: mode,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: context.auth.uid,
+        },
+        { merge: true }
+      );
+
+    return {
+      ok: true,
+      tenantActivationMode: mode,
+    };
+  });
+
 export const createDailyTenantBackups = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
   .pubsub
@@ -3179,6 +4360,170 @@ export const purgeDeletedProductFromBackups = functions
     await backupTenant(tenantId, "system:purgeDeletedProductFromBackups");
   });
 
+
+export const archiveAndPurgeTenantBackups = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .pubsub
+  .schedule("every 24 hours")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const tenantsSnapshot = await db.collection("tenants").get();
+    const nowMs = Date.now();
+
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantId = tenantDoc.id;
+      const policy = await resolveTenantBackupPolicy(tenantId);
+      const runsRef = db.collection("tenant_backups").doc(tenantId).collection("runs");
+      const runsSnap = await runsRef.orderBy("createdAt", "desc").limit(200).get();
+
+      for (const runDoc of runsSnap.docs) {
+        const runData = runDoc.data();
+
+        if (shouldPurgeRunByAge(runData, policy, nowMs)) {
+          await deleteRunWithChunks(runDoc);
+          continue;
+        }
+
+        await maybeArchiveBackupRun(runDoc, policy, nowMs);
+      }
+    }
+
+    return null;
+  });
+
+export const getTenantCostDashboard = functions
+  .runWith({ enforceAppCheck: true })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const userData = userDoc.data() || {};
+    const userRole = normalizeString(userData.role).toLowerCase();
+    const isSuperAdmin = context.auth.token.superAdmin === true || userRole === "superadmin";
+    if (!isSuperAdmin && normalizeString(userData.tenantId) !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "tenant inválido para el usuario");
+    }
+
+    if (!isSuperAdmin && !["owner", "admin", "manager"].includes(userRole)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos para ver costos");
+    }
+
+    const [monthlySnap, budgetDoc, usageCurrent] = await Promise.all([
+      db.collection("tenants").doc(tenantId).collection(USAGE_COLLECTION).orderBy("monthKey", "desc").limit(6).get(),
+      db.collection("tenants").doc(tenantId).collection("cost_budgets").doc("monthly").get(),
+      db.collection("tenants").doc(tenantId).collection("usageSnapshots").doc("current").get(),
+    ]);
+
+    const monthly = monthlySnap.docs.map((monthDoc) => {
+      const row = monthDoc.data() as Record<string, unknown>;
+      return {
+        monthKey: normalizeString(row.monthKey) || monthDoc.id,
+        overview: (row.overview as Record<string, Record<string, number>> | undefined) ?? {},
+        sourceStatus: normalizeString(row.sourceStatus) || "success",
+        period: (row.period as Record<string, unknown> | undefined) ?? null,
+      };
+    });
+
+    const budgetData = (budgetDoc.data() || {}) as Record<string, unknown>;
+    const budgetByService = toNumberMap(budgetData.budgetByService);
+    const budgetTotal = Number(budgetData.totalBudget) || 0;
+
+    const usageData = (usageCurrent.data() || {}) as Record<string, unknown>;
+    const costByService = toNumberMap(usageData.costByService);
+    const currentTotalCost = Object.values(costByService).reduce((acc, v) => acc + v, 0);
+
+    return {
+      tenantId,
+      generatedAt: new Date().toISOString(),
+      budget: {
+        total: budgetTotal,
+        byService: budgetByService,
+      },
+      currentCost: {
+        total: currentTotalCost,
+        byService: costByService,
+      },
+      monthly,
+    };
+  });
+
+export const evaluateTenantBudgetAlerts = functions
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
+  .pubsub
+  .schedule("every 24 hours")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const tenantsSnapshot = await db.collection("tenants").get();
+
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantId = tenantDoc.id;
+      const [budgetDoc, usageCurrent] = await Promise.all([
+        db.collection("tenants").doc(tenantId).collection("cost_budgets").doc("monthly").get(),
+        db.collection("tenants").doc(tenantId).collection("usageSnapshots").doc("current").get(),
+      ]);
+
+      if (!budgetDoc.exists || !usageCurrent.exists) {
+        continue;
+      }
+
+      const budgetData = budgetDoc.data() || {};
+      const usageData = usageCurrent.data() || {};
+      const budgetTotal = Number(budgetData.totalBudget);
+      const costByService = toNumberMap(usageData.costByService);
+      const totalCost = Object.values(costByService).reduce((acc, value) => acc + value, 0);
+
+      if (!Number.isFinite(budgetTotal) || budgetTotal <= 0 || totalCost <= 0) {
+        continue;
+      }
+
+      const percent = Math.round((totalCost / budgetTotal) * 100);
+      if (percent < 80) {
+        continue;
+      }
+
+      const now = new Date();
+      const monthKey = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const alertId = `budget_${monthKey}_${percent >= 100 ? "100" : "80"}`;
+
+      await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("budget_alerts")
+        .doc(alertId)
+        .set(
+          {
+            tenantId,
+            monthKey,
+            threshold: percent >= 100 ? 100 : 80,
+            percent,
+            totalCost,
+            budgetTotal,
+            status: percent >= 100 ? "critical" : "warning",
+            message:
+              percent >= 100
+                ? `Costo mensual excedido (${totalCost}/${budgetTotal}).`
+                : `Costo mensual en ${percent}% del presupuesto (${totalCost}/${budgetTotal}).`,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+    }
+
+    return null;
+  });
 
 export const createMaintenanceTask = functions
   .runWith({ enforceAppCheck: false })

@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.util.UUID
 import javax.inject.Inject
 
@@ -30,6 +32,11 @@ class CheckoutViewModel @Inject constructor(
     private val createPaymentPreferenceUseCase: CreatePaymentPreferenceUseCase,
     private val tenantProvider: TenantProvider
 ) : ViewModel() {
+    private companion object {
+        const val MAX_POLL_ATTEMPTS = 8
+        const val INITIAL_BACKOFF_MS = 1500L
+        const val MAX_BACKOFF_MS = 10_000L
+    }
     // [NUEVO] Configuración de impuestos simple (si tu lógica real difiere, ajustá)
     private val TAX_RATE = 0.0 // 0% por defecto; cambiar si aplican impuestos
 
@@ -126,9 +133,16 @@ class CheckoutViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         initPoint = result.initPoint,
-                        preferenceId = result.preferenceId
+                        preferenceId = result.preferenceId,
+                        orderId = result.orderId,
+                        idempotencyKey = result.idempotencyKey,
+                        paymentStatus = result.paymentStatus ?: "pending_confirmation",
+                        isAwaitingConfirmation = true,
+                        canRetry = false,
+                        pollingAttempts = 0
                     )
                 }
+                startOrderStatusPolling()
             } catch (t: Throwable) {
                 _paymentState.update {
                     it.copy(
@@ -147,6 +161,58 @@ class CheckoutViewModel @Inject constructor(
 
     fun clearPaymentError() {
         _paymentState.update { it.copy(errorMessage = null) }
+    }
+
+    fun retryPendingConfirmation() {
+        if (_paymentState.value.orderId.isNullOrBlank()) return
+        _paymentState.update {
+            it.copy(
+                isAwaitingConfirmation = true,
+                canRetry = false,
+                errorMessage = null,
+                pollingAttempts = 0
+            )
+        }
+        startOrderStatusPolling()
+    }
+
+    private fun startOrderStatusPolling() {
+        val orderId = _paymentState.value.orderId ?: return
+        viewModelScope.launch {
+            var delayMs = INITIAL_BACKOFF_MS
+            repeat(MAX_POLL_ATTEMPTS) { attempt ->
+                if (!isActive) return@launch
+                val status = invoiceRepository.refreshOrderStatus(orderId)
+                if (status != null) {
+                    val normalized = (status.paymentStatus ?: status.status).lowercase()
+                    val isTerminal = normalized == "approved" || normalized == "rejected" || normalized == "failed"
+                    _paymentState.update {
+                        it.copy(
+                            paymentStatus = normalized,
+                            isAwaitingConfirmation = !isTerminal,
+                            canRetry = !isTerminal && attempt >= MAX_POLL_ATTEMPTS - 1,
+                            pollingAttempts = attempt + 1,
+                            statusDetail = status.statusDetail
+                        )
+                    }
+                    if (isTerminal) return@launch
+                }
+                if (attempt < MAX_POLL_ATTEMPTS - 1) {
+                    delay(delayMs)
+                    delayMs = (delayMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+                }
+            }
+
+            _paymentState.update {
+                it.copy(
+                    isAwaitingConfirmation = false,
+                    canRetry = true,
+                    errorMessage = it.errorMessage
+                        ?: "La confirmación está demorando. Podés reintentar sin duplicar la orden desde el historial.",
+                    paymentStatus = it.paymentStatus ?: "pending_confirmation"
+                )
+            }
+        }
     }
 
 
@@ -230,7 +296,14 @@ data class PaymentUiState(
     val isLoading: Boolean = false,
     val initPoint: String? = null,
     val preferenceId: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val orderId: String? = null,
+    val idempotencyKey: String? = null,
+    val paymentStatus: String? = null,
+    val isAwaitingConfirmation: Boolean = false,
+    val canRetry: Boolean = false,
+    val pollingAttempts: Int = 0,
+    val statusDetail: String? = null
 )
 
 
