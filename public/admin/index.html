@@ -61,6 +61,75 @@
           <h3 id="viewTitle">Panel de uso</h3>
           <p id="viewDescription">Seleccioná un módulo del backoffice.</p>
 
+          <section id="dashboardPanel" class="module-panel" hidden>
+            <div class="module-toolbar">
+              <h4>Métricas de operación</h4>
+              <button id="dashboardRetryButton" class="secondary" type="button">Reintentar</button>
+            </div>
+            <p id="dashboardFeedback" class="banner" role="status"></p>
+            <div id="dashboardLoading" class="state-inline">Cargando métricas...</div>
+            <div id="dashboardEmpty" class="state-inline" hidden>No hay métricas aún para este tenant.</div>
+            <div id="dashboardError" class="state-inline error" hidden>
+              Error al cargar métricas. <button id="dashboardErrorRetryButton" class="inline-link" type="button">Reintentar</button>
+            </div>
+            <div id="dashboardContent" class="stats-grid" hidden>
+              <article><span>Periodo</span><strong id="dashboardPeriod">-</strong></article>
+              <article><span>Firestore reads</span><strong id="dashboardReads">0</strong></article>
+              <article><span>Firestore writes</span><strong id="dashboardWrites">0</strong></article>
+              <article><span>Storage bytes</span><strong id="dashboardStorage">0</strong></article>
+              <article><span>Funciones</span><strong id="dashboardFunctions">0</strong></article>
+              <article><span>Errores de fuente</span><strong id="dashboardErrors">0</strong></article>
+            </div>
+          </section>
+
+          <section id="maintenancePanel" class="module-panel" hidden>
+            <div class="module-toolbar">
+              <h4>Tareas de mantenimiento</h4>
+              <button id="maintenanceRetryButton" class="secondary" type="button">Reintentar</button>
+            </div>
+            <p id="maintenanceFeedback" class="banner" role="status"></p>
+            <form id="maintenanceCreateForm" class="inline-form">
+              <label>
+                Título
+                <input id="maintenanceTitleInput" type="text" minlength="3" maxlength="120" required />
+              </label>
+              <label>
+                Prioridad
+                <select id="maintenancePriorityInput">
+                  <option value="low">Low</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+              <button id="maintenanceCreateButton" type="submit">Crear tarea</button>
+            </form>
+
+            <div id="maintenanceLoading" class="state-inline">Cargando tareas...</div>
+            <div id="maintenanceEmpty" class="state-inline" hidden>No hay tareas registradas.</div>
+            <div id="maintenanceError" class="state-inline error" hidden>
+              Error al cargar tareas. <button id="maintenanceErrorRetryButton" class="inline-link" type="button">Reintentar</button>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Título</th>
+                    <th>Estado</th>
+                    <th>Prioridad</th>
+                    <th>Actualizado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="maintenanceBody">
+                  <tr><td colspan="6">Sin tareas.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section id="backupPanel" class="backup-panel" hidden>
             <h4>Resguardo de datos del tenant</h4>
             <p class="muted">Solicitá un backup puntual y monitoreá su ejecución.</p>
