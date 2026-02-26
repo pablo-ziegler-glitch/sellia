@@ -60,6 +60,13 @@ Abrir:
 - Revelado completo solo bajo acción explícita, trazado en auditoría y con expiración corta de UI.
 - El almacenamiento del secreto debe resolverse vía Cloud Functions + Secret Manager, evitando persistir token completo en Firestore.
 
+
+## Política de activación de nuevas tiendas
+
+- Regla vigente: **las nuevas tiendas quedan activas por defecto** (sin aprobación manual).
+- Backoffice Admin debe incluir un control global `tenantActivationMode` para cambiar a modo `manual` cuando se requiera aprobación explícita para nuevas altas.
+- El cambio de modo no afecta retroactivamente tiendas ya creadas; aplica solo a nuevas cuentas.
+
 ## Rollout recomendado por feature flags
 
 Ver `docs/backoffice-rollout-feature-flags.md` para la secuencia de activación por tenant, ventana de observación 24–48h, rollback instantáneo y deshabilitación administrativa en mobile.

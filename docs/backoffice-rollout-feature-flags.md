@@ -12,6 +12,55 @@ Mantener la estrategia de entrega rápida en branch, minimizando riesgo operativ
 4. **Rollback instantáneo**: cualquier degradación crítica se mitiga apagando el flag sin redeploy.
 5. **Paridad funcional por canal**: al confirmar estabilidad en web, se deshabilitan funciones administrativas en mobile para reducir superficie operativa y de seguridad.
 
+
+## Política de activación de nuevas tiendas (default ON)
+
+### Regla general (nuevo default)
+
+- Toda **nueva tienda se crea activa por defecto** (`isActive=true`).
+- No requiere aprobación manual en el flujo estándar de onboarding.
+
+### Override operativo desde Backoffice Admin
+
+Backoffice Admin debe exponer una configuración global de plataforma para cambiar el comportamiento de altas futuras:
+
+- `tenantActivationMode = "auto"` (default): altas nuevas activas automáticamente.
+- `tenantActivationMode = "manual"`: altas nuevas quedan en `pending_approval` y requieren aprobación explícita por operador autorizado.
+
+> Esta configuración aplica **solo a nuevas cuentas/tiendas**; no debe mutar retroactivamente el estado de tiendas ya creadas.
+
+### Contrato recomendado de configuración
+
+Documento global (scope plataforma, no por tenant):
+
+- `platform/config/tenant_onboarding`
+
+Payload sugerido:
+
+```json
+{
+  "schemaVersion": 1,
+  "tenantActivationMode": "auto",
+  "updatedAt": "serverTimestamp",
+  "updatedBy": "backoffice_admin"
+}
+```
+
+### Reglas de creación de tenant
+
+Al crear una tienda:
+
+1. Leer `tenantActivationMode` (con cache corta e invalidación).
+2. Si modo `auto` o no existe config (fallback seguro para continuidad): crear `tenants/{tenantId}.status = "active"`.
+3. Si modo `manual`: crear `status = "pending_approval"` + evento de auditoría.
+4. Exigir validación server-side; el cliente nunca define el estado final de activación.
+
+### Aprobación manual (cuando modo manual está activo)
+
+- Acción disponible solo para `superAdmin`/rol equivalente en BO administrativo.
+- Transición permitida: `pending_approval -> active` (y opcionalmente `rejected` con motivo).
+- Registrar auditoría obligatoria: `actor`, `tenantId`, `fromStatus`, `toStatus`, `reason`, `requestId`.
+
 ## Diseño de flags (control plane)
 
 ### Convención recomendada
