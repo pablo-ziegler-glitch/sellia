@@ -8,6 +8,7 @@ import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
 import { hasRoleForModule } from "./security/rolePermissionsMatrix";
+import { resolveFieldVisibility, type PiiRole } from "./security/piiPolicy";
 import { authorizeUsageMetricsAccess } from "./usageMetricsAccess";
 import {
   buildUsageOverview,
@@ -18,14 +19,6 @@ import {
   type UsageMetricResult,
   type UsageServiceMetrics,
 } from "./usageMetrics.helpers";
-import {
-  createApproveTenantRestoreRequestHandler,
-  createRequestTenantBackupHandler,
-  createRequestTenantRestoreHandler,
-  type ApproveRestoreRequestPayload,
-  type RestoreRequestPayload,
-  type RestoreScope,
-} from "./tenantBackup";
 
 admin.initializeApp();
 
@@ -1602,7 +1595,13 @@ export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true 
   }
 
   console.info("Usage metrics accessed", {
-    uid: decision.uid,
+    ...sanitizePiiForLog({
+      domain: "logs",
+      role: "auditor",
+      fields: {
+        actorUid: decision.uid,
+      },
+    }),
     role: decision.role,
     scope: decision.scope,
     tenantId: decision.requestedTenantId || null,
@@ -1841,13 +1840,24 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     res.status(200).send("ok");
   } catch (error) {
     const mpError = summarizeMercadoPagoError(error);
+    const sanitizedError = sanitizePiiForLog({
+      domain: "logs",
+      role: "support",
+      fields: {
+        payerEmail: (mpError.data as Record<string, unknown> | null | undefined)?.payer_email,
+      },
+    });
+
     console.error("Mercado Pago webhook processing failed", {
       paymentId,
       requestId: requestId || "n/a",
       status: mpError.status,
       code: mpError.code,
       message: mpError.message,
-      response: mpError.data,
+      response: {
+        ...((mpError.data as Record<string, unknown> | null) ?? {}),
+        ...sanitizedError,
+      },
     });
     res.status(500).send("error");
   }
@@ -2085,6 +2095,8 @@ type RestoreRequestStatus =
   | "completed"
   | "failed";
 
+const RESTORE_SCOPES = new Set<RestoreScope>(["full", "collection", "document"]);
+
 type RestoreRequestPayload = {
   tenantId?: unknown;
   runId?: unknown;
@@ -2180,6 +2192,61 @@ const getIpAllowlist = (): string[] => {
 
 const getRequestIp = (context: functions.https.CallableContext): string =>
   normalizeString(context.rawRequest?.ip);
+
+const maskWithPattern = (value: string, keepStart: number, keepEnd: number): string => {
+  const normalized = normalizeString(value);
+  if (!normalized) return "";
+  if (normalized.length <= keepStart + keepEnd) {
+    return "*".repeat(Math.max(normalized.length, 4));
+  }
+  return `${normalized.slice(0, keepStart)}${"*".repeat(normalized.length - keepStart - keepEnd)}${normalized.slice(-keepEnd)}`;
+};
+
+const maskEmail = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  const [local, domain] = normalized.split("@");
+  if (!local || !domain) return maskWithPattern(normalized, 1, 1);
+  return `${maskWithPattern(local, 1, 1)}@${domain}`;
+};
+
+const maskIp = (value: unknown): string => {
+  const ip = normalizeString(value);
+  const parts = ip.split(".");
+  if (parts.length !== 4) return maskWithPattern(ip, 2, 0);
+  return `${parts[0]}.${parts[1]}.*.*`;
+};
+
+const maskUid = (value: unknown): string => maskWithPattern(normalizeString(value), 4, 2);
+
+const sanitizePiiForLog = (params: {
+  domain: "users" | "customers" | "logs" | "exports";
+  role?: PiiRole | null;
+  fields: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const role = params.role ?? null;
+  return Object.fromEntries(
+    Object.entries(params.fields).map(([key, rawValue]) => {
+      const visibility = resolveFieldVisibility(params.domain, key, role);
+      if (rawValue === null || rawValue === undefined) {
+        return [key, null];
+      }
+      const stringValue = normalizeString(rawValue);
+      if (visibility === "full") {
+        return [key, rawValue];
+      }
+      if (key.toLowerCase().includes("email")) {
+        return [key, visibility === "partial" ? maskEmail(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("ip")) {
+        return [key, visibility === "partial" ? maskIp(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("uid")) {
+        return [key, visibility === "partial" ? maskUid(stringValue) : "***MASKED***"];
+      }
+      return [key, visibility === "partial" ? maskWithPattern(stringValue, 1, 1) : "***MASKED***"];
+    })
+  );
+};
 
 const recordAppCheckRejection = async (params: {
   operation: string;
@@ -2325,11 +2392,20 @@ const writeTenantAuditLog = async (
   }
 ): Promise<void> => {
   const eventRef = db.collection("tenants").doc(tenantId).collection("audit_logs").doc();
+  const piiSafeFields = sanitizePiiForLog({
+    domain: "logs",
+    role: "auditor",
+    fields: {
+      actorUid: payload.actorUid ?? null,
+      requesterIp: normalizeString(payload.ip) || null,
+    },
+  });
+
   await eventRef.set({
     eventType: payload.eventType,
     action: payload.action,
     tenantId,
-    actorUid: payload.actorUid ?? null,
+    actorUid: piiSafeFields.actorUid,
     scope: payload.scope ?? "full",
     runId: payload.runId ?? null,
     restoreRequestId: payload.restoreRequestId ?? null,
@@ -2337,7 +2413,7 @@ const writeTenantAuditLog = async (
     dryRun: payload.dryRun === true,
     diffEstimate: payload.diffEstimate ?? null,
     result: payload.result ?? null,
-    ip: normalizeString(payload.ip) || null,
+    ip: piiSafeFields.requesterIp,
     userAgent: normalizeString(payload.userAgent) || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
