@@ -5,6 +5,7 @@ import com.example.selliaapp.auth.TenantProvider
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.model.sales.CartItem
 import com.example.selliaapp.data.model.sales.InvoiceDraft
+import com.example.selliaapp.data.payment.MercadoPagoDegradedException
 import com.example.selliaapp.data.payment.PaymentItem
 import com.example.selliaapp.domain.payment.CreatePaymentPreferenceUseCase
 import com.example.selliaapp.repository.CartRepository
@@ -130,10 +131,18 @@ class CheckoutViewModel @Inject constructor(
                     )
                 }
             } catch (t: Throwable) {
+                val fallbackMethod = (t as? MercadoPagoDegradedException)?.fallbackPaymentMethod
+                val fallbackMessage = if (!fallbackMethod.isNullOrBlank()) {
+                    "Mercado Pago está degradado. Continuá con $fallbackMethod."
+                } else {
+                    null
+                }
                 _paymentState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = t.message?.takeIf { msg -> msg.isNotBlank() }
+                        fallbackPaymentMethod = fallbackMethod,
+                        errorMessage = fallbackMessage
+                            ?: t.message?.takeIf { msg -> msg.isNotBlank() }
                             ?: "No se pudo generar el link de pago."
                     )
                 }
@@ -147,6 +156,10 @@ class CheckoutViewModel @Inject constructor(
 
     fun clearPaymentError() {
         _paymentState.update { it.copy(errorMessage = null) }
+    }
+
+    fun consumeFallbackPaymentMethod() {
+        _paymentState.update { it.copy(fallbackPaymentMethod = null) }
     }
 
 
@@ -230,6 +243,7 @@ data class PaymentUiState(
     val isLoading: Boolean = false,
     val initPoint: String? = null,
     val preferenceId: String? = null,
+    val fallbackPaymentMethod: String? = null,
     val errorMessage: String? = null
 )
 

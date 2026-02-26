@@ -69,6 +69,12 @@ type MpConfig = {
   webhookSecret: string;
 };
 
+type PaymentToggleState = {
+  globalEnabled: boolean;
+  tenantEnabled: boolean;
+  effectiveEnabled: boolean;
+};
+
 type PreferenceItemInput = {
   title?: string;
   name?: string;
@@ -134,6 +140,13 @@ const MP_WEBHOOK_IP_ALLOWLIST_PARAM = defineString("MP_WEBHOOK_IP_ALLOWLIST", {
 const ADMIN_RATE_LIMIT_PER_MINUTE_PARAM = defineString("ADMIN_RATE_LIMIT_PER_MINUTE", {
   default: "20",
 });
+const GLOBAL_FLAGS_COLLECTION = "config";
+const GLOBAL_FLAGS_DOC_ID = "runtime_flags";
+const TENANT_FLAGS_SUBCOLLECTION = "config";
+const TENANT_FLAGS_DOC_ID = "runtime_flags";
+const MP_FALLBACK_PAYMENT_METHOD = "TRANSFERENCIA";
+const MP_GLOBAL_FLAG_PATH = "payments.mp.enabled";
+const MP_TENANT_FLAG_PATH = "tenant.payments.mp.enabled";
 
 const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
   try {
@@ -147,6 +160,69 @@ const getOptionalParam = (param: ReturnType<typeof defineString>): string | unde
     return undefined;
   }
 };
+
+const parseBooleanFlagValue = (value: unknown, defaultValue: boolean): boolean => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return defaultValue;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on", "enabled"].includes(normalized)) return true;
+    if (["false", "0", "no", "off", "disabled"].includes(normalized)) return false;
+  }
+  return defaultValue;
+};
+
+const getPathValue = (source: Record<string, unknown>, path: string): unknown => {
+  return path.split(".").reduce<unknown>((acc, segment) => {
+    if (typeof acc !== "object" || acc === null) return undefined;
+    return (acc as Record<string, unknown>)[segment];
+  }, source);
+};
+
+const parseFlagFromDoc = (docData: Record<string, unknown>, path: string, defaultValue: boolean): boolean => {
+  const nested = getPathValue(docData, path);
+  if (nested !== undefined) return parseBooleanFlagValue(nested, defaultValue);
+
+  const flatKeyValue = docData[path];
+  if (flatKeyValue !== undefined) return parseBooleanFlagValue(flatKeyValue, defaultValue);
+
+  return defaultValue;
+};
+
+const getPaymentToggleState = async (tenantId: string): Promise<PaymentToggleState> => {
+  const normalizedTenantId = normalizeString(tenantId);
+  if (!normalizedTenantId) {
+    return { globalEnabled: true, tenantEnabled: true, effectiveEnabled: true };
+  }
+
+  const [globalFlagsDoc, tenantFlagsDoc] = await Promise.all([
+    db.collection(GLOBAL_FLAGS_COLLECTION).doc(GLOBAL_FLAGS_DOC_ID).get(),
+    db
+      .collection("tenants")
+      .doc(normalizedTenantId)
+      .collection(TENANT_FLAGS_SUBCOLLECTION)
+      .doc(TENANT_FLAGS_DOC_ID)
+      .get(),
+  ]);
+
+  const globalEnabled = globalFlagsDoc.exists
+    ? parseFlagFromDoc((globalFlagsDoc.data() ?? {}) as Record<string, unknown>, MP_GLOBAL_FLAG_PATH, true)
+    : true;
+  const tenantEnabled = tenantFlagsDoc.exists
+    ? parseFlagFromDoc((tenantFlagsDoc.data() ?? {}) as Record<string, unknown>, MP_TENANT_FLAG_PATH, true)
+    : true;
+
+  return {
+    globalEnabled,
+    tenantEnabled,
+    effectiveEnabled: globalEnabled && tenantEnabled,
+  };
+};
+
 
 const summarizeMercadoPagoError = (error: unknown) => {
   if (!axios.isAxiosError(error)) {
@@ -1336,6 +1412,18 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
     throw new functions.https.HttpsError(
       "invalid-argument",
       "tenantId is required to create a payment preference."
+    );
+  }
+
+  const toggleState = await getPaymentToggleState(requiredTenantId);
+  if (!toggleState.effectiveEnabled) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Mercado Pago está temporalmente deshabilitado para este tenant.",
+      {
+        fallbackPaymentMethod: MP_FALLBACK_PAYMENT_METHOD,
+        mpEnabled: toggleState,
+      }
     );
   }
 
@@ -3523,4 +3611,123 @@ export const updateMaintenanceTask = functions
       after: nextData,
     });
     return { ok: true, taskId };
+  });
+
+type SetMercadoPagoTogglePayload = {
+  tenantId: unknown;
+  scope: unknown;
+  enabled: unknown;
+  reason: unknown;
+};
+
+export const setMercadoPagoToggle = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: SetMercadoPagoTogglePayload, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const scope = normalizeString(payload.scope).toLowerCase();
+    const reason = normalizeString(payload.reason);
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+    if (scope !== "global" && scope !== "tenant") {
+      throw new functions.https.HttpsError("invalid-argument", "scope debe ser global o tenant");
+    }
+    if (reason.length < 8) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "reason debe tener al menos 8 caracteres"
+      );
+    }
+
+    const enabled = parseBooleanFlagValue(payload.enabled, true);
+
+    await assertAppCheckForInternalCallable({
+      operation: "setMercadoPagoToggle",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "setMercadoPagoToggle",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const callerDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const callerData = callerDoc.data() || {};
+    const callerTenantId = normalizeString(callerData.tenantId);
+    const callerRole = normalizeString(callerData.role).toLowerCase();
+    const hasAdminClaim =
+      context.auth.token.superAdmin === true ||
+      context.auth.token.admin === true ||
+      context.auth.token.role === "admin";
+
+    if (scope === "global" && !hasAdminClaim) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "solo super admin puede cambiar flag global"
+      );
+    }
+
+    if (scope === "tenant" && !hasAdminClaim) {
+      if (!isAdminRole(callerRole) || callerTenantId !== tenantId) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "solo admin/owner del tenant puede cambiar el flag"
+        );
+      }
+    }
+
+    const writeTarget =
+      scope === "global"
+        ? db.collection(GLOBAL_FLAGS_COLLECTION).doc(GLOBAL_FLAGS_DOC_ID)
+        : db.collection("tenants").doc(tenantId).collection(TENANT_FLAGS_SUBCOLLECTION).doc(TENANT_FLAGS_DOC_ID);
+
+    const fieldPath = scope === "global" ? MP_GLOBAL_FLAG_PATH : MP_TENANT_FLAG_PATH;
+    await writeTarget.set(
+      {
+        [fieldPath]: enabled,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: context.auth.uid,
+      },
+      { merge: true }
+    );
+
+    await db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("audit_logs")
+      .add({
+        eventType: "payments",
+        action: "toggle_mercadopago",
+        tenantId,
+        scope,
+        flagPath: fieldPath,
+        enabled,
+        reason,
+        actorUid: context.auth.uid,
+        ip: getRequestIp(context) || null,
+        userAgent: normalizeString(context.rawRequest?.get("user-agent")) || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    const toggleState = await getPaymentToggleState(tenantId);
+    return {
+      ok: true,
+      tenantId,
+      scope,
+      enabled,
+      paymentToggleState: toggleState,
+    };
   });
