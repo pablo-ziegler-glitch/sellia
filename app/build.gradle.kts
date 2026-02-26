@@ -3,7 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
 
-    // [NUEVO] obligatorio con Kotlin 2.x + Compose
+    // Kotlin 2.x: `org.jetbrains.kotlin.plugin.compose` gestiona la versión del compilador de Compose.
+    // Evitar reintroducir `composeOptions.kotlinCompilerExtensionVersion` (configuración legacy pre-Kotlin 2.x).
     id("org.jetbrains.kotlin.plugin.compose")
     // [NUEVO] Necesario si usás Firebase con google-services.json
     id("com.google.gms.google-services")
@@ -116,9 +117,6 @@ android {
         }
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
 }
 
 dependencies {
