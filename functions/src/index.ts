@@ -3187,34 +3187,6 @@ export const requestTenantBackup = functions
       throw new functions.https.HttpsError("permission-denied", "sin permisos para solicitar backup");
     }
 
-const requestTenantRestoreHandler = createRequestTenantRestoreHandler({
-  db,
-  normalizeString,
-  toBoolean,
-  isAdminRole,
-  userCanRequestTenantBackup,
-  estimateRestoreDiff,
-  writeTenantAuditLog,
-  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
-});
-
-const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHandler({
-  db,
-  normalizeString,
-  toBoolean,
-  isAdminRole,
-  userCanRequestTenantBackup,
-  estimateRestoreDiff,
-  writeTenantAuditLog,
-  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
-});
-
-export const requestTenantRestore = functions
-  .runWith({ enforceAppCheck: false })
-  .https.onCall((data: RestoreRequestPayload, context) =>
-    requestTenantRestoreHandler(data, context)
-  );
-
     return {
       ok: true,
       requestId: requestRef.id,
