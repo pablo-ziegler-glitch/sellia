@@ -15,10 +15,10 @@ appcompat = "1.7.1"
 kotlinxCoroutinesGuava = "1.9.0"
 listenablefuture = "9999.0-empty-to-avoid-conflict-with-guava"
 material = "1.13.0"
+navigationCompose = "2.8.7"
 pagingCompose = "3.3.2"
 pagingRuntimeKtx = "3.3.2"
-roomCompiler = "<ROOM_VERSION>"
-roomRuntime = "2.7.2"
+room = "2.7.2"
 ui = "1.8.3"
 workRuntimeKtxVersion = "2.9.0"
 zxingAndroidEmbedded = "4.3.0"
@@ -53,12 +53,13 @@ androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 androidx-concurrent-futures = { module = "androidx.concurrent:concurrent-futures", version.ref = "concurrentFutures" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 androidx-paging-compose = { module = "androidx.paging:paging-compose", version.ref = "pagingCompose" }
 androidx-paging-runtime-ktx = { module = "androidx.paging:paging-runtime-ktx", version.ref = "pagingRuntimeKtx" }
-androidx-room-compiler-vroomversion = { module = "androidx.room:room-compiler", version.ref = "roomCompiler" }
-androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomRuntime" }
-androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomRuntime" }
-androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-room-paging = { module = "androidx.room:room-paging", version.ref = "room" }
 androidx-ui = { module = "androidx.compose.ui:ui", version.ref = "ui" }
 androidx-work-runtime-ktx-v290 = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntimeKtxVersion" }
 charts = { module = "com.github.tehras:charts", version.ref = "charts" }
