@@ -916,6 +916,13 @@ main {
   cursor: not-allowed;
 }
 
+.bo-payments-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
 .bo-maintenance-actions {
   display: flex;
   gap: 8px;
