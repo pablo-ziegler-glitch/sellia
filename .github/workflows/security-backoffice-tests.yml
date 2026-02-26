@@ -1,0 +1,32 @@
+name: Backoffice Security Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backoffice-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install functions dependencies
+        run: npm --prefix functions ci
+
+      - name: Run BO security suite (deny/allow + tenant isolation + escalation)
+        run: npm --prefix functions run test:security:bo
