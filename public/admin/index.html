@@ -114,6 +114,67 @@
               </table>
             </div>
           </section>
+
+          <section id="paymentsControlPanel" class="backup-panel" hidden>
+            <h4>Control de contingencia Mercado Pago</h4>
+            <p class="muted">Permite apagar/encender MP a nivel global o tenant, con motivo obligatorio y auditoría.</p>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Toggle</th>
+                    <th>Estado</th>
+                    <th>Actualizado</th>
+                    <th>Usuario</th>
+                  </tr>
+                </thead>
+                <tbody id="paymentsFlagsBody">
+                  <tr><td colspan="4">Sin datos de flags.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <label>
+              Alcance
+              <select id="paymentsToggleScope">
+                <option value="tenant">Tenant</option>
+                <option value="global">Global (solo super admin)</option>
+              </select>
+            </label>
+            <label>
+              Estado objetivo
+              <select id="paymentsToggleEnabled">
+                <option value="true">Habilitar MP</option>
+                <option value="false">Deshabilitar MP</option>
+              </select>
+            </label>
+            <label>
+              Motivo (auditoría)
+              <input id="paymentsToggleReason" type="text" maxlength="240" placeholder="Ej: incidente PSP #INC-2026-001" />
+            </label>
+            <button id="paymentsToggleButton" type="button">Aplicar toggle</button>
+            <p id="paymentsToggleMessage" class="banner"></p>
+
+            <h5>Auditoría reciente</h5>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Scope</th>
+                    <th>Estado</th>
+                    <th>Actor</th>
+                    <th>Motivo</th>
+                  </tr>
+                </thead>
+                <tbody id="paymentsAuditBody">
+                  <tr><td colspan="5">Sin eventos recientes.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
         
 
           <section id="tenantPolicyPanel" class="backup-panel" hidden>

@@ -125,6 +125,25 @@ fun CheckoutScreen(
     }
 
 
+    LaunchedEffect(paymentState.fallbackPaymentMethod) {
+        when (paymentState.fallbackPaymentMethod?.trim()?.uppercase()) {
+            "TRANSFERENCIA" -> {
+                vm.updatePaymentMethod(PaymentMethod.TRANSFERENCIA)
+                paymentVm.consumeFallbackPaymentMethod()
+            }
+            "EFECTIVO" -> {
+                vm.updatePaymentMethod(PaymentMethod.EFECTIVO)
+                paymentVm.consumeFallbackPaymentMethod()
+            }
+            "LISTA" -> {
+                vm.updatePaymentMethod(PaymentMethod.LISTA)
+                paymentVm.consumeFallbackPaymentMethod()
+            }
+            else -> Unit
+        }
+    }
+
+
     fun proceedWithResolvedCustomer(customerId: Long?, customerName: String?) {
         if (pendingCheckoutAction == PendingCheckoutAction.MERCADO_PAGO) {
             paymentVm.createPaymentPreference(

@@ -10,6 +10,12 @@ import javax.inject.Inject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+
+class MercadoPagoDegradedException(
+    message: String,
+    val fallbackPaymentMethod: String?
+) : IllegalStateException(message)
+
 class MercadoPagoApi @Inject constructor(
     private val functions: FirebaseFunctions,
     private val auth: FirebaseAuth
@@ -19,7 +25,12 @@ class MercadoPagoApi @Inject constructor(
         val result = try {
             callCreatePaymentPreferenceWithAuthRecovery(payload)
         } catch (exception: FirebaseFunctionsException) {
-            throw IllegalStateException(buildFunctionsErrorMessage(exception), exception)
+            val fallbackPaymentMethod = extractFallbackPaymentMethod(exception)
+            val message = buildFunctionsErrorMessage(exception)
+            if (!fallbackPaymentMethod.isNullOrBlank()) {
+                throw MercadoPagoDegradedException(message, fallbackPaymentMethod)
+            }
+            throw IllegalStateException(message, exception)
         }
 
         val data = result.data as? Map<*, *>
@@ -128,6 +139,12 @@ class MercadoPagoApi @Inject constructor(
         }
 
         return "Pago MP falló ($code): $message"
+    }
+
+
+    private fun extractFallbackPaymentMethod(exception: FirebaseFunctionsException): String? {
+        val details = exception.details as? Map<*, *> ?: return null
+        return details["fallbackPaymentMethod"]?.toString()?.trim()?.takeIf { it.isNotBlank() }
     }
 
     private companion object {

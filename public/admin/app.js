@@ -75,6 +75,14 @@ const el = {
   requestBackupButton: document.getElementById("requestBackupButton"),
   backupMessage: document.getElementById("backupMessage"),
   backupRequestsBody: document.getElementById("backupRequestsBody"),
+  paymentsControlPanel: document.getElementById("paymentsControlPanel"),
+  paymentsFlagsBody: document.getElementById("paymentsFlagsBody"),
+  paymentsToggleScope: document.getElementById("paymentsToggleScope"),
+  paymentsToggleEnabled: document.getElementById("paymentsToggleEnabled"),
+  paymentsToggleReason: document.getElementById("paymentsToggleReason"),
+  paymentsToggleButton: document.getElementById("paymentsToggleButton"),
+  paymentsToggleMessage: document.getElementById("paymentsToggleMessage"),
+  paymentsAuditBody: document.getElementById("paymentsAuditBody")
   costDashboardPanel: document.getElementById("costDashboardPanel"),
   budgetTotalValue: document.getElementById("budgetTotalValue"),
   currentCostTotalValue: document.getElementById("currentCostTotalValue"),
@@ -109,6 +117,8 @@ const appState = {
   inactivityTimerId: null,
   refreshTimerId: null,
   backupRequestsUnsubscribe: null,
+  paymentsFlagsUnsubscribe: null,
+  paymentsAuditUnsubscribe: null
   maintenanceTasks: []
 };
 
@@ -166,6 +176,7 @@ function wireEvents() {
   el.googleBtn.addEventListener("click", onGoogleLogin);
   el.logoutBtn.addEventListener("click", () => safeLogout("Sesión cerrada correctamente."));
   el.requestBackupButton.addEventListener("click", onRequestBackupNow);
+  el.paymentsToggleButton.addEventListener("click", onApplyPaymentsToggle);
   el.saveTenantPolicyButton?.addEventListener("click", onSaveTenantOnboardingPolicy);
   el.dashboardRetryButton.addEventListener("click", loadDashboard);
   el.dashboardErrorRetryButton.addEventListener("click", loadDashboard);
@@ -257,6 +268,16 @@ async function syncRouteWithPermissions() {
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
   const canManageOnboardingPolicy = appState.profile.role === "owner";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
+  el.paymentsControlPanel.hidden = !(canManageBackups && isCloudServicesRoute);
+
+  if (el.backupPanel.hidden) {
+    stopBackupRequestsListener();
+    stopPaymentsListeners();
+    return;
+  }
+
+  startBackupRequestsListener();
+  startPaymentsListeners();
   el.costDashboardPanel.hidden = !(canViewCosts && isCloudServicesRoute);
 
   if (el.backupPanel.hidden) {
@@ -311,6 +332,7 @@ function clearSessionState() {
   appState.maintenanceTasks = [];
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
+  stopPaymentsListeners();
   el.permissionsList.innerHTML = "";
   el.backupPanel.hidden = true;
   el.costDashboardPanel.hidden = true;
@@ -339,6 +361,7 @@ function setSessionBanner(message) { el.sessionBanner.textContent = message; }
 function stopBackupRequestsListener() {
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
+  stopPaymentsListeners();
 }
 
 function startBackupRequestsListener() {
@@ -398,6 +421,157 @@ function setBackupMessage(message) {
   el.backupMessage.textContent = message || "";
 }
 
+
+function stopPaymentsListeners() {
+  if (typeof appState.paymentsFlagsUnsubscribe === "function") {
+    appState.paymentsFlagsUnsubscribe();
+  }
+  if (typeof appState.paymentsAuditUnsubscribe === "function") {
+    appState.paymentsAuditUnsubscribe();
+  }
+  appState.paymentsFlagsUnsubscribe = null;
+  appState.paymentsAuditUnsubscribe = null;
+}
+
+function startPaymentsListeners() {
+  if (!appState.profile) return;
+  if (!appState.paymentsFlagsUnsubscribe) {
+    const tenantFlagsRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "runtime_flags");
+    const globalFlagsRef = doc(appState.firestore, "config", "runtime_flags");
+
+    appState.paymentsFlagsUnsubscribe = onSnapshot(
+      query(
+        collection(appState.firestore, "tenants", appState.profile.tenantId, "audit_logs"),
+        orderBy("createdAt", "desc"),
+        limit(1)
+      ),
+      async () => {
+        const [tenantSnap, globalSnap] = await Promise.all([getDoc(tenantFlagsRef), getDoc(globalFlagsRef)]);
+        renderPaymentsFlags(globalSnap.data() || {}, tenantSnap.data() || {});
+      }
+    );
+  }
+
+  if (!appState.paymentsAuditUnsubscribe) {
+    const auditQuery = query(
+      collection(appState.firestore, "tenants", appState.profile.tenantId, "audit_logs"),
+      orderBy("createdAt", "desc"),
+      limit(12)
+    );
+
+    appState.paymentsAuditUnsubscribe = onSnapshot(
+      auditQuery,
+      (snapshot) => {
+        const rows = snapshot.docs
+          .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+          .filter((row) => row.action === "toggle_mercadopago");
+
+        if (!rows.length) {
+          el.paymentsAuditBody.innerHTML = '<tr><td colspan="5">Sin eventos recientes.</td></tr>';
+          return;
+        }
+
+        el.paymentsAuditBody.innerHTML = rows
+          .map((row) => {
+            const createdAtMillis = row.createdAt?.toMillis?.() || null;
+            const createdAtLabel = createdAtMillis ? new Date(createdAtMillis).toLocaleString() : "-";
+            return `
+              <tr>
+                <td>${createdAtLabel}</td>
+                <td>${(row.scope || "tenant").toString()}</td>
+                <td>${row.enabled === true ? "habilitado" : "deshabilitado"}</td>
+                <td>${(row.actorUid || "-").toString()}</td>
+                <td>${(row.reason || "-").toString()}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      },
+      (error) => {
+        setPaymentsToggleMessage(`No se pudo cargar auditoría: ${error.message || error}`);
+      }
+    );
+  }
+}
+
+function readFlag(source, path) {
+  const fromNested = path.split(".").reduce((acc, segment) => (acc && typeof acc === "object" ? acc[segment] : undefined), source);
+  if (typeof fromNested === "boolean") return fromNested;
+  if (typeof source?.[path] === "boolean") return source[path];
+  return true;
+}
+
+function renderPaymentsFlags(globalFlags, tenantFlags) {
+  const globalEnabled = readFlag(globalFlags, "payments.mp.enabled");
+  const tenantEnabled = readFlag(tenantFlags, "tenant.payments.mp.enabled");
+
+  el.paymentsFlagsBody.innerHTML = `
+    <tr>
+      <td>payments.mp.enabled (global)</td>
+      <td>${globalEnabled ? "ON" : "OFF"}</td>
+      <td>${formatTimestamp(globalFlags.updatedAt)}</td>
+      <td>${(globalFlags.updatedBy || "-").toString()}</td>
+    </tr>
+    <tr>
+      <td>tenant.payments.mp.enabled (tenant)</td>
+      <td>${tenantEnabled ? "ON" : "OFF"}</td>
+      <td>${formatTimestamp(tenantFlags.updatedAt)}</td>
+      <td>${(tenantFlags.updatedBy || "-").toString()}</td>
+    </tr>
+    <tr>
+      <td>effective</td>
+      <td>${globalEnabled && tenantEnabled ? "ON" : "OFF"}</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  `;
+}
+
+function formatTimestamp(ts) {
+  const millis = ts?.toMillis?.();
+  if (!millis) return "-";
+  return new Date(millis).toLocaleString();
+}
+
+async function onApplyPaymentsToggle() {
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    setPaymentsToggleMessage("Acción permitida solo para owner/admin.");
+    return;
+  }
+
+  const reason = el.paymentsToggleReason.value.trim();
+  if (reason.length < 8) {
+    setPaymentsToggleMessage("Indicá un motivo de al menos 8 caracteres.");
+    return;
+  }
+
+  const scope = el.paymentsToggleScope.value;
+  const enabled = el.paymentsToggleEnabled.value === "true";
+
+  try {
+    el.paymentsToggleButton.disabled = true;
+    const callable = httpsCallable(appState.cloudFunctions, "setMercadoPagoToggle");
+    const response = await callable({
+      tenantId: appState.profile.tenantId,
+      scope,
+      enabled,
+      reason
+    });
+
+    const effectiveEnabled = response?.data?.paymentToggleState?.effectiveEnabled;
+    setPaymentsToggleMessage(
+      `Toggle aplicado. MP efectivo: ${effectiveEnabled === true ? "habilitado" : "deshabilitado"}.`
+    );
+    el.paymentsToggleReason.value = "";
+  } catch (error) {
+    setPaymentsToggleMessage(parseAuthError(error));
+  } finally {
+    el.paymentsToggleButton.disabled = false;
+  }
+}
+
+function setPaymentsToggleMessage(message) {
+  el.paymentsToggleMessage.textContent = message || "";
 async function loadCostDashboard() {
   if (!appState.profile) return;
 
