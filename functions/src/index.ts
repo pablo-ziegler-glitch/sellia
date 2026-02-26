@@ -86,6 +86,8 @@ type PaymentWebhookTransactionResult = {
   transitionApplied: boolean;
 };
 
+type PaymentActionRecommendation = "reintentar" | "esperar" | "cancelar" | "escalar";
+
 type ResolveTenantInput = {
   tenantIdFromReference: string;
   orderId: string;
@@ -113,6 +115,13 @@ const TERMINAL_PAYMENT_STATUSES = new Set<PaymentStatus>([
   "REJECTED",
   "FAILED",
 ]);
+const MANUAL_RECONCILIATION_RECOMMENDATIONS: Record<PaymentStatus, PaymentActionRecommendation> = {
+  PENDING: "esperar",
+  APPROVED: "esperar",
+  REJECTED: "cancelar",
+  FAILED: "reintentar",
+};
+
 const MP_SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
 const CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE = "2026-03-31";
 
@@ -596,6 +605,76 @@ const mapPaymentStatus = (status: unknown): PaymentStatus => {
     return "REJECTED";
   }
   return "FAILED";
+};
+
+const recommendPaymentAction = (input: {
+  providerStatus: PaymentStatus;
+  lastKnownStatus: PaymentStatus | null;
+  statusDetail: unknown;
+}): PaymentActionRecommendation => {
+  const statusDetail = normalizeString(input.statusDetail).toLowerCase();
+
+  if (input.providerStatus === "APPROVED") {
+    return "esperar";
+  }
+
+  if (input.providerStatus === "PENDING") {
+    if (statusDetail.includes("manual_review") || statusDetail.includes("pending_review")) {
+      return "escalar";
+    }
+    if (input.lastKnownStatus === "FAILED" || input.lastKnownStatus === "REJECTED") {
+      return "reintentar";
+    }
+    return "esperar";
+  }
+
+  if (input.providerStatus === "REJECTED") {
+    if (statusDetail.includes("insufficient_amount") || statusDetail.includes("cc_rejected_insufficient_amount")) {
+      return "reintentar";
+    }
+    if (statusDetail.includes("high_risk") || statusDetail.includes("fraud")) {
+      return "escalar";
+    }
+    return "cancelar";
+  }
+
+  if (input.providerStatus === "FAILED") {
+    if (statusDetail.includes("timeout") || statusDetail.includes("network")) {
+      return "reintentar";
+    }
+    return "escalar";
+  }
+
+  return MANUAL_RECONCILIATION_RECOMMENDATIONS[input.providerStatus] ?? "escalar";
+};
+
+const syncCashClosureReconciliation = async (input: {
+  tenantId: string;
+  paymentId: string;
+  recommendation: PaymentActionRecommendation;
+  providerStatus: PaymentStatus;
+  actorUid: string;
+}) => {
+  const { tenantId, paymentId, recommendation, providerStatus, actorUid } = input;
+  const status = recommendation === "esperar" ? "clear" : "pending_action";
+
+  await db
+    .collection("tenants")
+    .doc(tenantId)
+    .collection("cash_closure_reconciliation")
+    .doc(paymentId)
+    .set(
+      {
+        tenantId,
+        paymentId,
+        providerStatus,
+        recommendation,
+        status,
+        updatedByUid: actorUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 };
 
 const parseStoredPaymentStatus = (status: unknown): PaymentStatus | null => {
@@ -3523,4 +3602,148 @@ export const updateMaintenanceTask = functions
       after: nextData,
     });
     return { ok: true, taskId };
+  });
+
+export const reconcilePendingPayment = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const paymentId = normalizeString(payload.paymentId);
+    const reason = normalizeString(payload.reason);
+
+    if (!tenantId || !paymentId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y paymentId requeridos");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "reconcilePendingPayment",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "reconcilePendingPayment",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canWriteMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de conciliación manual");
+    }
+
+    let config: MpConfig;
+    try {
+      config = getMpConfig();
+    } catch {
+      throw new functions.https.HttpsError("failed-precondition", "Credenciales de Mercado Pago no configuradas");
+    }
+
+    const paymentRef = db.collection("tenants").doc(tenantId).collection("payments").doc(paymentId);
+    const paymentSnap = await paymentRef.get();
+    const currentStatus = parseStoredPaymentStatus(paymentSnap.get("status"));
+
+    let paymentData: Record<string, unknown>;
+    try {
+      const paymentResponse = await axios.get(`${MERCADOPAGO_API}/v1/payments/${paymentId}`, {
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+        },
+      });
+      paymentData = (paymentResponse.data ?? {}) as Record<string, unknown>;
+    } catch (error) {
+      const mpError = summarizeMercadoPagoError(error);
+      throw new functions.https.HttpsError(
+        mapMercadoPagoStatusToHttpsCode(mpError.status),
+        `Mercado Pago error: ${mpError.message}`,
+        {
+          provider: "mercado_pago",
+          status: mpError.status,
+          response: mpError.data,
+        }
+      );
+    }
+
+    const providerStatus = mapPaymentStatus(paymentData.status);
+    const recommendation = recommendPaymentAction({
+      providerStatus,
+      lastKnownStatus: currentStatus,
+      statusDetail: paymentData.status_detail,
+    });
+
+    const mergedPayment = {
+      orderId: normalizeString(paymentData.external_reference) || paymentSnap.get("orderId") || "",
+      provider: "mercado_pago",
+      status: providerStatus,
+      raw: {
+        id: paymentData.id ?? paymentId,
+        status: paymentData.status ?? null,
+        statusDetail: paymentData.status_detail ?? null,
+        transactionAmount: paymentData.transaction_amount ?? null,
+        currencyId: paymentData.currency_id ?? null,
+        paymentMethodId: paymentData.payment_method_id ?? null,
+        payerEmail: (paymentData.payer as Record<string, unknown> | undefined)?.email ?? null,
+        approvedAt: paymentData.date_approved ?? null,
+        createdAt: paymentData.date_created ?? null,
+      },
+      manualReconciliation: {
+        lastExecutedByUid: context.auth.uid,
+        lastExecutedAt: admin.firestore.FieldValue.serverTimestamp(),
+        reason: reason || null,
+        previousStatus: currentStatus,
+        providerStatus,
+        recommendation,
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await paymentRef.set(mergedPayment, { merge: true });
+
+    const historyRef = db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("payment_manual_reconciliations")
+      .doc();
+
+    await historyRef.set({
+      tenantId,
+      paymentId,
+      actorUid: context.auth.uid,
+      previousStatus: currentStatus,
+      providerStatus,
+      recommendation,
+      reason: reason || null,
+      providerResponse: mergedPayment.raw,
+      result: providerStatus === "APPROVED" ? "aligned" : "requires_action",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      source: "backoffice_web",
+    });
+
+    await syncCashClosureReconciliation({
+      tenantId,
+      paymentId,
+      recommendation,
+      providerStatus,
+      actorUid: context.auth.uid,
+    });
+
+    return {
+      ok: true,
+      paymentId,
+      providerStatus,
+      recommendation,
+      result: providerStatus === "APPROVED" ? "aligned" : "requires_action",
+      manualReconciliationId: historyRef.id,
+    };
   });

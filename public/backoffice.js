@@ -3,10 +3,12 @@ import {
   addDoc,
   collection,
   getFirestore,
+  limit,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp
+  serverTimestamp,
+  where
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
@@ -58,6 +60,9 @@ const retryBtn = document.getElementById("maintenance-retry-btn");
 const createBtn = document.getElementById("maintenance-create-btn");
 const statusEl = document.getElementById("maintenance-status");
 const restoreHistoryList = document.getElementById("restore-history-list");
+const pendingPaymentsList = document.getElementById("pending-payments-list");
+const paymentsStatusEl = document.getElementById("payments-status");
+const paymentsRetryBtn = document.getElementById("payments-retry-btn");
 const restoreConfirmCheck = document.getElementById("restore-confirm-check");
 const restoreRequestBtn = document.getElementById("restore-request-btn");
 
@@ -67,13 +72,18 @@ const state = {
   loading: false,
   errorMessage: "",
   unsubscribeTasks: null,
+  unsubscribePendingPayments: null,
+  pendingPayments: [],
+  paymentsLoading: false,
+  paymentsErrorMessage: "",
   tenantId: "",
   userUid: "",
   useMockData: false,
   firestore: null,
   callables: {
     createMaintenanceTask: null,
-    updateMaintenanceTask: null
+    updateMaintenanceTask: null,
+    reconcilePendingPayment: null
   }
 };
 
@@ -87,13 +97,16 @@ async function bootstrap() {
   wireFilters();
   wireRetry();
   wireCreate();
+  wirePaymentActions();
   wireRestoreGuards();
   renderRestoreHistory();
 
   if (state.useMockData) {
     state.tasks = mockTasks;
     render();
+    renderPendingPayments();
     setStatus("Modo desarrollo explícito: usando mock local.", "warning");
+    setPaymentsStatus("Modo desarrollo: pagos pendientes deshabilitados en mock.", "warning");
     return;
   }
 
@@ -113,6 +126,7 @@ async function bootstrap() {
 
     state.callables.createMaintenanceTask = httpsCallable(cloudFunctions, "createMaintenanceTask");
     state.callables.updateMaintenanceTask = httpsCallable(cloudFunctions, "updateMaintenanceTask");
+    state.callables.reconcilePendingPayment = httpsCallable(cloudFunctions, "reconcilePendingPayment");
 
     onAuthStateChanged(auth, (user) => {
       state.userUid = user?.uid || "";
@@ -123,6 +137,7 @@ async function bootstrap() {
         return;
       }
       subscribeTasks(firestore);
+      subscribePendingPayments(firestore);
     });
   } catch (error) {
     state.errorMessage = buildUiError(error);
@@ -377,6 +392,148 @@ async function transitionTask(task, nextStatus) {
   } catch (error) {
     setStatus(buildUiError(error), "error");
   }
+}
+
+function wirePaymentActions() {
+  if (!paymentsRetryBtn) return;
+  paymentsRetryBtn.addEventListener("click", () => {
+    if (state.useMockData) {
+      setPaymentsStatus("Modo mock sin integración de pagos pendientes.", "warning");
+      return;
+    }
+    if (state.firestore) {
+      subscribePendingPayments(state.firestore);
+    }
+  });
+}
+
+function subscribePendingPayments(firestore) {
+  if (state.unsubscribePendingPayments) {
+    state.unsubscribePendingPayments();
+  }
+
+  state.paymentsLoading = true;
+  state.paymentsErrorMessage = "";
+  renderPendingPayments();
+
+  const paymentsRef = collection(firestore, "tenants", state.tenantId, "payments");
+  const q = query(paymentsRef, where("status", "==", "PENDING"), orderBy("updatedAt", "desc"), limit(25));
+
+  state.unsubscribePendingPayments = onSnapshot(
+    q,
+    (snapshot) => {
+      state.paymentsLoading = false;
+      state.paymentsErrorMessage = "";
+      state.pendingPayments = snapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() }));
+      renderPendingPayments();
+    },
+    (error) => {
+      state.paymentsLoading = false;
+      state.paymentsErrorMessage = buildUiError(error);
+      renderPendingPayments();
+    }
+  );
+}
+
+function renderPendingPayments() {
+  if (!pendingPaymentsList) return;
+  const fragment = document.createDocumentFragment();
+
+  if (state.paymentsLoading) {
+    const item = document.createElement("li");
+    item.textContent = "Cargando pagos pendientes…";
+    fragment.appendChild(item);
+    pendingPaymentsList.replaceChildren(fragment);
+    setPaymentsStatus("Cargando pagos pendientes…", "loading");
+    return;
+  }
+
+  if (state.paymentsErrorMessage) {
+    const item = document.createElement("li");
+    item.textContent = `No se pudo cargar pagos: ${state.paymentsErrorMessage}`;
+    fragment.appendChild(item);
+    pendingPaymentsList.replaceChildren(fragment);
+    setPaymentsStatus("Error al cargar pagos pendientes.", "error");
+    return;
+  }
+
+  if (!state.pendingPayments.length) {
+    const item = document.createElement("li");
+    item.textContent = "No hay pagos pendientes para este tenant.";
+    fragment.appendChild(item);
+    pendingPaymentsList.replaceChildren(fragment);
+    setPaymentsStatus("Sin pendientes. Cierre de caja sin bloqueos por conciliación.", "ok");
+    return;
+  }
+
+  state.pendingPayments.forEach((payment) => {
+    const item = document.createElement("li");
+    const statusDetail = sanitizeText(payment.raw?.statusDetail || payment.raw?.status_detail || "-");
+    const amount = Number(payment.raw?.transactionAmount ?? payment.raw?.transaction_amount ?? 0);
+    const currency = sanitizeText(payment.raw?.currencyId || payment.raw?.currency_id || "ARS");
+
+    const title = document.createElement("strong");
+    title.textContent = `Pago #${sanitizeText(payment.id)} · ${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+
+    const detail = document.createElement("p");
+    detail.textContent = `Estado provider: ${sanitizeText(payment.status || "PENDING")} · Detalle: ${statusDetail}`;
+
+    const recommendation = document.createElement("p");
+    const previousRecommendation = sanitizeText(payment.manualReconciliation?.recommendation || "no_calculada");
+    recommendation.textContent = `Recomendación actual: ${previousRecommendation}`;
+
+    const actionButton = buildActionButton("Conciliar con provider", async () => {
+      await reconcilePaymentWithProvider(payment.id);
+    });
+
+    item.appendChild(title);
+    item.appendChild(detail);
+    item.appendChild(recommendation);
+    item.appendChild(actionButton);
+    fragment.appendChild(item);
+  });
+
+  pendingPaymentsList.replaceChildren(fragment);
+  setPaymentsStatus(`${state.pendingPayments.length} pagos pendientes listos para conciliación manual.`, "warning");
+}
+
+async function reconcilePaymentWithProvider(paymentId) {
+  if (!state.callables.reconcilePendingPayment) {
+    setPaymentsStatus("reconcilePendingPayment no está disponible todavía.", "warning");
+    return;
+  }
+
+  const reason = window.prompt("Motivo de conciliación manual (mínimo 6 caracteres):", "Validación operativa pre-cierre") || "";
+  if (reason.trim().length < 6) {
+    setPaymentsStatus("Motivo inválido. Se requiere al menos 6 caracteres.", "warning");
+    return;
+  }
+
+  try {
+    setPaymentsStatus(`Consultando provider para pago #${paymentId}…`, "loading");
+    const response = await state.callables.reconcilePendingPayment({
+      tenantId: state.tenantId,
+      paymentId,
+      reason: reason.trim(),
+    });
+
+    const recommendation = sanitizeText(response?.data?.recommendation || "escalar");
+    const providerStatus = sanitizeText(response?.data?.providerStatus || "PENDING");
+    const result = sanitizeText(response?.data?.result || "requires_action");
+
+    setPaymentsStatus(
+      `Pago #${paymentId} reconciliado. Estado provider ${providerStatus}. Recomendación: ${recommendation}. Resultado: ${result}.`,
+      recommendation === "esperar" ? "ok" : "warning"
+    );
+  } catch (error) {
+    setPaymentsStatus(buildUiError(error), "error");
+  }
+}
+
+function setPaymentsStatus(message, tone) {
+  if (!paymentsStatusEl) return;
+  paymentsStatusEl.textContent = sanitizeText(message);
+  paymentsStatusEl.dataset.tone = tone;
 }
 
 function buildUiError(error) {
