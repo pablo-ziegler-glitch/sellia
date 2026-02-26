@@ -1,7 +1,8 @@
 [versions]
 cameraxVersion = "1.4.2"
 charts = "0.2.2-alpha"
-composeBom = "2025.08.00"
+# Compose BOM validada y publicada en Google Maven para este baseline Kotlin/Compose.
+composeBom = "2024.12.01"
 concurrentFutures = "1.3.0"
 core = "3.5.3"
 firebaseAuth = "23.2.1"
