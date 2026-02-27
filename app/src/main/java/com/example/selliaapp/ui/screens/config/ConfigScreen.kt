@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -388,7 +388,7 @@ private fun AdminActionItem(
         )
     } else {
         SettingsItem(
-            icon = Icons.Filled.OpenInNew,
+            icon = Icons.AutoMirrored.Filled.OpenInNew,
             title = "$title · Abrir en Backoffice Web",
             onClick = { onWebClick(module) }
         )
