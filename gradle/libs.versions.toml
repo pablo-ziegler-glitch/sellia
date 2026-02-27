@@ -61,7 +61,7 @@ androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-paging = { module = "androidx.room:room-paging", version.ref = "room" }
-androidx-ui = { module = "androidx.compose.ui:ui", version.ref = "ui" }
+androidx-ui = { module = "androidx.compose.ui:ui" }
 androidx-work-runtime-ktx-v290 = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntimeKtxVersion" }
 charts = { module = "com.github.tehras:charts", version.ref = "charts" }
 core = { module = "com.google.zxing:core", version.ref = "core" }
@@ -80,12 +80,12 @@ material = { group = "com.google.android.material", name = "material", version.r
 material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
 androidx-room-external-antlr = { group = "androidx.room", name = "room-external-antlr", version.ref = "roomExternalAntlr" }
-androidx-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata", version.ref = "runtimeLivedata" }
+androidx-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata" }
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraCore" }
 play-services-mlkit-barcode-scanning = { group = "com.google.android.gms", name = "play-services-mlkit-barcode-scanning", version.ref = "playServicesMlkitBarcodeScanning" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 androidx-material3-android = { group = "androidx.compose.material3", name = "material3-android", version.ref = "material3Android" }
-androidx-foundation-android = { group = "androidx.compose.foundation", name = "foundation-android", version.ref = "foundationAndroid" }
+androidx-foundation-android = { group = "androidx.compose.foundation", name = "foundation-android" }
 androidx-benchmark-traceprocessor-android = { group = "androidx.benchmark", name = "benchmark-traceprocessor-android", version.ref = "benchmarkTraceprocessorAndroid" }
 androidx-databinding-adapters = { group = "androidx.databinding", name = "databinding-adapters", version.ref = "databindingAdapters" }
 engage-core = { group = "com.google.android.engage", name = "engage-core", version.ref = "engageCore" }
@@ -93,7 +93,7 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 androidx-core = { group = "androidx.core", name = "core", version.ref = "coreVersion" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 androidx-paging-common-android = { group = "androidx.paging", name = "paging-common-android", version.ref = "pagingCommonAndroid" }
-androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "composeMaterial3" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-storage = { group = "androidx.test.services", name = "storage", version.ref = "storage" }
 firebase-crashlytics-buildtools = { group = "com.google.firebase", name = "firebase-crashlytics-buildtools", version.ref = "firebaseCrashlyticsBuildtools" }
 firebase-appcheck-playintegrity = { module = "com.google.firebase:firebase-appcheck-playintegrity" }
@@ -101,6 +101,6 @@ firebase-appcheck-debug = { module = "com.google.firebase:firebase-appcheck-debu
 junit-junit = { group = "junit", name = "junit", version.ref = "junitJunit" }
 androidx-viewbinding = { group = "androidx.databinding", name = "viewbinding", version.ref = "viewbinding" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
-androidx-compose-runtime-saveable = { group = "androidx.compose.runtime", name = "runtime-saveable", version.ref = "runtimeSaveable" }
+androidx-compose-runtime-saveable = { group = "androidx.compose.runtime", name = "runtime-saveable" }
 
 [plugins]
