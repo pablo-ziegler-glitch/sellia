@@ -310,10 +310,12 @@ object AppModule {
     fun provideAuthOnboardingRepository(
         auth: FirebaseAuth,
         firestore: FirebaseFirestore,
+        functions: FirebaseFunctions,
         @IoDispatcher io: CoroutineDispatcher
     ): AuthOnboardingRepository = AuthOnboardingRepositoryImpl(
         auth = auth,
         firestore = firestore,
+        functions = functions,
         io = io
     )
 
