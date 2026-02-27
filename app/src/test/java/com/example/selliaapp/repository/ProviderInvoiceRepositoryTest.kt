@@ -34,7 +34,7 @@ class ProviderInvoiceRepositoryTest {
 
         assertNotNull(exception)
         assertTrue(exception is InvalidProviderPaymentException)
-        assertTrue(exception.message!!.contains("monto"))
+        assertTrue(exception?.message?.contains("monto") == true)
         verify(dao, never()).updateInvoice(any())
     }
 
@@ -53,7 +53,7 @@ class ProviderInvoiceRepositoryTest {
 
         assertNotNull(exception)
         assertTrue(exception is InvalidProviderPaymentException)
-        assertTrue(exception.message!!.contains("referencia"))
+        assertTrue(exception?.message?.contains("referencia") == true)
         verify(dao, never()).updateInvoice(any())
     }
 
