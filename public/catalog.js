@@ -2,8 +2,10 @@ const CONFIG_PLACEHOLDER = "REEMPLAZAR";
 
 const config = window.STORE_CONFIG || {};
 const firebaseConfig = config.firebase || {};
-const publicCollection = config.publicProductCollection || "public_products";
+const catalogApiBaseUrl = (config.publicCatalogApiBaseUrl || "/public/catalog").trim();
 const catalogLimit = Number(config.publicCatalogLimit) > 0 ? Number(config.publicCatalogLimit) : 1000;
+const catalogPageSize = Math.min(100, Number(config.publicCatalogPageSize) > 0 ? Number(config.publicCatalogPageSize) : 50);
+const catalogSort = String(config.publicCatalogSort || "name_asc").trim();
 const queryParams = new URLSearchParams(window.location.search || "");
 const tenantFromQuery = (
   queryParams.get("tenantId") ||
@@ -64,94 +66,57 @@ function normalizeProduct(raw) {
   };
 }
 
-function parseFirestoreDocument(doc) {
-  if (!doc?.fields) return null;
-  const fields = doc.fields;
-  const readString = (key) => fields[key]?.stringValue || "";
-  const readNumber = (key) => {
-    const rawValue = fields[key]?.doubleValue ?? fields[key]?.integerValue;
-    if (rawValue === undefined || rawValue === null || rawValue === "") return null;
-    const numberValue = Number(rawValue);
-    return Number.isFinite(numberValue) ? numberValue : null;
-  };
+function buildCatalogEndpointUrl(pageToken = "") {
+  const baseUrl = catalogApiBaseUrl || "/public/catalog";
+  const query = new URLSearchParams();
+  if (catalogTenantId) query.set("tenantId", catalogTenantId);
+  query.set("pageSize", String(catalogPageSize));
+  query.set("sort", catalogSort);
+  if (pageToken) query.set("pageToken", pageToken);
 
-  return {
-    id: doc.name?.split("/").pop() || "",
-    tenantId: readString("tenantId"),
-    storeName: readString("storeName"),
-    name: readString("name"),
-    sku: readString("sku"),
-    code: readString("code"),
-    barcode: readString("barcode"),
-    listPrice: readNumber("listPrice"),
-    cashPrice: readNumber("cashPrice")
-  };
+  const hasQuery = baseUrl.includes("?");
+  return `${baseUrl}${hasQuery ? "&" : "?"}${query.toString()}`;
 }
 
-function buildRunQueryUrl() {
-  const projectId = firebaseConfig.projectId;
-  const apiKey = firebaseConfig.apiKey;
-  if (!isConfiguredValue(projectId) || !isConfiguredValue(apiKey)) return null;
-  if (catalogTenantId) {
-    return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${encodeURIComponent(
-      catalogTenantId
-    )}:runQuery?key=${apiKey}`;
-  }
-  return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
-}
-
-function buildFriendlyFirestoreError(error) {
+function buildFriendlyCatalogError(error) {
   const message = String(error?.message || "");
-  if (message.includes("FAILED_PRECONDITION")) {
-    return "La consulta del catálogo requiere un índice Firestore. Verificá firestore.indexes.json y desplegá índices.";
+  if (message.includes("tenantId es requerido")) {
+    return "Falta tenantId en la URL. Usá ?tenantId=<id_tienda>.";
   }
-  return message || "Error al cargar catálogo desde Firestore.";
+  if (message.includes("Rate limit")) {
+    return "Demasiadas solicitudes al catálogo. Reintentá en unos segundos.";
+  }
+  return message || "Error al cargar catálogo público.";
 }
 
-async function fetchFirestoreProducts() {
-  const runQueryUrl = buildRunQueryUrl();
-  if (!runQueryUrl) {
-    throw new Error("Falta configurar firebase.projectId o firebase.apiKey en config.js");
+async function fetchCatalogProductsFromBackend() {
+  if (!catalogTenantId) {
+    throw new Error("tenantId es requerido para consultar el catálogo público");
   }
 
-  const body = {
-    structuredQuery: {
-      from: [{ collectionId: publicCollection, allDescendants: !catalogTenantId }],
-      select: {
-        fields: [
-          { fieldPath: "tenantId" },
-          { fieldPath: "storeName" },
-          { fieldPath: "name" },
-          { fieldPath: "sku" },
-          { fieldPath: "code" },
-          { fieldPath: "barcode" },
-          { fieldPath: "listPrice" },
-          { fieldPath: "cashPrice" }
-        ]
-      },
-      orderBy: [
-        { field: { fieldPath: "tenantId" }, direction: "ASCENDING" },
-        { field: { fieldPath: "name" }, direction: "ASCENDING" }
-      ],
-      limit: catalogLimit
+  const items = [];
+  let pageToken = "";
+
+  while (items.length < catalogLimit) {
+    const response = await fetch(buildCatalogEndpointUrl(pageToken), {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Backend catálogo respondió ${response.status}`);
     }
-  };
 
-  const response = await fetch(runQueryUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+    const data = await response.json();
+    const pageItems = Array.isArray(data.items) ? data.items : [];
+    items.push(...pageItems.map((product) => normalizeProduct(product)));
 
-  if (!response.ok) {
-    throw new Error(`Firestore respondió ${response.status}`);
+    if (!data.nextPageToken) break;
+    pageToken = String(data.nextPageToken);
   }
 
-  const rows = await response.json();
-  return rows
-    .map((row) => parseFirestoreDocument(row.document))
-    .filter(Boolean)
-    .map((product) => normalizeProduct(product));
+  return items.slice(0, catalogLimit);
 }
 
 function renderStoreFilter() {
@@ -224,14 +189,14 @@ async function loadCatalog() {
     const tenantLabel = catalogTenantId
       ? ` de la tienda ${catalogTenantId}`
       : " de todas las tiendas";
-    setStatus(`Cargando catálogo${tenantLabel} desde Firestore...`);
-    state.products = await fetchFirestoreProducts();
+    setStatus(`Cargando catálogo${tenantLabel} desde backend...`);
+    state.products = await fetchCatalogProductsFromBackend();
     setStatus(state.products.length ? "" : "No hay productos públicos disponibles.");
     renderStoreFilter();
     renderProducts();
   } catch (error) {
     console.error("No se pudo cargar el catálogo", error);
-    setStatus(buildFriendlyFirestoreError(error), true);
+    setStatus(buildFriendlyCatalogError(error), true);
     state.products = [];
     renderStoreFilter();
     renderProducts();
