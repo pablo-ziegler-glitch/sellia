@@ -31,6 +31,72 @@ class ProviderInvoiceTextParserTest {
     }
 
     @Test
+    fun parse_itemLineWithNumericSku_detectsCodeAndQuantityFromNextToken() {
+        val raw = """
+            Factura: B-0004-00000077
+            7791234567890 Galletitas Clasicas 6 450,00 2700,00
+            Total: 2700,00
+        """.trimIndent()
+
+        val result = parser.parse(raw)
+
+        assertThat(result.items).hasSize(1)
+        assertThat(result.items.first().code).isEqualTo("7791234567890")
+        assertThat(result.items.first().quantity).isWithin(0.001).of(6.0)
+        assertThat(result.items.first().unitPrice).isWithin(0.001).of(450.0)
+        assertThat(result.items.first().lineTotal).isWithin(0.001).of(2700.0)
+    }
+
+    @Test
+    fun parse_itemLineWithoutSku_parsesMixedDecimalFormats() {
+        val raw = """
+            Factura: C-0002-00000015
+            Leche Entera 12 1,250.50 15,006.00
+            Total: 15,006.00
+        """.trimIndent()
+
+        val result = parser.parse(raw)
+
+        assertThat(result.items).hasSize(1)
+        assertThat(result.items.first().code).isNull()
+        assertThat(result.items.first().name).isEqualTo("Leche Entera")
+        assertThat(result.items.first().quantity).isWithin(0.001).of(12.0)
+        assertThat(result.items.first().unitPrice).isWithin(0.001).of(1250.5)
+        assertThat(result.items.first().lineTotal).isWithin(0.001).of(15006.0)
+    }
+
+    @Test
+    fun parse_itemLineWithVatIncluded_capturesVatPercent() {
+        val raw = """
+            Factura: A-0001-00000098
+            12345678 Arroz Premium IVA 21% 2 1.000,00 2.000,00
+            Total: 2.000,00
+        """.trimIndent()
+
+        val result = parser.parse(raw)
+
+        assertThat(result.items).hasSize(1)
+        assertThat(result.items.first().vatPercent).isWithin(0.001).of(21.0)
+        assertThat(result.items.first().code).isEqualTo("12345678")
+    }
+
+    @Test
+    fun parse_discardsItemLine_whenQtyUnitTotalAreIncoherent() {
+        val raw = """
+            Factura: A-0001-00000101
+            Shampoo Neutro 2 100,00 999,00
+            Total: 999,00
+        """.trimIndent()
+
+        val result = parser.parse(raw)
+
+        assertThat(result.items).isEmpty()
+        assertThat(result.warnings).contains(
+            "Renglón descartado por incoherencia cantidad/precio/total: 'Shampoo Neutro 2 100,00 999,00'"
+        )
+    }
+
+    @Test
     fun parse_returnsWarnings_whenTextHasNoStructure() {
         val result = parser.parse("Texto sin datos útiles")
 
