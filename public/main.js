@@ -1,5 +1,70 @@
 const config = window.STORE_CONFIG || {};
+const runtimeConfig = window.__STORE_RUNTIME_CONFIG__ || {};
 const safeDom = window.SafeDom || {};
+
+const GENERIC_LANDING_CONFIG = {
+  brand: {
+    name: "Tu Marca",
+    tagline: "digitalizá tu negocio y vendé más"
+  },
+  seo: {
+    title: "Tu Marca | Impulsá tu tienda",
+    description: "Llevá tu negocio al siguiente nivel con una presencia digital profesional.",
+    ogImage: "/assets/og-image.svg"
+  },
+  hero: {
+    title: "Tu negocio, listo para crecer online",
+    subtitle: "Mostrá tus productos, captá clientes y centralizá tu operación en una sola plataforma."
+  },
+  cta: {
+    primary: "CONOCÉ LA SOLUCIÓN",
+    secondary: "VER DEMO"
+  },
+  story: {
+    title: "De catálogo improvisado a canal digital escalable",
+    description:
+      "Esta landing es una base para nuevas tiendas: una estructura clara para comunicar valor, generar confianza y convertir visitas en ventas."
+  },
+  purpose: {
+    title: "Nuestra propuesta",
+    description:
+      "Simplificar la operación comercial con herramientas que ahorran tiempo, mejoran la atención y permiten decisiones basadas en datos."
+  }
+};
+
+const TENANT_LANDING_PRESETS = {
+  floki: {
+    brand: {
+      name: "FLOKI",
+      tagline: "conquista a tu competencia"
+    },
+    seo: {
+      title: "FLOKI | Digitalizá tu negocio y vendé con foco",
+      description:
+        "FLOKI te ayuda a ordenar catálogo, acelerar ventas y profesionalizar la operación comercial con una experiencia simple y efectiva.",
+      ogImage: "/assets/og-image.svg"
+    },
+    hero: {
+      title: "FLOKI: la historia de cómo convertir caos operativo en crecimiento",
+      subtitle:
+        "Nacimos para resolver el día a día comercial: menos fricción, más control, y una tienda digital que trabaja para vos 24/7."
+    },
+    cta: {
+      primary: "QUIERO DIGITALIZAR MI NEGOCIO",
+      secondary: "VER CÓMO FUNCIONA"
+    },
+    story: {
+      title: "Historia FLOKI",
+      description:
+        "Vimos comercios perdiendo ventas por procesos manuales, catálogos desactualizados y respuestas tardías. FLOKI surge para transformar ese problema en ventaja competitiva."
+    },
+    purpose: {
+      title: "Propósito FLOKI",
+      description:
+        "Impulsar a cada negocio a operar como una marca moderna: catálogo vivo, comunicación consistente y decisiones comerciales apoyadas en datos."
+    }
+  }
+};
 
 const elements = {
   year: document.getElementById("year"),
@@ -21,6 +86,32 @@ function setupBrandAndYear() {
   document.querySelectorAll("[data-brand]").forEach((el) => {
     el.textContent = `${brandName} — Hecho con pasión.`;
   });
+
+  document.querySelectorAll("[data-landing-seo]").forEach((element) => {
+    const seoKey = element.dataset.landingSeo;
+    switch (seoKey) {
+      case "title":
+        document.title = landingConfig.seo.title;
+        break;
+      case "description":
+      case "og:title":
+      case "og:description":
+      case "twitter:title":
+      case "twitter:description":
+        element.setAttribute(
+          "content",
+          seoKey.includes("title") ? landingConfig.seo.title : landingConfig.seo.description
+        );
+        break;
+      case "og:image":
+      case "twitter:image":
+        element.setAttribute("content", landingConfig.seo.ogImage);
+        break;
+      default:
+        break;
+    }
+  });
+
   if (elements.year) {
     elements.year.textContent = String(new Date().getFullYear());
   }
@@ -75,7 +166,7 @@ function createProductCard(product) {
 
   const tag = document.createElement("span");
   tag.className = "tag";
-  tag.textContent = safeDom.sanitizeText ? safeDom.sanitizeText(product.tag || "Colección") : (product.tag || "Colección");
+  tag.textContent = safeDom.sanitizeText ? safeDom.sanitizeText(product.tag || "Colección") : product.tag || "Colección";
 
   const title = document.createElement("h3");
   title.textContent = safeDom.sanitizeText ? safeDom.sanitizeText(product.name) : String(product.name || "Producto");
