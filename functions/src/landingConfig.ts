@@ -219,6 +219,7 @@ type LandingConfigWritePayload = {
   tenantId?: unknown;
   draftVersion: unknown;
   publishedVersion?: unknown;
+  publishNowConfirmed?: unknown;
 };
 
 type LandingConfigDocument = {
@@ -267,11 +268,24 @@ const ensureCanWriteTenant = (
   }
 };
 
-const parsePayload = (data: unknown): { draftVersion: Record<string, unknown>; publishedVersion: Record<string, unknown> | null } => {
+export const isPublishConfirmationAccepted = (value: unknown): boolean => value === true;
+
+const parsePayload = (
+  data: unknown
+): { draftVersion: Record<string, unknown>; publishedVersion: Record<string, unknown> | null; publishNowConfirmed: boolean } => {
   const payload = (data ?? {}) as LandingConfigWritePayload;
   const draftVersion = assertLandingVersion(payload.draftVersion, "draftVersion");
   const publishedVersion = assertLandingVersion(payload.publishedVersion, "publishedVersion");
-  return { draftVersion: draftVersion as Record<string, unknown>, publishedVersion };
+  const publishNowConfirmed = isPublishConfirmationAccepted(payload.publishNowConfirmed);
+
+  if (publishedVersion && !publishNowConfirmed) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Confirmación requerida: publicar impacta de forma inmediata en la landing pública."
+    );
+  }
+
+  return { draftVersion: draftVersion as Record<string, unknown>, publishedVersion, publishNowConfirmed };
 };
 
 const getUserData = async (db: admin.firestore.Firestore, uid: string): Promise<Record<string, unknown>> => {

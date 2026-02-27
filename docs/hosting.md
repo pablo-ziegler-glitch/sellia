@@ -84,6 +84,27 @@ Campos persistidos:
 
 Esto evita hardcodeos por marca, reduce errores manuales y permite escalar múltiples tiendas con dominio propio sin redeploy del frontend.
 
+
+## Publicación de landing con confirmación obligatoria
+
+Los cambios de landing se guardan en `draftVersion` y solo pasan a público cuando el cliente envía también `publishedVersion`.
+
+Para evitar publicaciones accidentales, las funciones `setMainLandingConfig` y `setTenantStoreLandingConfig`
+exigen `publishNowConfirmed: true` cuando `publishedVersion` no es `null`. Si falta esa confirmación se devuelve
+`failed-precondition` y no se publica nada.
+
+Flujo recomendado en backoffice:
+
+1. Usuario edita borrador (`draftVersion`) y guarda sin publicar (`publishedVersion: null`).
+2. Al presionar “Publicar ahora”, mostrar popup de confirmación:
+   - “Este cambio impactará de forma inmediata la landing pública. ¿Deseás continuar?”
+3. Solo si confirma, enviar `publishNowConfirmed: true` junto con `publishedVersion`.
+
+Gobernanza por rol:
+
+- **Owner de tienda**: puede editar/publicar únicamente `tenants/{tenantId}/config/store_landing` de su tenant.
+- **Admin global / superAdmin**: puede editar/publicar únicamente `global/public_site/config/main_landing`.
+
 ## Estrategia de refresco y costo Firestore
 
 La ficha pública de producto (`public/product.js`) usa una estrategia híbrida orientada a costos:
@@ -168,3 +189,27 @@ tenants/{tenantId}/config/public_store
 ```
 
 Asegurate de permitir lecturas públicas únicamente de `public_products` (no de `products`).
+
+
+## Medición de campañas (UTM + QR)
+
+Para atribución de tráfico desde QR, redes sociales y otros canales, usar parámetros UTM en todas las URLs públicas:
+
+- `utm_source` (ej: `qr_local`, `instagram`, `facebook`)
+- `utm_medium` (ej: `offline`, `social`, `referral`)
+- `utm_campaign` (ej: `lanzamiento_floki`)
+- opcional: `utm_content` para distinguir piezas creativas
+
+Ejemplos:
+
+```
+https://tu-proyecto.web.app/?tenantId=tienda_a&utm_source=qr_local&utm_medium=offline&utm_campaign=lanzamiento_floki
+https://tu-proyecto.web.app/catalog.html?tenantId=tienda_a&utm_source=instagram&utm_medium=social&utm_campaign=lanzamiento_floki
+```
+
+Recomendaciones:
+
+- Persistir UTMs en `sessionStorage` durante la sesión para no perder atribución al navegar entre landing/catálogo/producto.
+- Enviar eventos de conversión (click a WhatsApp/Instagram) con los UTMs originales.
+- Definir dashboard mínimo: visitas por source/medium/campaign, CTR a WhatsApp, CTR a Instagram y tasa de rebote.
+

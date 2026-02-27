@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { migrateLandingConfigDocument } from "../src/landingConfig";
+import { isPublishConfirmationAccepted, migrateLandingConfigDocument } from "../src/landingConfig";
 
 const validLandingVersion = {
   hero: { title: "Hero", subtitle: "Sub", primaryCtaLabel: "Comprar" },
@@ -13,6 +13,14 @@ const validLandingVersion = {
 };
 
 describe("landingConfig schema + migration", () => {
+
+
+  it("acepta confirmación explícita para publicación inmediata", () => {
+    expect(isPublishConfirmationAccepted(true)).toBe(true);
+    expect(isPublishConfirmationAccepted(false)).toBe(false);
+    expect(isPublishConfirmationAccepted("true")).toBe(false);
+    expect(isPublishConfirmationAccepted(undefined)).toBe(false);
+  });
   it("migra de v1 a v2 agregando metadata base", () => {
     const migrated = migrateLandingConfigDocument({
       schemaVersion: 1,
