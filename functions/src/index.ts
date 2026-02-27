@@ -43,6 +43,7 @@ import {
   getMpWebhookSignatureWindowMs as cfgGetMpWebhookSignatureWindowMs,
   parseWebhookSecretRefs as cfgParseWebhookSecretRefs,
 } from "./config/getters";
+import { createSetMainLandingConfigHandler, createSetTenantStoreLandingConfigHandler } from "./landingConfig";
 
 admin.initializeApp();
 
@@ -2088,6 +2089,15 @@ const reconcilePaymentHandler = async (data: unknown, context: functions.https.C
     intentId,
   };
 };
+
+
+export const setMainLandingConfig = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(createSetMainLandingConfigHandler(db));
+
+export const setTenantStoreLandingConfig = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(createSetTenantStoreLandingConfigHandler(db));
 
 export const createPaymentIntent =
   functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentIntentHandler);
