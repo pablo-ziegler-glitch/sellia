@@ -60,6 +60,12 @@
           }
         ]
       }
+    ],
+    "rewrites": [
+      {
+        "source": "/public/catalog",
+        "function": "publicCatalog"
+      }
     ]
   }
 }
