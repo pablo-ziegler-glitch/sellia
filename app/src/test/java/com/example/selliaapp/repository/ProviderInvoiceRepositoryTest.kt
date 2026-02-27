@@ -5,6 +5,7 @@ import com.example.selliaapp.data.model.ProviderInvoice
 import com.example.selliaapp.data.model.ProviderInvoiceStatus
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.any
@@ -12,7 +13,6 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
-import kotlin.test.assertFailsWith
 
 class ProviderInvoiceRepositoryTest {
 
@@ -23,15 +23,17 @@ class ProviderInvoiceRepositoryTest {
     fun markPaid_rejectsNonPositiveAmount() = runTest {
         val invoice = testInvoice()
 
-        val exception = assertFailsWith<InvalidProviderPaymentException> {
+        val exception = runCatching {
             repository.markPaid(
                 invoice = invoice,
                 ref = "REF-123",
                 amount = 0.0,
                 paymentDateMillis = 1710000000000
             )
-        }
+        }.exceptionOrNull()
 
+        assertNotNull(exception)
+        assertTrue(exception is InvalidProviderPaymentException)
         assertTrue(exception.message!!.contains("monto"))
         verify(dao, never()).updateInvoice(any())
     }
@@ -40,15 +42,17 @@ class ProviderInvoiceRepositoryTest {
     fun markPaid_rejectsEmptyReference() = runTest {
         val invoice = testInvoice()
 
-        val exception = assertFailsWith<InvalidProviderPaymentException> {
+        val exception = runCatching {
             repository.markPaid(
                 invoice = invoice,
                 ref = "   ",
                 amount = 100.0,
                 paymentDateMillis = 1710000000000
             )
-        }
+        }.exceptionOrNull()
 
+        assertNotNull(exception)
+        assertTrue(exception is InvalidProviderPaymentException)
         assertTrue(exception.message!!.contains("referencia"))
         verify(dao, never()).updateInvoice(any())
     }
