@@ -68,10 +68,8 @@ const TENANT_LANDING_PRESETS = {
 
 const elements = {
   year: document.getElementById("year"),
-  videoPlaceholder: document.getElementById("videoPlaceholder"),
-  videoPoster: document.getElementById("videoPoster"),
-  videoPlayButton: document.querySelector(".video-play"),
-  productGrid: document.getElementById("productGrid")
+  secondarySectionsMount: document.getElementById("secondarySectionsMount"),
+  secondarySectionsTemplate: document.getElementById("secondarySectionsTemplate")
 };
 
 function isConfigured(value) {
@@ -83,134 +81,10 @@ function sanitizeVideoId(value) {
   return /^[a-zA-Z0-9_-]{11}$/.test(value) ? value : "";
 }
 
-function sanitizeText(value, fallback = "") {
-  const sanitized = safeDom.sanitizeText ? safeDom.sanitizeText(value) : String(value ?? "");
-  const trimmed = sanitized.trim();
-  return trimmed || fallback;
-}
-
-function sanitizeHttpsUrl(value, fallback = "") {
-  const candidate = sanitizeText(value, "");
-  if (!candidate) return fallback;
-  const safeUrl = safeDom.toAllowedHttpsUrl?.(candidate);
-  return safeUrl || fallback;
-}
-
-function mergeLandingConfig(baseConfig, overrideConfig) {
-  return {
-    brand: {
-      name: sanitizeText(overrideConfig?.brand?.name, baseConfig.brand.name),
-      tagline: sanitizeText(overrideConfig?.brand?.tagline, baseConfig.brand.tagline)
-    },
-    seo: {
-      title: sanitizeText(overrideConfig?.seo?.title, baseConfig.seo.title),
-      description: sanitizeText(overrideConfig?.seo?.description, baseConfig.seo.description),
-      ogImage: sanitizeHttpsUrl(overrideConfig?.seo?.ogImage, baseConfig.seo.ogImage)
-    },
-    hero: {
-      title: sanitizeText(overrideConfig?.hero?.title, baseConfig.hero.title),
-      subtitle: sanitizeText(overrideConfig?.hero?.subtitle, baseConfig.hero.subtitle)
-    },
-    cta: {
-      primary: sanitizeText(overrideConfig?.cta?.primary, baseConfig.cta.primary),
-      secondary: sanitizeText(overrideConfig?.cta?.secondary, baseConfig.cta.secondary)
-    },
-    story: {
-      title: sanitizeText(overrideConfig?.story?.title, baseConfig.story.title),
-      description: sanitizeText(overrideConfig?.story?.description, baseConfig.story.description)
-    },
-    purpose: {
-      title: sanitizeText(overrideConfig?.purpose?.title, baseConfig.purpose.title),
-      description: sanitizeText(overrideConfig?.purpose?.description, baseConfig.purpose.description)
-    }
-  };
-}
-
-function getRuntimeLandingConfig() {
-  const runtimeLanding = runtimeConfig.landingMain || runtimeConfig.landing || {};
-  const runtimeBrand = runtimeConfig.brand || {};
-  const runtimeSeo = runtimeConfig.seo || {};
-  return {
-    brand: {
-      name: runtimeLanding.brand?.name || runtimeBrand.name || runtimeConfig.brandName,
-      tagline: runtimeLanding.brand?.tagline || runtimeBrand.tagline || runtimeConfig.brandTagline
-    },
-    seo: {
-      title: runtimeLanding.seo?.title || runtimeSeo.title,
-      description: runtimeLanding.seo?.description || runtimeSeo.description,
-      ogImage: runtimeLanding.seo?.ogImage || runtimeSeo.ogImage
-    },
-    hero: {
-      title: runtimeLanding.hero?.title,
-      subtitle: runtimeLanding.hero?.subtitle
-    },
-    cta: {
-      primary: runtimeLanding.cta?.primary,
-      secondary: runtimeLanding.cta?.secondary
-    },
-    story: {
-      title: runtimeLanding.story?.title,
-      description: runtimeLanding.story?.description
-    },
-    purpose: {
-      title: runtimeLanding.purpose?.title,
-      description: runtimeLanding.purpose?.description
-    }
-  };
-}
-
-function parseFirestoreDocumentMap(fields = {}) {
-  const parsed = {};
-  Object.entries(fields).forEach(([key, value]) => {
-    if (!value || typeof value !== "object") return;
-    if (typeof value.stringValue === "string") {
-      parsed[key] = value.stringValue;
-      return;
-    }
-    if (value.mapValue?.fields) {
-      parsed[key] = parseFirestoreDocumentMap(value.mapValue.fields);
-    }
-  });
-  return parsed;
-}
-
-async function fetchPublicLandingConfig() {
-  const projectId = config.firebase?.projectId;
-  const apiKey = config.firebase?.apiKey;
-  const tenantId = config.tenantId;
-
-  if (!projectId || !apiKey || !tenantId) return null;
-
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${encodeURIComponent(
-      tenantId
-    )}/config/landing_main?key=${apiKey}`
-  );
-
-  if (!response.ok) return null;
-
-  const payload = await response.json();
-  return parseFirestoreDocumentMap(payload?.fields || {});
-}
-
-function setTextBySelector(selector, value) {
-  document.querySelectorAll(selector).forEach((element) => {
-    element.textContent = value;
-  });
-}
-
-function applyLandingConfig(landingConfig) {
-  const brandName = landingConfig.brand.name;
-  setTextBySelector("[data-brand]", brandName);
-
-  document.querySelectorAll("[data-landing]").forEach((element) => {
-    const path = element.dataset.landing;
-    const value = path
-      .split(".")
-      .reduce((acc, key) => (acc && Object.prototype.hasOwnProperty.call(acc, key) ? acc[key] : ""), landingConfig);
-    if (typeof value === "string" && value.trim()) {
-      element.textContent = value;
-    }
+function setupBrandAndYear() {
+  const brandName = safeDom.sanitizeText ? safeDom.sanitizeText(config.brandName || "FLOKI") : (config.brandName || "FLOKI");
+  document.querySelectorAll("[data-brand]").forEach((el) => {
+    el.textContent = `${brandName} — Hecho con pasión.`;
   });
 
   document.querySelectorAll("[data-landing-seo]").forEach((element) => {
@@ -258,14 +132,18 @@ function setupContacts() {
 }
 
 function setupVideo() {
+  const videoPlaceholder = document.getElementById("videoPlaceholder");
+  const videoPoster = document.getElementById("videoPoster");
+  const videoPlayButton = document.querySelector(".video-play");
+
   const videoId = sanitizeVideoId(config.youtubeVideoId);
-  if (videoId && elements.videoPoster) {
-    safeDom.setSafeUrl?.(elements.videoPoster, "src", `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+  if (videoId && videoPoster) {
+    safeDom.setSafeUrl?.(videoPoster, "src", `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
   }
 
-  if (!elements.videoPlayButton || !elements.videoPlaceholder) return;
+  if (!videoPlayButton || !videoPlaceholder) return;
 
-  elements.videoPlayButton.addEventListener("click", () => {
+  videoPlayButton.addEventListener("click", () => {
     if (!videoId) return;
     const iframe = document.createElement("iframe");
     safeDom.setSafeUrl?.(iframe, "src", `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1`);
@@ -273,7 +151,7 @@ function setupVideo() {
     iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
     iframe.allowFullscreen = true;
     iframe.loading = "lazy";
-    elements.videoPlaceholder.replaceChildren(iframe);
+    videoPlaceholder.replaceChildren(iframe);
   });
 }
 
@@ -305,9 +183,10 @@ function createProductCard(product) {
 }
 
 async function renderLandingProducts() {
-  if (!elements.productGrid) return;
+  const productGrid = document.getElementById("productGrid");
+  if (!productGrid) return;
   try {
-    const response = await fetch("/data/products.json");
+    const response = await fetch("/data/products.json", { cache: "force-cache" });
     if (!response.ok) throw new Error("No se pudo cargar la data local");
     const products = await response.json();
 
@@ -315,38 +194,135 @@ async function renderLandingProducts() {
     products.slice(0, 6).forEach((product) => {
       fragment.appendChild(createProductCard(product));
     });
-    elements.productGrid.replaceChildren(fragment);
+    productGrid.replaceChildren(fragment);
   } catch (error) {
     console.warn("No se pudieron cargar los productos de la landing", error);
     const warning = document.createElement("p");
     warning.className = "muted";
     warning.textContent = "No se pudo cargar la vitrina.";
-    elements.productGrid.replaceChildren(warning);
+    productGrid.replaceChildren(warning);
+  }
+}
+
+function renderSecondarySections() {
+  if (!elements.secondarySectionsMount || !elements.secondarySectionsTemplate) return;
+  if (elements.secondarySectionsMount.childElementCount > 0) return;
+  const secondaryContent = elements.secondarySectionsTemplate.content.cloneNode(true);
+  elements.secondarySectionsMount.replaceChildren(secondaryContent);
+}
+
+function scheduleSecondaryRender() {
+  const run = () => {
+    renderSecondarySections();
+    setupContacts();
+    setupVideo();
+    renderLandingProducts();
+  };
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 1500 });
+    return;
+  }
+
+  setTimeout(run, 0);
+}
+
+function reportVital(metricName, value) {
+  const payload = {
+    metric: metricName,
+    value,
+    page: window.location.pathname,
+    tenantId: config.tenantId || "unknown",
+    timestamp: Date.now()
+  };
+
+  if (typeof window.gtag === "function") {
+    window.gtag("event", "web_vital", {
+      event_category: "Web Vitals",
+      event_label: metricName,
+      value: Math.round(value),
+      metric_name: metricName,
+      metric_value: value,
+      tenant_id: payload.tenantId
+    });
+  }
+
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ event: "web_vital", ...payload });
+
+  const analyticsEndpoint = config.analytics?.webVitalsEndpoint;
+  if (!isConfigured(analyticsEndpoint)) return;
+
+  const body = JSON.stringify(payload);
+  if (navigator.sendBeacon) {
+    const blob = new Blob([body], { type: "application/json" });
+    navigator.sendBeacon(analyticsEndpoint, blob);
+    return;
+  }
+
+  fetch(analyticsEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true
+  }).catch(() => {});
+}
+
+function observeWebVitals() {
+  let clsValue = 0;
+  let inpValue = 0;
+  let lcpValue = 0;
+
+  if ("PerformanceObserver" in window) {
+    try {
+      const clsObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (!entry.hadRecentInput) {
+            clsValue += entry.value;
+          }
+        }
+      });
+      clsObserver.observe({ type: "layout-shift", buffered: true });
+
+      const lcpObserver = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        const lastEntry = entries[entries.length - 1];
+        if (lastEntry) {
+          lcpValue = lastEntry.startTime;
+        }
+      });
+      lcpObserver.observe({ type: "largest-contentful-paint", buffered: true });
+
+      const inpObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          const latency = entry.processingStart - entry.startTime;
+          inpValue = Math.max(inpValue, latency);
+        }
+      });
+      inpObserver.observe({ type: "event", buffered: true, durationThreshold: 40 });
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "hidden") return;
+        reportVital("CLS", Number(clsValue.toFixed(4)));
+        if (lcpValue > 0) reportVital("LCP", Number(lcpValue.toFixed(2)));
+        if (inpValue > 0) reportVital("INP", Number(inpValue.toFixed(2)));
+      });
+    } catch (error) {
+      console.warn("Web Vitals observer no disponible", error);
+    }
   }
 }
 
 async function bootstrap() {
+  setupBrandAndYear();
+  observeWebVitals();
+  scheduleSecondaryRender();
+
   await Promise.resolve(window.__STORE_CONFIG_READY__);
-  const tenantKey = String(config.tenantId || "").toLowerCase();
-  const tenantPreset = TENANT_LANDING_PRESETS[tenantKey] || {};
-  const runtimeLandingConfig = getRuntimeLandingConfig();
 
-  let landingConfig = mergeLandingConfig(GENERIC_LANDING_CONFIG, tenantPreset);
-  landingConfig = mergeLandingConfig(landingConfig, runtimeLandingConfig);
-
-  try {
-    const firestoreLandingConfig = await fetchPublicLandingConfig();
-    if (firestoreLandingConfig) {
-      landingConfig = mergeLandingConfig(landingConfig, firestoreLandingConfig);
-    }
-  } catch (error) {
-    console.warn("No se pudo cargar tenants/{tenantId}/config/landing_main.", error);
-  }
-
-  applyLandingConfig(landingConfig);
   setupContacts();
   setupVideo();
-  await renderLandingProducts();
+  renderLandingProducts();
 }
 
 bootstrap();

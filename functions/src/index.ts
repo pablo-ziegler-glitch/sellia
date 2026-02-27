@@ -167,11 +167,220 @@ const TENANT_ACTIVATION_MODE_AUTO = "auto";
 const TENANT_ACTIVATION_MODE_MANUAL = "manual";
 
 const WEBHOOK_SECRET_CACHE_TTL_MS = 60_000;
+const PUBLIC_CATALOG_CACHE_TTL_MS = 60_000;
+const PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS = 60_000;
+const PUBLIC_CATALOG_RATE_LIMIT_MAX = 90;
+const PUBLIC_CATALOG_MAX_PAGE_SIZE = 100;
+const PUBLIC_CATALOG_DEFAULT_PAGE_SIZE = 25;
+const PUBLIC_CATALOG_SORT_ALLOWLIST = new Set(["name_asc", "name_desc", "updated_desc"]);
 
 let cachedWebhookSecrets: {
   expiresAtMs: number;
   value: string[];
 } | null = null;
+
+let publicCatalogCache = new Map<string, { expiresAtMs: number; response: PublicCatalogResponse }>();
+let publicCatalogRateLimitStore = new Map<string, { windowStartMs: number; count: number }>();
+
+type PublicCatalogSort = "name_asc" | "name_desc" | "updated_desc";
+
+type PublicCatalogRequestParams = {
+  tenantId: string;
+  pageSize: number;
+  sort: PublicCatalogSort;
+  pageToken: string;
+};
+
+type PublicCatalogPageToken = {
+  sort: PublicCatalogSort;
+  cursorName: string;
+  cursorUpdatedAtMs: number | null;
+  cursorProductName: string;
+};
+
+type PublicCatalogResponseItem = {
+  id: string;
+  tenantId: string;
+  storeName: string;
+  name: string;
+  sku: string;
+  code: string;
+  barcode: string;
+  listPrice: number | null;
+  cashPrice: number | null;
+  updatedAt: string | null;
+};
+
+type PublicCatalogResponse = {
+  items: PublicCatalogResponseItem[];
+  nextPageToken: string | null;
+  totalApprox: number;
+};
+
+const PUBLIC_CATALOG_FIELDS = [
+  "tenantId",
+  "storeName",
+  "name",
+  "sku",
+  "code",
+  "barcode",
+  "listPrice",
+  "cashPrice",
+  "updatedAt",
+] as const;
+
+const extractRequestIp = (req: functions.https.Request): string => {
+  const xff = normalizeString(String(req.headers["x-forwarded-for"] ?? ""));
+  if (xff) {
+    const firstIp = xff.split(",")[0]?.trim();
+    if (firstIp) return firstIp;
+  }
+  return normalizeString(req.ip) || "unknown";
+};
+
+const buildPublicCatalogFingerprint = (req: functions.https.Request): string => {
+  const userAgent = normalizeString(String(req.headers["user-agent"] ?? "")).toLowerCase();
+  const acceptLanguage = normalizeString(String(req.headers["accept-language"] ?? "")).toLowerCase();
+  return createHash("sha256")
+    .update(`${userAgent}|${acceptLanguage}`)
+    .digest("hex")
+    .slice(0, 24);
+};
+
+const parsePublicCatalogPageSize = (value: unknown): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return PUBLIC_CATALOG_DEFAULT_PAGE_SIZE;
+  return Math.min(Math.floor(parsed), PUBLIC_CATALOG_MAX_PAGE_SIZE);
+};
+
+const parsePublicCatalogSort = (value: unknown): PublicCatalogSort => {
+  const normalized = normalizeString(String(value ?? "")).toLowerCase();
+  if (PUBLIC_CATALOG_SORT_ALLOWLIST.has(normalized)) {
+    return normalized as PublicCatalogSort;
+  }
+  return "name_asc";
+};
+
+const parsePublicCatalogParams = (query: functions.https.Request["query"]): PublicCatalogRequestParams => {
+  const tenantId = normalizeString(String(query.tenantId ?? ""));
+  if (!tenantId || !/^[a-zA-Z0-9_-]{3,80}$/.test(tenantId)) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId es requerido y debe ser alfanumérico (3-80, permitidos: _ -)."
+    );
+  }
+
+  const pageToken = normalizeString(String(query.pageToken ?? ""));
+  if (pageToken.length > 1024) {
+    throw new functions.https.HttpsError("invalid-argument", "pageToken excede longitud máxima.");
+  }
+
+  return {
+    tenantId,
+    pageSize: parsePublicCatalogPageSize(query.pageSize),
+    sort: parsePublicCatalogSort(query.sort),
+    pageToken,
+  };
+};
+
+const decodePublicCatalogPageToken = (
+  token: string,
+  expectedSort: PublicCatalogSort
+): PublicCatalogPageToken | null => {
+  if (!token) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as PublicCatalogPageToken;
+    if (
+      !decoded ||
+      decoded.sort !== expectedSort ||
+      typeof decoded.cursorName !== "string" ||
+      typeof decoded.cursorProductName !== "string" ||
+      (decoded.cursorUpdatedAtMs !== null && !Number.isFinite(decoded.cursorUpdatedAtMs))
+    ) {
+      throw new Error("invalid token");
+    }
+    return decoded;
+  } catch (error) {
+    throw new functions.https.HttpsError("invalid-argument", "pageToken inválido.");
+  }
+};
+
+const encodePublicCatalogPageToken = (token: PublicCatalogPageToken): string =>
+  Buffer.from(JSON.stringify(token)).toString("base64url");
+
+const enforcePublicCatalogRateLimit = (req: functions.https.Request, tenantId: string): void => {
+  const now = Date.now();
+  const ip = extractRequestIp(req);
+  const fingerprint = buildPublicCatalogFingerprint(req);
+  const key = `${tenantId}|${ip}|${fingerprint}`;
+  const current = publicCatalogRateLimitStore.get(key);
+
+  if (!current || now - current.windowStartMs >= PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS) {
+    publicCatalogRateLimitStore.set(key, { windowStartMs: now, count: 1 });
+  } else {
+    current.count += 1;
+    publicCatalogRateLimitStore.set(key, current);
+    if (current.count > PUBLIC_CATALOG_RATE_LIMIT_MAX) {
+      throw new functions.https.HttpsError("resource-exhausted", "Rate limit excedido para este catálogo.");
+    }
+  }
+
+  if (publicCatalogRateLimitStore.size > 4000) {
+    const threshold = now - PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS * 2;
+    publicCatalogRateLimitStore = new Map(
+      [...publicCatalogRateLimitStore.entries()].filter(([, value]) => value.windowStartMs >= threshold)
+    );
+  }
+};
+
+const getPublicCatalogCached = (cacheKey: string): PublicCatalogResponse | null => {
+  const entry = publicCatalogCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expiresAtMs <= Date.now()) {
+    publicCatalogCache.delete(cacheKey);
+    return null;
+  }
+  return entry.response;
+};
+
+const setPublicCatalogCached = (cacheKey: string, response: PublicCatalogResponse): void => {
+  if (publicCatalogCache.size > 4000) {
+    const now = Date.now();
+    publicCatalogCache = new Map(
+      [...publicCatalogCache.entries()].filter(([, value]) => value.expiresAtMs > now)
+    );
+  }
+  publicCatalogCache.set(cacheKey, {
+    expiresAtMs: Date.now() + PUBLIC_CATALOG_CACHE_TTL_MS,
+    response,
+  });
+};
+
+const getFirestoreOrderBy = (sort: PublicCatalogSort): FirebaseFirestore.OrderByDirection =>
+  sort === "name_desc" ? "desc" : "asc";
+
+const toPublicCatalogResponseItem = (
+  doc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+): PublicCatalogResponseItem => {
+  const data = doc.data();
+  const updatedAtTimestamp = data.updatedAt;
+  const updatedAt =
+    updatedAtTimestamp && typeof updatedAtTimestamp.toDate === "function"
+      ? updatedAtTimestamp.toDate().toISOString()
+      : null;
+  return {
+    id: doc.id,
+    tenantId: normalizeString(data.tenantId),
+    storeName: normalizeString(data.storeName),
+    name: normalizeString(data.name),
+    sku: normalizeString(data.sku),
+    code: normalizeString(data.code),
+    barcode: normalizeString(data.barcode),
+    listPrice: Number.isFinite(Number(data.listPrice)) ? Number(data.listPrice) : null,
+    cashPrice: Number.isFinite(Number(data.cashPrice)) ? Number(data.cashPrice) : null,
+    updatedAt,
+  };
+};
 
 
 const parseBooleanFlagValue = (value: unknown, defaultValue: boolean): boolean => {
@@ -2818,6 +3027,126 @@ export const refreshPublicProducts = functions.pubsub
     return null;
   });
 
+export const publicCatalog = functions
+  .runWith({
+    timeoutSeconds: 30,
+    memory: "256MB",
+  })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+
+    if (req.method !== "GET") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+
+    try {
+      const params = parsePublicCatalogParams(req.query);
+      enforcePublicCatalogRateLimit(req, params.tenantId);
+
+      const cacheKey = `${params.tenantId}|${params.sort}|${params.pageSize}|${params.pageToken}`;
+      const cached = getPublicCatalogCached(cacheKey);
+      if (cached) {
+        res.set("Cache-Control", "public, max-age=30");
+        res.status(200).json(cached);
+        return;
+      }
+
+      const token = decodePublicCatalogPageToken(params.pageToken, params.sort);
+      let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = db
+        .collection("tenants")
+        .doc(params.tenantId)
+        .collection("public_products")
+        .select(...PUBLIC_CATALOG_FIELDS)
+        .orderBy("name", getFirestoreOrderBy(params.sort));
+
+      if (params.sort === "updated_desc") {
+        query = db
+          .collection("tenants")
+          .doc(params.tenantId)
+          .collection("public_products")
+          .select(...PUBLIC_CATALOG_FIELDS)
+          .orderBy("updatedAt", "desc")
+          .orderBy("name", "asc");
+      }
+
+      if (token) {
+        if (params.sort === "updated_desc") {
+          query = query.startAfter(
+            token.cursorUpdatedAtMs !== null
+              ? admin.firestore.Timestamp.fromMillis(token.cursorUpdatedAtMs)
+              : null,
+            token.cursorName
+          );
+        } else {
+          query = query.startAfter(token.cursorName);
+        }
+      }
+
+      const snapshot = await query.limit(params.pageSize + 1).get();
+      const docs = snapshot.docs;
+      const hasMore = docs.length > params.pageSize;
+      const pageDocs = hasMore ? docs.slice(0, params.pageSize) : docs;
+      const items = pageDocs.map(toPublicCatalogResponseItem);
+
+      const totalAgg = await db
+        .collection("tenants")
+        .doc(params.tenantId)
+        .collection("public_products")
+        .count()
+        .get();
+
+      let nextPageToken: string | null = null;
+      if (hasMore && pageDocs.length > 0) {
+        const last = pageDocs[pageDocs.length - 1];
+        const lastData = last.data();
+        const updatedAtTs = lastData.updatedAt;
+        nextPageToken = encodePublicCatalogPageToken({
+          sort: params.sort,
+          cursorName: normalizeString(lastData.name) || last.id,
+          cursorProductName: normalizeString(lastData.name) || last.id,
+          cursorUpdatedAtMs:
+            updatedAtTs && typeof updatedAtTs.toMillis === "function"
+              ? updatedAtTs.toMillis()
+              : null,
+        });
+      }
+
+      const response: PublicCatalogResponse = {
+        items,
+        nextPageToken,
+        totalApprox: totalAgg.data().count,
+      };
+
+      setPublicCatalogCached(cacheKey, response);
+      res.set("Cache-Control", "public, max-age=30");
+      res.status(200).json(response);
+    } catch (error) {
+      const isHttpsError = error instanceof functions.https.HttpsError;
+      const status = isHttpsError
+        ? error.code === "resource-exhausted"
+          ? 429
+          : error.code === "invalid-argument"
+            ? 400
+            : 500
+        : 500;
+
+      const message = isHttpsError ? error.message : "No se pudo cargar el catálogo";
+      console.error("publicCatalog request failed", {
+        message,
+        error: error instanceof Error ? error.stack : String(error),
+      });
+      res.status(status).json({ error: message });
+    }
+  });
+
 type TenantOwnershipAction =
   | "ASSOCIATE_OWNER"
   | "TRANSFER_PRIMARY_OWNER"
@@ -4822,9 +5151,6 @@ type SetMercadoPagoTogglePayload = {
 export const setMercadoPagoToggle = functions
   .runWith({ enforceAppCheck: false })
   .https.onCall(async (data: SetMercadoPagoTogglePayload, context) => {
-export const reconcilePendingPayment = functions
-  .runWith({ enforceAppCheck: false })
-  .https.onCall(async (data: unknown, context) => {
     if (!context.auth?.uid) {
       throw new functions.https.HttpsError("unauthenticated", "auth requerido");
     }
@@ -4851,22 +5177,12 @@ export const reconcilePendingPayment = functions
 
     await assertAppCheckForInternalCallable({
       operation: "setMercadoPagoToggle",
-    const paymentId = normalizeString(payload.paymentId);
-    const reason = normalizeString(payload.reason);
-
-    if (!tenantId || !paymentId) {
-      throw new functions.https.HttpsError("invalid-argument", "tenantId y paymentId requeridos");
-    }
-
-    await assertAppCheckForInternalCallable({
-      operation: "reconcilePendingPayment",
       context,
       tenantId,
     });
 
     await enforceAdminRateLimit({
       operation: "setMercadoPagoToggle",
-      operation: "reconcilePendingPayment",
       uid: context.auth.uid,
       tenantId,
       ip: getRequestIp(context),
@@ -4941,6 +5257,38 @@ export const reconcilePendingPayment = functions
       scope,
       enabled,
       paymentToggleState: toggleState,
+    };
+  });
+
+export const reconcilePendingPayment = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const paymentId = normalizeString(payload.paymentId);
+    const reason = normalizeString(payload.reason);
+
+    if (!tenantId || !paymentId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y paymentId requeridos");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "reconcilePendingPayment",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "reconcilePendingPayment",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
     const userDoc = await db.collection("users").doc(context.auth.uid).get();
     if (!userDoc.exists) {
       throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
