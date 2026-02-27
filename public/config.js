@@ -4,9 +4,9 @@
   const runtimeContact = runtimeConfig.contact || {};
 
   const storeConfig = {
-    brandName: runtimeConfig.brandName || "Valkirja",
-    publicStoreUrl: runtimeConfig.publicStoreUrl || "https://valkirja.com.ar/product.html",
-    tenantId: runtimeConfig.tenantId || "valkirja",
+    brandName: runtimeConfig.brandName || "FLOKI",
+    publicStoreUrl: runtimeConfig.publicStoreUrl || "https://floki.com.ar/product.html",
+    tenantId: runtimeConfig.tenantId || "floki",
     productCollection: "products",
     publicProductCollection: "public_products",
     refreshIntervalMs: 300000,
@@ -22,6 +22,9 @@
       whatsapp: runtimeContact.whatsapp || "",
       instagram: runtimeContact.instagram || "",
       maps: runtimeContact.maps || ""
+    },
+    analytics: {
+      webVitalsEndpoint: runtimeConfig.analytics?.webVitalsEndpoint || ""
     }
   };
 
@@ -46,7 +49,7 @@
       return;
     }
 
-    const marketingResponse = await fetch(
+    const marketingResponse = await fetchWithTimeout(
       `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${encodeURIComponent(
         config.tenantId
       )}/config/marketing?key=${apiKey}`
@@ -68,7 +71,7 @@
       }
     }
 
-    const directoryResponse = await fetch(
+    const directoryResponse = await fetchWithTimeout(
       `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/public_tenant_directory/${encodeURIComponent(
         config.tenantId
       )}?key=${apiKey}`
@@ -97,6 +100,16 @@
     applyFallbackDomainByTenant(config);
   }
 
+  async function fetchWithTimeout(url, timeoutMs = 2500) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { signal: controller.signal, cache: "no-store" });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   function resolveTenantFromUrl() {
     const params = new URLSearchParams(globalScope.location.search);
     return (
@@ -108,8 +121,8 @@
   }
 
   function applyFallbackDomainByTenant(config) {
-    if ((config.tenantId || "").toLowerCase() === "valkirja") {
-      config.publicStoreUrl = "https://valkirja.com.ar/product.html";
+    if ((config.tenantId || "").toLowerCase() === "floki") {
+      config.publicStoreUrl = "https://floki.com.ar/product.html";
     }
   }
 

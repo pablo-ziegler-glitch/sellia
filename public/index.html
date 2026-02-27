@@ -3,36 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Historia real de Valkirja</title>
+    <title>Historia real de FLOKI</title>
     <meta
       name="description"
       content="Esto no es una campaña publicitaria. Es la historia real de una marca que quiere acompañarlos hacia la adolescencia."
     />
     <link rel="canonical" href="https://tu-dominio.web.app/" />
-    <meta property="og:title" content="Historia real de Valkirja" />
+    <meta property="og:title" content="Historia real de FLOKI" />
     <meta
       property="og:description"
       content="Esto no es una campaña publicitaria. Es la historia real de una marca que quiere acompañarlos hacia la adolescencia."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://tu-dominio.web.app/" />
-    <meta property="og:image" content="/assets/og-image.svg" />
+    <meta property="og:image" content="/assets/og-image.v1.svg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Historia real de Valkirja" />
+    <meta name="twitter:title" content="Historia real de FLOKI" />
     <meta
       name="twitter:description"
       content="Esto no es una campaña publicitaria. Es la historia real de una marca que quiere acompañarlos hacia la adolescencia."
     />
     <meta name="theme-color" content="#111111" />
-    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/favicon.svg" />
+    <link rel="icon" href="/assets/favicon.v1.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/favicon.v1.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260227" />
   </head>
   <body>
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -65,50 +65,54 @@
         </div>
       </section>
 
-      <section id="historia" class="section" aria-labelledby="historia-title">
-        <div class="section-header">
-          <h2 id="historia-title">La historia en 55 segundos</h2>
-          <p>Una mirada corta y honesta a lo que nos trajo hasta acá. Sin épica artificial, con verdad.</p>
-        </div>
-        <div class="video" data-reveal>
-          <div class="video-placeholder" id="videoPlaceholder">
-            <img id="videoPoster" src="/assets/og-image.svg" alt="Poster del video de la historia" loading="lazy" />
-            <button class="video-play" type="button" aria-label="Reproducir video">▶</button>
-          </div>
-        </div>
-      </section>
+      <div id="secondarySectionsMount" aria-live="polite"></div>
 
-      <section id="productos" class="section" aria-labelledby="productos-title">
-        <div class="section-header">
-          <h2 id="productos-title">Una parte de lo que hacemos hoy</h2>
-          <p>Vitrina de ejemplo. Para ver catálogo completo por tienda usá “Ver colección”.</p>
-        </div>
-        <div class="product-grid" id="productGrid" aria-live="polite"></div>
-      </section>
-
-      <section id="contacto" class="section" aria-labelledby="contacto-title">
-        <div class="section-header">
-          <h2 id="contacto-title">Gracias por escanear. Gracias por quedarte.</h2>
-          <p>Si querés conocer más o consultar por productos, escribinos.</p>
-        </div>
-        <div class="contact-card">
-          <div class="contact-actions">
-            <a class="button primary" data-contact="whatsapp" data-utm-link href="#" aria-label="Abrir WhatsApp">WhatsApp</a>
-            <a class="button ghost" data-contact="instagram" data-utm-link href="#" aria-label="Abrir Instagram">Instagram</a>
-            <a class="button ghost" data-contact="maps" data-utm-link href="#" aria-label="Abrir ubicación">Ubicación</a>
+      <template id="secondarySectionsTemplate">
+        <section id="historia" class="section" aria-labelledby="historia-title">
+          <div class="section-header">
+            <h2 id="historia-title">La historia en 55 segundos</h2>
+            <p>Una mirada corta y honesta a lo que nos trajo hasta acá. Sin épica artificial, con verdad.</p>
           </div>
-        </div>
-      </section>
+          <div class="video" data-reveal>
+            <div class="video-placeholder" id="videoPlaceholder">
+              <img id="videoPoster" src="/assets/og-image.v1.svg" alt="Poster del video de la historia" loading="lazy" />
+              <button class="video-play" type="button" aria-label="Reproducir video">▶</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="productos" class="section" aria-labelledby="productos-title">
+          <div class="section-header">
+            <h2 id="productos-title">Una parte de lo que hacemos hoy</h2>
+            <p>Vitrina de ejemplo. Para ver catálogo completo por tienda usá “Ver colección”.</p>
+          </div>
+          <div class="product-grid" id="productGrid" aria-live="polite"></div>
+        </section>
+
+        <section id="contacto" class="section" aria-labelledby="contacto-title">
+          <div class="section-header">
+            <h2 id="contacto-title">Gracias por escanear. Gracias por quedarte.</h2>
+            <p>Si querés conocer más o consultar por productos, escribinos.</p>
+          </div>
+          <div class="contact-card">
+            <div class="contact-actions">
+              <a class="button primary" data-contact="whatsapp" data-utm-link href="#" aria-label="Abrir WhatsApp">WhatsApp</a>
+              <a class="button ghost" data-contact="instagram" data-utm-link href="#" aria-label="Abrir Instagram">Instagram</a>
+              <a class="button ghost" data-contact="maps" data-utm-link href="#" aria-label="Abrir ubicación">Ubicación</a>
+            </div>
+          </div>
+        </section>
+      </template>
     </main>
 
     <footer class="site-footer">
-      <p class="footer-brand" data-brand>Valkirja — Hecho con pasión.</p>
+      <p class="footer-brand" data-brand>FLOKI — Hecho con pasión.</p>
       <p class="muted">© <span id="year"></span></p>
     </footer>
 
-    <script src="/config.js"></script>
+    <script src="/config.js?v=20260227"></script>
     <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
-    <script src="/safe-dom.js" defer></script>
-    <script src="/main.js" defer></script>
+    <script src="/safe-dom.js?v=20260227" defer></script>
+    <script src="/main.js?v=20260227" defer></script>
   </body>
 </html>
