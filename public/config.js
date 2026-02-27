@@ -4,7 +4,8 @@
   const runtimeContact = runtimeConfig.contact || {};
 
   const storeConfig = {
-    brandName: runtimeConfig.brandName || "Valkirja",
+    brandName: runtimeConfig.brandName || runtimeConfig.brand?.name || "Tu Marca",
+    brandTagline: runtimeConfig.brandTagline || runtimeConfig.brand?.tagline || "digitalizá tu negocio y vendé más",
     publicStoreUrl: runtimeConfig.publicStoreUrl || "https://valkirja.com.ar/product.html",
     tenantId: runtimeConfig.tenantId || "valkirja",
     productCollection: "products",
