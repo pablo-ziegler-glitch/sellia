@@ -82,7 +82,7 @@ const el = {
   paymentsToggleReason: document.getElementById("paymentsToggleReason"),
   paymentsToggleButton: document.getElementById("paymentsToggleButton"),
   paymentsToggleMessage: document.getElementById("paymentsToggleMessage"),
-  paymentsAuditBody: document.getElementById("paymentsAuditBody")
+  paymentsAuditBody: document.getElementById("paymentsAuditBody"),
   costDashboardPanel: document.getElementById("costDashboardPanel"),
   budgetTotalValue: document.getElementById("budgetTotalValue"),
   currentCostTotalValue: document.getElementById("currentCostTotalValue"),
@@ -118,7 +118,7 @@ const appState = {
   refreshTimerId: null,
   backupRequestsUnsubscribe: null,
   paymentsFlagsUnsubscribe: null,
-  paymentsAuditUnsubscribe: null
+  paymentsAuditUnsubscribe: null,
   maintenanceTasks: []
 };
 
