@@ -34,11 +34,11 @@ import com.floki.app.R
 import com.floki.app.auth.AuthLoadingUiState
 
 @Composable
-fun YoVendoLoadingScene(
+fun FlokiLoadingScene(
     loadingUiState: AuthLoadingUiState,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "yovendo-loading")
+    val infiniteTransition = rememberInfiniteTransition(label = "floki-loading")
     val pulse by infiniteTransition.animateFloat(
         initialValue = 0.85f,
         targetValue = 1f,
@@ -79,7 +79,7 @@ fun YoVendoLoadingScene(
         )
         {
             Text(
-                text = "YoVendo",
+                text = "FLOKI",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White

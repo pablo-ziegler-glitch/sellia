@@ -143,7 +143,7 @@ import com.floki.app.ui.components.buildAccountSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SelliaApp(
+fun FlokiApp(
     navController: NavHostController = rememberNavController(),
      customerRepo: CustomerRepository
 
@@ -403,7 +403,7 @@ fun SelliaApp(
 
             // CRUD clientes
             composable(Routes.ManageCustomers.route) {
-                // Versión que usa repos inyectados desde SelliaApp()
+                // Versión que usa repos inyectados desde FlokiApp()
                 ManageCustomersScreen(
                     customerRepository = customerRepo,
                     onBack = { navController.popBackStack() }

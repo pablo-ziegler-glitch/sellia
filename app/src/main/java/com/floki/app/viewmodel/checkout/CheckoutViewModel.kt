@@ -278,7 +278,7 @@ class CheckoutViewModel @Inject constructor(
 
     private fun buildPaymentDescription(items: List<CartItemUi>): String {
         return when {
-            items.isEmpty() -> "Venta en Sellia"
+            items.isEmpty() -> "Venta en FLOKI"
             items.size == 1 -> "Venta de ${items.first().name}"
             else -> "Venta de ${items.size} productos"
         }

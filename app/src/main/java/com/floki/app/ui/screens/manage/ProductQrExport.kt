@@ -143,7 +143,7 @@ internal fun exportQrPdf(
     val values = ContentValues().apply {
         put(MediaStore.Downloads.DISPLAY_NAME, "$safeName.pdf")
         put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
-        put(MediaStore.Downloads.RELATIVE_PATH, "Download/Sellia")
+        put(MediaStore.Downloads.RELATIVE_PATH, "Download/FLOKI")
     }
     runCatching {
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
@@ -154,9 +154,9 @@ internal fun exportQrPdf(
     }.onSuccess {
         val skippedCount = items.size - exportableItems.size
         val message = if (skippedCount > 0) {
-            "PDF guardado en Descargas/Sellia. Omitidos: $skippedCount QR inválidos."
+            "PDF guardado en Descargas/FLOKI. Omitidos: $skippedCount QR inválidos."
         } else {
-            "PDF guardado en Descargas/Sellia"
+            "PDF guardado en Descargas/FLOKI"
         }
         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }.onFailure {

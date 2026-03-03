@@ -29,7 +29,7 @@ import com.floki.app.auth.SessionUiAlert
 import com.floki.app.repository.CustomerRepository
 import com.floki.app.auth.RequiredAuthAction
 import com.floki.app.sync.SyncScheduler
-import com.floki.app.ui.components.YoVendoLoadingScene
+import com.floki.app.ui.components.FlokiLoadingScene
 import com.floki.app.ui.screens.auth.LoginScreen
 import com.floki.app.ui.screens.auth.RegisterScreen
 import com.floki.app.ui.screens.auth.TenantOnboardingRequiredScreen
@@ -41,7 +41,7 @@ import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.flow.collect
 
 @Composable
-fun SelliaRoot(
+fun FlokiRoot(
     navController: NavHostController = rememberNavController(),
     customerRepo: CustomerRepository,
     authViewModel: AuthViewModel = hiltViewModel(),
@@ -160,7 +160,7 @@ fun SelliaRoot(
 
     when (authState) {
         is AuthState.Loading -> {
-            YoVendoLoadingScene(
+            FlokiLoadingScene(
                 loadingUiState = loadingUiState,
                 modifier = Modifier.fillMaxSize()
             )
@@ -172,7 +172,7 @@ fun SelliaRoot(
                 // Fuerza una sincronización inicial al entrar con una sesión en un dispositivo nuevo.
                 SyncScheduler.enqueueNow(context, false)
             }
-            SelliaApp(
+            FlokiApp(
                 navController = navController,
                 customerRepo = customerRepo
             )

@@ -12,7 +12,7 @@ import androidx.navigation.compose.rememberNavController
 import com.floki.app.repository.CustomerRepository
 import com.floki.app.security.DeepLinkSecurity
 import com.floki.app.repository.ProductRepository
-import com.floki.app.ui.navigation.SelliaRoot
+import com.floki.app.ui.navigation.FlokiRoot
 import com.floki.app.ui.theme.ValkirjaTheme
 import com.floki.app.viewmodel.AppThemeViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
 
             ValkirjaTheme(dynamicPalette = palette.value) {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    SelliaRoot(
+                    FlokiRoot(
                         navController = navController,
                         customerRepo = customerRepository
                     )
