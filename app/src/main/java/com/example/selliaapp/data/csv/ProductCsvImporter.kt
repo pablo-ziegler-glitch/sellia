@@ -130,8 +130,9 @@ class ProductCsvImporter(
 
         rows.forEachIndexed { idx, r ->
             try {
-                if (!r.barcode.isNullOrBlank()) {
-                    val existing = productDao.getByBarcode(r.barcode!!)
+                val barcode = r.barcode
+                if (!barcode.isNullOrBlank()) {
+                    val existing = productDao.getByBarcode(barcode)
                     if (existing == null) {
                         // Inserta
                 val entity = ProductEntity(

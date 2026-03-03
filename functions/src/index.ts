@@ -152,7 +152,6 @@ const MANUAL_RECONCILIATION_RECOMMENDATIONS: Record<PaymentStatus, PaymentAction
   FAILED: "reintentar",
 };
 
-const CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE = "2026-03-31";
 
 const GLOBAL_FLAGS_COLLECTION = "config";
 const GLOBAL_FLAGS_DOC_ID = "runtime_flags";
@@ -2111,19 +2110,6 @@ export const reconcilePayment =
 export const createPaymentPreference =
   functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentPreferenceHandler);
 
-/**
- * @deprecated Use `createPaymentPreference`. This alias will be retired on 2026-03-31.
- */
-export const createPreference = functions
-  .runWith({ enforceAppCheck: true })
-  .https.onCall(async (data: unknown, context) => {
-    console.warn("Deprecated Cloud Function alias invoked: createPreference", {
-      canonicalEndpoint: "createPaymentPreference",
-      aliasRetirementDate: CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE,
-      uid: context.auth?.uid ?? null,
-    });
-    return createPaymentPreferenceHandler(data);
-  });
 
 export const collectUsageMetrics = functions.pubsub
   .schedule("every 24 hours")

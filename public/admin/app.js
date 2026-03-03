@@ -1,3 +1,6 @@
+// NOTE: ES module imports no soportan el atributo integrity (SRI) de forma nativa.
+// Para agregar SRI a estas dependencias, migrar a un bundler (Vite/Rollup) o self-hostear los SDK.
+// Versión fijada deliberadamente: firebase@10.12.5. Actualizar junto con la integridad del hash.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getAuth,

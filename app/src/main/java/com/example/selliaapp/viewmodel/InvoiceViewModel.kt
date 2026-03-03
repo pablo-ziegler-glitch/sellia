@@ -28,7 +28,7 @@ class InvoiceViewModel(
 
     fun addInvoice(invoice: Invoice, items: List<InvoiceItem>) {
         viewModelScope.launch {
-            repository.addInvoiceAndAdjustStock(invoice, items)
+            runCatching { repository.addInvoiceAndAdjustStock(invoice, items) }
         }
     }
 }

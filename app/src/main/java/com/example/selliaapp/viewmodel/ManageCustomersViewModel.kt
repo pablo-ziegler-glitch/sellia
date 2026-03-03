@@ -29,11 +29,10 @@ class ManageCustomersViewModel @Inject constructor(
     fun setQuery(q: String) { query.value = q }
 
     fun save(customer: CustomerEntity, onDone: () -> Unit) = viewModelScope.launch {
-        repo.upsert(customer)
-        onDone()
+        runCatching { repo.upsert(customer) }.onSuccess { onDone() }
     }
 
     fun delete(customer: CustomerEntity) = viewModelScope.launch {
-        repo.delete(customer)
+        runCatching { repo.delete(customer) }
     }
 }
