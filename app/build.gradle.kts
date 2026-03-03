@@ -10,14 +10,14 @@ plugins {
 }
 
 android {
-    namespace = "com.example.selliaapp"
+    namespace = "com.floki.app"
     compileSdk = 35
 
     defaultConfig {
         val mergedPrs = (project.findProperty("mergedPrs") as String?)
             ?.trim()
             .orEmpty()
-        applicationId = "com.example.selliaapp"
+        applicationId = "com.floki.app"
         minSdk = 29
         targetSdk = 35
         versionCode = 1
