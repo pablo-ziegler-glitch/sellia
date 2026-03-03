@@ -1,9 +1,12 @@
 package com.example.selliaapp.viewmodel
 
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.repository.FakeCashRepository
 import com.example.selliaapp.repository.FakeInvoiceRepository
 import com.example.selliaapp.repository.FakeScanProductRepository
- import com.example.selliaapp.testing.MainDispatcherRule
+import com.example.selliaapp.repository.SellDraftRepository
+import com.example.selliaapp.testing.MainDispatcherRule
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -11,6 +14,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SellViewModelScanTest {
@@ -22,9 +27,15 @@ class SellViewModelScanTest {
     private lateinit var vm: SellViewModel
 
     private val invoiceRepo = FakeInvoiceRepository()
+    private val cashRepository = FakeCashRepository()
+    private val sellDraftRepository: SellDraftRepository = mock()
+    private val customerRepository: CustomerRepository = mock()
 
     @Before
     fun setup() {
+        // sellDraftRepository.load() devuelve null → restoreDraft() no restaura nada
+        whenever(sellDraftRepository.load()).thenReturn(null)
+
         repo = FakeScanProductRepository(
             initial = listOf(
                 ProductEntity(
@@ -46,11 +57,12 @@ class SellViewModelScanTest {
             )
         )
 
-        // [NUEVO] SellViewModel requiere repo + invoiceRepo
         vm = SellViewModel(
             repo = repo,
             invoiceRepo = invoiceRepo,
-            cashRepository = TODO()
+            cashRepository = cashRepository,
+            sellDraftRepository = sellDraftRepository,
+            customerRepository = customerRepository
         )
     }
 

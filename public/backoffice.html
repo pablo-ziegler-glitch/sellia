@@ -1,9 +1,17 @@
 <!doctype html>
+<!--
+  DEPRECADO: Este backoffice legado está mantenido únicamente por compatibilidad.
+  El backoffice activo es /admin/. Plan de retiro:
+    - Fase 1 (actual): ambos coexisten; /backoffice.html redirigirá a /admin/ vía banner.
+    - Fase 2: agregar meta-redirect automático a /admin/ tras 30 días de aviso.
+    - Fase 3: eliminar este archivo y redirigir la URL desde firebase.json.
+  No agregar nuevas features aquí. Dirigir todo desarrollo a /admin/.
+-->
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sellia Backoffice</title>
+  <title>Sellia Backoffice (Legado)</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -62,7 +70,7 @@
     </section>
   </main>
 
-  <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
+  <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous" defer></script>
   <script src="/safe-dom.js" defer></script>
   <script src="/config.js" defer></script>
   <script type="module" src="/backoffice.js"></script>
