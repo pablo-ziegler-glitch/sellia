@@ -44,6 +44,17 @@
                 android:pathPrefix="/product" />
         </intent-filter>
 
+        <!-- sellia:// kept for backward-compat with QR codes already in the field -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="sellia"
+                android:host="product" />
+        </intent-filter>
+
+        <!-- floki:// new scheme for links generated going forward -->
         <intent-filter>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />

@@ -13,6 +13,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -63,29 +64,34 @@ class QuickStockAdjustViewModel @Inject constructor(
 
     private fun loadProduct() {
         viewModelScope.launch {
-            val product = repo.getById(productId)
-            val deficit = product?.let { p ->
-                val min = p.minStock ?: 0
-                val current = p.quantity
-                val missing = (min - current).coerceAtLeast(0)
-                if (missing > 0) missing.toString() else ""
-            } ?: ""
-            _state.update {
-                it.copy(
-                    loading = false,
-                    product = product,
-                    deltaText = deficit,
-                    error = if (product == null) "Producto no encontrado" else null
-                )
-            }
+            runCatching { repo.getById(productId) }
+                .onSuccess { product ->
+                    val deficit = product?.let { p ->
+                        val min = p.minStock ?: 0
+                        val current = p.quantity
+                        val missing = (min - current).coerceAtLeast(0)
+                        if (missing > 0) missing.toString() else ""
+                    } ?: ""
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            product = product,
+                            deltaText = deficit,
+                            error = if (product == null) "Producto no encontrado" else null
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(loading = false, error = e.localizedMessage ?: "Error al cargar el producto") }
+                }
         }
     }
 
     private fun observeMovements() {
         viewModelScope.launch {
-            repo.observeStockMovements(productId, limit = 5).collect { list ->
-                _state.update { it.copy(recentMovements = list) }
-            }
+            repo.observeStockMovements(productId, limit = 5)
+                .catch { _state.update { it.copy(recentMovements = emptyList()) } }
+                .collect { list -> _state.update { it.copy(recentMovements = list) } }
         }
     }
 
@@ -111,18 +117,25 @@ class QuickStockAdjustViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null) }
             val note = state.value.note.trim().takeIf { it.isNotEmpty() }
-            val success = repo.adjustStock(
-                productId = product.id,
-                delta = delta,
-                reason = state.value.selectedReason.code,
-                note = note
-            )
-            _state.update {
-                it.copy(
-                    isSaving = false,
-                    success = success,
-                    error = if (success) null else "No se pudo registrar el ajuste"
+            runCatching {
+                repo.adjustStock(
+                    productId = product.id,
+                    delta = delta,
+                    reason = state.value.selectedReason.code,
+                    note = note
                 )
+            }.onSuccess { success ->
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        success = success,
+                        error = if (success) null else "No se pudo registrar el ajuste"
+                    )
+                }
+            }.onFailure { e ->
+                _state.update {
+                    it.copy(isSaving = false, success = false, error = e.localizedMessage ?: "Error al registrar el ajuste")
+                }
             }
         }
     }

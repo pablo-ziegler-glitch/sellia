@@ -33,19 +33,20 @@ class AddVariantViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            val id = variantDao.insert(
-                VariantEntity(
-                    productId = productId,
-                    sku = trimmedSku,
-                    option1 = trimmedOption1,
-                    option2 = trimmedOption2,
-                    quantity = quantity.coerceAtLeast(0),
-                    basePrice = normalizedBase,
-                    taxRate = normalizedTax,
-                    finalPrice = finalPrice
+            runCatching {
+                variantDao.insert(
+                    VariantEntity(
+                        productId = productId,
+                        sku = trimmedSku,
+                        option1 = trimmedOption1,
+                        option2 = trimmedOption2,
+                        quantity = quantity.coerceAtLeast(0),
+                        basePrice = normalizedBase,
+                        taxRate = normalizedTax,
+                        finalPrice = finalPrice
+                    )
                 )
-            )
-            onDone(id)
+            }.onSuccess { id -> onDone(id) }
         }
     }
 }

@@ -521,8 +521,13 @@ fun FlokiApp(
                     "?${Routes.PublicProductCard.ARG_QR}={${Routes.PublicProductCard.ARG_QR}}",
                 arguments = Routes.PublicProductCard.arguments,
                 deepLinks = listOf(
+                    // sellia:// kept for backward-compat with QR codes already in the field
                     navDeepLink {
                         uriPattern = "sellia://product?q={${Routes.PublicProductCard.ARG_QR}}"
+                    },
+                    // floki:// new scheme going forward
+                    navDeepLink {
+                        uriPattern = "floki://product?q={${Routes.PublicProductCard.ARG_QR}}"
                     },
                     navDeepLink {
                         uriPattern = "https://sellia1993.web.app/product?q={${Routes.PublicProductCard.ARG_QR}}"

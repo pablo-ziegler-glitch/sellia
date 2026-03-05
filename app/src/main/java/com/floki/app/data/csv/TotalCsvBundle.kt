@@ -36,13 +36,14 @@ object TotalCsvBundle {
             val line = rawLine.trimEnd('\r')
             if (line.startsWith(prefix)) {
                 currentKey = line
-                if (sections[currentKey] == null) {
-                    sections[currentKey!!] = StringBuilder()
+                if (sections[line] == null) {
+                    sections[line] = StringBuilder()
                 }
                 return@forEach
             }
-            if (currentKey != null) {
-                sections[currentKey!!]?.appendLine(line)
+            val key = currentKey
+            if (key != null) {
+                sections[key]?.appendLine(line)
             }
         }
         return sections.mapValues { it.value.toString().trim() }

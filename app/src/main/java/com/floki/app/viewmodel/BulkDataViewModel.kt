@@ -14,6 +14,8 @@ import com.floki.app.data.csv.TotalCsvBundle
 import com.floki.app.data.dao.InvoiceDao
 import com.floki.app.data.model.ImportResult
 import com.floki.app.di.IoDispatcher
+import com.floki.app.domain.security.Permission
+import com.floki.app.repository.AccessControlRepository
 import com.floki.app.repository.CustomerRepository
 import com.floki.app.repository.ExpenseRepository
 import com.floki.app.repository.ProductRepository
@@ -35,6 +37,7 @@ class BulkDataViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val invoiceDao: InvoiceDao,
     private val expenseRepository: ExpenseRepository,
+    private val accessControlRepository: AccessControlRepository,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -94,11 +97,13 @@ class BulkDataViewModel @Inject constructor(
     fun exportCustomers(onCompleted: (Result<ExportPayload>) -> Unit) {
         viewModelScope.launch(io) {
             val result = runCatching {
+                val canExportPii = accessControlRepository.getAccessState()
+                    .permissions.contains(Permission.EXPORT_PII_DATA)
                 val customers = customerRepository.getAllOnce()
                 ExportPayload(
                     fileName = CustomerCsvExporter.exportFileName(timestamp()),
                     mimeType = CustomerCsvExporter.mimeType(),
-                    content = CustomerCsvExporter.export(customers)
+                    content = CustomerCsvExporter.export(customers, maskPii = !canExportPii)
                 )
             }
             withContext(Dispatchers.Main) {
@@ -142,13 +147,15 @@ class BulkDataViewModel @Inject constructor(
     fun exportAll(onCompleted: (Result<ExportPayload>) -> Unit) {
         viewModelScope.launch(io) {
             val result = runCatching {
+                val canExportPii = accessControlRepository.getAccessState()
+                    .permissions.contains(Permission.EXPORT_PII_DATA)
                 val products = productRepository.getAllForExport()
                 val customers = customerRepository.getAllOnce()
                 val invoices = invoiceDao.getAllInvoicesOnce()
                 val expenses = expenseRepository.getAllRecordsOnce()
                 val bundled = TotalCsvBundle.bundle(
                     productsCsv = ProductCsvExporter.export(products),
-                    customersCsv = CustomerCsvExporter.export(customers),
+                    customersCsv = CustomerCsvExporter.export(customers, maskPii = !canExportPii),
                     salesCsv = SalesCsvExporter.export(invoices),
                     expensesCsv = ExpenseCsvExporter.export(expenses)
                 )

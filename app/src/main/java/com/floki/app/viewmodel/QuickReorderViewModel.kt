@@ -16,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -66,43 +67,50 @@ class QuickReorderViewModel @Inject constructor(
 
     private fun loadProduct() {
         viewModelScope.launch {
-            val product = productRepository.getById(productId)
-            val deficit = product?.let { p ->
-                val min = p.minStock ?: 0
-                val missing = (min - p.quantity).coerceAtLeast(0)
-                if (missing > 0) missing.toString() else ""
-            } ?: ""
-            val price = product?.let { p ->
-                val resolved = p.listPrice
-                resolved?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: ""
-            } ?: ""
-            _state.update {
-                it.copy(
-                    loading = false,
-                    product = product,
-                    quantityText = deficit,
-                    unitPriceText = price,
-                    selectedProviderId = product?.providerId,
-                    autoReceive = false,
-                    error = if (product == null) "Producto no encontrado" else null
-                )
-            }
+            runCatching { productRepository.getById(productId) }
+                .onSuccess { product ->
+                    val deficit = product?.let { p ->
+                        val min = p.minStock ?: 0
+                        val missing = (min - p.quantity).coerceAtLeast(0)
+                        if (missing > 0) missing.toString() else ""
+                    } ?: ""
+                    val price = product?.let { p ->
+                        val resolved = p.listPrice
+                        resolved?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: ""
+                    } ?: ""
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            product = product,
+                            quantityText = deficit,
+                            unitPriceText = price,
+                            selectedProviderId = product?.providerId,
+                            autoReceive = false,
+                            error = if (product == null) "Producto no encontrado" else null
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(loading = false, error = e.localizedMessage ?: "Error al cargar el producto") }
+                }
         }
     }
 
     private fun observeProviders() {
         viewModelScope.launch {
-            providerRepository.observeAll().collect { providers ->
-                val current = state.value
-                val resolvedProviderId = when {
-                    current.selectedProviderId != null -> current.selectedProviderId
-                    current.product?.providerId != null -> current.product.providerId
-                    else -> providers.firstOrNull()?.id
+            providerRepository.observeAll()
+                .catch { _state.update { it.copy(providers = emptyList()) } }
+                .collect { providers ->
+                    val current = state.value
+                    val resolvedProviderId = when {
+                        current.selectedProviderId != null -> current.selectedProviderId
+                        current.product?.providerId != null -> current.product.providerId
+                        else -> providers.firstOrNull()?.id
+                    }
+                    _state.update {
+                        it.copy(providers = providers, selectedProviderId = resolvedProviderId)
+                    }
                 }
-                _state.update {
-                    it.copy(providers = providers, selectedProviderId = resolvedProviderId)
-                }
-            }
         }
     }
 

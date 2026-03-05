@@ -227,9 +227,10 @@ fun SellScreen(
             maxQty = maxQty,
             currency = currency,
             onAddToCart = { qty ->
-                if (!product.barcode.isNullOrBlank()) {
+                val productBarcode = product.barcode
+                if (!productBarcode.isNullOrBlank()) {
                     sellVm.addToCartByScan(
-                        barcode = product.barcode!!,
+                        barcode = productBarcode,
                         qty = qty,
                         onNotFound = {
                             scope.launch {

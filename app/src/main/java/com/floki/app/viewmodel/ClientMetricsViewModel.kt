@@ -30,10 +30,16 @@ class ClientMetricsViewModel @Inject constructor(
 
     fun refresh() = viewModelScope.launch {
         _state.update { it.copy(isLoading = true) }
-        val day = repo.countToday()
-        val week = repo.countThisWeek()
-        val month = repo.countThisMonth()
-        val year = repo.countThisYear()
-        _state.update { ClientMetricsUiState(day, week, month, year, isLoading = false) }
+        runCatching {
+            val day = repo.countToday()
+            val week = repo.countThisWeek()
+            val month = repo.countThisMonth()
+            val year = repo.countThisYear()
+            ClientMetricsUiState(day, week, month, year, isLoading = false)
+        }.onSuccess { next ->
+            _state.value = next
+        }.onFailure {
+            _state.update { it.copy(isLoading = false) }
+        }
     }
 }

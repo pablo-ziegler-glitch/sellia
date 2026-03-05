@@ -11,5 +11,7 @@ enum class Permission {
     CASH_AUDIT,
     CASH_MOVEMENT,
     CASH_CLOSE,
-    VIEW_CASH_REPORT
+    VIEW_CASH_REPORT,
+    /** Permite exportar datos con campos PII completos (teléfono, email, dirección de clientes). */
+    EXPORT_PII_DATA
 }
