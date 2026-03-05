@@ -44,6 +44,28 @@
 
     const projectId = config.firebase?.projectId;
     const apiKey = config.firebase?.apiKey;
+
+    if (!config.tenantId && projectId && apiKey) {
+      const hostname = globalScope.location.hostname.replace(/^www\./, "");
+      if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
+        try {
+          const domainLookupResp = await fetchWithTimeout(
+            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(hostname)}?key=${apiKey}`
+          );
+          if (domainLookupResp.ok) {
+            const domainDoc = await domainLookupResp.json();
+            const resolvedTenant = domainDoc?.fields?.tenantId?.stringValue?.trim();
+            if (resolvedTenant) {
+              config.tenantId = resolvedTenant;
+              config._resolvedFromHostname = true;
+            }
+          }
+        } catch (_error) {
+          // Domain lookup failed — fallback to existing logic
+        }
+      }
+    }
+
     if (!projectId || !apiKey || !config.tenantId) {
       applyFallbackDomainByTenant(config);
       return;

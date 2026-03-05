@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -72,6 +73,7 @@ fun ConfigScreen(
     onTenantDelete: (String, String) -> Unit,
     tenantActionFeedback: String?,
     tenantActionError: String?,
+    onPublicCatalogConfig: () -> Unit,
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
     onSupport: () -> Unit,
@@ -222,6 +224,14 @@ fun ConfigScreen(
                     )
                 }
 
+                if (adminFeatureFlags.publicCatalogConfigEnabled) {
+                    SettingsItem(
+                        icon = Icons.Filled.Storefront,
+                        title = "Catálogo público",
+                        onClick = onPublicCatalogConfig
+                    )
+                }
+
                 if (adminFeatureFlags.productQrsEnabled) {
                     SettingsItem(
                         icon = Icons.Filled.QrCode2,
@@ -351,7 +361,8 @@ data class ConfigAdminFeatureFlags(
     val bulkAbmEnabled: Boolean,
     val marketingConfigEnabled: Boolean,
     val productQrsEnabled: Boolean,
-    val securitySettingsEnabled: Boolean
+    val securitySettingsEnabled: Boolean,
+    val publicCatalogConfigEnabled: Boolean
 ) {
     companion object {
         /**
@@ -367,7 +378,8 @@ data class ConfigAdminFeatureFlags(
             bulkAbmEnabled = false,
             marketingConfigEnabled = false,
             productQrsEnabled = false,
-            securitySettingsEnabled = false
+            securitySettingsEnabled = false,
+            publicCatalogConfigEnabled = false
         )
     }
 }

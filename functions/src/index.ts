@@ -211,10 +211,23 @@ type PublicCatalogResponseItem = {
   updatedAt: string | null;
 };
 
+type PublicCatalogStoreMeta = {
+  tenantId: string;
+  storeName: string;
+  storeLogoUrl: string;
+  palette: { primary: string; secondary: string; tertiary: string };
+  heroTitle: string;
+  heroSubtitle: string;
+  footerText: string;
+  showPrices: boolean;
+  showCashPrice: boolean;
+};
+
 type PublicCatalogResponse = {
   items: PublicCatalogResponseItem[];
   nextPageToken: string | null;
   totalApprox: number;
+  storeMeta?: PublicCatalogStoreMeta | null;
 };
 
 const PUBLIC_CATALOG_FIELDS = [
@@ -380,6 +393,46 @@ const toPublicCatalogResponseItem = (
     cashPrice: Number.isFinite(Number(data.cashPrice)) ? Number(data.cashPrice) : null,
     updatedAt,
   };
+};
+
+const fetchPublicCatalogStoreMeta = async (
+  tenantId: string
+): Promise<PublicCatalogStoreMeta | null> => {
+  try {
+    const tenantConfigRef = db.collection("tenants").doc(tenantId).collection("config");
+    const [marketingSnap, catalogSnap] = await Promise.all([
+      tenantConfigRef.doc("marketing").get(),
+      tenantConfigRef.doc("public_catalog").get(),
+    ]);
+
+    const marketingData = (marketingSnap.exists ? marketingSnap.data()?.data : null) as
+      | Record<string, unknown>
+      | null;
+    const catalogData = (catalogSnap.exists ? catalogSnap.data()?.data : null) as
+      | Record<string, unknown>
+      | null;
+
+    const palette = (marketingData?.palette ?? {}) as Record<string, unknown>;
+
+    return {
+      tenantId,
+      storeName: normalizeString(String(marketingData?.storeName ?? "")),
+      storeLogoUrl: normalizeString(String(marketingData?.storeLogoUrl ?? "")),
+      palette: {
+        primary: normalizeString(String(palette.primary ?? "")),
+        secondary: normalizeString(String(palette.secondary ?? "")),
+        tertiary: normalizeString(String(palette.tertiary ?? "")),
+      },
+      heroTitle: normalizeString(String(catalogData?.heroTitle ?? "")),
+      heroSubtitle: normalizeString(String(catalogData?.heroSubtitle ?? "")),
+      footerText: normalizeString(String(catalogData?.footerText ?? "")),
+      showPrices: catalogData?.showPrices !== false,
+      showCashPrice: catalogData?.showCashPrice !== false,
+    };
+  } catch (error) {
+    console.warn("fetchPublicCatalogStoreMeta failed", { tenantId, error });
+    return null;
+  }
 };
 
 
@@ -3115,10 +3168,16 @@ export const publicCatalog = functions
         });
       }
 
+      const isFirstPage = !params.pageToken;
+      const storeMeta = isFirstPage
+        ? await fetchPublicCatalogStoreMeta(params.tenantId)
+        : null;
+
       const response: PublicCatalogResponse = {
         items,
         nextPageToken,
         totalApprox: totalAgg.data().count,
+        storeMeta,
       };
 
       setPublicCatalogCached(cacheKey, response);
