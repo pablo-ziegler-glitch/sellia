@@ -27,9 +27,10 @@
       data-landing-seo="twitter:description"
     />
     <meta name="twitter:image" content="/assets/og-image.svg" data-landing-seo="twitter:image" />
-    <meta name="theme-color" content="#111111" />
+    <meta name="theme-color" content="#C9A227" />
     <link rel="icon" href="/assets/favicon.v1.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/assets/favicon.v1.svg" />
+    <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -39,10 +40,18 @@
     <link rel="stylesheet" href="/styles.css?v=20260227" />
   </head>
   <body>
+    <!-- Splash screen / preloader -->
+    <div id="floki-splash" class="floki-splash" aria-hidden="true">
+      <img src="/assets/logo-splash.svg" class="floki-splash__img" alt="" />
+    </div>
+
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
     <header class="site-header">
       <nav class="nav" aria-label="Secciones">
+        <a class="nav-brand" href="/" aria-label="FLOKI — Inicio">
+          <img src="/assets/logo.svg" class="nav-logo" alt="FLOKI" />
+        </a>
         <div class="nav-links">
           <a class="nav-link" href="#historia">Historia</a>
           <a class="nav-link" href="#productos">Colección</a>

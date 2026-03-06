@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" role="img" aria-label="FLOKI — Explora. Compra. Vende.">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#F2CC6B"/>
+      <stop offset="35%"  stop-color="#C9A227"/>
+      <stop offset="100%" stop-color="#7A5A0A"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"   stop-color="#181A22"/>
+      <stop offset="100%" stop-color="#0D0F1A"/>
+    </linearGradient>
+    <radialGradient id="centerGlow" cx="50%" cy="52%" r="35%">
+      <stop offset="0%"   stop-color="#C9A227" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#0D0F1A" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background full portrait -->
+  <rect width="400" height="600" fill="url(#bg)"/>
+  <rect width="400" height="600" fill="url(#centerGlow)"/>
+
+  <!-- "FLOK" — centered, ~260px wide at font-size 110 -->
+  <!-- FLOK occupies x≈70..330; I+arrow goes x≈336..356 -->
+  <!-- Visual center for the whole "FLOKI" word ≈ 200 -->
+  <text
+    x="58" y="308"
+    font-family="'Arial Black','Arial Bold',Impact,sans-serif"
+    font-weight="900"
+    font-size="110"
+    fill="url(#gold)"
+    filter="url(#glow)"
+    letter-spacing="4">FLOK</text>
+
+  <!-- I stem -->
+  <rect x="337" y="216" width="20" height="92" rx="3" fill="url(#gold)" filter="url(#glow)"/>
+
+  <!-- Arrow on top of I — upper-right pointing triangle -->
+  <polygon points="324,222  350,222  350,196" fill="url(#gold)" filter="url(#glow)"/>
+
+  <!-- Tagline on one line: "Explora. Compra. Vende." -->
+  <!-- Using tspan to color each word differently -->
+  <text y="358"
+    font-family="'Arial','Helvetica',sans-serif"
+    font-size="22" font-weight="400" letter-spacing="0.5"
+    text-anchor="middle" x="200">
+    <tspan fill="#FFFFFF">Explora. </tspan><tspan fill="#C9A227" filter="url(#glow)">Compra.</tspan><tspan fill="#FFFFFF"> Vende.</tspan>
+  </text>
+</svg>

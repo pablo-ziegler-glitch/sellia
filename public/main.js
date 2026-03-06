@@ -313,6 +313,13 @@ function observeWebVitals() {
   }
 }
 
+function dismissSplash() {
+  const splash = document.getElementById("floki-splash");
+  if (!splash) return;
+  splash.classList.add("floki-splash--hidden");
+  splash.addEventListener("transitionend", () => splash.remove(), { once: true });
+}
+
 async function bootstrap() {
   setupBrandAndYear();
   observeWebVitals();
@@ -323,6 +330,10 @@ async function bootstrap() {
   setupContacts();
   setupVideo();
   renderLandingProducts();
+
+  // Dismiss splash after content is ready (min 1.2s for brand exposure)
+  const minDisplay = new Promise(r => setTimeout(r, 1200));
+  minDisplay.then(dismissSplash);
 }
 
 bootstrap();
