@@ -68,7 +68,7 @@ fun StoreDetailScreen(
             }
 
             // Contact info
-            if (config != null && config.contactWhatsapp.isNotBlank()) {
+            if (config != null && (config.contactWhatsapp.isNotBlank() || config.contactInstagram.isNotBlank() || config.contactAddress.isNotBlank())) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),

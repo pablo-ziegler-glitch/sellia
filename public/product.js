@@ -249,7 +249,9 @@ function renderOwnerSection(product) {
   }
 
   if (product.quantity !== "" && product.quantity !== undefined) {
-    const stockClass = product.minStock && product.quantity <= product.minStock ? "negative" : "positive";
+    const quantity = Number(product.quantity);
+    const minStock = Number(product.minStock);
+    const stockClass = !Number.isNaN(minStock) && !Number.isNaN(quantity) && quantity <= minStock ? "negative" : "positive";
     rows.push({ label: "STOCK ACTUAL", value: String(product.quantity), className: stockClass });
   }
 

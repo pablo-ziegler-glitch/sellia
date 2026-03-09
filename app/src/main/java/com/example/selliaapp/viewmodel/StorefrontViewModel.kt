@@ -68,9 +68,16 @@ class StorefrontViewModel @Inject constructor(
                         storeName = config.storeName,
                         config = config
                     )
-                    _uiState.update {
-                        it.copy(isSaving = false, successMessage = "Vidriera actualizada")
-                    }
+                        .onSuccess {
+                            _uiState.update {
+                                it.copy(isSaving = false, successMessage = "Vidriera actualizada")
+                            }
+                        }
+                        .onFailure { syncError ->
+                            _uiState.update {
+                                it.copy(isSaving = false, errorMessage = syncError.message ?: "Error al sincronizar mensajes públicos")
+                            }
+                        }
                 }
                 .onFailure { error ->
                     _uiState.update {
