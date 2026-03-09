@@ -44,6 +44,7 @@ import {
   parseWebhookSecretRefs as cfgParseWebhookSecretRefs,
 } from "./config/getters";
 import { createSetMainLandingConfigHandler, createSetTenantStoreLandingConfigHandler } from "./landingConfig";
+import { onStoreRequestStatusChange } from "./storeRequests";
 
 admin.initializeApp();
 
@@ -2089,6 +2090,9 @@ const reconcilePaymentHandler = async (data: unknown, context: functions.https.C
   };
 };
 
+
+// --- Store request notifications (approval/rejection) ---
+export { onStoreRequestStatusChange };
 
 export const setMainLandingConfig = functions
   .runWith({ enforceAppCheck: false })

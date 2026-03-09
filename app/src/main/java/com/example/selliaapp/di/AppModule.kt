@@ -66,6 +66,9 @@ import com.example.selliaapp.repository.TenantManagementRepository
 import com.example.selliaapp.repository.TenantOwnershipRepository
 import com.example.selliaapp.repository.UsageRepository
 import com.example.selliaapp.repository.UserRepository
+import com.example.selliaapp.repository.NotificationRepository
+import com.example.selliaapp.repository.StorefrontRepository
+import com.example.selliaapp.repository.StoreRequestRepository
 import com.example.selliaapp.repository.ViewerStoreRepository
 import com.example.selliaapp.repository.impl.AccountRequestsRepositoryImpl
 import com.example.selliaapp.repository.impl.AccessControlRepositoryImpl
@@ -75,6 +78,9 @@ import com.example.selliaapp.repository.impl.TenantDirectoryRepositoryImpl
 import com.example.selliaapp.repository.impl.TenantManagementRepositoryImpl
 import com.example.selliaapp.repository.impl.TenantOwnershipRepositoryImpl
 import com.example.selliaapp.repository.impl.StorageRepositoryImpl
+import com.example.selliaapp.repository.impl.NotificationRepositoryImpl
+import com.example.selliaapp.repository.impl.StorefrontRepositoryImpl
+import com.example.selliaapp.repository.impl.StoreRequestRepositoryImpl
 import com.example.selliaapp.repository.impl.UsageRepositoryImpl
 import com.example.selliaapp.repository.impl.ViewerStoreRepositoryImpl
 import com.google.firebase.firestore.FirebaseFirestore
@@ -486,6 +492,34 @@ object AppModule {
     @IoDispatcher
     fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
 
+    @Provides
+    @Singleton
+    fun provideStorefrontRepository(
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): StorefrontRepository = StorefrontRepositoryImpl(
+        firestore = firestore,
+        io = io
+    )
 
+    @Provides
+    @Singleton
+    fun provideStoreRequestRepository(
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): StoreRequestRepository = StoreRequestRepositoryImpl(
+        firestore = firestore,
+        io = io
+    )
+
+    @Provides
+    @Singleton
+    fun provideNotificationRepository(
+        firestore: FirebaseFirestore,
+        @IoDispatcher io: CoroutineDispatcher
+    ): NotificationRepository = NotificationRepositoryImpl(
+        firestore = firestore,
+        io = io
+    )
 
 }
