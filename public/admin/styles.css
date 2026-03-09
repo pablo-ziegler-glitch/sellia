@@ -249,3 +249,21 @@ td {
   padding: 8px;
   text-align: left;
 }
+
+/* ── FLOKI Brand: Auth panel logo ── */
+.auth-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.auth-logo {
+  height: 56px;
+  width: auto;
+}
+
+/* ── FLOKI Brand: Topbar logo ── */
+.topbar-logo {
+  height: 32px;
+  width: auto;
+}

@@ -1,0 +1,23 @@
+{
+  "name": "FLOKI",
+  "short_name": "FLOKI",
+  "description": "Explora. Compra. Vende.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#0D0F1A",
+  "theme_color": "#C9A227",
+  "icons": [
+    {
+      "src": "/assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
