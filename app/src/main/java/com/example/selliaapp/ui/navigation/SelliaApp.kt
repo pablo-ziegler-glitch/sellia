@@ -48,7 +48,6 @@ import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.security.DeepLinkSecurity
 import com.example.selliaapp.ui.components.AppScaffold
 import com.example.selliaapp.ui.components.BottomNavItem
-import com.example.selliaapp.ui.screens.ClientHomeScreen
 import com.example.selliaapp.ui.screens.HomeScreen
 import com.example.selliaapp.ui.screens.MoreScreen
 import com.example.selliaapp.ui.screens.alerts.UsageAlertsScreen

@@ -1,6 +1,7 @@
 package com.example.selliaapp.ui.screens.storefront
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,16 +52,15 @@ fun StorefrontScreen(
         BackTopAppBar(title = "Vidriera Pública", onBack = onBack)
 
         if (state.isLoading) {
-            CircularProgressIndicator(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(32.dp)
-                    .align(Alignment.CenterHorizontally)
-            )
-            return
-        }
-
-        Column(
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())

@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import coil.compose.AsyncImage
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -150,7 +151,7 @@ fun StoreBanner(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (logoUrl.isNotBlank()) {
-                    coil.compose.AsyncImage(
+                    AsyncImage(
                         model = logoUrl,
                         contentDescription = storeName,
                         modifier = Modifier
