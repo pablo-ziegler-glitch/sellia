@@ -3,10 +3,15 @@
   const runtimeFirebase = runtimeConfig.firebase || {};
   const runtimeContact = runtimeConfig.contact || {};
 
+  // tenantId se deja vacío si no hay inyección explícita del servidor.
+  // El valor "floki" es solo un fallback de último recurso que se aplica
+  // después de que falla el lookup por hostname y por directorio público.
+  const runtimeTenantId = runtimeConfig.tenantId || "";
+
   const storeConfig = {
     brandName: runtimeConfig.brandName || "FLOKI",
     publicStoreUrl: runtimeConfig.publicStoreUrl || "https://floki.com.ar/product.html",
-    tenantId: runtimeConfig.tenantId || "floki",
+    tenantId: runtimeTenantId,
     productCollection: "products",
     publicProductCollection: "public_products",
     refreshIntervalMs: 300000,
@@ -143,6 +148,9 @@
   }
 
   function applyFallbackDomainByTenant(config) {
+    if (!config.tenantId) {
+      config.tenantId = "floki";
+    }
     if ((config.tenantId || "").toLowerCase() === "floki") {
       config.publicStoreUrl = "https://floki.com.ar/product.html";
     }
