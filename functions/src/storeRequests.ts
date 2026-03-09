@@ -22,8 +22,12 @@ interface StoreRequestData {
 export const onStoreRequestStatusChange = functions.firestore
   .document("store_requests/{requestId}")
   .onUpdate(async (change, context) => {
-    const before = change.before.data() as StoreRequestData;
-    const after = change.after.data() as StoreRequestData;
+    const before = change.before.data() as StoreRequestData | undefined;
+    const after = change.after.data() as StoreRequestData | undefined;
+
+    if (!before || !after) {
+      return null;
+    }
 
     // Only proceed if status actually changed
     if (before.status === after.status) {
