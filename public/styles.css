@@ -974,7 +974,7 @@ main {
   align-items: center;
   justify-content: center;
   background: #0D0F1A;
-  transition: opacity 0.6s ease, visibility 0.6s ease;
+  transition: opacity 0.6s ease;
 }
 
 .floki-splash__img {
@@ -984,7 +984,7 @@ main {
 
 .floki-splash--hidden {
   opacity: 0;
-  visibility: hidden;
+  pointer-events: none;
 }
 
 /* ── FLOKI Brand: Nav Logo ── */

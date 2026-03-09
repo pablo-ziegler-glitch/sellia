@@ -321,6 +321,9 @@ function dismissSplash() {
 }
 
 async function bootstrap() {
+  // Start brand-exposure timer concurrently with config loading (min 1.2s)
+  const minDisplay = new Promise(r => setTimeout(r, 1200));
+
   setupBrandAndYear();
   observeWebVitals();
   scheduleSecondaryRender();
@@ -331,9 +334,8 @@ async function bootstrap() {
   setupVideo();
   renderLandingProducts();
 
-  // Dismiss splash after content is ready (min 1.2s for brand exposure)
-  const minDisplay = new Promise(r => setTimeout(r, 1200));
-  minDisplay.then(dismissSplash);
+  await minDisplay;
+  dismissSplash();
 }
 
 bootstrap();
