@@ -4,7 +4,8 @@
     marketing: "marketing",
     security: "security",
     cloudServices: "cloud_services",
-    developmentOptions: "development_options"
+    developmentOptions: "development_options",
+    publicCatalog: "public_catalog"
   };
 
   const SCHEMA_VERSION = 1;

@@ -56,6 +56,7 @@ import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.DevelopmentOptionsRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.MarketingConfigRepository
+import com.example.selliaapp.repository.PublicCatalogConfigRepository
 import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ReportsRepository
@@ -420,6 +421,20 @@ object AppModule {
         tenantProvider: TenantProvider,
         @IoDispatcher io: CoroutineDispatcher
     ): MarketingConfigRepository = MarketingConfigRepository(
+        dataStore = dataStore,
+        firestore = firestore,
+        tenantProvider = tenantProvider,
+        io = io
+    )
+
+    @Provides
+    @Singleton
+    fun providePublicCatalogConfigRepository(
+        dataStore: DataStore<Preferences>,
+        firestore: FirebaseFirestore,
+        tenantProvider: TenantProvider,
+        @IoDispatcher io: CoroutineDispatcher
+    ): PublicCatalogConfigRepository = PublicCatalogConfigRepository(
         dataStore = dataStore,
         firestore = firestore,
         tenantProvider = tenantProvider,

@@ -13,7 +13,6 @@ const tenantFromQuery = (
   queryParams.get("TIENDA") ||
   ""
 ).trim();
-const catalogTenantId = tenantFromQuery;
 
 const { sanitizeText } = window.SafeDom || {};
 
@@ -21,12 +20,24 @@ const elements = {
   storeFilter: document.getElementById("storeFilter"),
   catalogRows: document.getElementById("catalogRows"),
   catalogStatus: document.getElementById("catalogStatus"),
-  catalogCount: document.getElementById("catalogCount")
+  catalogCount: document.getElementById("catalogCount"),
+  catalogHeader: document.getElementById("catalogHeader"),
+  catalogLogo: document.getElementById("catalogLogo"),
+  catalogStoreName: document.getElementById("catalogStoreName"),
+  catalogHero: document.getElementById("catalogHero"),
+  catalogHeroTitle: document.getElementById("catalogHeroTitle"),
+  catalogHeroSubtitle: document.getElementById("catalogHeroSubtitle"),
+  catalogDefaultHeader: document.getElementById("catalogDefaultHeader"),
+  catalogFooter: document.getElementById("catalogFooter"),
+  catalogFooterText: document.getElementById("catalogFooterText"),
+  colHeaderListPrice: document.getElementById("colHeaderListPrice"),
+  colHeaderCashPrice: document.getElementById("colHeaderCashPrice")
 };
 
 const state = {
   products: [],
-  activeStore: "all"
+  activeStore: "all",
+  storeMeta: null
 };
 
 function isConfiguredValue(value) {
@@ -66,7 +77,13 @@ function normalizeProduct(raw) {
   };
 }
 
+function getCatalogTenantId() {
+  if (tenantFromQuery) return tenantFromQuery;
+  return (config.tenantId || "").trim();
+}
+
 function buildCatalogEndpointUrl(pageToken = "") {
+  const catalogTenantId = getCatalogTenantId();
   const baseUrl = catalogApiBaseUrl || "/public/catalog";
   const query = new URLSearchParams();
   if (catalogTenantId) query.set("tenantId", catalogTenantId);
@@ -90,6 +107,7 @@ function buildFriendlyCatalogError(error) {
 }
 
 async function fetchCatalogProductsFromBackend() {
+  const catalogTenantId = getCatalogTenantId();
   if (!catalogTenantId) {
     throw new Error("tenantId es requerido para consultar el catálogo público");
   }
@@ -112,6 +130,10 @@ async function fetchCatalogProductsFromBackend() {
     const pageItems = Array.isArray(data.items) ? data.items : [];
     items.push(...pageItems.map((product) => normalizeProduct(product)));
 
+    if (!state.storeMeta && data.storeMeta) {
+      state.storeMeta = data.storeMeta;
+    }
+
     if (!data.nextPageToken) break;
     pageToken = String(data.nextPageToken);
   }
@@ -119,8 +141,66 @@ async function fetchCatalogProductsFromBackend() {
   return items.slice(0, catalogLimit);
 }
 
+function applyStoreMeta(meta) {
+  if (!meta) return;
+
+  const safe = sanitizeText || ((v) => String(v));
+
+  if (meta.storeName) {
+    document.title = `${safe(meta.storeName)} | Catálogo`;
+  }
+
+  if (meta.storeName || meta.storeLogoUrl) {
+    if (elements.catalogHeader) {
+      elements.catalogHeader.hidden = false;
+    }
+    if (meta.storeLogoUrl && elements.catalogLogo) {
+      elements.catalogLogo.src = meta.storeLogoUrl;
+      elements.catalogLogo.alt = safe(meta.storeName || "Logo");
+      elements.catalogLogo.hidden = false;
+    }
+    if (meta.storeName && elements.catalogStoreName) {
+      elements.catalogStoreName.textContent = safe(meta.storeName);
+    }
+  }
+
+  if (meta.heroTitle) {
+    if (elements.catalogHero) elements.catalogHero.hidden = false;
+    if (elements.catalogHeroTitle) elements.catalogHeroTitle.textContent = safe(meta.heroTitle);
+    if (meta.heroSubtitle && elements.catalogHeroSubtitle) {
+      elements.catalogHeroSubtitle.textContent = safe(meta.heroSubtitle);
+    }
+    if (elements.catalogDefaultHeader) elements.catalogDefaultHeader.hidden = true;
+  }
+
+  if (meta.footerText) {
+    if (elements.catalogFooter) elements.catalogFooter.hidden = false;
+    if (elements.catalogFooterText) elements.catalogFooterText.textContent = safe(meta.footerText);
+  }
+
+  if (meta.palette?.primary) {
+    document.documentElement.style.setProperty("--catalog-primary", meta.palette.primary);
+  }
+  if (meta.palette?.secondary) {
+    document.documentElement.style.setProperty("--catalog-secondary", meta.palette.secondary);
+  }
+
+  if (meta.showPrices === false) {
+    if (elements.colHeaderListPrice) elements.colHeaderListPrice.hidden = true;
+    if (elements.colHeaderCashPrice) elements.colHeaderCashPrice.hidden = true;
+  } else if (meta.showCashPrice === false) {
+    if (elements.colHeaderCashPrice) elements.colHeaderCashPrice.hidden = true;
+  }
+
+  const resolvedFromHostname = config._resolvedFromHostname === true;
+  if (resolvedFromHostname && elements.storeFilter) {
+    elements.storeFilter.closest(".catalog-toolbar")?.querySelector("label")?.remove();
+    elements.storeFilter.hidden = true;
+  }
+}
+
 function renderStoreFilter() {
-  if (!elements.storeFilter) return;
+  if (!elements.storeFilter || elements.storeFilter.hidden) return;
 
   const stores = new Map();
   state.products.forEach((product) => {
@@ -153,13 +233,17 @@ function getVisibleProducts() {
 function renderProducts() {
   if (!elements.catalogRows || !elements.catalogCount) return;
 
+  const meta = state.storeMeta;
+  const hidePrices = meta?.showPrices === false;
+  const hideCashPrice = meta?.showCashPrice === false;
+
   const visibleProducts = getVisibleProducts();
   elements.catalogRows.replaceChildren();
 
   if (visibleProducts.length === 0) {
     const emptyRow = document.createElement("tr");
     const emptyCell = document.createElement("td");
-    emptyCell.setAttribute("colspan", "4");
+    emptyCell.setAttribute("colspan", hidePrices ? "2" : hideCashPrice ? "3" : "4");
     emptyCell.className = "muted";
     emptyCell.textContent = "No hay productos para la tienda seleccionada.";
     emptyRow.appendChild(emptyCell);
@@ -167,12 +251,17 @@ function renderProducts() {
   } else {
     visibleProducts.forEach((product) => {
       const row = document.createElement("tr");
-      [
+      const cells = [
         sanitizeText ? sanitizeText(product.name) : String(product.name),
-        sanitizeText ? sanitizeText(product.sku) : String(product.sku),
-        formatCurrency(product.listPrice),
-        formatCurrency(product.cashPrice)
-      ].forEach((value) => {
+        sanitizeText ? sanitizeText(product.sku) : String(product.sku)
+      ];
+      if (!hidePrices) {
+        cells.push(formatCurrency(product.listPrice));
+        if (!hideCashPrice) {
+          cells.push(formatCurrency(product.cashPrice));
+        }
+      }
+      cells.forEach((value) => {
         const cell = document.createElement("td");
         cell.textContent = value;
         row.appendChild(cell);
@@ -186,11 +275,13 @@ function renderProducts() {
 
 async function loadCatalog() {
   try {
+    const catalogTenantId = getCatalogTenantId();
     const tenantLabel = catalogTenantId
       ? ` de la tienda ${catalogTenantId}`
       : " de todas las tiendas";
     setStatus(`Cargando catálogo${tenantLabel} desde backend...`);
     state.products = await fetchCatalogProductsFromBackend();
+    applyStoreMeta(state.storeMeta);
     setStatus(state.products.length ? "" : "No hay productos públicos disponibles.");
     renderStoreFilter();
     renderProducts();

@@ -3,10 +3,15 @@
   const runtimeFirebase = runtimeConfig.firebase || {};
   const runtimeContact = runtimeConfig.contact || {};
 
+  // tenantId se deja vacío si no hay inyección explícita del servidor.
+  // El valor "floki" es solo un fallback de último recurso que se aplica
+  // después de que falla el lookup por hostname y por directorio público.
+  const runtimeTenantId = runtimeConfig.tenantId || "";
+
   const storeConfig = {
     brandName: runtimeConfig.brandName || "FLOKI",
     publicStoreUrl: runtimeConfig.publicStoreUrl || "https://floki.com.ar/product.html",
-    tenantId: runtimeConfig.tenantId || "floki",
+    tenantId: runtimeTenantId,
     productCollection: "products",
     publicProductCollection: "public_products",
     refreshIntervalMs: 300000,
@@ -44,6 +49,28 @@
 
     const projectId = config.firebase?.projectId;
     const apiKey = config.firebase?.apiKey;
+
+    if (!config.tenantId && projectId && apiKey) {
+      const hostname = globalScope.location.hostname.replace(/^www\./, "");
+      if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
+        try {
+          const domainLookupResp = await fetchWithTimeout(
+            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(hostname)}?key=${apiKey}`
+          );
+          if (domainLookupResp.ok) {
+            const domainDoc = await domainLookupResp.json();
+            const resolvedTenant = domainDoc?.fields?.tenantId?.stringValue?.trim();
+            if (resolvedTenant) {
+              config.tenantId = resolvedTenant;
+              config._resolvedFromHostname = true;
+            }
+          }
+        } catch (_error) {
+          // Domain lookup failed — fallback to existing logic
+        }
+      }
+    }
+
     if (!projectId || !apiKey || !config.tenantId) {
       applyFallbackDomainByTenant(config);
       return;
@@ -121,6 +148,9 @@
   }
 
   function applyFallbackDomainByTenant(config) {
+    if (!config.tenantId) {
+      config.tenantId = "floki";
+    }
     if ((config.tenantId || "").toLowerCase() === "floki") {
       config.publicStoreUrl = "https://floki.com.ar/product.html";
     }

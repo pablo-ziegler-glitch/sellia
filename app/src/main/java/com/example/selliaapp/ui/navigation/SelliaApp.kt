@@ -68,6 +68,7 @@ import com.example.selliaapp.ui.screens.config.ConfigAdminFeatureFlags
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
+import com.example.selliaapp.ui.screens.config.PublicCatalogConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseTemplatesScreen
@@ -115,6 +116,7 @@ import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
+import com.example.selliaapp.viewmodel.PublicCatalogConfigViewModel
 import com.example.selliaapp.viewmodel.TenantManagementViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.ProductPriceAuditViewModel
@@ -793,6 +795,7 @@ fun SelliaApp(
                     onTenantDelete = tenantManagementVm::deleteTenant,
                     tenantActionFeedback = tenantManagementState.message,
                     tenantActionError = tenantManagementState.error,
+                    onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = accessState.role == AppRole.ADMIN,
                     onSupport = { navController.navigate(Routes.AppVersion.route) },
@@ -827,6 +830,14 @@ fun SelliaApp(
             composable(Routes.MarketingConfig.route) {
                 val vm: MarketingConfigViewModel = hiltViewModel()
                 MarketingConfigScreen(
+                    vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.PublicCatalogConfig.route) {
+                val vm: PublicCatalogConfigViewModel = hiltViewModel()
+                PublicCatalogConfigScreen(
                     vm = vm,
                     onBack = { navController.popBackStack() }
                 )

@@ -147,6 +147,11 @@ service cloud.firestore {
         allow write: if isTenantAdmin(tenantId);
       }
 
+      match /config/public_catalog {
+        allow read: if true;
+        allow write: if isTenantAdmin(tenantId);
+      }
+
       match /config/{configId} {
         allow read: if isTenantMember(tenantId);
         allow write: if isTenantAdmin(tenantId);
@@ -170,6 +175,26 @@ service cloud.firestore {
         allow read: if isTenantAdmin(tenantId);
         allow write: if isTenantAdmin(tenantId) || hasSuperAdminClaim();
       }
+    }
+
+    match /domain_to_tenant/{domain} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (
+        hasSuperAdminClaim() ||
+        (request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId))
+      );
+      allow update: if isAuthenticated() && (
+        hasSuperAdminClaim() ||
+        (
+          resource.data.tenantId is string &&
+          isTenantAdmin(resource.data.tenantId) &&
+          request.resource.data.tenantId == resource.data.tenantId
+        )
+      );
+      allow delete: if isAuthenticated() && (
+        hasSuperAdminClaim() ||
+        (resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId))
+      );
     }
 
     match /public_products/{productId} {
