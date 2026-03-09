@@ -3,6 +3,7 @@ package com.example.selliaapp.data.remote
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
 import com.example.selliaapp.data.model.InvoiceStatus
+import com.example.selliaapp.data.model.sales.SaleBreakdown
 import com.google.firebase.firestore.DocumentSnapshot
 
 /**
@@ -13,7 +14,8 @@ object InvoiceFirestoreMappers {
         invoice: Invoice,
         number: String,
         items: List<InvoiceItem>,
-        tenantId: String
+        tenantId: String,
+        breakdown: SaleBreakdown? = null
     ): Map<String, Any?> = mapOf(
         "id" to invoice.id,
         "tenantId" to tenantId,
@@ -33,6 +35,7 @@ object InvoiceFirestoreMappers {
         "status" to invoice.status.name,
         "canceledAt" to invoice.canceledAt,
         "canceledReason" to invoice.canceledReason,
+        "breakdown" to breakdown?.toFirestoreMap(),
         "items" to items.map { item ->
             mapOf(
                 "id" to item.id,
