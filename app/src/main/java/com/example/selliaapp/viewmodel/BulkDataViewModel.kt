@@ -181,7 +181,8 @@ class BulkDataViewModel @Inject constructor(
                 val content = context.contentResolver.openInputStream(uri)?.use { stream ->
                     String(stream.readBytes())
                 } ?: ""
-                val sections = TotalCsvBundle.splitSections(content)
+                val parseResult = TotalCsvBundle.splitSections(content)
+                val sections = parseResult.sections
                 val errors = mutableListOf<String>()
                 var productsResult: ImportResult? = null
                 var customersResult: ImportResult? = null
