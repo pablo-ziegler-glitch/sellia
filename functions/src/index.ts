@@ -4508,17 +4508,27 @@ const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHand
 
 export const requestTenantBackup = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall((data: unknown, context) => requestTenantBackupHandler(data, context));
+  .https.onCall(async (data: unknown, context) => {
+    const tenantId = normalizeString((data as Record<string, unknown> | null)?.tenantId) || undefined;
+    await assertAppCheckForInternalCallable({ operation: "requestTenantBackup", context, tenantId });
+    return requestTenantBackupHandler(data, context);
+  });
 
 export const requestTenantRestore = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall((data: RestoreRequestPayload, context) => requestTenantRestoreHandler(data, context));
+  .https.onCall(async (data: RestoreRequestPayload, context) => {
+    const tenantId = normalizeString(data?.tenantId) || undefined;
+    await assertAppCheckForInternalCallable({ operation: "requestTenantRestore", context, tenantId });
+    return requestTenantRestoreHandler(data, context);
+  });
 
 export const approveTenantRestoreRequest = functions
   .runWith({ enforceAppCheck: false })
-  .https.onCall((data: ApproveRestoreRequestPayload, context) =>
-    approveTenantRestoreRequestHandler(data, context)
-  );
+  .https.onCall(async (data: ApproveRestoreRequestPayload, context) => {
+    const tenantId = normalizeString(data?.tenantId) || undefined;
+    await assertAppCheckForInternalCallable({ operation: "approveTenantRestoreRequest", context, tenantId });
+    return approveTenantRestoreRequestHandler(data, context);
+  });
 
 export const processTenantBackupRequest = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
