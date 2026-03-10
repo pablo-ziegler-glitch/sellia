@@ -62,7 +62,7 @@ class SyncRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun pullRemote() = withContext(io) {
+    override suspend fun pullRemote(): Unit = withContext(io) {
         sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
             productRepository.syncDown()
 

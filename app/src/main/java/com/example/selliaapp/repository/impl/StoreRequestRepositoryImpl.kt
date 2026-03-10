@@ -94,6 +94,7 @@ class StoreRequestRepositoryImpl @Inject constructor(
                         "updatedAt", FieldValue.serverTimestamp()
                     )
                     .await()
+                Unit
             }
         }
 }

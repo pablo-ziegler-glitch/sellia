@@ -73,6 +73,7 @@ class NotificationRepositoryImpl @Inject constructor(
                     .document(notificationId)
                     .update("read", true)
                     .await()
+                Unit
             }
         }
 
@@ -89,6 +90,7 @@ class NotificationRepositoryImpl @Inject constructor(
                     batch.update(doc.reference, "read", true)
                 }
                 batch.commit().await()
+                Unit
             }
         }
 }

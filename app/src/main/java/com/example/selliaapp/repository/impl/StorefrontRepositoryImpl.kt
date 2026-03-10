@@ -57,6 +57,7 @@ class StorefrontRepositoryImpl @Inject constructor(
                 .document(DOC_STOREFRONT)
                 .set(payload, SetOptions.merge())
                 .await()
+            Unit
         }
     }
 
@@ -111,6 +112,7 @@ class StorefrontRepositoryImpl @Inject constructor(
                     ))
                 }
             batch.commit().await()
+            Unit
         }
     }
 }
