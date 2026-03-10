@@ -112,6 +112,7 @@ fun AddProductScreen(
 
     // Precios y stock
     var purchasePriceText by remember { mutableStateOf("") }
+    var gainTargetPercentText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
     var cashPriceText by remember { mutableStateOf("") }
     var transferPriceText by remember { mutableStateOf("") }
@@ -158,6 +159,7 @@ fun AddProductScreen(
                 cashPriceText = p.cashPrice?.toString() ?: ""
                 transferPriceText = p.transferPrice?.toString() ?: ""
                 purchasePriceText = p.purchasePrice?.toString() ?: ""
+                gainTargetPercentText = p.gainTargetPercent?.toString() ?: ""
                 mlPriceText = p.mlPrice?.toString() ?: ""
                 ml3cPriceText = p.ml3cPrice?.toString() ?: ""
                 ml6cPriceText = p.ml6cPrice?.toString() ?: ""
@@ -378,6 +380,14 @@ fun AddProductScreen(
                 onValueChange = { purchasePriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
                 label = { Text("Costo de adquisición*") },
                 modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = gainTargetPercentText,
+                onValueChange = { gainTargetPercentText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                label = { Text("Ganancia individual (%)") },
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = { Text("Dejá vacío para usar la ganancia general de la configuración de pricing.") }
             )
 
             OutlinedTextField(
@@ -652,6 +662,7 @@ fun AddProductScreen(
                         val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
                         val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
                         val ml6cPrice = ml6cPriceText.replace(',', '.').toDoubleOrNull()
+                        val gainTargetPercent = gainTargetPercentText.replace(',', '.').toDoubleOrNull()
                         val qty = stockText.toIntOrNull() ?: 0
                         val minStock = minStockText.toIntOrNull()
 
@@ -681,6 +692,7 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
+                                gainTargetPercent = gainTargetPercent,
                                 canManagePublication = canManagePublication,
                                 publishRequested = isPublished,
                                 pendingImageUris = pendingImageUris.toList()
@@ -716,6 +728,7 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
+                                gainTargetPercent = gainTargetPercent,
                                 canManagePublication = canManagePublication,
                                 publishRequested = isPublished
                             ) { result ->
