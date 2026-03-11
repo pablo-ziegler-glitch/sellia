@@ -166,6 +166,7 @@ class ProductViewModel @Inject constructor(
         color: String?,
         sizes: List<String>,
         minStock: Int?,
+        gainTargetPercent: Double? = null,
         canManagePublication: Boolean,
         publishRequested: Boolean,
         pendingImageUris: List<Uri> = emptyList(),
@@ -209,6 +210,7 @@ class ProductViewModel @Inject constructor(
                 color = color,
                 sizes = sizes,
                 minStock = minStock,
+                gainTargetPercent = gainTargetPercent,
                 publicStatus = normalizedPublicStatus,
                 // timestamps si los tenés, dejá null o setéalos en DAO/DB trigger
                 updatedAt = LocalDate.now()
@@ -268,6 +270,7 @@ class ProductViewModel @Inject constructor(
         color: String?,
         sizes: List<String>,
         minStock: Int?,
+        gainTargetPercent: Double? = null,
         canManagePublication: Boolean,
         publishRequested: Boolean,
         onDone: (Result<Unit>) -> Unit = {}
@@ -306,6 +309,7 @@ class ProductViewModel @Inject constructor(
                 color = color,
                 sizes = sizes,
                 minStock = minStock,
+                gainTargetPercent = gainTargetPercent,
                 publicStatus = normalizedPublicStatus,
                 updatedAt = LocalDate.now()
             )

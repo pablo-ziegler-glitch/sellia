@@ -27,6 +27,7 @@ object ProductCsvExporter {
         "description",
         "image_url",
         "image_urls",
+        "public_status",
         "updated_at"
     )
 
@@ -61,6 +62,7 @@ object ProductCsvExporter {
                             product.description,
                             product.imageUrl,
                             imageUrls,
+                            product.publicStatus,
                             product.updatedAt.toString()
                         )
                     )

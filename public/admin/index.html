@@ -5,11 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sellia Backoffice</title>
     <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#C9A227" />
+    <link rel="icon" href="../assets/favicon.v1.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="../assets/favicon.v1.svg" />
+    <link rel="manifest" href="../manifest.json" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="layout">
       <section id="authPanel" class="panel auth-panel">
+        <div class="auth-brand">
+          <img src="../assets/logo.svg" class="auth-logo" alt="FLOKI" />
+        </div>
         <h1>Backoffice interno</h1>
         <p class="muted">Acceso exclusivo para operadores del tenant.</p>
 
@@ -31,7 +38,8 @@
 
       <section id="appPanel" class="panel app-panel" hidden>
         <header class="topbar">
-          <h2>Sellia Admin</h2>
+          <img src="../assets/logo.svg" class="topbar-logo" alt="FLOKI" />
+          <h2>Admin</h2>
           <button id="logoutButton" class="secondary" type="button">Cerrar sesión</button>
         </header>
 

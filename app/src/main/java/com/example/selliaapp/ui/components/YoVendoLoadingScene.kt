@@ -63,8 +63,8 @@ fun YoVendoLoadingScene(
             .background(MaterialTheme.colorScheme.background)
     ) {
         Image(
-            painter = painterResource(id = R.drawable.valkirja_log),
-            contentDescription = "Pantalla inicial",
+            painter = painterResource(id = R.drawable.floki_splash_bg),
+            contentDescription = "Pantalla inicial FLOKI",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
@@ -79,10 +79,10 @@ fun YoVendoLoadingScene(
         )
         {
             Text(
-                text = "YoVendo",
+                text = "FLOKI",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = Color(0xFFC9A227)
             )
             Text(
                 text = "Preparando tu operación",

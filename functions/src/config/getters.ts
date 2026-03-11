@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions";
+import { MP_SIGNATURE_WINDOW_MS } from "../mpSignature";
 import {
   ADMIN_RATE_LIMIT_PER_MINUTE_PARAM,
   APP_CHECK_ENFORCEMENT_MODE_PARAM,
@@ -35,7 +36,6 @@ export type MpConfig = {
 
 export type AppCheckEnforcementMode = "monitor" | "enforce";
 
-const MP_SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_WEBHOOK_REPLAY_TTL_MS = 24 * 60 * 60 * 1000;
 const MP_DEFAULT_ALLOWED_CIDRS = [
   "34.195.82.184/32",

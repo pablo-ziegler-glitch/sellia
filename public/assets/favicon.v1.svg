@@ -1,4 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Valkirja">
-  <rect width="120" height="120" fill="#111111" />
-  <text x="60" y="72" text-anchor="middle" font-size="54" fill="#ffffff" font-family="Inter, system-ui, sans-serif">V</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="FLOKI">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#F2CC6B"/>
+      <stop offset="40%"  stop-color="#C9A227"/>
+      <stop offset="100%" stop-color="#7A5A0A"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"   stop-color="#181A22"/>
+      <stop offset="100%" stop-color="#0D0F1A"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="120" height="120" fill="url(#bg)" rx="18"/>
+  <!-- "F" letter centered -->
+  <text x="22" y="90"
+    font-family="'Arial Black','Arial Bold',Impact,sans-serif"
+    font-weight="900" font-size="78"
+    fill="url(#gold)" filter="url(#glow)">F</text>
+  <!-- Small arrow in top-right corner -->
+  <polygon points="80,18  102,18  102,40" fill="url(#gold)" filter="url(#glow)"/>
 </svg>

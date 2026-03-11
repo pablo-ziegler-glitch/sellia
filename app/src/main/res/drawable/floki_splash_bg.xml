@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FLOKI splash screen background.
+  Used by YoVendoLoadingScene as full-screen brand visual.
+  Dark background #0D0F1A + large "F" + arrow in gold gradient.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="360dp"
+    android:height="640dp"
+    android:viewportWidth="360"
+    android:viewportHeight="640">
+
+    <!-- Full dark background -->
+    <path
+        android:fillColor="@color/floki_dark_bg"
+        android:pathData="M0,0 L360,0 L360,640 L0,640 Z" />
+
+    <!-- Subtle radial glow behind the F (centered at 180,290) -->
+    <path
+        android:fillColor="@color/floki_glow_accent"
+        android:pathData="M180,290 m-140,0 a140,140 0 1,0 280,0 a140,140 0 1,0 -280,0" />
+
+    <!-- ── Bold "F" letter, centered at ~(180,290) ── -->
+
+    <!-- Vertical bar: x=118..150, y=200..390 -->
+    <path android:pathData="M118,200 L150,200 L150,390 L118,390 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="118" android:startY="200"
+                android:endX="118"   android:endY="390"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F2CC6B"/>
+                <item android:offset="0.4" android:color="#C9A227"/>
+                <item android:offset="1.0" android:color="#7A5A0A"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Top bar: x=118..242, y=200..232 -->
+    <path android:pathData="M118,200 L242,200 L242,232 L118,232 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="118" android:startY="200"
+                android:endX="118"   android:endY="232"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F2CC6B"/>
+                <item android:offset="1.0" android:color="#C9A227"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Middle bar: x=118..224, y=280..310 -->
+    <path android:pathData="M118,280 L224,280 L224,310 L118,310 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="118" android:startY="280"
+                android:endX="118"   android:endY="310"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#C9A227"/>
+                <item android:offset="1.0" android:color="#A07F1A"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Arrow (upper-right of the F): triangle pointing upper-right -->
+    <path android:pathData="M230,168 L262,168 L262,200 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="230" android:startY="168"
+                android:endX="262"   android:endY="200"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F2CC6B"/>
+                <item android:offset="1.0" android:color="#C9A227"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+</vector>
