@@ -1,11 +1,20 @@
 package com.example.selliaapp.data.csv
 
 object TotalCsvBundle {
-    private const val prefix = "#SECTION:"
-    const val PRODUCTS = "${prefix}PRODUCTS"
-    const val CUSTOMERS = "${prefix}CUSTOMERS"
-    const val SALES = "${prefix}SALES"
-    const val EXPENSES = "${prefix}EXPENSES"
+    private const val sectionPrefix = "#SECTION:"
+    private const val versionPrefix = "#VERSION:"
+
+    const val CURRENT_VERSION = 2
+
+    const val PRODUCTS = "${sectionPrefix}PRODUCTS"
+    const val CUSTOMERS = "${sectionPrefix}CUSTOMERS"
+    const val SALES = "${sectionPrefix}SALES"
+    const val EXPENSES = "${sectionPrefix}EXPENSES"
+
+    data class BundleParseResult(
+        val version: Int,
+        val sections: Map<String, String>
+    )
 
     fun bundle(
         productsCsv: String,
@@ -14,6 +23,7 @@ object TotalCsvBundle {
         expensesCsv: String
     ): String {
         return buildString {
+            appendLine("$versionPrefix$CURRENT_VERSION")
             appendLine(PRODUCTS)
             appendLine(productsCsv.trimEnd())
             appendLine()
@@ -28,13 +38,19 @@ object TotalCsvBundle {
         }
     }
 
-    fun splitSections(content: String): Map<String, String> {
+    fun splitSections(content: String): BundleParseResult {
         val lines = content.split("\n")
         val sections = linkedMapOf<String, StringBuilder>()
         var currentKey: String? = null
+        var version = 1
+
         lines.forEach { rawLine ->
             val line = rawLine.trimEnd('\r')
-            if (line.startsWith(prefix)) {
+            if (line.startsWith(versionPrefix)) {
+                version = line.removePrefix(versionPrefix).trim().toIntOrNull() ?: 1
+                return@forEach
+            }
+            if (line.startsWith(sectionPrefix)) {
                 currentKey = line
                 if (sections[line] == null) {
                     sections[line] = StringBuilder()
@@ -46,6 +62,9 @@ object TotalCsvBundle {
                 sections[key]?.appendLine(line)
             }
         }
-        return sections.mapValues { it.value.toString().trim() }
+        return BundleParseResult(
+            version = version,
+            sections = sections.mapValues { it.value.toString().trim() }
+        )
     }
 }

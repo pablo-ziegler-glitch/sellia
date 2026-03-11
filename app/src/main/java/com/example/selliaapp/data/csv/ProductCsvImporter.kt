@@ -53,6 +53,7 @@ class ProductCsvImporter(
         val color: String?,
         val sizes: List<String>,
         val minStock: Int?,
+        val publicStatus: String,
         val markedAsUpdate: Boolean,
         val updatedAt: LocalDate?
     )
@@ -99,6 +100,7 @@ class ProductCsvImporter(
                     color = r.color,
                     sizes = r.sizes,
                     minStock = r.minStock,
+                    publicStatus = r.publicStatus,
                     updatedAt = r.updatedAt ?: LocalDate.now()
                 )
                 val id = productDao.upsert(entity)
@@ -161,6 +163,7 @@ class ProductCsvImporter(
                             color = r.color,
                             sizes = r.sizes,
                             minStock = r.minStock,
+                            publicStatus = r.publicStatus,
                             updatedAt = r.updatedAt ?: LocalDate.now()
                         )
                         val id = productDao.upsert(entity)
@@ -191,6 +194,7 @@ class ProductCsvImporter(
                             color       = r.color ?: existing.color,
                             sizes       = if (r.sizes.isEmpty()) existing.sizes else r.sizes,
                             minStock    = r.minStock ?: existing.minStock,
+                            publicStatus = r.publicStatus.ifBlank { existing.publicStatus },
                             updatedAt   = r.updatedAt ?: existing.updatedAt
                         )
                         productDao.upsert(merged)
@@ -225,6 +229,7 @@ class ProductCsvImporter(
                     color = r.color,
                     sizes = r.sizes,
                         minStock = r.minStock,
+                        publicStatus = r.publicStatus,
                         updatedAt = r.updatedAt ?: LocalDate.now()
                     )
                     val id = productDao.upsert(entity)
@@ -366,6 +371,12 @@ class ProductCsvImporter(
                     idx.get(row, "min_stock", aliases = listOf("minimo", "minstock", "stockmin"))
                 )?.let { if (it < 0) 0 else it }
 
+                val publicStatus = idx.get(
+                    row,
+                    "public_status",
+                    aliases = listOf("estado_publicacion", "publish_status")
+                )?.trim()?.lowercase()?.takeIf { it == "published" || it == "draft" } ?: "draft"
+
                 val markedAsUpdate = parseUpdateMarker(
                     idx.get(
                         row,
@@ -401,6 +412,7 @@ class ProductCsvImporter(
                     color = color,
                     sizes = sizes,
                     minStock = minStock,
+                    publicStatus = publicStatus,
                     markedAsUpdate = markedAsUpdate,
                     updatedAt = updatedAt
                 )
