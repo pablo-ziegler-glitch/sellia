@@ -7,6 +7,7 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.functions.FirebaseFunctionsException
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.lang.reflect.Constructor
 
 class AuthErrorMapperTest {
 
@@ -69,7 +70,7 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps ownership not found errors to clear user message`() {
-        val error = FirebaseFunctionsException(
+        val error = firebaseFunctionsException(
             "No existe usuario activo con ese email",
             FirebaseFunctionsException.Code.NOT_FOUND,
             null
@@ -85,7 +86,7 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps ownership conflict with another store to specific guidance`() {
-        val error = FirebaseFunctionsException(
+        val error = firebaseFunctionsException(
             "El usuario ya administra otra tienda",
             FirebaseFunctionsException.Code.FAILED_PRECONDITION,
             null
@@ -97,5 +98,24 @@ class AuthErrorMapperTest {
             "Ese email ya administra otra tienda. Usá otro usuario para co-dueño o delegación.",
             mapped
         )
+    }
+
+    private fun firebaseFunctionsException(
+        message: String,
+        code: FirebaseFunctionsException.Code,
+        details: Any?
+    ): FirebaseFunctionsException {
+        val constructor = FirebaseFunctionsException::class.java.declaredConstructors
+            .firstOrNull { candidate ->
+                val parameterTypes = candidate.parameterTypes
+                parameterTypes.size == 3 &&
+                    parameterTypes[0] == String::class.java &&
+                    parameterTypes[1] == FirebaseFunctionsException.Code::class.java &&
+                    parameterTypes[2] == Any::class.java
+            } as? Constructor<FirebaseFunctionsException>
+            ?: error("FirebaseFunctionsException constructor not found")
+
+        constructor.isAccessible = true
+        return constructor.newInstance(message, code, details)
     }
 }
