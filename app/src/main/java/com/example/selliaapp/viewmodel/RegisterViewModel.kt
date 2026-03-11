@@ -148,7 +148,7 @@ class RegisterViewModel @Inject constructor(
                 val successMessage = if (mode == RegisterMode.STORE_OWNER) {
                     "Cuenta creada. Verificá tu email para continuar; además un administrador debe habilitar tu tienda."
                 } else {
-                    if (selectedTenantId.isNullOrBlank()) "Cuenta creada sin tienda asociada. Podrás adherirte desde tu inicio." else "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
+                    "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
                 }
                 _uiState.update { state ->
                     state.copy(
@@ -167,17 +167,11 @@ class RegisterViewModel @Inject constructor(
         }
     }
 
-    fun registerWithGoogle(idToken: String, tenantId: String?, tenantName: String?) {
-        if (tenantId.isNullOrBlank()) {
-            _uiState.update { it.copy(errorMessage = "Seleccioná una tienda") }
-            return
-        }
+    fun registerWithGoogle(idToken: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
         viewModelScope.launch {
             val result = onboardingRepository.registerViewerWithGoogle(
-                idToken = idToken,
-                tenantId = tenantId,
-                tenantName = tenantName.orEmpty()
+                idToken = idToken
             )
             result.onSuccess {
                 authManager.refreshSession()

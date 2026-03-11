@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.selliaapp.repository.TenantSummary
 import com.example.selliaapp.viewmodel.RegisterMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,12 +35,8 @@ fun RegisterScreen(
     isLoading: Boolean,
     errorMessage: String?,
     successMessage: String?,
-    tenants: List<TenantSummary>,
-    selectedTenantId: String?,
     mode: RegisterMode,
-    isLoadingTenants: Boolean,
     onModeChange: (RegisterMode) -> Unit,
-    onTenantChange: (String) -> Unit,
     onSubmit: (
         String,
         String,
@@ -56,7 +50,7 @@ fun RegisterScreen(
         String?,
         RegisterMode
     ) -> Unit,
-    onGoogleSignInClick: (String?, String?) -> Unit,
+    onGoogleSignInClick: () -> Unit,
     onLoginClick: () -> Unit
 ) {
     var storeName by remember { mutableStateOf("") }
@@ -68,9 +62,6 @@ fun RegisterScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var modeExpanded by remember { mutableStateOf(false) }
-    var tenantExpanded by remember { mutableStateOf(false) }
-
-    val selectedTenant = tenants.firstOrNull { it.id == selectedTenantId }
 
     Column(
         modifier = Modifier
@@ -153,43 +144,6 @@ fun RegisterScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
         } else if (mode == RegisterMode.FINAL_CUSTOMER) {
-            ExposedDropdownMenuBox(
-                expanded = tenantExpanded,
-                onExpandedChange = { tenantExpanded = !tenantExpanded }
-            ) {
-                OutlinedTextField(
-                    value = selectedTenant?.name.orEmpty(),
-                    onValueChange = {},
-                    label = { Text("Tienda a visualizar") },
-                    readOnly = true,
-                    enabled = !isLoading && !isLoadingTenants,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tenantExpanded) },
-                    modifier = Modifier.menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true).width(280.dp)
-                )
-                ExposedDropdownMenu(
-                    expanded = tenantExpanded,
-                    onDismissRequest = { tenantExpanded = false }
-                ) {
-                    tenants.forEach { tenant ->
-                        DropdownMenuItem(
-                            text = { Text(tenant.name) },
-                            onClick = {
-                                onTenantChange(tenant.id)
-                                tenantExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-            if (tenants.isEmpty() && !isLoadingTenants) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "No hay tiendas cargadas todavía. Podés crear la cuenta igual y adherirte luego desde Inicio.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
             OutlinedTextField(
                 value = customerName,
                 onValueChange = { customerName = it },
@@ -248,8 +202,7 @@ fun RegisterScreen(
                     (skuPrefix.isBlank() || skuPrefix.length >= 3)
 
             RegisterMode.FINAL_CUSTOMER ->
-                customerName.isNotBlank() &&
-                    !selectedTenantId.isNullOrBlank()
+                customerName.isNotBlank()
 
             RegisterMode.UNSELECTED -> false
         }
@@ -263,8 +216,8 @@ fun RegisterScreen(
                     storeAddress.trim(),
                     storePhone.trim(),
                     skuPrefix.trim(),
-                    selectedTenantId,
-                    selectedTenant?.name,
+                    null,
+                    null,
                     customerName.trim(),
                     customerPhone.takeIf { it.isNotBlank() }?.trim(),
                     mode
@@ -280,8 +233,8 @@ fun RegisterScreen(
         if (mode == RegisterMode.FINAL_CUSTOMER) {
             Spacer(modifier = Modifier.height(12.dp))
             Button(
-                onClick = { onGoogleSignInClick(selectedTenantId, selectedTenant?.name) },
-                enabled = !isLoading && !selectedTenantId.isNullOrBlank()
+                onClick = { onGoogleSignInClick() },
+                enabled = !isLoading
             ) {
                 Text("Crear con Google")
             }
