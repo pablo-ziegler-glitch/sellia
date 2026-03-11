@@ -52,6 +52,7 @@ object ProductFirestoreMappers {
             "color"        to product.color,
             "sizes"        to product.sizes,
             "minStock"     to product.minStock,
+            "gainTargetPercent" to product.gainTargetPercent,
             "publicStatus" to product.publicStatus,
             "isPublic"     to (product.publicStatus == "published"),
             "updatedAt"    to product.updatedAt.format(ISO_DATE)
@@ -96,6 +97,7 @@ object ProductFirestoreMappers {
             color        = data["color"] as? String,
             sizes        = (data["sizes"] as? List<*>)?.mapNotNull { it as? String }.orEmpty(),
             minStock     = (data["minStock"] as? Number)?.toInt(),
+            gainTargetPercent = (data["gainTargetPercent"] as? Number)?.toDouble(),
             publicStatus = publicStatus,
             updatedAt    = updatedAt
         )

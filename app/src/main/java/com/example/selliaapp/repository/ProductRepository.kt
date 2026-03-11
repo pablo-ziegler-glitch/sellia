@@ -187,7 +187,7 @@ class ProductRepository(
             fixedCosts = fixedCosts,
             mlFixedCostTiers = mlFixedCostTiers,
             mlShippingTiers = mlShippingTiers,
-            gainTargetOverridePercent = incoming.gainTargetPercent ?: existing?.gainTargetPercent
+            gainTargetOverridePercent = incoming.gainTargetPercent
         )
         return incoming.copy(
             listPrice = result.listPrice,
