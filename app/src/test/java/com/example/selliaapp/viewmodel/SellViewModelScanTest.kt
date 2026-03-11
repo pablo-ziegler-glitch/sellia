@@ -5,6 +5,7 @@ import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.FakeCashRepository
 import com.example.selliaapp.repository.FakeInvoiceRepository
 import com.example.selliaapp.repository.FakeScanProductRepository
+import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.SellDraftRepository
 import com.example.selliaapp.testing.MainDispatcherRule
 import com.google.common.truth.Truth.assertThat
@@ -30,6 +31,7 @@ class SellViewModelScanTest {
     private val cashRepository = FakeCashRepository()
     private val sellDraftRepository: SellDraftRepository = mock()
     private val customerRepository: CustomerRepository = mock()
+    private val pricingConfigRepository: PricingConfigRepository = mock()
 
     @Before
     fun setup() {
@@ -42,16 +44,16 @@ class SellViewModelScanTest {
                     id = 1,
                     barcode = "123",
                     name = "Manzana",
-                    price = 100.0,
                     listPrice = 110.0,
+                    cashPrice = 100.0,
                     quantity = 5
                 ),
                 ProductEntity(
                     id = 2,
                     barcode = "999",
                     name = "Naranja",
-                    price = 80.0,
                     listPrice = 88.0,
+                    cashPrice = 80.0,
                     quantity = 0
                 )
             )
@@ -62,7 +64,8 @@ class SellViewModelScanTest {
             invoiceRepo = invoiceRepo,
             cashRepository = cashRepository,
             sellDraftRepository = sellDraftRepository,
-            customerRepository = customerRepository
+            customerRepository = customerRepository,
+            pricingConfigRepository = pricingConfigRepository
         )
     }
 
