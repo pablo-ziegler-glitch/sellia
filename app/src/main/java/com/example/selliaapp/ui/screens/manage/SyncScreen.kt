@@ -26,6 +26,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -78,9 +79,9 @@ fun SyncScreen(
     val last = workInfos.firstOrNull()
     val lastMessage = last?.outputData?.getString(SyncWorker.OUTPUT_MESSAGE)
 
-    if (last?.state != null && lastState != last.state) {
-        lastState = last.state
-        scope.launch {
+    LaunchedEffect(last?.state) {
+        if (last?.state != null && lastState != last.state) {
+            lastState = last.state
             val text = when (last.state) {
                 WorkInfo.State.RUNNING -> "Sincronización en progreso..."
                 WorkInfo.State.SUCCEEDED -> lastMessage ?: "Sincronización completada."
