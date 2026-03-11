@@ -79,6 +79,38 @@
         ]
       }
     ],
+    "redirects": [
+      {
+        "source": "/backoffice/users_roles",
+        "destination": "/admin/#/settings/users",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/cloud_services",
+        "destination": "/admin/#/settings/cloud-services",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/global_pricing",
+        "destination": "/admin/#/settings/pricing",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/tenant_lifecycle",
+        "destination": "/admin/#/dashboard",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/bulk_abm",
+        "destination": "/admin/#/maintenance",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/**",
+        "destination": "/admin/",
+        "type": 301
+      }
+    ],
     "rewrites": [
       {
         "source": "/public/catalog",
