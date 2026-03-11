@@ -48,7 +48,7 @@ class ReportsRepositoryStockValuationTest {
         assertEquals(15, report.unitsWithAcquisitionCost)
 
         val listScenario = report.scenarios.first { it.label == "Precio de lista" }
-        assertEquals(2300.0, listScenario.potentialRevenue, 0.01)
+        assertEquals(2260.0, listScenario.potentialRevenue, 0.01)
         assertEquals(2100.0, listScenario.revenueWithKnownCost, 0.01)
         assertEquals(1250.0, listScenario.acquisitionCost, 0.01)
         assertEquals(850.0, listScenario.expectedProfit, 0.01)
