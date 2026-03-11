@@ -176,24 +176,12 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         customerPhone: String?
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
-            // El alta pública siempre debe crear un cliente final (viewer).
-            val normalizedTenantId = tenantId?.trim().orEmpty()
-                .ifBlank { throw IllegalArgumentException("Debés seleccionar una tienda válida") }
-            val tenantSnapshot = firestore.collection("tenants")
-                .document(normalizedTenantId)
-                .get()
-                .await()
-            if (!tenantSnapshot.exists()) {
-                throw IllegalArgumentException("La tienda seleccionada no existe")
-            }
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
             val createdAt = FieldValue.serverTimestamp()
             val userRef = firestore.collection("users").document(user.uid)
             userRef.set(
                 mapOf(
-                    "tenantId" to normalizedTenantId,
-                    "tenantIds" to listOf(normalizedTenantId),
                     "email" to email,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
@@ -204,21 +192,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                 )
             ).await()
-            firestore.collection("tenant_users")
-                .document("${normalizedTenantId}_${email.trim().lowercase()}")
-                .set(
-                    mapOf(
-                        "tenantId" to normalizedTenantId,
-                        "name" to customerName,
-                        "email" to email.trim().lowercase(),
-                        "role" to AppRole.VIEWER.raw,
-                        "isActive" to true,
-                        "updatedAt" to createdAt,
-                        "provisioningFlow" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
             firestore.collection("account_requests")
                 .document(user.uid)
                 .set(
@@ -227,8 +200,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                         "email" to email,
                         "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
-                        "tenantId" to normalizedTenantId,
-                        "tenantName" to tenantName.orEmpty(),
                         "contactName" to customerName,
                         "contactPhone" to customerPhone,
                         "createdAt" to createdAt,
@@ -238,7 +209,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
                 .await()
             sendEmailVerification(user)
-            OnboardingResult(uid = user.uid, tenantId = normalizedTenantId)
+            OnboardingResult(uid = user.uid, tenantId = "")
         }.onFailure {
             val currentUser = auth.currentUser
             if (currentUser != null && currentUser.email == email) {
@@ -248,19 +219,9 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
     }
 
     override suspend fun registerViewerWithGoogle(
-        idToken: String,
-        tenantId: String,
-        tenantName: String
+        idToken: String
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
-            // Google Sign-In público: restringido a cliente final (viewer).
-            val tenantSnapshot = firestore.collection("tenants")
-                .document(tenantId)
-                .get()
-                .await()
-            if (!tenantSnapshot.exists()) {
-                throw IllegalArgumentException("La tienda seleccionada no existe")
-            }
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             val result = auth.signInWithCredential(credential).await()
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
@@ -270,8 +231,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             val displayName = (user.displayName ?: "").trim()
             userRef.set(
                 mapOf(
-                    "tenantId" to tenantId,
-                    "tenantIds" to listOf(tenantId),
                     "email" to normalizedEmail,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
@@ -282,21 +241,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 ),
                 SetOptions.merge()
             ).await()
-            firestore.collection("tenant_users")
-                .document("${tenantId}_${normalizedEmail}")
-                .set(
-                    mapOf(
-                        "tenantId" to tenantId,
-                        "name" to displayName,
-                        "email" to normalizedEmail,
-                        "role" to AppRole.VIEWER.raw,
-                        "isActive" to true,
-                        "updatedAt" to createdAt,
-                        "provisioningFlow" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
             firestore.collection("account_requests")
                 .document(user.uid)
                 .set(
@@ -305,8 +249,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                         "email" to (user.email ?: ""),
                         "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
-                        "tenantId" to tenantId,
-                        "tenantName" to tenantName,
                         "contactName" to (user.displayName ?: ""),
                         "createdAt" to createdAt,
                         "requestOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
@@ -314,7 +256,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     SetOptions.merge()
                 )
                 .await()
-            OnboardingResult(uid = user.uid, tenantId = tenantId)
+            OnboardingResult(uid = user.uid, tenantId = "")
         }
     }
 
