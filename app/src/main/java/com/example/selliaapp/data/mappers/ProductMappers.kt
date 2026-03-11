@@ -36,6 +36,7 @@ fun ProductEntity.toModel(): Product =
         color = color,
         sizes = sizes,
         minStock = minStock,
+        gainTargetPercent = gainTargetPercent,
         updatedAt = updatedAt
     )
 
@@ -66,5 +67,6 @@ fun Product.toEntity(): ProductEntity =
         color = color,
         sizes = sizes,
         minStock = minStock,
+        gainTargetPercent = gainTargetPercent,
         updatedAt = updatedAt?: LocalDate.now()
     )

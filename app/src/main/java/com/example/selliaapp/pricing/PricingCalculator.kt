@@ -30,7 +30,8 @@ object PricingCalculator {
         settings: PricingSettingsEntity,
         fixedCosts: List<PricingFixedCostEntity>,
         mlFixedCostTiers: List<PricingMlFixedCostTierEntity>,
-        mlShippingTiers: List<PricingMlShippingTierEntity>
+        mlShippingTiers: List<PricingMlShippingTierEntity>,
+        gainTargetOverridePercent: Double? = null
     ): PricingResult {
         val iva = settings.ivaTerminalPercent / 100.0
         val costTotal = fixedCosts.sumOf { item ->
@@ -40,7 +41,7 @@ object PricingCalculator {
         val salesEstimate = settings.monthlySalesEstimate.coerceAtLeast(1)
         val fixedCostUnit = costTotal / salesEstimate
         val fixedCostImputed = fixedCostUnit * fixedCostImputationMultiplier(purchasePrice, settings)
-        val targetMargin = settings.gainTargetPercent / 100.0
+        val targetMargin = (gainTargetOverridePercent ?: settings.gainTargetPercent) / 100.0
         val operativosLocal = settings.operativosLocalPercent / 100.0
         val posnet3Cuotas = settings.posnet3CuotasPercent / 100.0
         val transferenciaRetencion = settings.transferenciaRetencionPercent / 100.0
