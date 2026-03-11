@@ -56,7 +56,7 @@ object AuthErrorMapper {
                 "Ese email ya administra otra tienda. Usá otro usuario para co-dueño o delegación."
             }
 
-            error.code == FirebaseFunctionsException.Code.NOT_FOUND -> {
+            message.contains("no existe usuario activo") || error.code == FirebaseFunctionsException.Code.NOT_FOUND -> {
                 "No encontramos un usuario activo con ese email. Verificá que ya tenga cuenta en SellIA."
             }
 

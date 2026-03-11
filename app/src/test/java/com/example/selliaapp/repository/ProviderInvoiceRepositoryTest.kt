@@ -8,11 +8,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 
 class ProviderInvoiceRepositoryTest {
 
@@ -35,7 +34,7 @@ class ProviderInvoiceRepositoryTest {
         assertNotNull(exception)
         assertTrue(exception is InvalidProviderPaymentException)
         assertTrue(exception?.message?.contains("monto") == true)
-        verify(dao, never()).updateInvoice(any())
+        verifyNoInteractions(dao)
     }
 
     @Test
@@ -54,7 +53,7 @@ class ProviderInvoiceRepositoryTest {
         assertNotNull(exception)
         assertTrue(exception is InvalidProviderPaymentException)
         assertTrue(exception?.message?.contains("referencia") == true)
-        verify(dao, never()).updateInvoice(any())
+        verifyNoInteractions(dao)
     }
 
     @Test

@@ -30,15 +30,6 @@ android {
         buildConfigField("String", "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID", "\"\"")
         buildConfigField("String", "MERGED_PRS", "\"${mergedPrs.replace("\"", "\\\"")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        javaCompileOptions {
-            annotationProcessorOptions {
-                arguments += mapOf(
-                    "room.schemaLocation" to "$projectDir/schemas",
-                    "room.incremental" to "true",
-                    "room.expandProjection" to "true"
-                )
-            }
-        }
     }
 
     val appCheckDebugOverride = (project.findProperty("appCheckDebug") as String?)
@@ -106,6 +97,14 @@ android {
         }
     }
 
+}
+
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
+        arg("room.incremental", "true")
+        arg("room.expandProjection", "true")
+    }
 }
 
 dependencies {
