@@ -2,8 +2,6 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { buildApprovedEmailHtml, buildRejectedEmailHtml } from "./email/storeRequestEmails";
 
-const db = admin.firestore();
-
 interface StoreRequestData {
   userId: string;
   email: string;
@@ -22,6 +20,7 @@ interface StoreRequestData {
 export const onStoreRequestStatusChange = functions.firestore
   .document("store_requests/{requestId}")
   .onUpdate(async (change, context) => {
+    const db = admin.firestore();
     const before = change.before.data() as StoreRequestData | undefined;
     const after = change.after.data() as StoreRequestData | undefined;
 
