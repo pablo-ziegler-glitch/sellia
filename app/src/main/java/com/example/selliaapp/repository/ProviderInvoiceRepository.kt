@@ -1,6 +1,5 @@
 package com.example.selliaapp.repository
 
-import android.util.Log
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.ProviderInvoiceWithItems
 import com.example.selliaapp.data.model.ProviderInvoice
@@ -65,9 +64,10 @@ class ProviderInvoiceRepository @Inject constructor(
         )
         dao.updateInvoice(updated)
 
-        Log.i(
-            PAYMENT_AUDIT_TAG,
-            "provider_payment_marked invoiceId=${invoice.id} actor=${actor.orEmpty()} reason=${reason.orEmpty()}"
+        // Evitamos dependencia dura de android.util.Log en unit tests JVM.
+        println(
+            "$PAYMENT_AUDIT_TAG provider_payment_marked " +
+                "invoiceId=${invoice.id} actor=${actor.orEmpty()} reason=${reason.orEmpty()}"
         )
     }
 }

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.annotation.VisibleForTesting
+import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.ss.usermodel.WorkbookFactory
 import java.io.InputStream
@@ -127,7 +128,14 @@ object TabularFileReader {
                 }
                 val values = MutableList(lastCellIndex) { cellIdx ->
                     val cell = row.getCell(cellIdx)
-                    if (cell != null) formatter.formatCellValue(cell, evaluator) else ""
+                    if (cell == null) {
+                        ""
+                    } else if (cell.cellType == CellType.NUMERIC) {
+                        val raw = java.math.BigDecimal.valueOf(cell.numericCellValue)
+                        raw.stripTrailingZeros().toPlainString()
+                    } else {
+                        formatter.formatCellValue(cell, evaluator)
+                    }
                 }
                 while (values.isNotEmpty() && values.last().isBlank()) {
                     values.removeAt(values.lastIndex)

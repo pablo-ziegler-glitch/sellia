@@ -89,7 +89,7 @@ class SellViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                val p = withContext(Dispatchers.IO) { resolveProductByScan(barcode) }
+                val p = resolveProductByScan(barcode)
                 if (p == null) {
                     onNotFound()
                 } else {

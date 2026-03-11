@@ -126,10 +126,7 @@ class StockViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                val ok = withContext(Dispatchers.IO) {
-                    // Usa API dedicada si existe; si no, la genérica de update por delta.
-                    repo.increaseStockByBarcode(barcode = barcode, delta = qty)
-                }
+                val ok = repo.increaseStockByBarcode(barcode = barcode, delta = qty)
                 if (ok) onSuccess() else onNotFound()
             } catch (t: Throwable) {
                 onError(t)
