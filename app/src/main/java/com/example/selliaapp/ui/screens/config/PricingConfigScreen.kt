@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -25,6 +26,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +67,7 @@ private enum class PricingSection(val label: String) {
 @Composable
 fun PricingConfigScreen(
     onBack: () -> Unit,
+    onSimulator: () -> Unit = {},
     viewModel: PricingConfigViewModel = hiltViewModel()
 ) {
     val settings by viewModel.settings.collectAsState()
@@ -203,6 +206,18 @@ fun PricingConfigScreen(
                             label = { Text(section.label) }
                         )
                     }
+                }
+                Spacer(Modifier.height(4.dp))
+                FilledTonalButton(
+                    onClick = onSimulator,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Default.Calculate,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text("Simulador de precios")
                 }
             }
 

@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
@@ -80,6 +81,7 @@ fun ConfigScreen(
     onOpenBackofficeWeb: (BackofficeModule) -> Unit,
     adminFeatureFlags: ConfigAdminFeatureFlags,
     isClientFinal: Boolean,
+    onStorefront: () -> Unit = {},
     onBack: () -> Unit
 ) {
     var showProfileDetails by remember { mutableStateOf(false) }
@@ -224,11 +226,11 @@ fun ConfigScreen(
                     )
                 }
 
-                if (adminFeatureFlags.publicCatalogConfigEnabled) {
+                if (!isClientFinal) {
                     SettingsItem(
                         icon = Icons.Filled.Storefront,
-                        title = "Catálogo público",
-                        onClick = onPublicCatalogConfig
+                        title = "Vidriera Pública",
+                        onClick = onStorefront
                     )
                 }
 

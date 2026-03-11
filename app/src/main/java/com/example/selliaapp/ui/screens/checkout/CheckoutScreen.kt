@@ -370,6 +370,14 @@ fun CheckoutScreen(
                             }
                         }
                     }
+
+                    // Desglose interno para precio lista
+                    val breakdown = state.breakdown
+                    if (state.paymentMethod == PaymentMethod.LISTA && breakdown != null) {
+                        item {
+                            DesgloseListaCard(breakdown = breakdown, moneda = moneda)
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -770,4 +778,56 @@ private fun PaymentMethod.nombreLegible(): String = when (this) {
     PaymentMethod.LISTA -> "Lista"
     PaymentMethod.EFECTIVO -> "Efectivo"
     PaymentMethod.TRANSFERENCIA -> "Transferencia"
+}
+
+@Composable
+private fun DesgloseListaCard(
+    breakdown: com.example.selliaapp.data.model.sales.SaleBreakdown,
+    moneda: java.text.NumberFormat
+) {
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                text = "Desglose interno (precio lista)",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            ResumenCheckoutFila(
+                etiqueta = "Precio lista cobrado",
+                valor = moneda.format(breakdown.grossAmount)
+            )
+            ResumenCheckoutFila(
+                etiqueta = "(-) Comisión terminal (${String.format("%.1f", breakdown.posnetFeePercent)}%)",
+                valor = "-${moneda.format(breakdown.posnetFeeAmount)}",
+                colorValor = Color(0xFFB71C1C)
+            )
+            ResumenCheckoutFila(
+                etiqueta = "(-) Costo de mercadería",
+                valor = "-${moneda.format(breakdown.purchaseCostTotal)}",
+                colorValor = Color(0xFFB71C1C)
+            )
+            ResumenCheckoutFila(
+                etiqueta = "(-) Costos operativos (${String.format("%.1f", breakdown.operativosFeePercent)}%)",
+                valor = "-${moneda.format(breakdown.operativosFeeAmount)}",
+                colorValor = Color(0xFFB71C1C)
+            )
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            ResumenCheckoutFila(
+                etiqueta = "Ganancia neta estimada",
+                valor = moneda.format(breakdown.estimatedNetGain),
+                resaltar = true,
+                colorValor = if (breakdown.estimatedNetGain >= 0) Color(0xFF2E7D32) else Color(0xFFB71C1C)
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "* No incluye costos fijos mensuales imputados por unidad.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }

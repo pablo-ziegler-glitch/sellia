@@ -26,7 +26,12 @@ const elements = {
   productSizes: document.getElementById("productSizes"),
   statusCard: document.getElementById("statusCard"),
   ctaWhatsapp: document.getElementById("ctaWhatsapp"),
-  ctaOpenApp: document.getElementById("ctaOpenApp")
+  ctaOpenApp: document.getElementById("ctaOpenApp"),
+  viewModeToggle: document.getElementById("viewModeToggle"),
+  btnModeClient: document.getElementById("btnModeClient"),
+  btnModeOwner: document.getElementById("btnModeOwner"),
+  ownerSection: document.getElementById("ownerSection"),
+  ownerGrid: document.getElementById("ownerGrid")
 };
 
 const state = {
@@ -36,6 +41,7 @@ const state = {
   timer: null,
   paused: false,
   mode: "public",
+  viewMode: "client",
   inFlightRequest: null
 };
 
@@ -204,6 +210,8 @@ function renderProduct(product) {
     elements.productSizes.appendChild(empty);
   }
 
+  renderOwnerSection(product);
+
   if (elements.ctaWhatsapp && config.contact?.whatsapp && !config.contact.whatsapp.startsWith("REEMPLAZAR")) {
     const text = `Hola, quiero consultar por ${product.name} (SKU ${product.sku || state.sku}).`;
     const safeWhatsappUrl = safeDom.toAllowedHttpsUrl?.(config.contact.whatsapp);
@@ -217,6 +225,96 @@ function renderProduct(product) {
   } else if (elements.ctaWhatsapp) {
     elements.ctaWhatsapp.removeAttribute("href");
   }
+}
+
+function renderOwnerSection(product) {
+  if (!elements.ownerGrid || !elements.ownerSection) return;
+  elements.ownerGrid.replaceChildren();
+
+  const isOwnerView = state.viewMode === "owner";
+  elements.ownerSection.hidden = !isOwnerView;
+
+  if (!isOwnerView) return;
+
+  const rows = [];
+
+  if (product.purchasePrice !== "" && product.purchasePrice !== undefined) {
+    rows.push({ label: "COSTO", value: formatCurrency(product.purchasePrice) });
+  }
+
+  if (product.listPrice && product.purchasePrice) {
+    const margin = ((product.listPrice - product.purchasePrice) / product.purchasePrice * 100);
+    const marginStr = `${margin.toFixed(1)}%`;
+    rows.push({ label: "MARGEN S/LISTA", value: marginStr, className: margin >= 0 ? "positive" : "negative" });
+  }
+
+  if (product.quantity !== "" && product.quantity !== undefined) {
+    const quantity = Number(product.quantity);
+    const minStock = Number(product.minStock);
+    const stockClass = !Number.isNaN(minStock) && !Number.isNaN(quantity) && quantity <= minStock ? "negative" : "positive";
+    rows.push({ label: "STOCK ACTUAL", value: String(product.quantity), className: stockClass });
+  }
+
+  if (product.minStock !== "" && product.minStock !== undefined) {
+    rows.push({ label: "STOCK MÍNIMO", value: String(product.minStock) });
+  }
+
+  if (product.providerName) {
+    rows.push({ label: "PROVEEDOR", value: product.providerName });
+  }
+
+  if (product.barcode || product.code) {
+    rows.push({ label: "CÓDIGO DE BARRAS", value: product.barcode || product.code });
+  }
+
+  if (product.publicStatus) {
+    const statusLabels = { draft: "Borrador", published: "Publicado", archived: "Archivado" };
+    rows.push({ label: "ESTADO", value: statusLabels[product.publicStatus] || product.publicStatus });
+  }
+
+  rows.forEach((row) => {
+    const line = document.createElement("div");
+    line.className = "owner-row";
+    const label = document.createElement("span");
+    label.textContent = row.label;
+    const amount = document.createElement("strong");
+    amount.textContent = row.value;
+    if (row.className) {
+      amount.className = row.className;
+    }
+    line.appendChild(label);
+    line.appendChild(amount);
+    elements.ownerGrid.appendChild(line);
+  });
+}
+
+function setViewMode(mode) {
+  state.viewMode = mode;
+  if (elements.btnModeClient) {
+    elements.btnModeClient.classList.toggle("is-active", mode === "client");
+  }
+  if (elements.btnModeOwner) {
+    elements.btnModeOwner.classList.toggle("is-active", mode === "owner");
+  }
+  if (state.product) {
+    renderOwnerSection(state.product);
+  }
+}
+
+function initViewModeToggle() {
+  if (!elements.viewModeToggle || !elements.btnModeClient || !elements.btnModeOwner) return;
+
+  const canToggle = state.mode === "owner";
+  elements.viewModeToggle.hidden = !canToggle;
+
+  if (!canToggle) return;
+
+  state.viewMode = "owner";
+  elements.btnModeClient.classList.remove("is-active");
+  elements.btnModeOwner.classList.add("is-active");
+
+  elements.btnModeClient.addEventListener("click", () => setViewMode("client"));
+  elements.btnModeOwner.addEventListener("click", () => setViewMode("owner"));
 }
 
 function parseFirestoreDocument(doc) {
@@ -250,7 +348,12 @@ function parseFirestoreDocument(doc) {
     images: getArray("imageUrls"),
     imageUrl,
     sizes: getArray("sizes"),
-    updatedAt
+    updatedAt,
+    purchasePrice: getNumber("purchasePrice"),
+    quantity: getNumber("quantity"),
+    minStock: getNumber("minStock"),
+    providerName: getString("providerName"),
+    publicStatus: getString("publicStatus")
   };
 }
 
@@ -297,7 +400,12 @@ async function fetchFirestoreByField(field, value) {
           { fieldPath: "imageUrl" },
           { fieldPath: "imageUrls" },
           { fieldPath: "sizes" },
-          { fieldPath: "updatedAt" }
+          { fieldPath: "updatedAt" },
+          { fieldPath: "purchasePrice" },
+          { fieldPath: "quantity" },
+          { fieldPath: "minStock" },
+          { fieldPath: "providerName" },
+          { fieldPath: "publicStatus" }
         ]
       },
       limit: 1
@@ -474,6 +582,7 @@ function init() {
   if (!getTenantId()) {
     setStatus("Falta configurar tenantId en config.js.", true);
   }
+  initViewModeToggle();
   maybeEnableOwnerAppRedirect();
   loadProductWithOptions({ useCache: true });
   startPeriodicRefresh();

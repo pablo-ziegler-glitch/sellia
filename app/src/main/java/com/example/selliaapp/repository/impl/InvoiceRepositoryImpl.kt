@@ -23,6 +23,7 @@ import com.example.selliaapp.data.model.sales.InvoiceDraft
 import com.example.selliaapp.data.model.sales.InvoiceItemRow
 import com.example.selliaapp.data.model.sales.InvoiceResult
 import com.example.selliaapp.data.model.sales.InvoiceSummary
+import com.example.selliaapp.data.model.sales.SaleBreakdown
 import com.example.selliaapp.data.model.sales.SyncStatus
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
@@ -149,7 +150,7 @@ class InvoiceRepositoryImpl @Inject constructor(
 
         val productIdsForOutbox = touchedProducts.map(Int::toLong)
         try {
-            syncInvoiceWithFirestore(invoice, invoiceNumber, persistedItems, productsToSync)
+            syncInvoiceWithFirestore(invoice, invoiceNumber, persistedItems, productsToSync, draft.breakdown)
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.INVOICE.storageKey,
                 listOf(invoice.id)
@@ -531,7 +532,8 @@ class InvoiceRepositoryImpl @Inject constructor(
         invoice: Invoice,
         number: String,
         items: List<InvoiceItem>,
-        products: List<ProductEntity>
+        products: List<ProductEntity>,
+        breakdown: SaleBreakdown? = null
     ) {
         val tenantId = tenantProvider.requireTenantId()
         val invoicesCollection = firestore.collection("tenants")
@@ -539,7 +541,7 @@ class InvoiceRepositoryImpl @Inject constructor(
             .collection("invoices")
         invoicesCollection
             .document(invoice.id.toString())
-            .set(InvoiceFirestoreMappers.toMap(invoice, number, items, tenantId))
+            .set(InvoiceFirestoreMappers.toMap(invoice, number, items, tenantId, breakdown))
             .await()
 
         if (products.isEmpty()) return

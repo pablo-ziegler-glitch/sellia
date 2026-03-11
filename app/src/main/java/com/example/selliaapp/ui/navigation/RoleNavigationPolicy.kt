@@ -31,7 +31,7 @@ object RoleNavigationPolicy {
                 )
             }
 
-            AppRole.VIEWER -> listOf(Routes.Home.route, Routes.PublicProductCatalog.route)
+            AppRole.VIEWER -> listOf(Routes.Home.route, Routes.PublicProductCatalog.route, Routes.Notifications.route)
         }
     }
 

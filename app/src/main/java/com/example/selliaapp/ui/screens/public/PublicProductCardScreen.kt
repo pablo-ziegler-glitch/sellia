@@ -14,10 +14,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -44,6 +50,11 @@ import com.example.selliaapp.viewmodel.ProductViewModel
 import java.text.NumberFormat
 import java.util.Locale
 
+private enum class ViewMode(val label: String) {
+    CLIENT("Vista Cliente"),
+    OWNER("Vista Dueño")
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PublicProductCardScreen(
@@ -57,6 +68,7 @@ fun PublicProductCardScreen(
     var product by remember { mutableStateOf<ProductEntity?>(null) }
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var viewMode by remember { mutableStateOf(ViewMode.CLIENT) }
 
     LaunchedEffect(qrValue, productId) {
         loading = true
@@ -79,9 +91,28 @@ fun PublicProductCardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ViewMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = viewMode == mode,
+                        onClick = { viewMode = mode },
+                        label = { Text(mode.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                }
+            }
+
             when {
                 loading -> {
                     Text(
@@ -111,7 +142,8 @@ fun PublicProductCardScreen(
                         storeName = settings.storeName,
                         storePhone = settings.storePhone,
                         storeWhatsapp = settings.storeWhatsapp,
-                        storeEmail = settings.storeEmail
+                        storeEmail = settings.storeEmail,
+                        viewMode = viewMode
                     )
                 }
             }
@@ -126,7 +158,8 @@ private fun ProductCard(
     storeName: String,
     storePhone: String,
     storeWhatsapp: String,
-    storeEmail: String
+    storeEmail: String,
+    viewMode: ViewMode
 ) {
     val images: List<Any> = product.imageUrls.takeIf { it.isNotEmpty() }
         ?: listOf(R.drawable.ic_sell)
@@ -218,6 +251,10 @@ private fun ProductCard(
                 )
             }
 
+            if (viewMode == ViewMode.OWNER) {
+                OwnerSection(product = product, currency = currency)
+            }
+
             Spacer(Modifier.height(4.dp))
 
             Text(
@@ -236,6 +273,66 @@ private fun ProductCard(
             if (storeEmail.isNotBlank()) {
                 Text(text = "Email: $storeEmail", style = MaterialTheme.typography.bodyMedium)
             }
+        }
+    }
+}
+
+@Composable
+private fun OwnerSection(product: ProductEntity, currency: NumberFormat) {
+    HorizontalDivider()
+
+    Text(
+        text = "Datos internos",
+        style = MaterialTheme.typography.titleMedium
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            product.purchasePrice?.let { cost ->
+                PriceRow(label = "COSTO", value = currency.format(cost))
+
+                product.listPrice?.let { list ->
+                    if (cost > 0) {
+                        val margin = (list - cost) / cost * 100
+                        PriceRow(
+                            label = "MARGEN S/LISTA",
+                            value = "%.1f%%".format(margin)
+                        )
+                    }
+                }
+            }
+
+            PriceRow(label = "STOCK ACTUAL", value = product.quantity.toString())
+
+            product.minStock?.let { min ->
+                PriceRow(label = "STOCK MÍNIMO", value = min.toString())
+            }
+
+            if (!product.providerName.isNullOrBlank()) {
+                PriceRow(label = "PROVEEDOR", value = product.providerName.orEmpty())
+            }
+
+            if (!product.barcode.isNullOrBlank()) {
+                PriceRow(label = "CÓD. BARRAS", value = product.barcode.orEmpty())
+            }
+
+            val statusLabel = when (product.publicStatus) {
+                "published" -> "Publicado"
+                "archived" -> "Archivado"
+                else -> "Borrador"
+            }
+            PriceRow(label = "ESTADO", value = statusLabel)
         }
     }
 }

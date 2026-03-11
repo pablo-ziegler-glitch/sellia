@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
@@ -47,7 +48,6 @@ import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.security.DeepLinkSecurity
 import com.example.selliaapp.ui.components.AppScaffold
 import com.example.selliaapp.ui.components.BottomNavItem
-import com.example.selliaapp.ui.screens.ClientHomeScreen
 import com.example.selliaapp.ui.screens.HomeScreen
 import com.example.selliaapp.ui.screens.MoreScreen
 import com.example.selliaapp.ui.screens.alerts.UsageAlertsScreen
@@ -70,6 +70,7 @@ import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
 import com.example.selliaapp.ui.screens.config.PublicCatalogConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
+import com.example.selliaapp.ui.screens.config.PricingSimulatorScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseTemplatesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpensesCashflowScreen
@@ -181,6 +182,7 @@ fun SelliaApp(
                 Routes.Cash.route -> BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney)
                 Routes.ClientsHub.route -> BottomNavItem(Routes.ClientsHub.route, "Clientes", Icons.Default.ShoppingCart)
                 Routes.PublicProductCatalog.route -> BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront)
+                Routes.Notifications.route -> BottomNavItem(Routes.Notifications.route, "Avisos", Icons.Default.Notifications)
                 else -> BottomNavItem(routeItem, routeItem, Icons.Default.Home)
             }
         } + BottomNavItem(
@@ -213,7 +215,9 @@ fun SelliaApp(
                     Routes.PublicProductCatalog.route,
                     Routes.More.route,
                     Routes.Config.route,
-                    Routes.PublicProductScan.route
+                    Routes.PublicProductScan.route,
+                    Routes.Notifications.route,
+                    Routes.StoreRequestForm.route
                 )
             ) {
                 navigationUsageStore.recordNavigationDenied(role, route)
@@ -237,11 +241,16 @@ fun SelliaApp(
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {
                 if (isClientFinal) {
-                    ClientHomeScreen(
+                    com.example.selliaapp.ui.screens.customer.CustomerHomeScreen(
                         accountSummary = accountSummary,
                         onOpenPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
                         onScanPublicProduct = { navController.navigate(Routes.PublicProductScan.route) },
-                        onOpenProfile = { navController.navigate(Routes.Config.route) }
+                        onOpenProfile = { navController.navigate(Routes.Config.route) },
+                        onOpenStore = { store ->
+                            navController.navigate(Routes.StoreDetail.build(store.id, store.name))
+                        },
+                        onRequestStore = { navController.navigate(Routes.StoreRequestForm.route) },
+                        onOpenNotifications = { navController.navigate(Routes.Notifications.route) }
                     )
                 } else {
                     val homeVm: HomeViewModel = hiltViewModel()
@@ -804,6 +813,7 @@ fun SelliaApp(
                     },
                     adminFeatureFlags = ConfigAdminFeatureFlags.MobileFieldOnly,
                     isClientFinal = isClientFinal,
+                    onStorefront = { navController.navigate(Routes.Storefront.route) },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -823,6 +833,13 @@ fun SelliaApp(
 
             composable(Routes.PricingConfig.route) {
                 PricingConfigScreen(
+                    onBack = { navController.popBackStack() },
+                    onSimulator = { navController.navigate(Routes.PricingSimulator.route) }
+                )
+            }
+
+            composable(Routes.PricingSimulator.route) {
+                PricingSimulatorScreen(
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -1081,7 +1098,38 @@ fun SelliaApp(
                 ExpensesCashflowScreen(repo = repo, onBack = { navController.popBackStack() })
             }
 
+            // ---------- VISTA CLIENTE: Tienda, Solicitud, Notificaciones ----------
+            composable(
+                route = Routes.StoreDetail.route,
+                arguments = Routes.StoreDetail.arguments
+            ) { backStackEntry ->
+                val tenantId = backStackEntry.arguments?.getString(Routes.StoreDetail.ARG_TENANT_ID).orEmpty()
+                val tenantName = backStackEntry.arguments?.getString(Routes.StoreDetail.ARG_NAME).orEmpty()
+                com.example.selliaapp.ui.screens.customer.StoreDetailScreen(
+                    tenantId = tenantId,
+                    tenantName = tenantName,
+                    onBack = { navController.popBackStack() }
+                )
+            }
 
+            composable(Routes.StoreRequestForm.route) {
+                com.example.selliaapp.ui.screens.customer.StoreRequestScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.Notifications.route) {
+                com.example.selliaapp.ui.screens.notifications.NotificationListScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // ---------- DUEÑO: Vidriera Pública ----------
+            composable(Routes.Storefront.route) {
+                com.example.selliaapp.ui.screens.storefront.StorefrontScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
 
             }
 

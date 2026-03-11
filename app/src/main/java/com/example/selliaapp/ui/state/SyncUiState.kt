@@ -1,5 +1,6 @@
 package com.example.selliaapp.ui.state
 
+import com.example.selliaapp.data.model.sales.SaleBreakdown
 
 /**
  * Item del carrito listo para UI. Guardamos el stock máximo (maxStock) para validar sin ir a DB.
@@ -12,6 +13,7 @@ data class CartItemUi(
     val listPrice: Double,
     val cashPrice: Double,
     val transferPrice: Double,
+    val purchasePrice: Double = 0.0,
     val qty: Int,
     val maxStock: Int
 ) {
@@ -42,7 +44,8 @@ data class SellUiState(
     val orderType: OrderType = OrderType.INMEDIATA,
     val selectedCustomerId: Int? = null,
     val selectedCustomerName: String? = null,
-    val customerSummary: CustomerSummaryUi? = null
+    val customerSummary: CustomerSummaryUi? = null,
+    val breakdown: SaleBreakdown? = null
 ) {
     /** Habilita el checkout si no hay violaciones y hay al menos un ítem. */
     val canCheckout: Boolean
