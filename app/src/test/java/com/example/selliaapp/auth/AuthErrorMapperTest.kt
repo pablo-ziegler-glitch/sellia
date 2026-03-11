@@ -7,16 +7,13 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.functions.FirebaseFunctionsException
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 
 class AuthErrorMapperTest {
 
     @Test
     fun `maps invalid login credential to actionable message`() {
-        val error = mock<FirebaseAuthInvalidCredentialsException>()
-        whenever(error.errorCode).thenReturn("ERROR_INVALID_LOGIN_CREDENTIAL")
-        whenever(error.message).thenReturn(
+        val error = FirebaseAuthInvalidCredentialsException(
+            "ERROR_INVALID_LOGIN_CREDENTIAL",
             "The supplied auth credential is incorrect, malformed or has expired."
         )
 
@@ -30,7 +27,10 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps invalid user to account not found message`() {
-        val error = mock<FirebaseAuthInvalidUserException>()
+        val error = FirebaseAuthInvalidUserException(
+            "ERROR_USER_NOT_FOUND",
+            "No user record"
+        )
 
         val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
 
@@ -42,7 +42,10 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps duplicated email to collision message`() {
-        val error = mock<FirebaseAuthUserCollisionException>()
+        val error = FirebaseAuthUserCollisionException(
+            "ERROR_EMAIL_ALREADY_IN_USE",
+            "The email address is already in use by another account."
+        )
 
         val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
 
@@ -72,9 +75,11 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps ownership not found errors to clear user message`() {
-        val error = mock<FirebaseFunctionsException>()
-        whenever(error.code).thenReturn(FirebaseFunctionsException.Code.NOT_FOUND)
-        whenever(error.message).thenReturn("No existe usuario activo con ese email")
+        val error = FirebaseFunctionsException(
+            "No existe usuario activo con ese email",
+            FirebaseFunctionsException.Code.NOT_FOUND,
+            null
+        )
 
         val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
 
@@ -86,9 +91,11 @@ class AuthErrorMapperTest {
 
     @Test
     fun `maps ownership conflict with another store to specific guidance`() {
-        val error = mock<FirebaseFunctionsException>()
-        whenever(error.code).thenReturn(FirebaseFunctionsException.Code.FAILED_PRECONDITION)
-        whenever(error.message).thenReturn("El usuario ya administra otra tienda")
+        val error = FirebaseFunctionsException(
+            "El usuario ya administra otra tienda",
+            FirebaseFunctionsException.Code.FAILED_PRECONDITION,
+            null
+        )
 
         val mapped = AuthErrorMapper.toUserMessage(error, "fallback")
 
