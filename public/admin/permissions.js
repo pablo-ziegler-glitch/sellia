@@ -76,11 +76,25 @@ export const PERMISSIONS_CONTRACT = Object.freeze({
   moduleRolePolicies: MODULE_ROLE_POLICIES
 });
 
+function normalizeRole(role) {
+  return typeof role === "string" ? role.trim().toLowerCase() : "";
+}
+
 export function hasRouteAccess(role, route) {
+  const normalizedRole = normalizeRole(role);
   const allowedRoles = ROUTE_POLICIES[route];
-  return Array.isArray(allowedRoles) ? allowedRoles.includes(role) : false;
+  return Array.isArray(allowedRoles) ? allowedRoles.includes(normalizedRole) : false;
 }
 
 export function rolePermissions(role) {
-  return ROLE_PERMISSIONS[role] || [];
+  const normalizedRole = normalizeRole(role);
+  return ROLE_PERMISSIONS[normalizedRole] || [];
+}
+
+export function isInternalRole(role) {
+  return INTERNAL_ROLES.has(normalizeRole(role));
+}
+
+export function normalizeInternalRole(role) {
+  return normalizeRole(role);
 }

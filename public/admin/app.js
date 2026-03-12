@@ -23,7 +23,7 @@ import {
   query
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
-import { INTERNAL_ROLES, hasRouteAccess, rolePermissions } from "./permissions.js";
+import { hasRouteAccess, isInternalRole, normalizeInternalRole, rolePermissions } from "./permissions.js";
 
 const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
 const TOKEN_REFRESH_MS = 50 * 60 * 1000;
@@ -38,6 +38,7 @@ const el = {
   googleBtn: document.getElementById("googleLogin"),
   logoutBtn: document.getElementById("logoutButton"),
   authError: document.getElementById("authError"),
+  defaultAdminPermissions: document.getElementById("defaultAdminPermissions"),
   sessionBanner: document.getElementById("sessionBanner"),
   tenantBadge: document.getElementById("tenantBadge"),
   roleBadge: document.getElementById("roleBadge"),
@@ -90,7 +91,11 @@ const el = {
   budgetTotalValue: document.getElementById("budgetTotalValue"),
   currentCostTotalValue: document.getElementById("currentCostTotalValue"),
   costDeltaValue: document.getElementById("costDeltaValue"),
-  costByServiceBody: document.getElementById("costByServiceBody")
+  costByServiceBody: document.getElementById("costByServiceBody"),
+  tenantPolicyPanel: document.getElementById("tenantPolicyPanel"),
+  tenantActivationModeSelect: document.getElementById("tenantActivationModeSelect"),
+  saveTenantPolicyButton: document.getElementById("saveTenantPolicyButton"),
+  tenantPolicyMessage: document.getElementById("tenantPolicyMessage")
 };
 
 const routeViews = {
@@ -128,6 +133,7 @@ const appState = {
 bootstrap();
 
 async function bootstrap() {
+  renderDefaultAdminPermissions();
   await Promise.resolve(window.__STORE_CONFIG_READY__);
   const firebaseConfig = window.STORE_CONFIG?.firebase || {};
   if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
@@ -181,13 +187,13 @@ function wireEvents() {
   el.requestBackupButton.addEventListener("click", onRequestBackupNow);
   el.paymentsToggleButton.addEventListener("click", onApplyPaymentsToggle);
   el.saveTenantPolicyButton?.addEventListener("click", onSaveTenantOnboardingPolicy);
-  el.dashboardRetryButton.addEventListener("click", loadDashboard);
-  el.dashboardErrorRetryButton.addEventListener("click", loadDashboard);
-  el.maintenanceRetryButton.addEventListener("click", loadMaintenanceTasks);
-  el.maintenanceErrorRetryButton.addEventListener("click", loadMaintenanceTasks);
-  el.maintenanceCreateForm.addEventListener("submit", onCreateMaintenanceTask);
+  el.dashboardRetryButton?.addEventListener("click", loadDashboard);
+  el.dashboardErrorRetryButton?.addEventListener("click", loadDashboard);
+  el.maintenanceRetryButton?.addEventListener("click", loadMaintenanceTasks);
+  el.maintenanceErrorRetryButton?.addEventListener("click", loadMaintenanceTasks);
+  el.maintenanceCreateForm?.addEventListener("submit", onCreateMaintenanceTask);
   window.addEventListener("hashchange", syncRouteWithPermissions);
-  el.maintenanceBody.addEventListener("click", onMaintenanceActions);
+  el.maintenanceBody?.addEventListener("click", onMaintenanceActions);
 
   ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) => {
     window.addEventListener(eventName, resetInactivityTimer, { passive: true });
@@ -224,19 +230,28 @@ async function loadProfile(db, uid) {
 
 function validateProfile(profile) {
   const tenantId = (profile?.tenantId || "").trim();
-  const role = (profile?.role || "").trim();
+  const role = normalizeInternalRole(profile?.role);
   const status = (profile?.status || "").trim().toLowerCase();
   if (!tenantId) return { ok: false, message: "Usuario sin tenant asignado." };
-  if (!INTERNAL_ROLES.has(role)) return { ok: false, message: "Rol no habilitado para backoffice." };
+  if (!isInternalRole(role)) return { ok: false, message: "Rol no habilitado para backoffice." };
   if (status !== "active") return { ok: false, message: "Usuario inactivo o bloqueado." };
   return { ok: true };
 }
 
+function renderDefaultAdminPermissions() {
+  if (!el.defaultAdminPermissions) return;
+  const adminPermissions = rolePermissions("admin");
+  el.defaultAdminPermissions.innerHTML = adminPermissions.length
+    ? adminPermissions.map((permission) => `<li>${permission}</li>`).join("")
+    : "<li>Sin permisos configurados.</li>";
+}
+
 function renderSession(profile) {
   el.tenantBadge.textContent = profile.tenantId;
-  el.roleBadge.textContent = profile.role;
+  const normalizedRole = normalizeInternalRole(profile?.role);
+  el.roleBadge.textContent = normalizedRole || "-";
   el.statusBadge.textContent = profile.status;
-  const permissions = rolePermissions(profile.role);
+  const permissions = rolePermissions(normalizedRole);
   el.permissionsList.innerHTML = permissions.length
     ? permissions.map((permission) => `<li>${permission}</li>`).join("")
     : "<li>Sin permisos internos.</li>";
@@ -575,6 +590,8 @@ async function onApplyPaymentsToggle() {
 
 function setPaymentsToggleMessage(message) {
   el.paymentsToggleMessage.textContent = message || "";
+}
+
 async function loadCostDashboard() {
   if (!appState.profile) return;
 
@@ -629,6 +646,55 @@ function formatMoney(value) {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+
+function toggleModulePanels(currentRoute) {
+  if (el.dashboardPanel) el.dashboardPanel.hidden = currentRoute !== "#/dashboard";
+  if (el.maintenancePanel) el.maintenancePanel.hidden = currentRoute !== "#/maintenance";
+  if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = currentRoute !== "#/settings/cloud-services";
+}
+
+async function loadTenantOnboardingPolicy() {
+  if (!el.tenantPolicyPanel) return;
+  const canManage = appState.profile?.role === "owner";
+  el.tenantPolicyPanel.hidden = !canManage;
+  if (!canManage) return;
+
+  try {
+    const policyRef = doc(appState.firestore, "config", "tenant_onboarding_policy");
+    const snap = await getDoc(policyRef);
+    const mode = snap.exists() && snap.data()?.activationMode === "manual" ? "manual" : "auto";
+    if (el.tenantActivationModeSelect) el.tenantActivationModeSelect.value = mode;
+    setTenantPolicyMessage("");
+  } catch (error) {
+    setTenantPolicyMessage(`No se pudo cargar política: ${parseAuthError(error)}`);
+  }
+}
+
+async function onSaveTenantOnboardingPolicy() {
+  setTenantPolicyMessage("Función de guardado en migración. Contactá a plataforma para aplicar cambios.");
+}
+
+async function loadDashboard() {
+  return Promise.resolve();
+}
+
+async function loadMaintenanceTasks() {
+  return Promise.resolve();
+}
+
+async function onCreateMaintenanceTask(event) {
+  event?.preventDefault?.();
+  setSessionBanner("Creación de tareas de mantenimiento en migración.");
+}
+
+function onMaintenanceActions() {}
+
+function setTenantPolicyMessage(message) {
+  if (el.tenantPolicyMessage) {
+    el.tenantPolicyMessage.textContent = message || "";
+  }
 }
 
 function parseAuthError(error) {
