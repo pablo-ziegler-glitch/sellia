@@ -72,6 +72,29 @@ const elements = {
   secondarySectionsTemplate: document.getElementById("secondarySectionsTemplate")
 };
 
+
+function mergeSection(baseSection, overrideSection) {
+  return {
+    ...(baseSection || {}),
+    ...(overrideSection || {})
+  };
+}
+
+function resolveLandingConfig() {
+  const tenantKey = (config.tenantId || runtimeConfig.tenantId || "").trim().toLowerCase();
+  const preset = TENANT_LANDING_PRESETS[tenantKey] || {};
+  return {
+    brand: mergeSection(GENERIC_LANDING_CONFIG.brand, preset.brand),
+    seo: mergeSection(GENERIC_LANDING_CONFIG.seo, preset.seo),
+    hero: mergeSection(GENERIC_LANDING_CONFIG.hero, preset.hero),
+    cta: mergeSection(GENERIC_LANDING_CONFIG.cta, preset.cta),
+    story: mergeSection(GENERIC_LANDING_CONFIG.story, preset.story),
+    purpose: mergeSection(GENERIC_LANDING_CONFIG.purpose, preset.purpose)
+  };
+}
+
+const landingConfig = resolveLandingConfig();
+
 function isConfigured(value) {
   return typeof value === "string" && value.trim() !== "" && !value.startsWith("REEMPLAZAR");
 }
