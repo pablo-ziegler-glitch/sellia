@@ -306,4 +306,28 @@ describe('firestore.rules - multi-tenant admin policy', () => {
 
     assert.ok(true);
   });
+
+  it('allows tenant ownerUid to read own tenant doc even without tenant_users membership', async () => {
+    await seedUser('owner-direct-uid', {
+      role: 'viewer',
+      tenantId: '',
+      email: 'owner-direct@example.com',
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenants', 'tenant-owner-direct'), {
+        id: 'tenant-owner-direct',
+        ownerUid: 'owner-direct-uid',
+      });
+    });
+
+    const db = dbWithClaims('owner-direct-uid', {
+      uid: 'owner-direct-uid',
+      role: 'viewer',
+      email: 'owner-direct@example.com',
+    });
+
+    await assertSucceeds(getDoc(doc(db, 'tenants', 'tenant-owner-direct')));
+  });
 });
