@@ -54,7 +54,7 @@ service cloud.firestore {
       return isAuthenticated() && isActiveUser() && (
         hasSuperAdminClaim() ||
         effectiveTenantId() == tenantId ||
-        exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + request.auth.uid))
+        exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + request.auth.token.email))
       );
     }
 
