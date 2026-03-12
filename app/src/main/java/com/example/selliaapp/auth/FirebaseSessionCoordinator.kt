@@ -73,13 +73,11 @@ class FirebaseSessionCoordinator @Inject constructor(
     private fun isRetryableAuthFailure(error: Throwable): Boolean = when (error) {
         is FirebaseAuthInvalidUserException -> true
         is FirebaseFirestoreException -> {
-            error.code == FirebaseFirestoreException.Code.UNAUTHENTICATED ||
-                error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
+            error.code == FirebaseFirestoreException.Code.UNAUTHENTICATED
         }
 
         is StorageException -> {
-            error.errorCode == StorageException.ERROR_NOT_AUTHENTICATED ||
-                error.errorCode == StorageException.ERROR_NOT_AUTHORIZED
+            error.errorCode == StorageException.ERROR_NOT_AUTHENTICATED
         }
 
         else -> false
