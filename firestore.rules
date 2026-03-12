@@ -67,10 +67,21 @@ service cloud.firestore {
       );
     }
 
+    function hasTenantInUserProfile(tenantId) {
+      return requesterUserDoc().exists && (
+        requesterData().tenantId == tenantId ||
+        (
+          requesterData().tenantIds is list &&
+          requesterData().tenantIds.hasAny([tenantId])
+        )
+      );
+    }
+
     function isTenantMember(tenantId) {
       return isAuthenticated() && isActiveUser() && (
         hasSuperAdminClaim() ||
         effectiveTenantId() == tenantId ||
+        hasTenantInUserProfile(tenantId) ||
         hasTenantMembershipDoc(tenantId)
       );
     }
