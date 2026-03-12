@@ -259,6 +259,28 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     await assertSucceeds(getDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-email-member')));
   });
 
+  it('allows tenant membership when tenantId exists in users.tenantIds array', async () => {
+    await seedUser('multi-tenant-uid', {
+      role: 'viewer',
+      tenantId: '',
+      tenantIds: [TENANT_A, TENANT_B],
+      email: 'multi-tenant@example.com',
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenants', TENANT_B, 'products', 'sku-multi-tenant'), { name: 'Private B' });
+    });
+
+    const db = dbWithClaims('multi-tenant-uid', {
+      uid: 'multi-tenant-uid',
+      email: 'multi-tenant@example.com',
+      role: 'viewer',
+    });
+
+    await assertSucceeds(getDoc(doc(db, 'tenants', TENANT_B, 'products', 'sku-multi-tenant')));
+  });
+
   it('keeps tenant catalog public read while non-catalog remains private', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
