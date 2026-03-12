@@ -94,6 +94,14 @@ service cloud.firestore {
       return hasSuperAdminClaim() || (isTenantMember(tenantId) && isAdminRole());
     }
 
+    function isTenantOwnerRecord(tenantData) {
+      return isAuthenticated() && (
+        (tenantData.ownerUid is string && tenantData.ownerUid == request.auth.uid) ||
+        (tenantData.ownerUids is list && tenantData.ownerUids.hasAny([request.auth.uid])) ||
+        (requesterEmail() != '' && tenantData.ownerEmail is string && lower(trim(tenantData.ownerEmail)) == requesterEmail())
+      );
+    }
+
     function isOwnUserDoc(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -152,7 +160,7 @@ service cloud.firestore {
     }
 
     match /tenants/{tenantId} {
-      allow read: if isTenantMember(tenantId);
+      allow read: if isTenantMember(tenantId) || isTenantOwnerRecord(resource.data);
       allow write: if isTenantAdmin(tenantId);
 
       match /public_products/{productId} {
