@@ -189,6 +189,7 @@ async function main() {
     ...currentClaims,
     admin: true,
     role: args.role,
+    tenantId: args.tenantId,
     superAdmin: args.superAdmin || currentClaims.superAdmin === true
   };
 
