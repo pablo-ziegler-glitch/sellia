@@ -119,6 +119,9 @@
         "source": "/public/catalog",
         "function": "publicCatalog"
       }
+    ],
+    "predeploy": [
+      "npm run check:admin-js-syntax"
     ]
   }
 }
