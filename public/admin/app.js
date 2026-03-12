@@ -284,24 +284,16 @@ async function syncRouteWithPermissions() {
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
   const canViewCosts = ["owner", "admin", "manager"].includes(appState.profile.role);
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
-  const canManageOnboardingPolicy = appState.profile.role === "owner";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
   el.paymentsControlPanel.hidden = !(canManageBackups && isCloudServicesRoute);
-
-  if (el.backupPanel.hidden) {
-    stopBackupRequestsListener();
-    stopPaymentsListeners();
-    return;
-  }
-
-  startBackupRequestsListener();
-  startPaymentsListeners();
   el.costDashboardPanel.hidden = !(canViewCosts && isCloudServicesRoute);
 
   if (el.backupPanel.hidden) {
     stopBackupRequestsListener();
+    stopPaymentsListeners();
   } else {
     startBackupRequestsListener();
+    startPaymentsListeners();
   }
 
   if (!el.costDashboardPanel.hidden) {
