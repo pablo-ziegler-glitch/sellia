@@ -22,6 +22,17 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.superAdmin == true;
     }
 
+    function hasAdminClaim() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.isAdmin == true
+      );
+    }
+
+    function hasAdministrativeBypass() {
+      return hasSuperAdminClaim() || hasAdminClaim();
+    }
+
     function effectiveTenantId() {
       return isAuthenticated()
         ? (
@@ -79,7 +90,7 @@ service cloud.firestore {
 
     function isTenantMember(tenantId) {
       return isAuthenticated() && isActiveUser() && (
-        hasSuperAdminClaim() ||
+        hasAdministrativeBypass() ||
         effectiveTenantId() == tenantId ||
         hasTenantInUserProfile(tenantId) ||
         hasTenantMembershipDoc(tenantId)
@@ -91,7 +102,7 @@ service cloud.firestore {
     }
 
     function isTenantAdmin(tenantId) {
-      return hasSuperAdminClaim() || (isTenantMember(tenantId) && isAdminRole());
+      return hasAdministrativeBypass() || (isTenantMember(tenantId) && isAdminRole());
     }
 
     function isTenantOwnerRecord(tenantData) {
