@@ -6,7 +6,7 @@ const {
   assertSucceeds,
   assertFails,
 } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, updateDoc, getDoc } = require('firebase/firestore');
+const { doc, setDoc, updateDoc, getDoc, collection, query, getDocs } = require('firebase/firestore');
 
 const PROJECT_ID = 'sellia-firestore-rules-tests';
 const TENANT_A = 'tenant-a';
@@ -215,6 +215,29 @@ describe('firestore.rules - multi-tenant admin policy', () => {
         status: 'approved',
       }),
     );
+  });
+
+  it('allows admin claim to read tenant config query even without explicit tenant membership', async () => {
+    await seedUser('claim-admin-uid', {
+      role: 'viewer',
+      tenantId: '',
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenants', TENANT_A, 'config', 'development_options'), {
+        enabled: true,
+      });
+    });
+
+    const db = dbWithClaims('claim-admin-uid', {
+      uid: 'claim-admin-uid',
+      admin: true,
+      role: 'viewer',
+    });
+
+    const configQuery = query(collection(db, 'tenants', TENANT_A, 'config'));
+    await assertSucceeds(getDocs(configQuery));
   });
 
   it('allows legacy admin user doc without status field (legacy compatibility)', async () => {
