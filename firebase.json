@@ -50,7 +50,7 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; frame-src https://accounts.google.com; manifest-src 'self'; upgrade-insecure-requests"
+            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com; frame-src https://accounts.google.com; manifest-src 'self'; upgrade-insecure-requests"
           }
         ]
       },
@@ -119,6 +119,9 @@
         "source": "/public/catalog",
         "function": "publicCatalog"
       }
+    ],
+    "predeploy": [
+      "npm run check:admin-js-syntax"
     ]
   }
 }

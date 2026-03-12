@@ -11,7 +11,8 @@
     "test:firestore-rules": "firebase emulators:exec --only firestore \"node --test tests/firestore.rules.emulator.test.js\"",
     "admin:grant:dry": "npm --prefix functions run admin:grant:dry --",
     "admin:grant": "npm --prefix functions run admin:grant --",
-    "check:config-consistency": "node scripts/check-config-consistency.js"
+    "check:config-consistency": "node scripts/check-config-consistency.js",
+    "check:admin-js-syntax": "node --check public/admin/app.js && node --check public/admin/permissions.js"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
