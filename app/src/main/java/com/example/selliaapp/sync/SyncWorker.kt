@@ -8,6 +8,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import com.example.selliaapp.auth.TenantProvider
 import com.google.firebase.firestore.FirebaseFirestoreException
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -22,7 +23,8 @@ import dagger.hilt.components.SingletonComponent
 class SyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val syncRepository: SyncRepository
+    private val syncRepository: SyncRepository,
+    private val tenantProvider: TenantProvider
 ) : CoroutineWorker(appContext, params) {
 
     /**
@@ -38,11 +40,24 @@ class SyncWorker @AssistedInject constructor(
         EntryPointAccessors.fromApplication(
             appContext,
             SyncWorkerEntryPoint::class.java
-        ).syncRepository()
+        ).syncRepository(),
+        EntryPointAccessors.fromApplication(
+            appContext,
+            SyncWorkerEntryPoint::class.java
+        ).tenantProvider()
     )
 
     override suspend fun doWork(): Result {
         Log.i(TAG, "Iniciando sincronización manual (workId=$id)")
+        if (tenantProvider.currentTenantId() == null) {
+            Log.i(TAG, "Sin sesión activa, omitiendo sincronización (workId=$id)")
+            return Result.success(
+                workDataOf(
+                    OUTPUT_STATUS to "skipped",
+                    OUTPUT_MESSAGE to "Sin sesión activa, sincronización omitida."
+                )
+            )
+        }
         return try {
             val includeBackup = inputData.getBoolean(INPUT_BACKUP, false)
             syncRepository.runSync(includeBackup)
@@ -88,4 +103,5 @@ class SyncWorker @AssistedInject constructor(
 @InstallIn(SingletonComponent::class)
 interface SyncWorkerEntryPoint {
     fun syncRepository(): SyncRepository
+    fun tenantProvider(): TenantProvider
 }
