@@ -4663,14 +4663,44 @@ export const createDailyTenantBackups = functions
   .schedule("every 24 hours")
   .timeZone("UTC")
   .onRun(async () => {
+    const requestDate = new Date().toISOString().slice(0, 10);
+    const requestId = `system-daily-${requestDate}`;
     const tenantsSnapshot = await db.collection("tenants").get();
     for (const tenantDoc of tenantsSnapshot.docs) {
       const tenantId = tenantDoc.id;
       try {
-        await backupTenant(tenantId, "system:createDailyTenantBackups");
-        console.info("Tenant backup completed", { tenantId });
+        const requestRef = db
+          .collection("tenant_backups")
+          .doc(tenantId)
+          .collection("requests")
+          .doc(requestId);
+
+        await requestRef.create({
+          tenantId,
+          requestId,
+          reason: `daily backup ${requestDate}`,
+          actor: "system:createDailyTenantBackups",
+          status: "queued",
+          createdByUid: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          errorMessage: null,
+          docCount: null,
+          runId: null,
+        });
+
+        console.info("Tenant backup request enqueued", { tenantId, requestId });
       } catch (error) {
-        console.error("Tenant backup failed", {
+        const firestoreCode =
+          typeof error === "object" && error !== null && "code" in error
+            ? String((error as { code?: unknown }).code)
+            : "";
+        if (firestoreCode === "6" || firestoreCode === "already-exists") {
+          console.info("Tenant backup request already exists", { tenantId, requestId });
+          continue;
+        }
+
+        console.error("Tenant backup request failed", {
           tenantId,
           error: error instanceof Error ? error.message : String(error),
         });
