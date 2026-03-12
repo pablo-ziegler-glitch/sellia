@@ -42,6 +42,19 @@ Se revisaron y dejaron consistentes los `match` administrativos que dependen de 
 - `match /users/{userId}` (paths administrativos)
 - `match /account_requests/{requestId}`
 
+### Compatibilidad de membresía tenant (`tenant_users`)
+
+Se agregó compatibilidad para membresías cuyo `documentId` en `tenant_users` usa email normalizado (`{tenantId}_{email}`) además de UID (`{tenantId}_{uid}`).
+
+Motivo: algunos flujos legacy del cliente Android escriben `tenant_users` con email como sufijo de ID, mientras que las reglas anteriores validaban únicamente por UID y terminaban denegando accesos legítimos de lectura/escritura en paths bajo `tenants/{tenantId}`.
+
+Implementación en reglas:
+
+- Nuevo helper `requesterEmail()` (claim `email` o fallback `users/{uid}.email`).
+- Nuevo helper `hasTenantMembershipDoc(tenantId)` que verifica existencia por UID o por email.
+- `isTenantMember(tenantId)` delega en `hasTenantMembershipDoc(tenantId)`.
+
+
 Con esta consolidación, cualquier cambio futuro de política por rol debe tocar una sola fuente de verdad (`functions/src/security/rolePermissionsMatrix.ts`) y luego actualizar changelog + revisión de seguridad en `docs/security/PERMISSIONS_CHANGELOG.md`.
 
 ## Validación con Emulator

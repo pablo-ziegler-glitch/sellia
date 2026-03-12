@@ -50,11 +50,28 @@ service cloud.firestore {
         : '';
     }
 
+    function requesterEmail() {
+      return isAuthenticated()
+        ? (
+            request.auth.token.email is string
+              ? lower(trim(request.auth.token.email))
+              : (requesterUserDoc().exists && requesterData().email is string ? lower(trim(requesterData().email)) : '')
+          )
+        : '';
+    }
+
+    function hasTenantMembershipDoc(tenantId) {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + request.auth.uid)) ||
+        (requesterEmail() != '' && exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + requesterEmail())))
+      );
+    }
+
     function isTenantMember(tenantId) {
       return isAuthenticated() && isActiveUser() && (
         hasSuperAdminClaim() ||
         effectiveTenantId() == tenantId ||
-        exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + request.auth.token.email))
+        hasTenantMembershipDoc(tenantId)
       );
     }
 
