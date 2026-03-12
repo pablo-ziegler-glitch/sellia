@@ -230,6 +230,35 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     );
   });
 
+
+
+  it('allows tenant membership by email-based tenant_users id fallback', async () => {
+    await seedUser('email-member-uid', {
+      role: 'viewer',
+      tenantId: '',
+      email: 'email-member@example.com',
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenant_users', `${TENANT_A}_email-member@example.com`), {
+        tenantId: TENANT_A,
+        email: 'email-member@example.com',
+        role: 'viewer',
+        status: 'active',
+      });
+      await setDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-email-member'), { name: 'Private' });
+    });
+
+    const db = dbWithClaims('email-member-uid', {
+      uid: 'email-member-uid',
+      email: 'email-member@example.com',
+      role: 'viewer',
+    });
+
+    await assertSucceeds(getDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-email-member')));
+  });
+
   it('keeps tenant catalog public read while non-catalog remains private', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
