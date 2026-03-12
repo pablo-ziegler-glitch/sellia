@@ -163,7 +163,7 @@ fun SelliaRoot(
             val tenantId = (authState as AuthState.Authenticated).session.tenantId
             LaunchedEffect(tenantId) {
                 // Fuerza una sincronización inicial al entrar con una sesión en un dispositivo nuevo.
-                SyncScheduler.enqueueNow(context, false)
+                SyncScheduler.enqueueNow(context)
             }
             SelliaApp(
                 navController = navController,

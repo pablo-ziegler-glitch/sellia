@@ -61,8 +61,7 @@ class SyncWorker @AssistedInject constructor(
             )
         }
         return try {
-            val includeBackup = inputData.getBoolean(INPUT_BACKUP, false)
-            syncRepository.runSync(includeBackup)
+            syncRepository.runSync(includeBackup = true)
             Log.i(TAG, "Sincronización completada con éxito")
             Result.success(
                 workDataOf(
@@ -131,9 +130,6 @@ class SyncWorker @AssistedInject constructor(
         const val TAG: String = "SyncWorker"
         const val OUTPUT_STATUS: String = "status"
         const val OUTPUT_MESSAGE: String = "message"
-        const val INPUT_BACKUP: String = "include_backup"
-
-        fun inputData(includeBackup: Boolean) = workDataOf(INPUT_BACKUP to includeBackup)
     }
 }
 @EntryPoint
