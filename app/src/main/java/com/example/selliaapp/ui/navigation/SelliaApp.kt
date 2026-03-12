@@ -284,7 +284,7 @@ fun SelliaApp(
                         onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                         onPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
                         onPublicProductScan = { navController.navigate(Routes.PublicProductScan.route) },
-                        onSyncNow = { SyncScheduler.enqueueNow(context, false) },
+                        onSyncNow = { SyncScheduler.enqueueNow(context) },
                         onAlertAdjustStock = { productId ->
                             navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
                         },
