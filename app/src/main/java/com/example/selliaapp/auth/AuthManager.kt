@@ -1,6 +1,7 @@
 package com.example.selliaapp.auth
 
 import com.example.selliaapp.BuildConfig
+import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.di.AppModule
@@ -10,6 +11,8 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,12 +38,15 @@ class AuthManager @Inject constructor(
     private val firebaseAuth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
     private val tenantSkuConfigDao: TenantSkuConfigDao,
+    private val database: AppDatabase,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) : TenantProvider {
 
     private val scope = CoroutineScope(SupervisorJob() + io)
     private val _state = MutableStateFlow<AuthState>(AuthState.Loading)
     val state: StateFlow<AuthState> = _state
+
+    private var sessionExpiryJob: Job? = null
 
     private val _lastSessionRefreshAtMs = MutableStateFlow<Long?>(null)
     val lastSessionRefreshAtMs: StateFlow<Long?> = _lastSessionRefreshAtMs
@@ -60,6 +67,7 @@ class AuthManager @Inject constructor(
     init {
         observeRefreshSignals()
         registerAuthListeners()
+        startSessionExpiryWatchdog()
     }
 
     suspend fun signIn(email: String, password: String): Result<AuthSession> = runCatching {
@@ -216,6 +224,27 @@ class AuthManager @Inject constructor(
     suspend fun updatePassword(newPassword: String): Result<Unit> = runCatching {
         val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
         user.updatePassword(newPassword).await()
+    }
+
+    private fun startSessionExpiryWatchdog() {
+        sessionExpiryJob?.cancel()
+        sessionExpiryJob = scope.launch {
+            var wasAuthenticated = false
+            state.collectLatest { authState ->
+                when (authState) {
+                    is AuthState.Authenticated -> wasAuthenticated = true
+                    is AuthState.Unauthenticated -> {
+                        if (wasAuthenticated) {
+                            withContext(NonCancellable + io) {
+                                database.clearAllTables()
+                            }
+                        }
+                        wasAuthenticated = false
+                    }
+                    else -> Unit
+                }
+            }
+        }
     }
 
     fun clear() {
