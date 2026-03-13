@@ -78,7 +78,8 @@ class FirebaseSessionCoordinator @Inject constructor(
         }
 
         is StorageException -> {
-            error.errorCode == StorageException.ERROR_NOT_AUTHENTICATED
+            error.errorCode == StorageException.ERROR_NOT_AUTHENTICATED ||
+                error.errorCode == StorageException.ERROR_NOT_AUTHORIZED
         }
 
         else -> false

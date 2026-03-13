@@ -70,26 +70,14 @@ class SyncWorker @AssistedInject constructor(
                 )
             )
         } catch (sessionError: FirebaseSessionException) {
-            if (isPermissionDeniedSessionError(sessionError)) {
-                val message = sessionError.message
-                    ?: "Sin permisos suficientes para sincronizar el tenant activo."
-                Log.w(TAG, "Sincronización omitida por permisos insuficientes (workId=$id)", sessionError)
-                Result.success(
-                    workDataOf(
-                        OUTPUT_STATUS to "skipped_permission",
-                        OUTPUT_MESSAGE to message
-                    )
+            Log.e(TAG, "Error de sesión durante la sincronización (workId=$id)", sessionError)
+            val message = sessionError.message ?: buildErrorMessage(sessionError)
+            Result.failure(
+                workDataOf(
+                    OUTPUT_STATUS to if (isPermissionDeniedSessionError(sessionError)) "failed_permission" else "failed",
+                    OUTPUT_MESSAGE to message
                 )
-            } else {
-                Log.e(TAG, "Error durante la sincronización", sessionError)
-                val message = buildErrorMessage(sessionError)
-                Result.failure(
-                    workDataOf(
-                        OUTPUT_STATUS to "failed",
-                        OUTPUT_MESSAGE to message
-                    )
-                )
-            }
+            )
         } catch (t: Throwable) {
             Log.e(TAG, "Error durante la sincronización", t)
             val message = buildErrorMessage(t)
