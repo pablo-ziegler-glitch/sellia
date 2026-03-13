@@ -21,7 +21,10 @@ service cloud.firestore {
     // ─── Admin Claims Validation ───────────────────────────────────────────
 
     function hasSuperAdminClaim() {
-      return isAuthenticated() && request.auth.token.superAdmin == true;
+      return isAuthenticated() && (
+        request.auth.token.superAdmin == true ||
+        request.auth.token.isSuperAdmin == true
+      );
     }
 
     function hasSuperAdminUserFlag() {
@@ -40,7 +43,7 @@ service cloud.firestore {
     }
 
     function hasAdministrativeBypass() {
-      return hasSuperAdminClaim() || hasSuperAdminUserFlag() || hasAdminClaim() || hasAdminUserFlag();
+      return hasSuperAdminClaim() || hasSuperAdminUserFlag();
     }
 
     // ─── Integrity Checks for Admins ──────────────────────────────────────
@@ -92,9 +95,9 @@ service cloud.firestore {
     function effectiveTenantId() {
       return isAuthenticated()
         ? (
-            request.auth.token.tenantId is string
-              ? request.auth.token.tenantId
-              : (requesterUserDoc().exists && requesterData().tenantId is string ? requesterData().tenantId : '')
+            requesterUserDoc().exists && requesterData().tenantId is string
+              ? requesterData().tenantId
+              : (request.auth.token.tenantId is string ? request.auth.token.tenantId : '')
           )
         : '';
     }
@@ -110,9 +113,9 @@ service cloud.firestore {
     function normalizedRole() {
       return isAuthenticated()
         ? (
-            request.auth.token.role is string
-              ? normalizeRole(request.auth.token.role)
-              : (requesterUserDoc().exists && requesterData().role is string ? normalizeRole(requesterData().role) : '')
+            requesterUserDoc().exists && requesterData().role is string
+              ? normalizeRole(requesterData().role)
+              : (request.auth.token.role is string ? normalizeRole(request.auth.token.role) : '')
           )
         : '';
     }
@@ -157,6 +160,10 @@ service cloud.firestore {
       return normalizedRole() in ['owner', 'admin'];
     }
 
+    function hasTenantAdminSignal() {
+      return hasAdminClaim() || hasAdminUserFlag() || isAdminRole();
+    }
+
     /**
      * Validación mejorada de isTenantAdmin:
      * - Primero chequea bypass administrativo (SuperAdmin siempre pasa)
@@ -173,7 +180,6 @@ service cloud.firestore {
       return hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
         (hasAdminClaim() || hasAdminUserFlag()) &&
         isTenantMember(tenantId) &&
-        isAdminRole() &&
         (currentEffectiveTenantId == '' || currentEffectiveTenantId == tenantId)
       );
     }

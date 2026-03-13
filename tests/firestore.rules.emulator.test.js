@@ -193,7 +193,7 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     );
   });
 
-  it('allows admin user flag in /users doc to perform cross-tenant admin writes without custom claims', async () => {
+  it('denies admin user flag in /users doc for cross-tenant admin writes without membership', async () => {
     await seedUser('legacy-admin-flag-uid', {
       role: 'viewer',
       tenantId: TENANT_A,
@@ -207,7 +207,7 @@ describe('firestore.rules - multi-tenant admin policy', () => {
       tenantId: TENANT_A,
     });
 
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(db, 'tenant_users', 'legacy-admin-cross-tenant'), {
         tenantId: TENANT_B,
         userId: 'cross-tenant-target',
@@ -270,7 +270,7 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     );
   });
 
-  it('allows admin claim to read tenant config query even without explicit tenant membership', async () => {
+  it('denies admin claim reading tenant config query without explicit tenant membership', async () => {
     await seedUser('claim-admin-uid', {
       role: 'viewer',
       tenantId: '',
@@ -290,7 +290,41 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     });
 
     const configQuery = query(collection(db, 'tenants', TENANT_A, 'config'));
-    await assertSucceeds(getDocs(configQuery));
+    await assertFails(getDocs(configQuery));
+  });
+
+  it('allows owner role from /users doc to perform tenant admin writes without admin claim', async () => {
+    await seedUser('owner-no-claim-uid', {
+      role: 'owner',
+      tenantId: TENANT_A,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenant_users', `${TENANT_A}_owner-no-claim-uid`), {
+        tenantId: TENANT_A,
+        userId: 'owner-no-claim-uid',
+        role: 'owner',
+        status: 'active',
+      });
+    });
+
+    const db = dbWithClaims('owner-no-claim-uid', {
+      uid: 'owner-no-claim-uid',
+      role: 'viewer',
+      tenantId: TENANT_A,
+    });
+
+    await assertSucceeds(
+      setDoc(doc(db, 'tenant_users', 'owner-no-claim-created'), {
+        tenantId: TENANT_A,
+        userId: 'owner-managed-user',
+        role: 'cashier',
+        status: 'active',
+      }),
+    );
   });
 
   it('allows legacy admin user doc without status field (legacy compatibility)', async () => {
