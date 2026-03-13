@@ -22,6 +22,10 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.superAdmin == true;
     }
 
+    function hasSuperAdminUserFlag() {
+      return isAuthenticated() && requesterUserDoc().exists && requesterData().isSuperAdmin == true;
+    }
+
     function hasAdminClaim() {
       return isAuthenticated() && (
         request.auth.token.admin == true ||
@@ -29,8 +33,12 @@ service cloud.firestore {
       );
     }
 
+    function hasAdminUserFlag() {
+      return isAuthenticated() && requesterUserDoc().exists && requesterData().isAdmin == true;
+    }
+
     function hasAdministrativeBypass() {
-      return hasSuperAdminClaim() || hasAdminClaim();
+      return hasSuperAdminClaim() || hasSuperAdminUserFlag() || hasAdminClaim() || hasAdminUserFlag();
     }
 
     function effectiveTenantId() {
@@ -159,13 +167,13 @@ service cloud.firestore {
 
     match /account_requests/{requestId} {
       allow read: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         resource.data.requestedBy == request.auth.uid ||
         (resource.data.tenantId is string && isTenantMember(resource.data.tenantId))
       );
       allow create: if isAuthenticated() && request.resource.data.requestedBy == request.auth.uid;
       allow update, delete: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId))
       );
     }
@@ -232,11 +240,11 @@ service cloud.firestore {
     match /domain_to_tenant/{domain} {
       allow read: if true;
       allow create: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId))
       );
       allow update: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (
           resource.data.tenantId is string &&
           isTenantAdmin(resource.data.tenantId) &&
@@ -244,7 +252,7 @@ service cloud.firestore {
         )
       );
       allow delete: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId))
       );
     }
@@ -268,12 +276,12 @@ service cloud.firestore {
     // --- Solicitudes de tienda ---
     match /store_requests/{requestId} {
       allow read: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         resource.data.userId == request.auth.uid
       );
       allow create: if isAuthenticated() &&
         request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && hasSuperAdminClaim();
+      allow update: if isAuthenticated() && (hasSuperAdminClaim() || hasSuperAdminUserFlag());
       allow delete: if false;
     }
 
@@ -290,7 +298,7 @@ service cloud.firestore {
 
     match /cross_catalog/{barcode} {
       allow read: if isAuthenticated();
-      allow write: if hasSuperAdminClaim();
+      allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag();
     }
 
     match /{document=**} {
