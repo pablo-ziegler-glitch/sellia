@@ -25,6 +25,40 @@ class AdminIntegrityHelpers {
     return String(value || '').trim().toLowerCase();
   }
 
+  formatAuthLookupError(err, email) {
+    const code = String(err?.code || '').toLowerCase();
+    const message = String(err?.message || 'Error desconocido');
+
+    if (code.includes('user-not-found')) {
+      return {
+        notFound: true,
+        lines: [`❌ Usuario NO encontrado en Firebase Auth: ${email}`]
+      };
+    }
+
+    const quotaProjectError =
+      message.includes('application_default_credentials') ||
+      message.includes('requires a quota project');
+
+    if (quotaProjectError) {
+      return {
+        notFound: false,
+        lines: [
+          '❌ Error de credenciales ADC: falta quota project para Identity Toolkit.',
+          '   Solución recomendada (gcloud):',
+          '   1) gcloud auth application-default set-quota-project <PROJECT_ID>',
+          '   2) gcloud services enable identitytoolkit.googleapis.com --project <PROJECT_ID>',
+          '   3) Reintentar el comando admin:diagnose.'
+        ]
+      };
+    }
+
+    return {
+      notFound: false,
+      lines: [`❌ Error consultando Firebase Auth (code=${err?.code || 'unknown'}): ${message}`]
+    };
+  }
+
   /**
    * Diagnostica un admin específico por email
    */
@@ -38,7 +72,8 @@ class AdminIntegrityHelpers {
     try {
       user = await this.auth.getUserByEmail(normalizedEmail);
     } catch (err) {
-      console.log(`❌ Usuario NO encontrado en Firebase Auth: ${err.message}`);
+      const errorInfo = this.formatAuthLookupError(err, normalizedEmail);
+      errorInfo.lines.forEach(line => console.log(line));
       return null;
     }
 
@@ -374,7 +409,13 @@ if (require.main === module) {
     for (let i = 2; i < process.argv.length; i++) {
       if (process.argv[i] === '--email') args.email = process.argv[++i];
       else if (process.argv[i] === '--service-account') args.serviceAccountPath = process.argv[++i];
+      else if (process.argv[i] === '--project') args.projectId = process.argv[++i];
+      else if (process.argv[i] === '--quota-project') args.quotaProject = process.argv[++i];
       else if (process.argv[i] === '--health-check') args.healthCheck = true;
+    }
+
+    if (args.quotaProject) {
+      process.env.GOOGLE_CLOUD_QUOTA_PROJECT = args.quotaProject;
     }
 
     const projectId = resolveProjectId(args.projectId);
@@ -397,6 +438,10 @@ if (require.main === module) {
         console.log('Uso:');
         console.log('  node admin-integrity-helpers.js --email <EMAIL>');
         console.log('  node admin-integrity-helpers.js --health-check');
+        console.log('Opciones:');
+        console.log('  --project <PROJECT_ID>');
+        console.log('  --quota-project <PROJECT_ID>');
+        console.log('  --service-account <PATH_JSON_SERVICE_ACCOUNT>');
       }
     } catch (err) {
       console.error('❌ Error:', err.message);
