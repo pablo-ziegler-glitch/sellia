@@ -42,6 +42,14 @@ class AuthManager @Inject constructor(
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) : TenantProvider {
 
+    // ─── Límite de sesión ─────────────────────────────────────────────────────
+    // Duración máxima de sesión. El admin puede cambiarla via Firestore
+    // en platform/config → session.maxSessionHours (1–24h). Default: 8h.
+    private var sessionMaxDurationMs: Long = DEFAULT_SESSION_MAX_DURATION_MS
+
+    // Job del watchdog de expiración absoluta de sesión.
+    private var sessionExpiryJob: Job? = null
+
     private val scope = CoroutineScope(SupervisorJob() + io)
     private val _state = MutableStateFlow<AuthState>(AuthState.Loading)
     val state: StateFlow<AuthState> = _state
@@ -63,6 +71,13 @@ class AuthManager @Inject constructor(
     private var authStateListener: FirebaseAuth.AuthStateListener? = null
     private var idTokenListener: FirebaseAuth.IdTokenListener? = null
 
+    companion object {
+        /** Duración máxima de sesión por defecto: 8 horas. */
+        const val DEFAULT_SESSION_MAX_DURATION_MS = 8L * 60L * 60L * 1000L
+
+        /** Intervalo del watchdog de expiración: cada 60 segundos. */
+        private const val SESSION_CHECK_INTERVAL_MS = 60_000L
+    }
 
     init {
         observeRefreshSignals()
@@ -215,10 +230,17 @@ class AuthManager @Inject constructor(
     }
 
     fun signOut() {
+        cancelSessionExpiryWatchdog()
         firebaseAuth.signOut()
         _state.value = AuthState.Unauthenticated
         _lastSessionRefreshAtMs.value = null
         resetLoading()
+        // Limpia TODOS los datos locales de la tienda al cerrar sesión.
+        // Esto evita que al iniciar sesión con una cuenta distinta se vean
+        // datos (productos, clientes, ventas, etc.) de la tienda anterior.
+        scope.launch {
+            runCatching { withContext(io) { database.clearAllTables() } }
+        }
     }
 
     suspend fun updatePassword(newPassword: String): Result<Unit> = runCatching {
@@ -248,6 +270,7 @@ class AuthManager @Inject constructor(
     }
 
     fun clear() {
+        cancelSessionExpiryWatchdog()
         authStateListener?.let(firebaseAuth::removeAuthStateListener)
         authStateListener = null
         idTokenListener?.let(firebaseAuth::removeIdTokenListener)
@@ -290,8 +313,25 @@ class AuthManager @Inject constructor(
 
     private suspend fun resolveSession(user: FirebaseUser?) {
         if (user == null) {
+            cancelSessionExpiryWatchdog()
             _state.value = AuthState.Unauthenticated
             _lastSessionRefreshAtMs.value = null
+            resetLoading()
+            return
+        }
+
+        // ── Verificar límite absoluto de sesión ──────────────────────────────
+        // Usamos lastSignInTime del metadata de Firebase: timestamp del último
+        // inicio de sesión real (no se actualiza con refreshes de token).
+        val lastSignInMs = user.metadata?.lastSignInTime ?: System.currentTimeMillis()
+        val sessionAgeMs = System.currentTimeMillis() - lastSignInMs
+        if (sessionAgeMs > sessionMaxDurationMs) {
+            val hours = sessionMaxDurationMs / (1000 * 60 * 60)
+            _state.value = AuthState.Error(
+                "Tu sesión expiró (límite de ${hours}h). Por favor, iniciá sesión nuevamente."
+            )
+            firebaseAuth.signOut()
+            scope.launch { runCatching { withContext(io) { database.clearAllTables() } } }
             resetLoading()
             return
         }
@@ -304,6 +344,8 @@ class AuthManager @Inject constructor(
             .onSuccess { session ->
                 syncTenantStoreMetadata(session)
                 publishAuthenticatedState(session)
+                // Iniciar (o re-armar) el watchdog que fuerza logout al vencer la sesión.
+                startSessionExpiryWatchdog(lastSignInMs)
             }
             .onFailure { error ->
                 _state.value = AuthState.Error(
@@ -514,6 +556,12 @@ class AuthManager @Inject constructor(
         // donde el SDK siga consultando con token desactualizado.
         user.getIdToken(true).await()
 
+        // Limpiar datos locales del tenant anterior ANTES de sincronizar el nuevo.
+        // Esto garantiza aislamiento total: ningún dato de la tienda anterior es
+        // visible mientras se cargan los datos de la tienda recién seleccionada.
+        showLoading(progress = 0.5f, label = "Limpiando datos de la tienda anterior...")
+        withContext(io) { database.clearAllTables() }
+
         val session = fetchSession(user)
         syncTenantStoreMetadata(session)
         publishAuthenticatedState(session)
@@ -617,6 +665,65 @@ class AuthManager @Inject constructor(
             photoUrl = user?.photoUrl?.toString(),
             availableTenants = emptyList()
         )
+    }
+
+    // ─── Watchdog de expiración de sesión ─────────────────────────────────────
+
+    /**
+     * Inicia un coroutine que verifica cada minuto si la sesión venció.
+     * Si el tiempo transcurrido desde el último sign-in supera [sessionMaxDurationMs],
+     * fuerza el logout y limpia la base de datos local.
+     *
+     * Se re-arma en cada resolución exitosa de sesión, usando siempre el
+     * [lastSignInMs] del metadata de Firebase (no se actualiza con token refreshes).
+     */
+    private fun startSessionExpiryWatchdog(lastSignInMs: Long) {
+        cancelSessionExpiryWatchdog()
+        sessionExpiryJob = scope.launch {
+            while (true) {
+                delay(SESSION_CHECK_INTERVAL_MS)
+                val elapsed = System.currentTimeMillis() - lastSignInMs
+                if (elapsed > sessionMaxDurationMs) {
+                    val hours = sessionMaxDurationMs / (1000 * 60 * 60)
+                    cancelSessionExpiryWatchdog()
+                    firebaseAuth.signOut()
+                    runCatching { withContext(io) { database.clearAllTables() } }
+                    _lastSessionRefreshAtMs.value = null
+                    _state.value = AuthState.Error(
+                        "Tu sesión expiró (límite de ${hours}h). Por favor, iniciá sesión nuevamente."
+                    )
+                    resetLoading()
+                    break
+                }
+            }
+        }
+    }
+
+    private fun cancelSessionExpiryWatchdog() {
+        sessionExpiryJob?.cancel()
+        sessionExpiryJob = null
+    }
+
+    /**
+     * Carga la política de sesión desde Firestore (platform/config, campo session.maxSessionHours).
+     * Si no existe o está fuera del rango permitido (1–24h), usa el default de 8h.
+     * El admin de plataforma puede modificar este valor.
+     */
+    suspend fun loadSessionPolicy() {
+        runCatching {
+            val snap = firestore.collection("platform").document("config").get().await()
+            val configuredHours = snap.getDouble("session.maxSessionHours")
+                ?: (snap.getLong("session.maxSessionHours")?.toDouble())
+            if (configuredHours != null && configuredHours > 0) {
+                sessionMaxDurationMs = (configuredHours * 60.0 * 60.0 * 1000.0)
+                    .toLong()
+                    .coerceIn(
+                        1L * 60 * 60 * 1000,   // mínimo 1h
+                        24L * 60 * 60 * 1000   // máximo 24h
+                    )
+            }
+        }
+        // Si falla (sin permisos, sin conexión), se usa el default configurado en el companion.
     }
 }
 

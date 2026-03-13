@@ -36,7 +36,12 @@ object FirebaseModule {
         // [NUEVO] Usa el FirebaseApp ya inicializado (evita Default FirebaseApp not initialized)
         return FirebaseFirestore.getInstance(firebaseApp).apply {
             firestoreSettings = FirebaseFirestoreSettings.Builder()
-                // .setPersistenceEnabled(true) // si querés cache offline
+                // Persistencia offline DESHABILITADA intencionalmente.
+                // Razón de seguridad: sin caché local no puede haber contaminación
+                // de datos entre sesiones de distintas cuentas/tiendas. Cada lectura
+                // va siempre al servidor, garantizando que el usuario solo ve los datos
+                // de la tienda actualmente autenticada.
+                .setPersistenceEnabled(false)
                 .build()
         }
     }
