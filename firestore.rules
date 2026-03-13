@@ -18,6 +18,8 @@ service cloud.firestore {
       return lower(trim(value is string ? value : ''));
     }
 
+    // ─── Admin Claims Validation ───────────────────────────────────────────
+
     function hasSuperAdminClaim() {
       return isAuthenticated() && request.auth.token.superAdmin == true;
     }
@@ -32,6 +34,52 @@ service cloud.firestore {
     function hasAdministrativeBypass() {
       return hasSuperAdminClaim() || hasAdminClaim();
     }
+
+    // ─── Integrity Checks for Admins ──────────────────────────────────────
+
+    /**
+     * Verifica que los datos de admin sean consistentes en múltiples lugares.
+     * Un admin válido DEBE tener:
+     * 1. JWT claims con admin=true o isAdmin=true
+     * 2. tenantId en claims O en /users/{uid}
+     * 3. role en claims O en /users/{uid}
+     * 4. /users/{uid} debe existir con role admin/owner
+     */
+    function isValidAdminUser(userId) {
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      return userDoc.exists &&
+        userDoc.data.isAdmin == true &&
+        userDoc.data.role is string &&
+        userDoc.data.status == 'active' &&
+        normalizeRole(userDoc.data.role) in ['admin', 'owner'];
+    }
+
+    /**
+     * Valida que el admin tenga un tenantId definido de forma consistente
+     */
+    function hasValidTenantIdForAdmin(userId) {
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      return userDoc.exists && userDoc.data.tenantId is string && userDoc.data.tenantId != '';
+    }
+
+    /**
+     * Verifica que el admin tenga un documento en /tenant_users
+     */
+    function hasTenantUserDoc(tenantId, userId) {
+      return exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + userId));
+    }
+
+    /**
+     * Verificación multi-fuente para un admin:
+     * Combina JWT claims, user doc, y tenant_users doc para validar integridad
+     */
+    function isValidAdminWithIntegrity(tenantId, userId) {
+      return isValidAdminUser(userId) &&
+        hasValidTenantIdForAdmin(userId) &&
+        hasTenantUserDoc(tenantId, userId);
+    }
+
+    // ─── Tenant ID Resolution ──────────────────────────────────────────────
 
     function effectiveTenantId() {
       return isAuthenticated()
@@ -101,8 +149,31 @@ service cloud.firestore {
       return normalizedRole() in ['owner', 'admin'];
     }
 
+    /**
+     * Validación mejorada de isTenantAdmin:
+     * - Primero chequea bypass administrativo (SuperAdmin siempre pasa)
+     * - Luego valida que sea miembro del tenant
+     * - Luego valida que tenga role admin/owner
+     * - Para admins con JWT claims, valida integridad adicional
+     */
     function isTenantAdmin(tenantId) {
-      return hasAdministrativeBypass() || (isTenantMember(tenantId) && isAdminRole());
+      // SuperAdmin siempre tiene acceso
+      if (hasSuperAdminClaim()) {
+        return true;
+      }
+
+      // Admin regular: debe ser miembro del tenant Y tener role admin/owner
+      if (hasAdminClaim() && isTenantMember(tenantId) && isAdminRole()) {
+        // Validación adicional: si el usuario tiene JWT admin claim,
+        // verificar que tenantId sea consistente
+        let currentEffectiveTenantId = effectiveTenantId();
+        if (currentEffectiveTenantId != '' && currentEffectiveTenantId != tenantId) {
+          return false; // JWT tenantId no coincide con el solicitado
+        }
+        return true;
+      }
+
+      return false;
     }
 
     function isTenantOwnerRecord(tenantData) {

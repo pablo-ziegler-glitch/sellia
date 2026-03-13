@@ -18,6 +18,9 @@
     "claims:super-admin:revoke": "node scripts/manage-super-admin-claim.js --revoke",
     "admin:grant:dry": "node scripts/manage-admin-access.js --dry-run",
     "admin:grant": "node scripts/manage-admin-access.js",
+    "admin:audit": "node scripts/audit-admin-integrity.js",
+    "admin:diagnose": "node scripts/admin-integrity-helpers.js",
+    "admin:health-check": "node scripts/admin-integrity-helpers.js --health-check",
     "check:permissions-drift": "node scripts/check-role-permissions-drift.js",
     "test:security:bo": "vitest run test/backofficeSecurity.integration.test.ts"
   },
