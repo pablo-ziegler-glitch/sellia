@@ -12,6 +12,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +54,8 @@ class AuthManager @Inject constructor(
     private val _state = MutableStateFlow<AuthState>(AuthState.Loading)
     val state: StateFlow<AuthState> = _state
 
+    private var sessionExpiryJob: Job? = null
+
     private val _lastSessionRefreshAtMs = MutableStateFlow<Long?>(null)
     val lastSessionRefreshAtMs: StateFlow<Long?> = _lastSessionRefreshAtMs
 
@@ -79,6 +82,7 @@ class AuthManager @Inject constructor(
     init {
         observeRefreshSignals()
         registerAuthListeners()
+        startSessionExpiryWatchdog()
     }
 
     suspend fun signIn(email: String, password: String): Result<AuthSession> = runCatching {
@@ -242,6 +246,27 @@ class AuthManager @Inject constructor(
     suspend fun updatePassword(newPassword: String): Result<Unit> = runCatching {
         val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
         user.updatePassword(newPassword).await()
+    }
+
+    private fun startSessionExpiryWatchdog() {
+        sessionExpiryJob?.cancel()
+        sessionExpiryJob = scope.launch {
+            var wasAuthenticated = false
+            state.collectLatest { authState ->
+                when (authState) {
+                    is AuthState.Authenticated -> wasAuthenticated = true
+                    is AuthState.Unauthenticated -> {
+                        if (wasAuthenticated) {
+                            withContext(NonCancellable + io) {
+                                database.clearAllTables()
+                            }
+                        }
+                        wasAuthenticated = false
+                    }
+                    else -> Unit
+                }
+            }
+        }
     }
 
     fun clear() {
