@@ -27,6 +27,12 @@ import { hasRouteAccess, isInternalRole, normalizeInternalRole, rolePermissions 
 
 const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
 const TOKEN_REFRESH_MS = 50 * 60 * 1000;
+// Límite absoluto de sesión. El admin puede configurarlo en Firestore
+// (platform/config → session.maxSessionHours, rango 1–24h). Default: 8h.
+// Una vez vencido este límite, el usuario debe autenticarse nuevamente
+// independientemente de si estuvo activo o no (inactivity timer aparte).
+const DEFAULT_SESSION_MAX_MS = 8 * 60 * 60 * 1000;
+const SESSION_CHECK_INTERVAL_MS = 60 * 1000; // verificar cada 60 segundos
 const DEFAULT_ROUTE = "#/dashboard";
 
 const el = {
@@ -124,6 +130,10 @@ const appState = {
   profile: null,
   inactivityTimerId: null,
   refreshTimerId: null,
+  // Watchdog del límite absoluto de sesión (8h por default, configurable por admin).
+  absoluteSessionTimerId: null,
+  // Duración máxima de sesión cargada desde Firestore. Default: 8h.
+  sessionMaxMs: DEFAULT_SESSION_MAX_MS,
   backupRequestsUnsubscribe: null,
   paymentsFlagsUnsubscribe: null,
   paymentsAuditUnsubscribe: null,
@@ -155,6 +165,27 @@ async function bootstrap() {
         switchToAuth();
         return;
       }
+
+      // ── Verificar límite absoluto de sesión ─────────────────────────────────
+      // lastSignInTime: timestamp real del último sign-in (no se actualiza con
+      // token refreshes). Si el tiempo transcurrido supera sessionMaxMs, forzamos
+      // logout para garantizar que el usuario re-autentique cada N horas.
+      const lastSignInMs = user.metadata?.lastSignInTime
+        ? new Date(user.metadata.lastSignInTime).getTime()
+        : Date.now();
+      const sessionAgeMs = Date.now() - lastSignInMs;
+
+      // Cargar política de sesión configurada por el admin (una sola vez por login).
+      if (!appState.currentUser) {
+        await loadSessionPolicy(appState.firestore);
+      }
+
+      if (sessionAgeMs > appState.sessionMaxMs) {
+        const hours = Math.round(appState.sessionMaxMs / (1000 * 60 * 60));
+        await safeLogout(`Tu sesión expiró (límite de ${hours}h). Por favor, iniciá sesión nuevamente.`);
+        return;
+      }
+
       const profile = await loadProfile(appState.firestore, user.uid);
       const validation = validateProfile(profile);
       if (!validation.ok) {
@@ -174,6 +205,7 @@ async function bootstrap() {
       await syncRouteWithPermissions();
       startInactivityGuard();
       startTokenRefresh();
+      startAbsoluteSessionGuard(lastSignInMs);
     } catch (error) {
       setAuthError(parseAuthError(error));
     }
@@ -317,11 +349,50 @@ function startTokenRefresh() {
     if (!appState.currentUser) return;
     try {
       await appState.currentUser.getIdToken(true);
-      setSessionBanner("Token renovado automáticamente.");
+      // No mostrar banner en refresh automático para no interrumpir al usuario.
     } catch {
       await safeLogout("No se pudo renovar token. Iniciá sesión nuevamente.");
     }
   }, TOKEN_REFRESH_MS);
+}
+
+/**
+ * Watchdog del límite absoluto de sesión.
+ * Verifica cada minuto si el tiempo transcurrido desde el último sign-in
+ * supera sessionMaxMs. Si es así, fuerza el logout independientemente de la actividad.
+ */
+function startAbsoluteSessionGuard(lastSignInMs) {
+  clearInterval(appState.absoluteSessionTimerId);
+  appState.absoluteSessionTimerId = setInterval(async () => {
+    if (!appState.currentUser) return;
+    const elapsed = Date.now() - lastSignInMs;
+    if (elapsed > appState.sessionMaxMs) {
+      const hours = Math.round(appState.sessionMaxMs / (1000 * 60 * 60));
+      await safeLogout(`Tu sesión expiró (límite de ${hours}h). Por favor, iniciá sesión nuevamente.`);
+    }
+  }, SESSION_CHECK_INTERVAL_MS);
+}
+
+/**
+ * Carga la política de sesión desde Firestore (platform/config → session.maxSessionHours).
+ * Si el documento no existe o el campo no está configurado, mantiene el default (8h).
+ * El admin puede modificar este valor sin redesplegar la aplicación.
+ */
+async function loadSessionPolicy(db) {
+  try {
+    const snap = await getDoc(doc(db, "platform", "config"));
+    if (!snap.exists()) return;
+    const data = snap.data() || {};
+    const configuredHours = data?.session?.maxSessionHours;
+    if (typeof configuredHours === "number" && configuredHours > 0) {
+      const clampedMs = Math.round(
+        Math.min(Math.max(configuredHours, 1), 24) * 60 * 60 * 1000
+      );
+      appState.sessionMaxMs = clampedMs;
+    }
+  } catch {
+    // Sin permisos o sin conexión: usar el default configurado.
+  }
 }
 
 async function safeLogout(message) {
@@ -337,8 +408,12 @@ async function safeLogout(message) {
 function clearSessionState() {
   clearTimeout(appState.inactivityTimerId);
   clearInterval(appState.refreshTimerId);
+  // Detener el watchdog de expiración absoluta de sesión.
+  clearInterval(appState.absoluteSessionTimerId);
+  appState.absoluteSessionTimerId = null;
   appState.currentUser = null;
   appState.profile = null;
+  appState.sessionMaxMs = DEFAULT_SESSION_MAX_MS; // resetear al default
   appState.maintenanceTasks = [];
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
