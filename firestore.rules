@@ -372,6 +372,20 @@ service cloud.firestore {
       allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag();
     }
 
+    // --- Configuración de plataforma (solo admin/superAdmin) ---
+    // Contiene configuraciones globales como política de sesión (session.maxSessionHours).
+    // Lectura: cualquier usuario autenticado con rol admin u owner (para cargar política de sesión).
+    // Escritura: solo superAdmin o admin con claim de plataforma.
+    match /platform/{docId} {
+      allow read: if isAuthenticated() && (
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
+        normalizedRole() in ['admin', 'owner']
+      );
+      allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
+        isAuthenticated() && normalizedRole() == 'admin' && hasAdminClaim()
+      );
+    }
+
     // --- Directorio interno de tenants (staff/admin) ---
     match /tenant_directory/{tenantId} {
       allow read: if isAuthenticated() && (
