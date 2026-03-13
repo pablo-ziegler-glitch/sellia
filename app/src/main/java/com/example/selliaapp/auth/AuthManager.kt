@@ -480,6 +480,11 @@ class AuthManager @Inject constructor(
                 SetOptions.merge()
             )
             .await()
+
+        // Refresca claims luego de cambiar tenant seleccionado para evitar ventanas
+        // donde el SDK siga consultando con token desactualizado.
+        user.getIdToken(true).await()
+
         val session = fetchSession(user)
         syncTenantStoreMetadata(session)
         publishAuthenticatedState(session)
