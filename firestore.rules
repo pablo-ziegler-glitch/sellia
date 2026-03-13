@@ -168,10 +168,10 @@ service cloud.firestore {
       let currentEffectiveTenantId = effectiveTenantId();
 
       // SuperAdmin siempre tiene acceso. Para admin regular se valida:
-      // 1) claim admin + membresía + rol admin/owner
+      // 1) claim admin (JWT) o flag isAdmin en /users/{uid} + membresía + rol admin/owner
       // 2) si tiene tenantId efectivo, debe coincidir con el tenant solicitado
-      return hasSuperAdminClaim() || (
-        hasAdminClaim() &&
+      return hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
+        (hasAdminClaim() || hasAdminUserFlag()) &&
         isTenantMember(tenantId) &&
         isAdminRole() &&
         (currentEffectiveTenantId == '' || currentEffectiveTenantId == tenantId)
@@ -364,6 +364,20 @@ service cloud.firestore {
     match /cross_catalog/{barcode} {
       allow read: if isAuthenticated();
       allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag();
+    }
+
+    // --- Directorio interno de tenants (staff/admin) ---
+    match /tenant_directory/{tenantId} {
+      allow read: if isAuthenticated() && (
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() || isTenantMember(tenantId)
+      );
+      allow write: if isTenantAdmin(tenantId);
+    }
+
+    // --- Directorio público de tenants (discovery web, sin autenticación) ---
+    match /public_tenant_directory/{tenantId} {
+      allow read: if true;
+      allow write: if isTenantAdmin(tenantId);
     }
 
     match /{document=**} {
