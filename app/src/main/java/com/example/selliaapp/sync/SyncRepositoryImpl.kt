@@ -62,7 +62,8 @@ class SyncRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun pullRemote(): Unit = withContext(io) {
+    override suspend fun pullRemote() {
+        withContext(io) {
         sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
             productRepository.syncDown()
 
@@ -91,6 +92,7 @@ class SyncRepositoryImpl @Inject constructor(
 
             syncCustomersFromRemote()
             pricingConfigRepository.pullPricingConfigFromCloud()
+        }
         }
     }
 
