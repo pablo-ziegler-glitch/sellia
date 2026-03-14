@@ -175,7 +175,7 @@ class ProductRepository(
             else -> true
         }
         if (!shouldAuto) {
-            return incoming.copy(autoPricing = false)
+            return incoming.copy(autoPricing = false, manualGainPercent = incoming.manualGainPercent ?: existing?.manualGainPercent)
         }
         val settings = pricingConfigRepository.getSettings()
         val fixedCosts = pricingConfigRepository.getFixedCosts()
@@ -186,7 +186,8 @@ class ProductRepository(
             settings = settings,
             fixedCosts = fixedCosts,
             mlFixedCostTiers = mlFixedCostTiers,
-            mlShippingTiers = mlShippingTiers
+            mlShippingTiers = mlShippingTiers,
+            manualGainPercent = incoming.manualGainPercent ?: existing?.manualGainPercent
         )
         return incoming.copy(
             listPrice = result.listPrice,
@@ -196,6 +197,7 @@ class ProductRepository(
             mlPrice = result.mlPrice,
             ml3cPrice = result.ml3cPrice,
             ml6cPrice = result.ml6cPrice,
+            manualGainPercent = incoming.manualGainPercent ?: existing?.manualGainPercent,
             autoPricing = true
         )
     }

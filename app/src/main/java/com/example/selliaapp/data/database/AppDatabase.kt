@@ -104,7 +104,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 43,
+    version = 44,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -522,6 +522,20 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+
+
+        val MIGRATION_43_44 = object : Migration(43, 44) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                if (!db.hasColumn(tableName = "products", columnName = "manualGainPercent")) {
+                    db.execSQL(
+                        """
+                        ALTER TABLE `products`
+                        ADD COLUMN `manualGainPercent` REAL
+                        """.trimIndent()
+                    )
+                }
+            }
+        }
         private fun SupportSQLiteDatabase.hasColumn(tableName: String, columnName: String): Boolean {
             query("PRAGMA table_info(`$tableName`)").use { cursor ->
                 val nameColumnIndex = cursor.getColumnIndex("name")
