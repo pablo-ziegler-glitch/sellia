@@ -13,5 +13,7 @@ enum class Permission {
     CASH_CLOSE,
     VIEW_CASH_REPORT,
     /** Permite exportar datos con campos PII completos (teléfono, email, dirección de clientes). */
-    EXPORT_PII_DATA
+    EXPORT_PII_DATA,
+    /** Permite ver el desglose de ganancia bruta y neta en facturas internas y el reporte de ganancias. */
+    VIEW_PROFIT_BREAKDOWN
 }

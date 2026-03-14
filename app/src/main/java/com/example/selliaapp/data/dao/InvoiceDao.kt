@@ -27,6 +27,27 @@ data class InvoiceWithItems(
 data class DayRow(val day: Long, val total: Double)
 data class HourRow(val hour: Long, val total: Double)
 
+/** Fila para el reporte de ganancias por factura */
+data class InvoiceProfitRow(
+    val id: Long,
+    val dateMillis: Long,
+    val customerName: String?,
+    val total: Double,
+    val paymentMethod: String,
+    val bdPurchaseCost: Double?,
+    val bdGrossAmount: Double?,
+    val bdNetGain: Double?
+)
+
+/** Fila para el resumen diario de ganancias */
+data class DailyProfitRow(
+    val bucket: String,
+    val saleCount: Int,
+    val totalRevenue: Double,
+    val totalPurchaseCost: Double,
+    val totalNetGain: Double
+)
+
 @Dao
 interface InvoiceDao {
 
@@ -193,8 +214,45 @@ interface InvoiceDao {
     """)
     fun observeInvoicesWithItemsByCustomerQuery(query: String): Flow<List<InvoiceWithItems>>
 
+    // ----------------------------
+    // Reporte de ganancias
+    // ----------------------------
 
+    /** Lista de ventas con datos de ganancia para un rango de fechas. Solo EMITIDAS. */
+    @Query("""
+        SELECT id, dateMillis, customerName, total, paymentMethod,
+               bdPurchaseCost, bdGrossAmount, bdNetGain
+        FROM invoices
+        WHERE status = 'EMITIDA'
+          AND dateMillis >= :from AND dateMillis <= :to
+        ORDER BY dateMillis DESC
+    """)
+    suspend fun getProfitRows(from: Long, to: Long): List<InvoiceProfitRow>
 
+    /** Resumen diario de ganancias para un rango. Solo ventas EMITIDAS. */
+    @Query("""
+        SELECT strftime('%Y-%m-%d', (dateMillis/1000), 'unixepoch', 'localtime') AS bucket,
+               COUNT(*) AS saleCount,
+               SUM(total) AS totalRevenue,
+               SUM(COALESCE(bdPurchaseCost, 0.0)) AS totalPurchaseCost,
+               SUM(COALESCE(bdNetGain, 0.0)) AS totalNetGain
+        FROM invoices
+        WHERE status = 'EMITIDA'
+          AND dateMillis >= :from AND dateMillis <= :to
+        GROUP BY bucket
+        ORDER BY bucket DESC
+    """)
+    suspend fun getDailyProfitRows(from: Long, to: Long): List<DailyProfitRow>
+
+    /** Flow reactivo de todas las ventas EMITIDAS con datos de ganancia. */
+    @Query("""
+        SELECT id, dateMillis, customerName, total, paymentMethod,
+               bdPurchaseCost, bdGrossAmount, bdNetGain
+        FROM invoices
+        WHERE status = 'EMITIDA'
+        ORDER BY dateMillis DESC
+    """)
+    fun observeProfitRows(): Flow<List<InvoiceProfitRow>>
 
 }
 

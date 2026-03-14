@@ -156,6 +156,9 @@ sealed class Routes(val route: String) {
         fun withId(id: Long) = "sales_invoice_detail/$id"
     }
 
+    /** Reporte interno de ganancias por venta (solo ADMIN/OWNER) */
+    object SalesProfitReport : Routes("sales_profit_report")
+
     /**
      * [NUEVO] Rutas claras para el flujo de venta con nested graph:
      * - SELL_FLOW_ROUTE es el padre para compartir el MISMO SellViewModel.

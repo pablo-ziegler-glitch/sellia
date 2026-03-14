@@ -139,7 +139,8 @@ object AppModule {
                 AppDatabase.MIGRATION_40_41,
                 AppDatabase.MIGRATION_41_42,
                 AppDatabase.MIGRATION_42_43,
-                AppDatabase.MIGRATION_43_44
+                AppDatabase.MIGRATION_43_44,
+                AppDatabase.MIGRATION_44_45
             )
             .addCallback(object : RoomDatabase.Callback() {
                 /**

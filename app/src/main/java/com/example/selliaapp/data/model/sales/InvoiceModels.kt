@@ -42,7 +42,32 @@ data class InvoiceDetail(
     val canceledReason: String?,
     val items: List<InvoiceItemRow>,
     val notes: String? = null,
-    val syncStatus: SyncStatus = SyncStatus.SYNCED
+    val syncStatus: SyncStatus = SyncStatus.SYNCED,
+    // Desglose interno (solo visible para ADMIN/OWNER)
+    val breakdown: SaleBreakdown? = null
+)
+
+/** Fila para el listado del reporte de ganancias */
+data class InvoiceProfitSummary(
+    val id: Long,
+    val number: String,
+    val customerName: String,
+    val date: LocalDate,
+    val total: Double,
+    val purchaseCost: Double,
+    val grossProfit: Double,
+    val netGain: Double,
+    val paymentMethod: String
+)
+
+/** Resumen diario de ganancias */
+data class DailyProfitSummary(
+    val date: LocalDate,
+    val saleCount: Int,
+    val totalRevenue: Double,
+    val totalPurchaseCost: Double,
+    val totalGrossProfit: Double,
+    val totalNetGain: Double
 )
 
 enum class SyncStatus {

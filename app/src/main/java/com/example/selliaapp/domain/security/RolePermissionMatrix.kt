@@ -14,7 +14,8 @@ object RolePermissionMatrix {
             Permission.CASH_CLOSE,
             Permission.VIEW_CASH_REPORT,
             Permission.MANAGE_PUBLICATION,
-            Permission.EXPORT_PII_DATA
+            Permission.EXPORT_PII_DATA,
+            Permission.VIEW_PROFIT_BREAKDOWN
         ),
         AppRole.OWNER to setOf(
             Permission.CASH_OPEN,
@@ -23,7 +24,8 @@ object RolePermissionMatrix {
             Permission.CASH_CLOSE,
             Permission.VIEW_CASH_REPORT,
             Permission.MANAGE_PUBLICATION,
-            Permission.EXPORT_PII_DATA
+            Permission.EXPORT_PII_DATA,
+            Permission.VIEW_PROFIT_BREAKDOWN
         ),
         AppRole.MANAGER to setOf(
             Permission.CASH_OPEN,

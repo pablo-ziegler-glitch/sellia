@@ -100,6 +100,7 @@ import com.example.selliaapp.ui.screens.reports.PriceSummaryScreen
 import com.example.selliaapp.ui.screens.reports.ReportsScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
+import com.example.selliaapp.ui.screens.sales.SalesProfitReportScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
 import com.example.selliaapp.ui.screens.admin.UsageDashboardScreen
@@ -137,6 +138,7 @@ import com.example.selliaapp.viewmodel.TenantOwnershipViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
+import com.example.selliaapp.viewmodel.sales.SalesProfitReportViewModel
 import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
 import com.example.selliaapp.viewmodel.admin.AccountRequestsViewModel
 import com.example.selliaapp.domain.security.AppRole
@@ -921,7 +923,8 @@ fun SelliaApp(
                     onBack = { navController.popBackStack() },
                     vm = vm,
                     navController =  navController,
-                    canAccessPriceSummary = accessState.role == AppRole.OWNER
+                    canAccessPriceSummary = accessState.role == AppRole.OWNER,
+                    canAccessProfitReport = accessState.permissions.contains(Permission.VIEW_PROFIT_BREAKDOWN)
                 )
 
             }
@@ -978,6 +981,16 @@ fun SelliaApp(
                 val vm: SalesInvoiceDetailViewModel = hiltViewModel()
                 SalesInvoiceDetailScreen(
                     vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // -------------------- REPORTE DE GANANCIAS (solo ADMIN/OWNER) ----------
+            composable(Routes.SalesProfitReport.route) {
+                val vm: SalesProfitReportViewModel = hiltViewModel()
+                SalesProfitReportScreen(
+                    vm = vm,
+                    onOpenDetail = { id -> navController.navigate(Routes.SalesInvoiceDetail.withId(id)) },
                     onBack = { navController.popBackStack() }
                 )
             }
