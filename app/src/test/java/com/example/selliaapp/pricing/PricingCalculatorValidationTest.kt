@@ -71,6 +71,31 @@ class PricingCalculatorValidationTest {
         assertThat(resultHigh.fixedCostImputed).isWithin(0.01).of(resultHigh.fixedCostUnit)
     }
 
+
+    @Test
+    fun `ganancia manual tiene prioridad sobre gainTargetPercent global`() {
+        val settings = baseSettings(monthlySalesEstimate = 500)
+        val fixedCosts = fixedCostsFromReference()
+
+        val withGlobalGain = PricingCalculator.calculate(
+            purchasePrice = 200.0,
+            settings = settings,
+            fixedCosts = fixedCosts,
+            mlFixedCostTiers = emptyList(),
+            mlShippingTiers = emptyList()
+        )
+        val withManualGain = PricingCalculator.calculate(
+            purchasePrice = 200.0,
+            settings = settings,
+            fixedCosts = fixedCosts,
+            mlFixedCostTiers = emptyList(),
+            mlShippingTiers = emptyList(),
+            manualGainPercent = 80.0
+        )
+
+        assertThat(withManualGain.cashPrice).isGreaterThan(withGlobalGain.cashPrice)
+        assertThat(withManualGain.listPrice).isGreaterThan(withGlobalGain.listPrice)
+    }
     private fun baseSettings(monthlySalesEstimate: Int): PricingSettingsEntity = PricingSettingsEntity(
         id = 1,
         ivaTerminalPercent = 21.0,

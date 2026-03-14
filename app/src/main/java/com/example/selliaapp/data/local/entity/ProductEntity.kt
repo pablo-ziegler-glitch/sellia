@@ -43,6 +43,7 @@ data class ProductEntity(
     val mlPrice: Double? = null,
     val ml3cPrice: Double? = null,
     val ml6cPrice: Double? = null,
+    val manualGainPercent: Double? = null,
     val autoPricing: Boolean = false,
 
     // Stock total (cuando no hay variantes / o suma derivada)

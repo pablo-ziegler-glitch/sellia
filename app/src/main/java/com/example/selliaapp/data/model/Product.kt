@@ -29,6 +29,7 @@ data class Product(
     val mlPrice: Double? = null,
     val ml3cPrice: Double? = null,
     val ml6cPrice: Double? = null,
+    val manualGainPercent: Double? = null,
     val autoPricing: Boolean = false,
     val quantity: Int = 0,
     val description: String? = null,

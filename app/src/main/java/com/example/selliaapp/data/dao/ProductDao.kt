@@ -154,6 +154,7 @@ interface ProductDao {
                 mlPrice     = incoming.mlPrice     ?: existing.mlPrice,
                 ml3cPrice   = incoming.ml3cPrice   ?: existing.ml3cPrice,
                 ml6cPrice   = incoming.ml6cPrice   ?: existing.ml6cPrice,
+                manualGainPercent = incoming.manualGainPercent ?: existing.manualGainPercent,
                 autoPricing = incoming.autoPricing,
                 quantity    = if (incoming.quantity != 0) incoming.quantity else existing.quantity,
                 description = incoming.description ?: existing.description,
