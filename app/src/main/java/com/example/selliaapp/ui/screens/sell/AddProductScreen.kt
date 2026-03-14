@@ -44,10 +44,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.text.NumberFormat
+import java.util.Locale
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -457,6 +465,22 @@ fun AddProductScreen(
                 )
             }
 
+            // --- Desglose de ganancia neta por canal ---
+            val purchaseVal = purchasePriceText.replace(',', '.').toDoubleOrNull()
+            if (purchaseVal != null && purchaseVal > 0) {
+                NetGainPanel(
+                    purchasePrice = purchaseVal,
+                    channels = listOfNotNull(
+                        listPriceText.replace(',', '.').toDoubleOrNull()?.let { "Lista" to it },
+                        cashPriceText.replace(',', '.').toDoubleOrNull()?.let { "Efectivo" to it },
+                        transferPriceText.replace(',', '.').toDoubleOrNull()?.let { "Transferencia" to it },
+                        mlPriceText.replace(',', '.').toDoubleOrNull()?.let { "ML (0C)" to it },
+                        ml3cPriceText.replace(',', '.').toDoubleOrNull()?.let { "ML (3C)" to it },
+                        ml6cPriceText.replace(',', '.').toDoubleOrNull()?.let { "ML (6C)" to it }
+                    )
+                )
+            }
+
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -769,6 +793,85 @@ private fun persistPreviewBitmap(context: android.content.Context, bitmap: Bitma
         }
         Uri.fromFile(file)
     }.getOrNull()
+}
+
+/**
+ * Panel que muestra la ganancia neta (monto y porcentaje) por cada canal de precio,
+ * comparado contra el costo de adquisición.
+ */
+@Composable
+private fun NetGainPanel(
+    purchasePrice: Double,
+    channels: List<Pair<String, Double>>
+) {
+    val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                "Ganancia neta por canal",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Costo: ${currency.format(purchasePrice)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            HorizontalDivider()
+            if (channels.isEmpty()) {
+                Text(
+                    "Cargá al menos un precio para ver la ganancia.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                channels.forEach { (label, price) ->
+                    val gain = price - purchasePrice
+                    val gainPct = if (purchasePrice > 0) (gain / purchasePrice) * 100.0 else 0.0
+                    val isPositive = gain >= 0
+                    val color = if (isPositive) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            currency.format(price),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "${if (isPositive) "+" else ""}${currency.format(gain)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = color,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "${if (isPositive) "+" else ""}${String.format("%.1f", gainPct)}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = color
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
