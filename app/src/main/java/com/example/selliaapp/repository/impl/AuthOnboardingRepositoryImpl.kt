@@ -67,6 +67,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "role" to AppRole.OWNER.raw,
                     "accountType" to ACCOUNT_TYPE_STORE_OWNER,
                     "status" to accountStatus,
+                    "isAdmin" to false,
+                    "isSuperAdmin" to false,
                     "createdAt" to createdAt,
                     "accountOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW,
                     "isActive" to loginEnabled
@@ -122,6 +124,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 requestRef,
                 mapOf(
                     "uid" to user.uid,
+                    "requestedBy" to user.uid,
                     "email" to email,
                     "accountType" to ACCOUNT_TYPE_STORE_OWNER,
                     "status" to accountStatus,
@@ -186,6 +189,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                     "status" to "active",
+                    "isAdmin" to false,
+                    "isSuperAdmin" to false,
                     "displayName" to customerName,
                     "phone" to customerPhone,
                     "createdAt" to createdAt,
@@ -197,6 +202,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 .set(
                     mapOf(
                         "uid" to user.uid,
+                        "requestedBy" to user.uid,
                         "email" to email,
                         "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
@@ -235,6 +241,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                     "status" to "active",
+                    "isAdmin" to false,
+                    "isSuperAdmin" to false,
                     "displayName" to displayName,
                     "createdAt" to createdAt,
                     "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
@@ -246,6 +254,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 .set(
                     mapOf(
                         "uid" to user.uid,
+                        "requestedBy" to user.uid,
                         "email" to (user.email ?: ""),
                         "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",

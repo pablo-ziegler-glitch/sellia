@@ -208,11 +208,11 @@ service cloud.firestore {
       return isOwnUserDoc(userId) &&
         request.resource.data.accountType == 'store_owner' &&
         request.resource.data.role == 'owner' &&
-        request.resource.data.status == 'active' &&
+        request.resource.data.status in ['active', 'pending'] &&
         request.resource.data.isAdmin == false &&
         request.resource.data.isSuperAdmin == false &&
         request.resource.data.tenantId is string &&
-        get(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId)).data.ownerUid == request.auth.uid;
+        request.resource.data.tenantId != '';
     }
 
     match /users/{userId} {
@@ -232,7 +232,13 @@ service cloud.firestore {
         hasSuperAdminClaim() ||
         (resource.data.tenantId is string && isTenantMember(resource.data.tenantId))
       );
-      allow create: if isAuthenticated() && request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId);
+      allow create: if isAuthenticated() && (
+        (request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId)) ||
+        // Bootstrap: propietario creando su propia membresía durante el registro de tienda
+        (request.resource.data.role == 'owner' &&
+          request.resource.data.tenantId is string &&
+          request.resource.data.email == request.auth.token.email)
+      );
       allow update, delete: if isAuthenticated() && resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId);
     }
 
@@ -242,7 +248,10 @@ service cloud.firestore {
         resource.data.requestedBy == request.auth.uid ||
         (resource.data.tenantId is string && isTenantMember(resource.data.tenantId))
       );
-      allow create: if isAuthenticated() && request.resource.data.requestedBy == request.auth.uid;
+      allow create: if isAuthenticated() && (
+        request.resource.data.requestedBy == request.auth.uid ||
+        request.resource.data.uid == request.auth.uid
+      );
       allow update, delete: if isAuthenticated() && (
         hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId))
@@ -251,7 +260,10 @@ service cloud.firestore {
 
     match /tenants/{tenantId} {
       allow read: if isTenantMember(tenantId) || isTenantOwnerRecord(resource.data);
-      allow write: if isTenantAdmin(tenantId);
+      allow create: if isTenantAdmin(tenantId) ||
+        // Bootstrap: nuevo propietario creando su tenant durante el registro
+        (isAuthenticated() && request.resource.data.ownerUid == request.auth.uid);
+      allow update, delete: if isTenantAdmin(tenantId);
 
       match /public_products/{productId} {
         allow read: if true;
@@ -391,13 +403,21 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         hasSuperAdminClaim() || hasSuperAdminUserFlag() || isTenantMember(tenantId)
       );
-      allow write: if isTenantAdmin(tenantId);
+      allow create: if isTenantAdmin(tenantId) ||
+        // Bootstrap: propietario creando el directorio durante el registro de tienda
+        (isAuthenticated() && request.resource.data.ownerUid == request.auth.uid);
+      allow update, delete: if isTenantAdmin(tenantId);
     }
 
     // --- Directorio público de tenants (discovery web, sin autenticación) ---
     match /public_tenant_directory/{tenantId} {
       allow read: if true;
-      allow write: if isTenantAdmin(tenantId);
+      allow create: if isAuthenticated() && (
+        isTenantAdmin(tenantId) ||
+        // Bootstrap: el nuevo propietario puede crear su entrada pública durante el registro
+        request.resource.data.id == tenantId
+      );
+      allow update, delete: if isTenantAdmin(tenantId);
     }
 
     match /{document=**} {
