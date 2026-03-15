@@ -722,6 +722,7 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
+                                manualGainPercent = null,
                                 gainTargetPercent = gainTargetPercent,
                                 canManagePublication = canManagePublication,
                                 publishRequested = isPublished,

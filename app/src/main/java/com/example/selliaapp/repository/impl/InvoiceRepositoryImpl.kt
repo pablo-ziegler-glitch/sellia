@@ -20,7 +20,6 @@ import com.example.selliaapp.data.model.OrderStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDetail
-import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDraft
 import com.example.selliaapp.data.model.sales.InvoiceItemRow
 import com.example.selliaapp.data.model.sales.InvoiceProfitSummary
@@ -588,49 +587,6 @@ class InvoiceRepositoryImpl @Inject constructor(
         }
         batch.commit().await()
     }
-
-
-    override suspend fun getProfitReport(from: Long, to: Long): List<InvoiceProfitSummary> = withContext(io) {
-        invoiceDao.getAllInvoicesOnce()
-            .filter { it.invoice.dateMillis in from..to && it.invoice.status == InvoiceStatus.EMITIDA }
-            .map { rel ->
-                InvoiceProfitSummary(
-                    invoiceId = rel.invoice.id,
-                    dateMillis = rel.invoice.dateMillis,
-                    total = rel.invoice.total,
-                    estimatedCost = 0.0,
-                    estimatedProfit = rel.invoice.total
-                )
-            }
-    }
-
-    override suspend fun getDailyProfitSummary(from: Long, to: Long): List<DailyProfitSummary> = withContext(io) {
-        val zone = ZoneId.systemDefault()
-        invoiceDao.salesGroupedByDay(from, to).map { row ->
-            DailyProfitSummary(
-                date = Instant.ofEpochMilli(row.day).atZone(zone).toLocalDate(),
-                totalSales = row.total,
-                estimatedCost = 0.0,
-                estimatedProfit = row.total
-            )
-        }
-    }
-
-    override fun observeProfitSummaries(): Flow<List<InvoiceProfitSummary>> =
-        invoiceDao.observeInvoicesWithItems()
-            .map { list ->
-                list.filter { it.invoice.status == InvoiceStatus.EMITIDA }
-                    .map { rel ->
-                        InvoiceProfitSummary(
-                            invoiceId = rel.invoice.id,
-                            dateMillis = rel.invoice.dateMillis,
-                            total = rel.invoice.total,
-                            estimatedCost = 0.0,
-                            estimatedProfit = rel.invoice.total
-                        )
-                    }
-            }
-            .flowOn(io)
 
      override fun observeAll(): Flow<List<InvoiceSummary>> =
          invoiceDao.observeInvoicesWithItems()
