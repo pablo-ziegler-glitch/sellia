@@ -54,9 +54,9 @@ data class InvoiceProfitSummary(
     val customerName: String,
     val date: LocalDate,
     val total: Double,
-    val purchaseCost: Double,
-    val grossProfit: Double,
-    val netGain: Double,
+    val purchaseCost: Double?,
+    val grossProfit: Double?,
+    val netGain: Double?,
     val paymentMethod: String
 )
 
@@ -65,9 +65,9 @@ data class DailyProfitSummary(
     val date: LocalDate,
     val saleCount: Int,
     val totalRevenue: Double,
-    val totalPurchaseCost: Double,
-    val totalGrossProfit: Double,
-    val totalNetGain: Double
+    val totalPurchaseCost: Double?,
+    val totalGrossProfit: Double?,
+    val totalNetGain: Double?
 )
 
 enum class SyncStatus {

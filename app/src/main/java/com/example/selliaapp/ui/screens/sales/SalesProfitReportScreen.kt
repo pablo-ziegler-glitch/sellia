@@ -189,9 +189,10 @@ fun SalesProfitReportScreen(
 @Composable
 private fun PeriodTotalsCard(items: List<InvoiceProfitSummary>, currency: NumberFormat) {
     val totalRevenue = items.sumOf { it.total }
-    val totalCost = items.sumOf { it.purchaseCost }
-    val totalNet = items.sumOf { it.netGain }
-    val netColor = if (totalNet >= 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+    val itemsWithCost = items.filter { it.purchaseCost != null }
+    val totalCost = if (itemsWithCost.size == items.size) items.sumOf { it.purchaseCost!! } else null
+    val totalNet = if (itemsWithCost.size == items.size) items.sumOf { it.netGain ?: 0.0 } else null
+    val netColor = if ((totalNet ?: 0.0) >= 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -202,7 +203,7 @@ private fun PeriodTotalsCard(items: List<InvoiceProfitSummary>, currency: Number
             Text("${items.size} ventas", style = MaterialTheme.typography.bodySmall)
             HorizontalDivider()
             ProfitRow("Ingresos totales", currency.format(totalRevenue))
-            ProfitRow("Costo de mercadería", "-${currency.format(totalCost)}")
+            ProfitRow("Costo de mercadería", if (totalCost != null) "-${currency.format(totalCost)}" else "Sin datos")
             HorizontalDivider()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
@@ -211,7 +212,7 @@ private fun PeriodTotalsCard(items: List<InvoiceProfitSummary>, currency: Number
                     color = netColor
                 )
                 Text(
-                    currency.format(totalNet),
+                    if (totalNet != null) currency.format(totalNet) else "Sin datos",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = netColor
@@ -227,7 +228,7 @@ private fun DailyProfitCard(
     currency: NumberFormat,
     dayFmt: DateTimeFormatter
 ) {
-    val netColor = if (day.totalNetGain >= 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+    val netColor = if ((day.totalNetGain ?: 0.0) >= 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -239,10 +240,10 @@ private fun DailyProfitCard(
             }
             HorizontalDivider()
             ProfitRow("Ingresos", currency.format(day.totalRevenue))
-            ProfitRow("Costo mercadería", "-${currency.format(day.totalPurchaseCost)}")
+            ProfitRow("Costo mercadería", if (day.totalPurchaseCost != null) "-${currency.format(day.totalPurchaseCost)}" else "Sin datos")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Ganancia neta", style = MaterialTheme.typography.bodyMedium, color = netColor)
-                Text(currency.format(day.totalNetGain), style = MaterialTheme.typography.bodyMedium, color = netColor)
+                Text(if (day.totalNetGain != null) currency.format(day.totalNetGain) else "Sin datos", style = MaterialTheme.typography.bodyMedium, color = netColor)
             }
         }
     }
@@ -255,7 +256,7 @@ private fun SaleProfitCard(
     dateFmt: DateTimeFormatter,
     onClick: () -> Unit
 ) {
-    val netColor = if (sale.netGain >= 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+    val netColor = if ((sale.netGain ?: 0.0) >= 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -279,10 +280,10 @@ private fun SaleProfitCard(
             )
             HorizontalDivider()
             ProfitRow("Venta", currency.format(sale.total))
-            ProfitRow("Costo", "-${currency.format(sale.purchaseCost)}")
+            ProfitRow("Costo", if (sale.purchaseCost != null) "-${currency.format(sale.purchaseCost)}" else "Sin datos")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Ganancia neta", style = MaterialTheme.typography.bodyMedium, color = netColor)
-                Text(currency.format(sale.netGain), style = MaterialTheme.typography.bodyMedium, color = netColor)
+                Text(if (sale.netGain != null) currency.format(sale.netGain) else "Sin datos", style = MaterialTheme.typography.bodyMedium, color = netColor)
             }
         }
     }

@@ -9,8 +9,10 @@ import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.data.remote.off.OffResult
 import com.example.selliaapp.data.remote.off.OpenFoodFactsRepository
 import com.example.selliaapp.auth.TenantProvider
+import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.CloudCatalogImage
+import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.StorageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,7 +48,8 @@ class ProductViewModel @Inject constructor(
     private val repo: IProductRepository,
     private val offRepo: OpenFoodFactsRepository,
     private val storageRepository: StorageRepository,
-    private val tenantProvider: TenantProvider
+    private val tenantProvider: TenantProvider,
+    private val pricingConfigRepository: PricingConfigRepository
 
 ) : ViewModel() {
 
@@ -58,6 +61,16 @@ class ProductViewModel @Inject constructor(
 
     private val _cloudCatalogState = MutableStateFlow(CloudCatalogUiState())
     val cloudCatalogState = _cloudCatalogState.asStateFlow()
+
+    private val _pricingSettings = MutableStateFlow<PricingSettingsEntity?>(null)
+    val pricingSettings = _pricingSettings.asStateFlow()
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { pricingConfigRepository.getSettings() }
+                .onSuccess { _pricingSettings.value = it }
+        }
+    }
 
     // Campos de tu formulario (simplificado)
     var name: String? = null

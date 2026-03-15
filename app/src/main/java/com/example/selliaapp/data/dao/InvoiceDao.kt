@@ -44,8 +44,8 @@ data class DailyProfitRow(
     val bucket: String,
     val saleCount: Int,
     val totalRevenue: Double,
-    val totalPurchaseCost: Double,
-    val totalNetGain: Double
+    val totalPurchaseCost: Double?,
+    val totalNetGain: Double?
 )
 
 @Dao
@@ -234,8 +234,10 @@ interface InvoiceDao {
         SELECT strftime('%Y-%m-%d', (dateMillis/1000), 'unixepoch', 'localtime') AS bucket,
                COUNT(*) AS saleCount,
                SUM(total) AS totalRevenue,
-               SUM(COALESCE(bdPurchaseCost, 0.0)) AS totalPurchaseCost,
-               SUM(COALESCE(bdNetGain, 0.0)) AS totalNetGain
+               CASE WHEN SUM(CASE WHEN bdPurchaseCost IS NULL THEN 1 ELSE 0 END) > 0
+                    THEN NULL ELSE SUM(bdPurchaseCost) END AS totalPurchaseCost,
+               CASE WHEN SUM(CASE WHEN bdNetGain IS NULL THEN 1 ELSE 0 END) > 0
+                    THEN NULL ELSE SUM(bdNetGain) END AS totalNetGain
         FROM invoices
         WHERE status = 'EMITIDA'
           AND dateMillis >= :from AND dateMillis <= :to

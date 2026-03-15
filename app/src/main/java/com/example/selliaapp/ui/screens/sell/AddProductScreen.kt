@@ -154,6 +154,7 @@ fun AddProductScreen(
         viewModel.getAllCategoryNames().collectAsState(initial = emptyList()).value
     val providers: List<String> =
         viewModel.getAllProviderNames().collectAsState(initial = emptyList()).value
+    val pricingSettings by viewModel.pricingSettings.collectAsState()
 
     // Si editás, precargamos desde DB
     LaunchedEffect(editId) {
@@ -471,13 +472,15 @@ fun AddProductScreen(
             if (purchaseVal != null && purchaseVal > 0) {
                 NetGainPanel(
                     purchasePrice = purchaseVal,
+                    posnetPercent = pricingSettings?.posnet3CuotasPercent ?: 0.0,
+                    operativosPercent = pricingSettings?.operativosLocalPercent ?: 0.0,
                     channels = listOfNotNull(
-                        listPriceText.replace(',', '.').toDoubleOrNull()?.let { "Lista" to it },
-                        cashPriceText.replace(',', '.').toDoubleOrNull()?.let { "Efectivo" to it },
-                        transferPriceText.replace(',', '.').toDoubleOrNull()?.let { "Transferencia" to it },
-                        mlPriceText.replace(',', '.').toDoubleOrNull()?.let { "ML (0C)" to it },
-                        ml3cPriceText.replace(',', '.').toDoubleOrNull()?.let { "ML (3C)" to it },
-                        ml6cPriceText.replace(',', '.').toDoubleOrNull()?.let { "ML (6C)" to it }
+                        listPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Lista", it, applyPosnet = true) },
+                        cashPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Efectivo", it, applyPosnet = false) },
+                        transferPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Transferencia", it, applyPosnet = false) },
+                        mlPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (0C)", it, applyPosnet = false) },
+                        ml3cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (3C)", it, applyPosnet = false) },
+                        ml6cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (6C)", it, applyPosnet = false) }
                     )
                 )
             }
@@ -796,14 +799,18 @@ private fun persistPreviewBitmap(context: android.content.Context, bitmap: Bitma
     }.getOrNull()
 }
 
+data class NetGainChannel(val label: String, val price: Double, val applyPosnet: Boolean)
+
 /**
- * Panel que muestra la ganancia bruta por canal de precio comparada contra el costo
- * de adquisición, con un ícono de ayuda que explica la diferencia entre bruta y neta.
+ * Panel que muestra la ganancia neta estimada por canal de precio.
+ * Descuenta costo de adquisición, costos operativos y (para el canal Lista) comisión posnet.
  */
 @Composable
 private fun NetGainPanel(
     purchasePrice: Double,
-    channels: List<Pair<String, Double>>
+    posnetPercent: Double,
+    operativosPercent: Double,
+    channels: List<NetGainChannel>
 ) {
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
     var showGainHelp by remember { mutableStateOf(false) }
@@ -833,7 +840,7 @@ private fun NetGainPanel(
                         )
                     }
                     Text(
-                        "Este panel muestra la ganancia BRUTA por canal.",
+                        "Este panel muestra la ganancia NETA estimada por canal.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -855,7 +862,7 @@ private fun NetGainPanel(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    "Ganancia bruta por canal",
+                    "Ganancia neta estimada por canal",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
@@ -885,8 +892,11 @@ private fun NetGainPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                channels.forEach { (label, price) ->
-                    val gain = price - purchasePrice
+                channels.forEach { (label, price, applyPosnet) ->
+                    val operativosFee = purchasePrice * (operativosPercent / 100.0)
+                    val posnetRate = posnetPercent / 100.0
+                    val posnetFee = if (applyPosnet && posnetRate > 0) price * posnetRate / (1 + posnetRate) else 0.0
+                    val gain = price - purchasePrice - operativosFee - posnetFee
                     val gainPct = if (purchasePrice > 0) (gain / purchasePrice) * 100.0 else 0.0
                     val isPositive = gain >= 0
                     val gainColor = if (isPositive) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error

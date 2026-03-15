@@ -609,9 +609,9 @@ class InvoiceRepositoryImpl @Inject constructor(
          val zona = ZoneId.systemDefault()
          invoiceDao.getProfitRows(from, to).map { row ->
              val date = Instant.ofEpochMilli(row.dateMillis).atZone(zona).toLocalDate()
-             val cost = row.bdPurchaseCost ?: 0.0
-             val gross = row.bdGrossAmount ?: row.total
-             val net = row.bdNetGain ?: (gross - cost)
+             val cost = row.bdPurchaseCost
+             val gross = row.bdGrossAmount
+             val net = row.bdNetGain
              InvoiceProfitSummary(
                  id = row.id,
                  number = formatNumber(row.id),
@@ -619,7 +619,7 @@ class InvoiceRepositoryImpl @Inject constructor(
                  date = date,
                  total = row.total,
                  purchaseCost = cost,
-                 grossProfit = gross - cost,
+                 grossProfit = if (gross != null && cost != null) gross - cost else null,
                  netGain = net,
                  paymentMethod = row.paymentMethod
              )
@@ -635,7 +635,7 @@ class InvoiceRepositoryImpl @Inject constructor(
                  saleCount = row.saleCount,
                  totalRevenue = row.totalRevenue,
                  totalPurchaseCost = row.totalPurchaseCost,
-                 totalGrossProfit = row.totalRevenue - row.totalPurchaseCost,
+                 totalGrossProfit = if (row.totalPurchaseCost != null) row.totalRevenue - row.totalPurchaseCost else null,
                  totalNetGain = row.totalNetGain
              )
          }
@@ -647,9 +647,9 @@ class InvoiceRepositoryImpl @Inject constructor(
              .map { rows ->
                  rows.map { row ->
                      val date = Instant.ofEpochMilli(row.dateMillis).atZone(zona).toLocalDate()
-                     val cost = row.bdPurchaseCost ?: 0.0
-                     val gross = row.bdGrossAmount ?: row.total
-                     val net = row.bdNetGain ?: (gross - cost)
+                     val cost = row.bdPurchaseCost
+                     val gross = row.bdGrossAmount
+                     val net = row.bdNetGain
                      InvoiceProfitSummary(
                          id = row.id,
                          number = formatNumber(row.id),
@@ -657,7 +657,7 @@ class InvoiceRepositoryImpl @Inject constructor(
                          date = date,
                          total = row.total,
                          purchaseCost = cost,
-                         grossProfit = gross - cost,
+                         grossProfit = if (gross != null && cost != null) gross - cost else null,
                          netGain = net,
                          paymentMethod = row.paymentMethod
                      )
