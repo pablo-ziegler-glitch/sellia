@@ -145,7 +145,7 @@ fun SalesInvoiceDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Ver desglose de ganancia",
+                                text = "Desglose",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Checkbox(

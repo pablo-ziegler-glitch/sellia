@@ -381,7 +381,7 @@ fun CheckoutScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "Mostrar desglose de ganancia",
+                                            text = "Desglose",
                                             style = MaterialTheme.typography.bodyMedium
                                         )
                                         Checkbox(
