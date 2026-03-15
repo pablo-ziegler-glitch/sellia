@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -44,16 +45,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.text.NumberFormat
+import java.util.Locale
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.ui.components.ImageUrlListEditor
 import com.example.selliaapp.ui.components.MultiSelectChipPicker
+import com.example.selliaapp.ui.components.NetGainChannel
+import com.example.selliaapp.ui.components.ProductNetGainPanel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel.UiState
 import com.example.selliaapp.viewmodel.PrefillData
@@ -145,6 +156,7 @@ fun AddProductScreen(
         viewModel.getAllCategoryNames().collectAsState(initial = emptyList()).value
     val providers: List<String> =
         viewModel.getAllProviderNames().collectAsState(initial = emptyList()).value
+    val pricingSettings by viewModel.pricingSettings.collectAsState()
 
     // Si editás, precargamos desde DB
     LaunchedEffect(editId) {
@@ -454,6 +466,24 @@ fun AddProductScreen(
                     onValueChange = { ml6cPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
                     label = { Text("Precio ML 6C") },
                     modifier = Modifier.weight(1f)
+                )
+            }
+
+            // --- Desglose de ganancia neta por canal ---
+            val purchaseVal = purchasePriceText.replace(',', '.').toDoubleOrNull()
+            if (purchaseVal != null && purchaseVal > 0) {
+                ProductNetGainPanel(
+                    purchasePrice = purchaseVal,
+                    posnetPercent = pricingSettings?.posnet3CuotasPercent ?: 0.0,
+                    operativosPercent = pricingSettings?.operativosLocalPercent ?: 0.0,
+                    channels = listOfNotNull(
+                        listPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Lista", it, applyPosnet = true) },
+                        cashPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Efectivo", it, applyPosnet = false) },
+                        transferPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Transferencia", it, applyPosnet = false) },
+                        mlPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (0C)", it, applyPosnet = false) },
+                        ml3cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (3C)", it, applyPosnet = false) },
+                        ml6cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (6C)", it, applyPosnet = false) }
+                    )
                 )
             }
 
@@ -770,6 +800,7 @@ private fun persistPreviewBitmap(context: android.content.Context, bitmap: Bitma
         Uri.fromFile(file)
     }.getOrNull()
 }
+
 
 @Composable
 private fun InfoMessage(

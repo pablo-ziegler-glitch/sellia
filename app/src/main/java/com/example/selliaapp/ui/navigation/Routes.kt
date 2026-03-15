@@ -140,6 +140,7 @@ sealed class Routes(val route: String) {
     object StoreRequestForm : Routes("store_request_form")
     object Storefront : Routes("storefront")
     object Notifications : Routes("notifications")
+    object StoreSettings : Routes("store_settings_hub")
 
     // ---------- NUEVO: Gastos ----------
     object ExpensesHub : Routes("expenses_hub")
@@ -155,6 +156,9 @@ sealed class Routes(val route: String) {
         const val ARG_ID = "invoiceId"
         fun withId(id: Long) = "sales_invoice_detail/$id"
     }
+
+    /** Reporte interno de ganancias por venta (solo ADMIN/OWNER) */
+    object SalesProfitReport : Routes("sales_profit_report")
 
     /**
      * [NUEVO] Rutas claras para el flujo de venta con nested graph:

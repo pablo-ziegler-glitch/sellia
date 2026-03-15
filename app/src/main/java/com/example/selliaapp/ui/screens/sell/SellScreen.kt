@@ -27,16 +27,19 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -90,6 +94,13 @@ fun SellScreen(
     val customers by customersVm.customers.collectAsState(initial = emptyList())
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
 
+    var descuentoAdicionalActivo by remember { mutableStateOf(false) }
+    var descuentoInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(ui.discountPercent) {
+        descuentoAdicionalActivo = ui.discountPercent > 0
+        descuentoInput = if (ui.discountPercent == 0) "" else ui.discountPercent.toString()
+    }
 
     // Estado para mostrar mensajes en pantalla
     val snackbarHostState = remember { SnackbarHostState() }
@@ -384,13 +395,50 @@ fun SellScreen(
                                     )
                                 }
                                 Spacer(Modifier.height(12.dp))
-                                PorcentajeControl(
-                                    titulo = "Recargo",
-                                    valor = ui.surchargePercent,
-                                    onValorChange = { sellVm.setSurchargePercent(it) },
-                                    descripcion = if (ui.surchargePercent == 0) "Sin recargo" else "+" + currency.format(ui.surchargeAmount),
-                                    colorDescripcion = if (ui.surchargePercent == 0) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFB71C1C)
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Descuento adicional", style = MaterialTheme.typography.bodyMedium)
+                                    Switch(
+                                        checked = descuentoAdicionalActivo,
+                                        onCheckedChange = { activo ->
+                                            descuentoAdicionalActivo = activo
+                                            if (!activo) {
+                                                descuentoInput = ""
+                                                sellVm.setDiscountPercent(0)
+                                            }
+                                        }
+                                    )
+                                }
+                                if (descuentoAdicionalActivo) {
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = descuentoInput,
+                                        onValueChange = { value ->
+                                            val sanitized = value.filter { it.isDigit() }.take(3)
+                                            descuentoInput = sanitized
+                                            val maxAllowed = (100 - ui.customerDiscountPercent).coerceAtLeast(0)
+                                            val percent = sanitized.toIntOrNull()?.coerceIn(0, maxAllowed) ?: 0
+                                            sellVm.setDiscountPercent(percent)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("Porcentaje de descuento (máx. ${(100 - ui.customerDiscountPercent).coerceAtLeast(0)}%)") },
+                                        placeholder = { Text("Ej: 10") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        suffix = { Text("%") }
+                                    )
+                                    if (ui.discountPercent > 0) {
+                                        Spacer(Modifier.height(4.dp))
+                                        ResumenRow(
+                                            etiqueta = "Descuento (${ui.discountPercent}%)",
+                                            valor = "-${currency.format(ui.manualDiscountAmount)}",
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
+                                }
                                 Spacer(Modifier.height(12.dp))
                                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                                 ResumenRow(

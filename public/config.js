@@ -16,12 +16,12 @@
     publicProductCollection: "public_products",
     refreshIntervalMs: 300000,
     firebase: {
-      apiKey: runtimeFirebase.apiKey || "",
+      apiKey: runtimeFirebase.apiKey || "AIzaSyDyi0skvcP4OPOyqZCeoGfknZM5n-Y0yG8",
       authDomain: runtimeFirebase.authDomain || "sellia1993.firebaseapp.com",
       projectId: runtimeFirebase.projectId || "sellia1993",
       storageBucket: runtimeFirebase.storageBucket || "sellia1993.firebasestorage.app",
-      messagingSenderId: runtimeFirebase.messagingSenderId || "",
-      appId: runtimeFirebase.appId || ""
+      messagingSenderId: runtimeFirebase.messagingSenderId || "218630438552",
+      appId: runtimeFirebase.appId || "1:218630438552:web:162de96e3b8fc05b1d9aed"
     },
     contact: {
       whatsapp: runtimeContact.whatsapp || "",
@@ -52,7 +52,8 @@
 
     if (!config.tenantId && projectId && apiKey) {
       const hostname = globalScope.location.hostname.replace(/^www\./, "");
-      if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
+      const isFirebaseDefaultDomain = hostname.endsWith(".web.app") || hostname.endsWith(".firebaseapp.com");
+      if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1" && !isFirebaseDefaultDomain) {
         try {
           const domainLookupResp = await fetchWithTimeout(
             `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(hostname)}?key=${apiKey}`

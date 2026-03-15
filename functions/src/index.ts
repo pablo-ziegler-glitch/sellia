@@ -2978,7 +2978,8 @@ export const refreshPublicProducts = functions.pubsub
         .doc("public_store");
       const configSnap = await configRef.get();
       const configData = configSnap.data() || {};
-      const enabled = configData.publicEnabled === true;
+      // publicEnabled es true por defecto; solo se omite si está explícitamente en false
+      const enabled = configData.publicEnabled !== false;
       if (!enabled) {
         continue;
       }
@@ -5273,4 +5274,379 @@ export const reconcilePendingPayment = functions
       result: providerStatus === "APPROVED" ? "aligned" : "requires_action",
       manualReconciliationId: historyRef.id,
     };
+  });
+
+// ---------------------------------------------------------------------------
+// Custom domain management for stores
+// ---------------------------------------------------------------------------
+
+const isValidHostname = (hostname: string): boolean => {
+  if (!hostname || hostname.length > 253) return false;
+  if (!hostname.includes(".")) return false;
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
+    hostname
+  );
+};
+
+/**
+ * Registra o actualiza el dominio personalizado de una tienda.
+ * - Escribe en domain_to_tenant/{domain} para que config.js resuelva el tenant.
+ * - Activa publicEnabled en tenants/{tenantId}/config/public_store.
+ * - Actualiza public_tenant_directory/{tenantId} con el dominio.
+ * El dominio en Firebase Hosting debe agregarse manualmente en Firebase Console.
+ */
+export const setStoreDomain = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const rawDomain = normalizeString(payload.domain)
+      .toLowerCase()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/.*$/, "")
+      .replace(/^www\./, "");
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+    if (!isValidHostname(rawDomain)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "dominio inválido: debe ser un hostname sin esquema ni ruta (ej: mitienda.com)"
+      );
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    const userData = userDoc.data() || {};
+    const isSuperAdmin =
+      context.auth.token?.superAdmin === true || userData.isSuperAdmin === true;
+    const userTenantId = normalizeString(userData.tenantId);
+    const userRole = normalizeString(userData.role).toLowerCase();
+
+    if (
+      !isSuperAdmin &&
+      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "sin permisos sobre este tenant"
+      );
+    }
+
+    // Verificar que el dominio no esté en uso por otra tienda
+    const existingMappingDoc = await db
+      .collection("domain_to_tenant")
+      .doc(rawDomain)
+      .get();
+    if (existingMappingDoc.exists) {
+      const existingTenantId = normalizeString(existingMappingDoc.data()?.tenantId);
+      if (existingTenantId && existingTenantId !== tenantId) {
+        throw new functions.https.HttpsError(
+          "already-exists",
+          "el dominio ya está registrado por otra tienda"
+        );
+      }
+    }
+
+    // Limpiar mapping anterior si se está cambiando de dominio
+    const publicStoreRef = db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("config")
+      .doc("public_store");
+    const publicStoreSnap = await publicStoreRef.get();
+    const previousDomain = normalizeString(publicStoreSnap.data()?.publicDomain)
+      .toLowerCase()
+      .replace(/^www\./, "");
+    if (previousDomain && previousDomain !== rawDomain) {
+      // Solo borrar el mapping anterior si efectivamente pertenece a este tenant,
+      // evitando que un admin con config manipulada borre el dominio de otro tenant.
+      const prevMappingDoc = await db.collection("domain_to_tenant").doc(previousDomain).get();
+      if (prevMappingDoc.exists && normalizeString(prevMappingDoc.data()?.tenantId) === tenantId) {
+        await db.collection("domain_to_tenant").doc(previousDomain).delete();
+      }
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const publicStoreUrl = `https://${rawDomain}/catalog.html`;
+
+    const batch = db.batch();
+
+    batch.set(
+      db.collection("domain_to_tenant").doc(rawDomain),
+      { tenantId, updatedAt: now },
+      { merge: true }
+    );
+
+    batch.set(
+      publicStoreRef,
+      {
+        publicDomain: rawDomain,
+        publicStoreUrl,
+        publicEnabled: true,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    batch.set(
+      db.collection("public_tenant_directory").doc(tenantId),
+      { publicDomain: rawDomain, publicStoreUrl, updatedAt: now },
+      { merge: true }
+    );
+
+    await batch.commit();
+
+    return { ok: true, tenantId, domain: rawDomain, publicStoreUrl };
+  });
+
+/**
+ * Elimina el dominio personalizado de una tienda.
+ * Borra el mapping en domain_to_tenant y limpia publicDomain en los configs.
+ */
+export const removeStoreDomain = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    const userData = userDoc.data() || {};
+    const isSuperAdmin =
+      context.auth.token?.superAdmin === true || userData.isSuperAdmin === true;
+    const userTenantId = normalizeString(userData.tenantId);
+    const userRole = normalizeString(userData.role).toLowerCase();
+
+    if (
+      !isSuperAdmin &&
+      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "sin permisos sobre este tenant"
+      );
+    }
+
+    const publicStoreRef = db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("config")
+      .doc("public_store");
+    const publicStoreSnap = await publicStoreRef.get();
+    const publicDomain = normalizeString(publicStoreSnap.data()?.publicDomain)
+      .toLowerCase()
+      .replace(/^www\./, "");
+
+    if (!publicDomain) {
+      return { ok: true, tenantId, removed: false };
+    }
+
+    // Verificar que el mapping domain_to_tenant pertenece a este tenant antes de borrarlo.
+    const mappingDoc = await db.collection("domain_to_tenant").doc(publicDomain).get();
+    if (mappingDoc.exists && normalizeString(mappingDoc.data()?.tenantId) !== tenantId) {
+      // El mapping apunta a otro tenant; solo limpiar el config local sin tocar el mapping.
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const cleanupBatch = db.batch();
+      cleanupBatch.set(
+        publicStoreRef,
+        {
+          publicDomain: admin.firestore.FieldValue.delete(),
+          publicStoreUrl: admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      cleanupBatch.set(
+        db.collection("public_tenant_directory").doc(tenantId),
+        {
+          publicDomain: admin.firestore.FieldValue.delete(),
+          publicStoreUrl: admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      await cleanupBatch.commit();
+      return { ok: true, tenantId, domain: publicDomain, removed: false };
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+
+    batch.delete(db.collection("domain_to_tenant").doc(publicDomain));
+
+    batch.set(
+      publicStoreRef,
+      {
+        publicDomain: admin.firestore.FieldValue.delete(),
+        publicStoreUrl: admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    batch.set(
+      db.collection("public_tenant_directory").doc(tenantId),
+      {
+        publicDomain: admin.firestore.FieldValue.delete(),
+        publicStoreUrl: admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+
+    return { ok: true, tenantId, domain: publicDomain, removed: true };
+  });
+
+// ---------------------------------------------------------------------------
+// Sincronización forzada de productos públicos
+// ---------------------------------------------------------------------------
+
+/**
+ * Fuerza la sincronización inmediata de productos publicados al catálogo público.
+ * Necesario para tiendas con productos cargados antes del trigger automático,
+ * o cuando publicEnabled se habilita por primera vez.
+ * También establece publicEnabled=true si no estaba activo.
+ */
+export const triggerStoreProductsSync = functions
+  .runWith({ enforceAppCheck: false, timeoutSeconds: 120, memory: "512MB" })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    const userData = userDoc.data() || {};
+    const isSuperAdmin =
+      context.auth.token?.superAdmin === true || userData.isSuperAdmin === true;
+    const userTenantId = normalizeString(userData.tenantId);
+    const userRole = normalizeString(userData.role).toLowerCase();
+
+    if (
+      !isSuperAdmin &&
+      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "sin permisos sobre este tenant"
+      );
+    }
+
+    const [publishedSnap, legacySnap, existingPublicSnap] = await Promise.all([
+      db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("products")
+        .where("publicStatus", "==", "published")
+        .get(),
+      db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("products")
+        .where("isPublic", "==", true)
+        .get(),
+      db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("public_products")
+        .get(),
+    ]);
+
+    const publishedProducts = new Map<string, admin.firestore.QueryDocumentSnapshot>();
+    for (const doc of publishedSnap.docs) {
+      publishedProducts.set(doc.id, doc);
+    }
+    for (const doc of legacySnap.docs) {
+      if (!publishedProducts.has(doc.id)) {
+        publishedProducts.set(doc.id, doc);
+      }
+    }
+
+    // Solo incluir en publishedIds los productos que efectivamente pasan la validación,
+    // para que la limpieza posterior elimine los que tienen marcadores contradictorios
+    // (ej: publicStatus: "draft" + legacy isPublic: true).
+    const publishedIds = new Set<string>();
+
+    let syncBatch = db.batch();
+    let batchCount = 0;
+    let syncedCount = 0;
+
+    for (const productDoc of publishedProducts.values()) {
+      const productData = productDoc.data();
+      if (!productData || !isProductPublished(productData)) continue;
+      publishedIds.add(productDoc.id);
+      const productPayload = buildPublicProductPayload(tenantId, productDoc.id, productData);
+      const publicRef = db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("public_products")
+        .doc(productDoc.id);
+      syncBatch.set(publicRef, productPayload, { merge: true });
+      batchCount += 1;
+      syncedCount += 1;
+      if (batchCount === 450) {
+        await syncBatch.commit();
+        syncBatch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    for (const publicDoc of existingPublicSnap.docs) {
+      if (publishedIds.has(publicDoc.id)) continue;
+      syncBatch.delete(publicDoc.ref);
+      batchCount += 1;
+      if (batchCount === 450) {
+        await syncBatch.commit();
+        syncBatch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    if (batchCount > 0) {
+      await syncBatch.commit();
+    }
+
+    await db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("config")
+      .doc("public_store")
+      .set(
+        {
+          publicEnabled: true,
+          lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    return { ok: true, tenantId, syncedCount };
   });

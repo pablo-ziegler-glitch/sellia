@@ -8,8 +8,11 @@ import com.example.selliaapp.data.local.entity.VariantEntity
 import com.example.selliaapp.domain.product.ProductFilterParams
 import com.example.selliaapp.domain.product.ProductSortOption
 import com.example.selliaapp.domain.product.filterAndSortProducts
+import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.repository.IProductRepository
+import com.example.selliaapp.repository.PricingConfigRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +39,8 @@ data class ManageProductsUiState(
 @HiltViewModel
 class ManageProductsViewModel @Inject constructor(
     private val repo: IProductRepository,
-    private val variantDao: VariantDao
+    private val variantDao: VariantDao,
+    private val pricingConfigRepository: PricingConfigRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ManageProductsUiState())
@@ -44,6 +48,16 @@ class ManageProductsViewModel @Inject constructor(
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    private val _pricingSettings = MutableStateFlow<PricingSettingsEntity?>(null)
+    val pricingSettings = _pricingSettings.asStateFlow()
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { pricingConfigRepository.getSettings() }
+                .onSuccess { _pricingSettings.value = it }
+        }
+    }
 
     val productsAll: Flow<List<ProductEntity>> = repo.observeAll()
 

@@ -4,9 +4,11 @@ import com.example.selliaapp.data.dao.InvoiceWithItems
 import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
 import com.example.selliaapp.data.model.OrderStatus
+import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.data.model.sales.InvoiceDraft
+import com.example.selliaapp.data.model.sales.InvoiceProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceResult
 import com.example.selliaapp.data.model.sales.InvoiceSummary
 import kotlinx.coroutines.flow.Flow
@@ -54,4 +56,13 @@ interface InvoiceRepository {
      * IMPORTANTE: debe ser un get() único para minimizar costos en Firestore.
      */
     suspend fun refreshOrderStatus(orderId: String): OrderStatus?
+
+    /** Reporte de ganancias por venta individual en un rango de fechas. */
+    suspend fun getProfitReport(from: Long, to: Long): List<InvoiceProfitSummary>
+
+    /** Resumen diario de ganancias en un rango de fechas. */
+    suspend fun getDailyProfitSummary(from: Long, to: Long): List<DailyProfitSummary>
+
+    /** Flow reactivo de ventas con desglose de ganancia (para reporte en tiempo real). */
+    fun observeProfitSummaries(): Flow<List<InvoiceProfitSummary>>
 }

@@ -50,7 +50,7 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; frame-src https://accounts.google.com; manifest-src 'self'; upgrade-insecure-requests"
+            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://us-central1-sellia1993.cloudfunctions.net; frame-src https://accounts.google.com https://sellia1993.firebaseapp.com; manifest-src 'self'; upgrade-insecure-requests"
           }
         ]
       },
@@ -106,6 +106,11 @@
       {
         "source": "/backoffice/bulk_abm",
         "destination": "/admin/#/maintenance",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/store",
+        "destination": "/admin/#/settings/store",
         "type": 301
       },
       {

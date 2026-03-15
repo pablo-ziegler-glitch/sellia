@@ -4,12 +4,17 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.model.sales.InvoiceDetail
+import com.example.selliaapp.domain.security.Permission
+import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.InvoiceRepository
 import com.example.selliaapp.sync.SyncRepository
 import com.example.selliaapp.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -24,8 +29,15 @@ data class SalesInvoiceDetailUiState(
 class SalesInvoiceDetailViewModel @Inject constructor(
     private val repo: InvoiceRepository,
     private val syncRepository: SyncRepository,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    accessControlRepository: AccessControlRepository
 ) : ViewModel() {
+
+    /** Verdadero si el usuario tiene permiso para ver el desglose de ganancia. */
+    val canViewProfitBreakdown: StateFlow<Boolean> =
+        accessControlRepository.observeAccessState()
+            .map { it.permissions.contains(Permission.VIEW_PROFIT_BREAKDOWN) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val invoiceId: Long =
         savedStateHandle.get<Long>(Routes.SalesInvoiceDetail.ARG_ID) ?: 0L

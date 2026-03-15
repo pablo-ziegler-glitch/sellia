@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,12 +35,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.model.InvoiceStatus
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.InvoiceItemRow
+import com.example.selliaapp.data.model.sales.SaleBreakdown
 import com.example.selliaapp.data.model.sales.SyncStatus
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailUiState
@@ -57,10 +61,12 @@ fun SalesInvoiceDetailScreen(
     val uiState by vm.state.collectAsState(initial = SalesInvoiceDetailUiState())
     val detail = uiState.detail
     val isRetrying by vm.isRetrying.collectAsState()
+    val canViewProfit by vm.canViewProfitBreakdown.collectAsState()
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
     val dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
     var showCancelDialog by remember { mutableStateOf(false) }
     var cancelReason by remember { mutableStateOf(TextFieldValue("")) }
+    var showProfitBreakdown by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -128,6 +134,31 @@ fun SalesInvoiceDetailScreen(
             item { HorizontalDivider() }
             item {
                 PaymentSection(detail = d)
+            }
+            if (canViewProfit && d.breakdown != null) {
+                item { HorizontalDivider() }
+                item {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Desglose",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Checkbox(
+                                checked = showProfitBreakdown,
+                                onCheckedChange = { showProfitBreakdown = it }
+                            )
+                        }
+                        if (showProfitBreakdown) {
+                            Spacer(Modifier.height(8.dp))
+                            ProfitBreakdownSection(breakdown = d.breakdown, currency = currency)
+                        }
+                    }
+                }
             }
         }
     }
@@ -272,6 +303,51 @@ private fun SummaryRow(
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = labelStyle)
         Text(value, style = valueStyle)
+    }
+}
+
+@Composable
+private fun ProfitBreakdownSection(breakdown: SaleBreakdown, currency: NumberFormat) {
+    val positiveGain = breakdown.estimatedNetGain >= 0
+    val gainColor = if (positiveGain) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Desglose Interno de Ganancia", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Solo visible para dueño/administrador",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+        SummaryRow(label = "Ingreso bruto", value = currency.format(breakdown.grossAmount))
+        SummaryRow(
+            label = "Costo de adquisición",
+            value = "-${currency.format(breakdown.purchaseCostTotal)}"
+        )
+        if (breakdown.posnetFeeAmount > 0) {
+            SummaryRow(
+                label = "Comisión posnet/pago (${String.format("%.1f", breakdown.posnetFeePercent)}%)",
+                value = "-${currency.format(breakdown.posnetFeeAmount)}"
+            )
+        }
+        if (breakdown.operativosFeeAmount > 0) {
+            SummaryRow(
+                label = "Costos operativos (${String.format("%.1f", breakdown.operativosFeePercent)}%)",
+                value = "-${currency.format(breakdown.operativosFeeAmount)}"
+            )
+        }
+        HorizontalDivider()
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                "Ganancia neta estimada",
+                style = MaterialTheme.typography.titleSmall,
+                color = gainColor
+            )
+            Text(
+                currency.format(breakdown.estimatedNetGain),
+                style = MaterialTheme.typography.titleSmall,
+                color = gainColor
+            )
+        }
     }
 }
 

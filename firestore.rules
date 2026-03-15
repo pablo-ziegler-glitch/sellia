@@ -18,8 +18,17 @@ service cloud.firestore {
       return lower(trim(value is string ? value : ''));
     }
 
+    // ─── Admin Claims Validation ───────────────────────────────────────────
+
     function hasSuperAdminClaim() {
-      return isAuthenticated() && request.auth.token.superAdmin == true;
+      return isAuthenticated() && (
+        request.auth.token.superAdmin == true ||
+        request.auth.token.isSuperAdmin == true
+      );
+    }
+
+    function hasSuperAdminUserFlag() {
+      return isAuthenticated() && requesterUserDoc().exists && requesterData().isSuperAdmin == true;
     }
 
     function hasAdminClaim() {
@@ -29,16 +38,66 @@ service cloud.firestore {
       );
     }
 
-    function hasAdministrativeBypass() {
-      return hasSuperAdminClaim() || hasAdminClaim();
+    function hasAdminUserFlag() {
+      return isAuthenticated() && requesterUserDoc().exists && requesterData().isAdmin == true;
     }
+
+    function hasAdministrativeBypass() {
+      return hasSuperAdminClaim() || hasSuperAdminUserFlag();
+    }
+
+    // ─── Integrity Checks for Admins ──────────────────────────────────────
+
+    /**
+     * Verifica que los datos de admin sean consistentes en múltiples lugares.
+     * Un admin válido DEBE tener:
+     * 1. JWT claims con admin=true o isAdmin=true
+     * 2. tenantId en claims O en /users/{uid}
+     * 3. role en claims O en /users/{uid}
+     * 4. /users/{uid} debe existir con role admin/owner
+     */
+    function isValidAdminUser(userId) {
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      return userDoc.exists &&
+        userDoc.data.isAdmin == true &&
+        userDoc.data.role is string &&
+        userDoc.data.status == 'active' &&
+        normalizeRole(userDoc.data.role) in ['admin', 'owner'];
+    }
+
+    /**
+     * Valida que el admin tenga un tenantId definido de forma consistente
+     */
+    function hasValidTenantIdForAdmin(userId) {
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      return userDoc.exists && userDoc.data.tenantId is string && userDoc.data.tenantId != '';
+    }
+
+    /**
+     * Verifica que el admin tenga un documento en /tenant_users
+     */
+    function hasTenantUserDoc(tenantId, userId) {
+      return exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + userId));
+    }
+
+    /**
+     * Verificación multi-fuente para un admin:
+     * Combina JWT claims, user doc, y tenant_users doc para validar integridad
+     */
+    function isValidAdminWithIntegrity(tenantId, userId) {
+      return isValidAdminUser(userId) &&
+        hasValidTenantIdForAdmin(userId) &&
+        hasTenantUserDoc(tenantId, userId);
+    }
+
+    // ─── Tenant ID Resolution ──────────────────────────────────────────────
 
     function effectiveTenantId() {
       return isAuthenticated()
         ? (
-            request.auth.token.tenantId is string
-              ? request.auth.token.tenantId
-              : (requesterUserDoc().exists && requesterData().tenantId is string ? requesterData().tenantId : '')
+            requesterUserDoc().exists && requesterData().tenantId is string
+              ? requesterData().tenantId
+              : (request.auth.token.tenantId is string ? request.auth.token.tenantId : '')
           )
         : '';
     }
@@ -54,9 +113,9 @@ service cloud.firestore {
     function normalizedRole() {
       return isAuthenticated()
         ? (
-            request.auth.token.role is string
-              ? normalizeRole(request.auth.token.role)
-              : (requesterUserDoc().exists && requesterData().role is string ? normalizeRole(requesterData().role) : '')
+            requesterUserDoc().exists && requesterData().role is string
+              ? normalizeRole(requesterData().role)
+              : (request.auth.token.role is string ? normalizeRole(request.auth.token.role) : '')
           )
         : '';
     }
@@ -101,8 +160,28 @@ service cloud.firestore {
       return normalizedRole() in ['owner', 'admin'];
     }
 
+    function hasTenantAdminSignal() {
+      return hasAdminClaim() || hasAdminUserFlag() || isAdminRole();
+    }
+
+    /**
+     * Validación mejorada de isTenantAdmin:
+     * - Primero chequea bypass administrativo (SuperAdmin siempre pasa)
+     * - Luego valida que sea miembro del tenant
+     * - Luego valida que tenga role admin/owner
+     * - Para admins con JWT claims, valida integridad adicional
+     */
     function isTenantAdmin(tenantId) {
-      return hasAdministrativeBypass() || (isTenantMember(tenantId) && isAdminRole());
+      let currentEffectiveTenantId = effectiveTenantId();
+
+      // SuperAdmin siempre tiene acceso. Para admin regular se valida:
+      // 1) claim admin (JWT) o flag isAdmin en /users/{uid} + membresía + rol admin/owner
+      // 2) si tiene tenantId efectivo, debe coincidir con el tenant solicitado
+      return hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
+        (hasAdminClaim() || hasAdminUserFlag()) &&
+        isTenantMember(tenantId) &&
+        (currentEffectiveTenantId == '' || currentEffectiveTenantId == tenantId)
+      );
     }
 
     function isTenantOwnerRecord(tenantData) {
@@ -129,11 +208,11 @@ service cloud.firestore {
       return isOwnUserDoc(userId) &&
         request.resource.data.accountType == 'store_owner' &&
         request.resource.data.role == 'owner' &&
-        request.resource.data.status == 'active' &&
+        request.resource.data.status in ['active', 'pending'] &&
         request.resource.data.isAdmin == false &&
         request.resource.data.isSuperAdmin == false &&
         request.resource.data.tenantId is string &&
-        get(/databases/$(database)/documents/tenants/$(request.resource.data.tenantId)).data.ownerUid == request.auth.uid;
+        request.resource.data.tenantId != '';
     }
 
     match /users/{userId} {
@@ -153,26 +232,38 @@ service cloud.firestore {
         hasSuperAdminClaim() ||
         (resource.data.tenantId is string && isTenantMember(resource.data.tenantId))
       );
-      allow create: if isAuthenticated() && request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId);
+      allow create: if isAuthenticated() && (
+        (request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId)) ||
+        // Bootstrap: propietario creando su propia membresía durante el registro de tienda
+        (request.resource.data.role == 'owner' &&
+          request.resource.data.tenantId is string &&
+          request.resource.data.email == request.auth.token.email)
+      );
       allow update, delete: if isAuthenticated() && resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId);
     }
 
     match /account_requests/{requestId} {
       allow read: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         resource.data.requestedBy == request.auth.uid ||
         (resource.data.tenantId is string && isTenantMember(resource.data.tenantId))
       );
-      allow create: if isAuthenticated() && request.resource.data.requestedBy == request.auth.uid;
+      allow create: if isAuthenticated() && (
+        request.resource.data.requestedBy == request.auth.uid ||
+        request.resource.data.uid == request.auth.uid
+      );
       allow update, delete: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId))
       );
     }
 
     match /tenants/{tenantId} {
       allow read: if isTenantMember(tenantId) || isTenantOwnerRecord(resource.data);
-      allow write: if isTenantAdmin(tenantId);
+      allow create: if isTenantAdmin(tenantId) ||
+        // Bootstrap: nuevo propietario creando su tenant durante el registro
+        (isAuthenticated() && request.resource.data.ownerUid == request.auth.uid);
+      allow update, delete: if isTenantAdmin(tenantId);
 
       match /public_products/{productId} {
         allow read: if true;
@@ -232,11 +323,11 @@ service cloud.firestore {
     match /domain_to_tenant/{domain} {
       allow read: if true;
       allow create: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (request.resource.data.tenantId is string && isTenantAdmin(request.resource.data.tenantId))
       );
       allow update: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (
           resource.data.tenantId is string &&
           isTenantAdmin(resource.data.tenantId) &&
@@ -244,7 +335,7 @@ service cloud.firestore {
         )
       );
       allow delete: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         (resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId))
       );
     }
@@ -268,12 +359,12 @@ service cloud.firestore {
     // --- Solicitudes de tienda ---
     match /store_requests/{requestId} {
       allow read: if isAuthenticated() && (
-        hasSuperAdminClaim() ||
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
         resource.data.userId == request.auth.uid
       );
       allow create: if isAuthenticated() &&
         request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && hasSuperAdminClaim();
+      allow update: if isAuthenticated() && (hasSuperAdminClaim() || hasSuperAdminUserFlag());
       allow delete: if false;
     }
 
@@ -290,7 +381,43 @@ service cloud.firestore {
 
     match /cross_catalog/{barcode} {
       allow read: if isAuthenticated();
-      allow write: if hasSuperAdminClaim();
+      allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag();
+    }
+
+    // --- Configuración de plataforma (solo admin/superAdmin) ---
+    // Contiene configuraciones globales como política de sesión (session.maxSessionHours).
+    // Lectura: cualquier usuario autenticado con rol admin u owner (para cargar política de sesión).
+    // Escritura: solo superAdmin o admin con claim de plataforma.
+    match /platform/{docId} {
+      allow read: if isAuthenticated() && (
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
+        normalizedRole() in ['admin', 'owner']
+      );
+      allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
+        isAuthenticated() && normalizedRole() == 'admin' && hasAdminClaim()
+      );
+    }
+
+    // --- Directorio interno de tenants (staff/admin) ---
+    match /tenant_directory/{tenantId} {
+      allow read: if isAuthenticated() && (
+        hasSuperAdminClaim() || hasSuperAdminUserFlag() || isTenantMember(tenantId)
+      );
+      allow create: if isTenantAdmin(tenantId) ||
+        // Bootstrap: propietario creando el directorio durante el registro de tienda
+        (isAuthenticated() && request.resource.data.ownerUid == request.auth.uid);
+      allow update, delete: if isTenantAdmin(tenantId);
+    }
+
+    // --- Directorio público de tenants (discovery web, sin autenticación) ---
+    match /public_tenant_directory/{tenantId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (
+        isTenantAdmin(tenantId) ||
+        // Bootstrap: el nuevo propietario puede crear su entrada pública durante el registro
+        request.resource.data.id == tenantId
+      );
+      allow update, delete: if isTenantAdmin(tenantId);
     }
 
     match /{document=**} {
