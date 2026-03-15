@@ -101,7 +101,15 @@ const el = {
   tenantPolicyPanel: document.getElementById("tenantPolicyPanel"),
   tenantActivationModeSelect: document.getElementById("tenantActivationModeSelect"),
   saveTenantPolicyButton: document.getElementById("saveTenantPolicyButton"),
-  tenantPolicyMessage: document.getElementById("tenantPolicyMessage")
+  tenantPolicyMessage: document.getElementById("tenantPolicyMessage"),
+  storeConfigPanel: document.getElementById("storeConfigPanel"),
+  storeCurrentDomain: document.getElementById("storeCurrentDomain"),
+  storeDomainInput: document.getElementById("storeDomainInput"),
+  setStoreDomainButton: document.getElementById("setStoreDomainButton"),
+  removeStoreDomainButton: document.getElementById("removeStoreDomainButton"),
+  storeDomainMessage: document.getElementById("storeDomainMessage"),
+  syncProductsButton: document.getElementById("syncProductsButton"),
+  syncProductsMessage: document.getElementById("syncProductsMessage")
 };
 
 const routeViews = {
@@ -112,6 +120,10 @@ const routeViews = {
   "#/settings/pricing": { title: "Configuración de pricing", description: "Módulo en migración." },
   "#/settings/marketing": { title: "Configuración de marketing", description: "Módulo en migración." },
   "#/settings/users": { title: "Gestión de usuarios", description: "Módulo en migración." },
+  "#/settings/store": {
+    title: "Tienda",
+    description: "Dominio personalizado y sincronización del catálogo público."
+  },
   "#/settings/cloud-services": {
     title: "Servicios cloud",
     description: "Gestión de backups y estado cloud del tenant."
@@ -218,6 +230,9 @@ function wireEvents() {
   el.logoutBtn.addEventListener("click", () => safeLogout("Sesión cerrada correctamente."));
   el.requestBackupButton.addEventListener("click", onRequestBackupNow);
   el.paymentsToggleButton.addEventListener("click", onApplyPaymentsToggle);
+  el.setStoreDomainButton?.addEventListener("click", onSetStoreDomain);
+  el.removeStoreDomainButton?.addEventListener("click", onRemoveStoreDomain);
+  el.syncProductsButton?.addEventListener("click", onSyncProducts);
   el.saveTenantPolicyButton?.addEventListener("click", onSaveTenantOnboardingPolicy);
   el.dashboardRetryButton?.addEventListener("click", loadDashboard);
   el.dashboardErrorRetryButton?.addEventListener("click", loadDashboard);
@@ -312,13 +327,20 @@ async function syncRouteWithPermissions() {
   if (currentRoute === "#/maintenance") {
     await loadMaintenanceTasks();
   }
+  if (currentRoute === "#/settings/store") {
+    await loadStoreConfig();
+  }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
   const canViewCosts = ["owner", "admin", "manager"].includes(appState.profile.role);
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
+  const isStoreRoute = currentRoute === "#/settings/store";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);
   el.paymentsControlPanel.hidden = !(canManageBackups && isCloudServicesRoute);
   el.costDashboardPanel.hidden = !(canViewCosts && isCloudServicesRoute);
+  if (el.storeConfigPanel) {
+    el.storeConfigPanel.hidden = !(canManageBackups && isStoreRoute);
+  }
 
   if (el.backupPanel.hidden) {
     stopBackupRequestsListener();
@@ -720,6 +742,7 @@ function toggleModulePanels(currentRoute) {
   if (el.dashboardPanel) el.dashboardPanel.hidden = currentRoute !== "#/dashboard";
   if (el.maintenancePanel) el.maintenancePanel.hidden = currentRoute !== "#/maintenance";
   if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = currentRoute !== "#/settings/cloud-services";
+  if (el.storeConfigPanel) el.storeConfigPanel.hidden = currentRoute !== "#/settings/store";
 }
 
 async function loadTenantOnboardingPolicy() {
@@ -762,6 +785,103 @@ function setTenantPolicyMessage(message) {
   if (el.tenantPolicyMessage) {
     el.tenantPolicyMessage.textContent = message || "";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Tienda: dominio personalizado y sincronización de catálogo
+// ---------------------------------------------------------------------------
+
+async function loadStoreConfig() {
+  if (!appState.profile || !el.storeCurrentDomain) return;
+  try {
+    const snap = await getDoc(
+      doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "public_store")
+    );
+    const data = snap.exists() ? snap.data() : {};
+    const domain = data?.publicDomain || "";
+    el.storeCurrentDomain.textContent = domain
+      ? `Dominio actual: ${domain}`
+      : "Sin dominio personalizado configurado.";
+    if (el.storeDomainInput && !el.storeDomainInput.value) {
+      el.storeDomainInput.value = domain;
+    }
+  } catch {
+    el.storeCurrentDomain.textContent = "No se pudo cargar la configuración de tienda.";
+  }
+}
+
+async function onSetStoreDomain() {
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    setStoreDomainMessage("Solo owner/admin pueden configurar el dominio.");
+    return;
+  }
+  const domain = (el.storeDomainInput?.value || "").trim().toLowerCase();
+  if (!domain) {
+    setStoreDomainMessage("Ingresá un dominio válido.");
+    return;
+  }
+  try {
+    el.setStoreDomainButton.disabled = true;
+    const callable = httpsCallable(appState.cloudFunctions, "setStoreDomain");
+    const response = await callable({ tenantId: appState.profile.tenantId, domain });
+    const result = response?.data || {};
+    el.storeCurrentDomain.textContent = `Dominio actual: ${result.domain}`;
+    setStoreDomainMessage(
+      `Dominio vinculado: ${result.domain}. Próximo paso: agregalo en Firebase Console → Hosting y cargá los registros DNS en tu proveedor.`
+    );
+  } catch (error) {
+    setStoreDomainMessage(parseAuthError(error));
+  } finally {
+    el.setStoreDomainButton.disabled = false;
+  }
+}
+
+async function onRemoveStoreDomain() {
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    setStoreDomainMessage("Solo owner/admin pueden quitar el dominio.");
+    return;
+  }
+  if (!window.confirm("¿Confirmás que querés quitar el dominio personalizado de esta tienda?")) return;
+  try {
+    el.removeStoreDomainButton.disabled = true;
+    const callable = httpsCallable(appState.cloudFunctions, "removeStoreDomain");
+    const response = await callable({ tenantId: appState.profile.tenantId });
+    const removed = response?.data?.removed === true;
+    el.storeCurrentDomain.textContent = "Sin dominio personalizado configurado.";
+    if (el.storeDomainInput) el.storeDomainInput.value = "";
+    setStoreDomainMessage(removed ? "Dominio eliminado correctamente." : "No había dominio configurado.");
+  } catch (error) {
+    setStoreDomainMessage(parseAuthError(error));
+  } finally {
+    el.removeStoreDomainButton.disabled = false;
+  }
+}
+
+async function onSyncProducts() {
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    setSyncProductsMessage("Solo owner/admin pueden sincronizar el catálogo.");
+    return;
+  }
+  try {
+    el.syncProductsButton.disabled = true;
+    setSyncProductsMessage("Sincronizando...");
+    const callable = httpsCallable(appState.cloudFunctions, "triggerStoreProductsSync");
+    const response = await callable({ tenantId: appState.profile.tenantId });
+    const count = response?.data?.syncedCount ?? 0;
+    setSyncProductsMessage(`Sincronización completada. ${count} producto(s) publicados en el catálogo.`);
+  } catch (error) {
+    setSyncProductsMessage(parseAuthError(error));
+  } finally {
+    el.syncProductsButton.disabled = false;
+  }
+}
+
+function setStoreDomainMessage(message) {
+  if (el.storeDomainMessage) el.storeDomainMessage.textContent = message || "";
+}
+
+function setSyncProductsMessage(message) {
+  if (el.syncProductsMessage) el.syncProductsMessage.textContent = message || "";
 }
 
 function parseAuthError(error) {
