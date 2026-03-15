@@ -419,11 +419,12 @@ fun SellScreen(
                                         onValueChange = { value ->
                                             val sanitized = value.filter { it.isDigit() }.take(3)
                                             descuentoInput = sanitized
-                                            val percent = sanitized.toIntOrNull()?.coerceIn(0, 100) ?: 0
+                                            val maxAllowed = (100 - ui.customerDiscountPercent).coerceAtLeast(0)
+                                            val percent = sanitized.toIntOrNull()?.coerceIn(0, maxAllowed) ?: 0
                                             sellVm.setDiscountPercent(percent)
                                         },
                                         modifier = Modifier.fillMaxWidth(),
-                                        label = { Text("Porcentaje de descuento (máx. 100%)") },
+                                        label = { Text("Porcentaje de descuento (máx. ${(100 - ui.customerDiscountPercent).coerceAtLeast(0)}%)") },
                                         placeholder = { Text("Ej: 10") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true,

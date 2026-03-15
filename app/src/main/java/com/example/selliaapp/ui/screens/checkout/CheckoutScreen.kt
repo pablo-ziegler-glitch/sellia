@@ -103,6 +103,11 @@ fun CheckoutScreen(
     var pendingCheckoutAction by remember { mutableStateOf(PendingCheckoutAction.CONFIRM_SALE) }
     var showBreakdown by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        // Recargo fue eliminado como feature; garantizamos que nunca infle el total silenciosamente
+        vm.setSurchargePercent(0)
+    }
+
     LaunchedEffect(state.customerDiscountPercent) {
         customerDiscountInput = if (state.customerDiscountPercent == 0) "" else state.customerDiscountPercent.toString()
     }
