@@ -16,12 +16,12 @@
     publicProductCollection: "public_products",
     refreshIntervalMs: 300000,
     firebase: {
-      apiKey: runtimeFirebase.apiKey || "",
+      apiKey: runtimeFirebase.apiKey || "AIzaSyDyi0skvcP4OPOyqZCeoGfknZM5n-Y0yG8",
       authDomain: runtimeFirebase.authDomain || "sellia1993.firebaseapp.com",
       projectId: runtimeFirebase.projectId || "sellia1993",
       storageBucket: runtimeFirebase.storageBucket || "sellia1993.firebasestorage.app",
-      messagingSenderId: runtimeFirebase.messagingSenderId || "",
-      appId: runtimeFirebase.appId || ""
+      messagingSenderId: runtimeFirebase.messagingSenderId || "218630438552",
+      appId: runtimeFirebase.appId || "1:218630438552:web:162de96e3b8fc05b1d9aed"
     },
     contact: {
       whatsapp: runtimeContact.whatsapp || "",
