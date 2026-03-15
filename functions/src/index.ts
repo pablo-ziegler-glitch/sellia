@@ -2964,7 +2964,7 @@ export const syncPublicProductOnWrite = functions.firestore
   });
 
 export const refreshPublicProducts = functions.pubsub
-  .schedule("every 15 minutes")
+  .schedule("every 24 hours")
   .onRun(async () => {
     const tenantsSnapshot = await db.collection("tenants").get();
     const now = Date.now();
@@ -2978,7 +2978,8 @@ export const refreshPublicProducts = functions.pubsub
         .doc("public_store");
       const configSnap = await configRef.get();
       const configData = configSnap.data() || {};
-      const enabled = configData.publicEnabled === true;
+      // publicEnabled es true por defecto; solo se omite si está explícitamente en false
+      const enabled = configData.publicEnabled !== false;
       if (!enabled) {
         continue;
       }
