@@ -52,7 +52,8 @@
 
     if (!config.tenantId && projectId && apiKey) {
       const hostname = globalScope.location.hostname.replace(/^www\./, "");
-      if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
+      const isFirebaseDefaultDomain = hostname.endsWith(".web.app") || hostname.endsWith(".firebaseapp.com");
+      if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1" && !isFirebaseDefaultDomain) {
         try {
           const domainLookupResp = await fetchWithTimeout(
             `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(hostname)}?key=${apiKey}`
