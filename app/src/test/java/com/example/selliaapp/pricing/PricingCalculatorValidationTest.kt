@@ -90,7 +90,7 @@ class PricingCalculatorValidationTest {
             fixedCosts = fixedCosts,
             mlFixedCostTiers = emptyList(),
             mlShippingTiers = emptyList(),
-            manualGainPercent = 80.0
+            gainTargetOverridePercent = 80.0
         )
 
         assertThat(withManualGain.cashPrice).isGreaterThan(withGlobalGain.cashPrice)
