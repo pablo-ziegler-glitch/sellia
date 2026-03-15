@@ -49,7 +49,9 @@ const el = {
   tenantBadge: document.getElementById("tenantBadge"),
   roleBadge: document.getElementById("roleBadge"),
   statusBadge: document.getElementById("statusBadge"),
-  permissionsList: document.getElementById("permissionsList"),
+  permissionsPanel: document.getElementById("permissionsPanel"),
+  permissionsRoleBadge: document.getElementById("permissionsRoleBadge"),
+  permissionsTagList: document.getElementById("permissionsTagList"),
   viewTitle: document.getElementById("viewTitle"),
   viewDescription: document.getElementById("viewDescription"),
   deniedState: document.getElementById("deniedState"),
@@ -131,6 +133,10 @@ const routeViews = {
   "#/maintenance": {
     title: "Mantenimiento",
     description: "Tareas operativas multi-tenant con auditoría de cambios."
+  },
+  "#/permissions": {
+    title: "Mis permisos",
+    description: "Permisos activos asignados a tu perfil."
   }
 };
 
@@ -299,9 +305,14 @@ function renderSession(profile) {
   el.roleBadge.textContent = normalizedRole || "-";
   el.statusBadge.textContent = profile.status;
   const permissions = rolePermissions(normalizedRole);
-  el.permissionsList.innerHTML = permissions.length
-    ? permissions.map((permission) => `<li>${permission}</li>`).join("")
-    : "<li>Sin permisos internos.</li>";
+  if (el.permissionsRoleBadge) {
+    el.permissionsRoleBadge.textContent = normalizedRole || "-";
+  }
+  if (el.permissionsTagList) {
+    el.permissionsTagList.innerHTML = permissions.length
+      ? permissions.map((p) => `<span class="perm-tag">${p}</span>`).join("")
+      : '<span class="perm-empty">Sin permisos asignados.</span>';
+  }
 }
 
 async function syncRouteWithPermissions() {
@@ -443,7 +454,7 @@ function clearSessionState() {
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
   stopPaymentsListeners();
-  el.permissionsList.innerHTML = "";
+  if (el.permissionsTagList) el.permissionsTagList.innerHTML = "";
   el.backupPanel.hidden = true;
   el.costDashboardPanel.hidden = true;
   el.backupRequestsBody.innerHTML = '<tr><td colspan="6">Sin solicitudes recientes.</td></tr>';
@@ -746,6 +757,7 @@ function toggleModulePanels(currentRoute) {
   if (el.maintenancePanel) el.maintenancePanel.hidden = currentRoute !== "#/maintenance";
   if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = currentRoute !== "#/settings/cloud-services";
   if (el.storeConfigPanel) el.storeConfigPanel.hidden = currentRoute !== "#/settings/store";
+  if (el.permissionsPanel) el.permissionsPanel.hidden = currentRoute !== "#/permissions";
 }
 
 async function loadTenantOnboardingPolicy() {
