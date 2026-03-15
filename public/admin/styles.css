@@ -390,6 +390,10 @@ body { margin: 0; }
 }
 
 /* ── Module panels ── */
+/* display:flex on .module-panel would override the HTML hidden attribute;
+   this rule ensures [hidden] always wins regardless of display value. */
+[hidden] { display: none !important; }
+
 .module-panel {
   display: flex;
   flex-direction: column;
