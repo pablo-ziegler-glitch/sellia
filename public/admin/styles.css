@@ -303,16 +303,16 @@ body { margin: 0; }
   box-shadow: 0 1px 4px rgba(14,25,47,0.05);
 }
 
-/* ── Permissions aside ── */
-.permissions {
-  background: var(--surface);
+/* ── Backup permissions (auth screen) ── */
+.backup-permissions {
+  margin-top: 20px;
+  background: #f8f9ff;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 18px;
-  box-shadow: 0 1px 4px rgba(14,25,47,0.04);
 }
 
-.permissions h3 {
+.backup-permissions h3 {
   margin: 0 0 8px;
   font-size: 0.78rem;
   font-weight: 700;
@@ -321,7 +321,7 @@ body { margin: 0; }
   color: var(--muted);
 }
 
-.permissions ul {
+.backup-permissions ul {
   margin: 0;
   padding-left: 18px;
   display: flex;
@@ -330,16 +330,63 @@ body { margin: 0; }
   list-style: disc;
 }
 
-.permissions li {
+.backup-permissions li {
   font-size: 0.82rem;
   color: #374151;
 }
 
-.backup-permissions {
-  margin-top: 20px;
-  background: #f8f9ff;
-  border-radius: 12px;
-  padding: 14px;
+/* ── Permissions panel (sidebar view) ── */
+.permissions-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.permissions-role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: var(--accent-light);
+  color: var(--accent);
+  border: 1px solid #dbe2ff;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: capitalize;
+  width: fit-content;
+}
+
+.permissions-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.perm-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background: #f4f6ff;
+  color: #2535cc;
+  border: 1px solid #dbe2ff;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-family: "Fira Code", "Cascadia Code", monospace;
+  letter-spacing: 0.01em;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.perm-tag:hover {
+  background: var(--accent-light);
+  border-color: #b5c0ff;
+}
+
+.perm-empty {
+  font-size: 0.875rem;
+  color: var(--muted);
 }
 
 /* ── Module panels ── */

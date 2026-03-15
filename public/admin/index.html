@@ -92,6 +92,13 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                 Mantenimiento
               </a>
+
+              <div class="nav-section-label">Cuenta</div>
+
+              <a href="#/permissions" class="nav-item" data-route="#/permissions">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Mis permisos
+              </a>
             </nav>
 
             <div class="sidebar-footer">
@@ -119,11 +126,6 @@
             <div class="main-inner">
 
               <p id="sessionBanner" class="banner"></p>
-
-              <aside class="permissions">
-                <h3>Permisos efectivos</h3>
-                <ul id="permissionsList"></ul>
-              </aside>
 
               <div class="view-header">
                 <h2 id="viewTitle">Panel de uso</h2>
@@ -289,6 +291,14 @@
                 <button id="saveTenantPolicyButton" type="button">Guardar política</button>
                 <p id="tenantPolicyMessage" class="banner"></p>
               </section>
+
+              <section id="permissionsPanel" class="module-panel" hidden>
+                  <div class="permissions-header">
+                    <div id="permissionsRoleBadge" class="permissions-role-badge"></div>
+                    <p class="muted">Estos son los permisos activos asignados a tu perfil en el backoffice.</p>
+                  </div>
+                  <div id="permissionsTagList" class="permissions-tag-list"></div>
+                </section>
 
               <section id="deniedState" class="state denied" hidden>
                 <h4>Acceso denegado</h4>
