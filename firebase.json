@@ -109,6 +109,11 @@
         "type": 301
       },
       {
+        "source": "/backoffice/store",
+        "destination": "/admin/#/settings/store",
+        "type": 301
+      },
+      {
         "source": "/backoffice/**",
         "destination": "/admin/",
         "type": 301

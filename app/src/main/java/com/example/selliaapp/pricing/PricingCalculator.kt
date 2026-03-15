@@ -15,7 +15,23 @@ data class PricingResult(
     val ml3cPrice: Double?,
     val ml6cPrice: Double?,
     val fixedCostImputed: Double,
-    val fixedCostUnit: Double
+    val fixedCostUnit: Double,
+    /** Base de costo: compra + costo fijo imputado + operativos */
+    val costBase: Double,
+    /** Monto de operativos locales en pesos */
+    val operativosAmount: Double,
+    /** Costo que cobra el procesador al cobrar con precio lista (posnet 3 cuotas + IVA) */
+    val listPaymentCost: Double,
+    /** Ganancia neta al cobrar con precio lista (listPrice - listPaymentCost - costBase) */
+    val listNetGain: Double,
+    /** Costo del procesador al cobrar en efectivo (cobro en el momento + IVA) */
+    val cashPaymentCost: Double,
+    /** Ganancia neta al cobrar en efectivo (cashPrice - cashPaymentCost - costBase) */
+    val cashNetGain: Double,
+    /** Costo del procesador al cobrar por transferencia (cobro en el momento + IVA) */
+    val transferPaymentCost: Double,
+    /** Ganancia neta al cobrar por transferencia (transferNetPrice - transferPaymentCost - costBase) */
+    val transferNetGain: Double
 )
 
 data class MlPricingResult(
@@ -46,17 +62,35 @@ object PricingCalculator {
         val posnet3Cuotas = settings.posnet3CuotasPercent / 100.0
         val transferenciaRetencion = settings.transferenciaRetencionPercent / 100.0
 
-        val baseWithProfit = (purchasePrice + fixedCostImputed) * (1 + targetMargin)
-        val withOperatives = baseWithProfit + (purchasePrice * operativosLocal)
-        val listPriceRaw = withOperatives * (1 + posnet3Cuotas)
-        val cashPriceRaw = withOperatives
-        val transferPriceRaw = withOperatives
+        // El margen se aplica sobre compra + operativos (ambos son costos que deben generar ganancia).
+        // El costo fijo imputado se suma al final, ya que sólo debe recuperarse (sin markup).
+        // El IVA de producto (21 %) se aplica al total final antes del recargo de cuotas,
+        // ya que es el impuesto que el cliente paga sobre el precio de venta.
+        val operativosAmount = purchasePrice * operativosLocal
+        val baseWithProfit = (purchasePrice + operativosAmount) * (1 + targetMargin)
+        val withFixed = baseWithProfit + fixedCostImputed
+        val ivaProduct = settings.ivaProductPercent / 100.0
+        val withIva = withFixed * (1 + ivaProduct)
+        val listPriceRaw = withIva * (1 + posnet3Cuotas)
+        val cashPriceRaw = withIva
+        val transferPriceRaw = withIva
 
         val listPrice = roundUpByTier(listPriceRaw)
         val cashPrice = roundUpByTier(cashPriceRaw)
         val transferPrice = roundUpByTier(transferPriceRaw)
         val transferNetPrice = transferPrice * (1 - transferenciaRetencion)
-        val costBase = purchasePrice + fixedCostImputed + (purchasePrice * operativosLocal)
+        val costBase = purchasePrice + fixedCostImputed + operativosAmount
+
+        // Costos del procesador de pago (con IVA incluido)
+        val ivaMultiplier = 1.0 + iva
+        val listPaymentCost = listPrice * (settings.posnetListaCostPercent / 100.0) * ivaMultiplier
+        val cashPaymentCost = cashPrice * (settings.cobroEnMomentoCostPercent / 100.0) * ivaMultiplier
+        val transferPaymentCost = transferNetPrice * (settings.cobroEnMomentoCostPercent / 100.0) * ivaMultiplier
+
+        val listNetGain = listPrice - listPaymentCost - costBase
+        val cashNetGain = cashPrice - cashPaymentCost - costBase
+        val transferNetGain = transferNetPrice - transferPaymentCost - costBase
+
         val mlPricing = calculateMercadoPagoPrices(
             priceLowerBound = listPrice,
             costBase = costBase,
@@ -74,7 +108,15 @@ object PricingCalculator {
             ml3cPrice = mlPricing?.ml3,
             ml6cPrice = mlPricing?.ml6,
             fixedCostImputed = fixedCostImputed,
-            fixedCostUnit = fixedCostUnit
+            fixedCostUnit = fixedCostUnit,
+            costBase = costBase,
+            operativosAmount = operativosAmount,
+            listPaymentCost = listPaymentCost,
+            listNetGain = listNetGain,
+            cashPaymentCost = cashPaymentCost,
+            cashNetGain = cashNetGain,
+            transferPaymentCost = transferPaymentCost,
+            transferNetGain = transferNetGain
         )
     }
 

@@ -140,6 +140,7 @@ sealed class Routes(val route: String) {
     object StoreRequestForm : Routes("store_request_form")
     object Storefront : Routes("storefront")
     object Notifications : Routes("notifications")
+    object StoreSettings : Routes("store_settings_hub")
 
     // ---------- NUEVO: Gastos ----------
     object ExpensesHub : Routes("expenses_hub")
