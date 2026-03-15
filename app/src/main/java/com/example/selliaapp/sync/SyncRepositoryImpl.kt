@@ -354,10 +354,7 @@ class SyncRepositoryImpl @Inject constructor(
         val customersCollection = firestore.collection("tenants")
             .document(tenantId)
             .collection("customers")
-        val cutoffMillis = System.currentTimeMillis() - 180L * 24 * 60 * 60 * 1000
-        val snapshot = customersCollection
-            .whereGreaterThanOrEqualTo("updatedAtMillis", cutoffMillis)
-            .get().await()
+        val snapshot = customersCollection.get().await()
         if (snapshot.isEmpty) return
 
         snapshot.documents

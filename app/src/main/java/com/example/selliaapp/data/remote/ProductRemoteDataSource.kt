@@ -2,6 +2,8 @@ package com.example.selliaapp.data.remote
 
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -91,15 +93,27 @@ class ProductRemoteDataSource(
     }
 
     suspend fun listAll(): List<ProductFirestoreMappers.RemoteProduct> {
-        val snap = collection().limit(500).get().await()
+        val allDocs = mutableListOf<DocumentSnapshot>()
+        var lastDoc: DocumentSnapshot? = null
+        do {
+            val query = collection()
+                .orderBy(FieldPath.documentId())
+                .let { if (lastDoc != null) it.startAfter(lastDoc!!) else it }
+                .limit(PAGE_SIZE)
+            val page = query.get().await()
+            allDocs.addAll(page.documents)
+            lastDoc = page.documents.lastOrNull()
+        } while (page.size() >= PAGE_SIZE)
         val deletedIds = deletionsCollection().get().await().documents.mapNotNull { it.id.toIntOrNull() }.toSet()
-        return snap.documents.mapNotNull { doc ->
-            if (doc.id.toIntOrNull() in deletedIds) {
-                return@mapNotNull null
-            }
+        return allDocs.mapNotNull { doc ->
+            if (doc.id.toIntOrNull() in deletedIds) return@mapNotNull null
             @Suppress("UNCHECKED_CAST")
             val data = doc.data as? Map<String, Any?> ?: return@mapNotNull null
             ProductFirestoreMappers.fromMap(doc.id, data)
         }
+    }
+
+    companion object {
+        private const val PAGE_SIZE = 500L
     }
 }
