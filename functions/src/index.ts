@@ -2964,7 +2964,7 @@ export const syncPublicProductOnWrite = functions.firestore
   });
 
 export const refreshPublicProducts = functions.pubsub
-  .schedule("every 24 hours")
+  .schedule("every 15 minutes")
   .onRun(async () => {
     const tenantsSnapshot = await db.collection("tenants").get();
     const now = Date.now();
@@ -5336,7 +5336,12 @@ export const setStoreDomain = functions
       .toLowerCase()
       .replace(/^www\./, "");
     if (previousDomain && previousDomain !== rawDomain) {
-      await db.collection("domain_to_tenant").doc(previousDomain).delete();
+      // Solo borrar el mapping anterior si efectivamente pertenece a este tenant,
+      // evitando que un admin con config manipulada borre el dominio de otro tenant.
+      const prevMappingDoc = await db.collection("domain_to_tenant").doc(previousDomain).get();
+      if (prevMappingDoc.exists && normalizeString(prevMappingDoc.data()?.tenantId) === tenantId) {
+        await db.collection("domain_to_tenant").doc(previousDomain).delete();
+      }
     }
 
     const now = admin.firestore.FieldValue.serverTimestamp();
@@ -5422,6 +5427,34 @@ export const removeStoreDomain = functions
 
     if (!publicDomain) {
       return { ok: true, tenantId, removed: false };
+    }
+
+    // Verificar que el mapping domain_to_tenant pertenece a este tenant antes de borrarlo.
+    const mappingDoc = await db.collection("domain_to_tenant").doc(publicDomain).get();
+    if (mappingDoc.exists && normalizeString(mappingDoc.data()?.tenantId) !== tenantId) {
+      // El mapping apunta a otro tenant; solo limpiar el config local sin tocar el mapping.
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const cleanupBatch = db.batch();
+      cleanupBatch.set(
+        publicStoreRef,
+        {
+          publicDomain: admin.firestore.FieldValue.delete(),
+          publicStoreUrl: admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      cleanupBatch.set(
+        db.collection("public_tenant_directory").doc(tenantId),
+        {
+          publicDomain: admin.firestore.FieldValue.delete(),
+          publicStoreUrl: admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      await cleanupBatch.commit();
+      return { ok: true, tenantId, domain: publicDomain, removed: false };
     }
 
     const now = admin.firestore.FieldValue.serverTimestamp();
@@ -5528,7 +5561,10 @@ export const triggerStoreProductsSync = functions
       }
     }
 
-    const publishedIds = new Set(publishedProducts.keys());
+    // Solo incluir en publishedIds los productos que efectivamente pasan la validación,
+    // para que la limpieza posterior elimine los que tienen marcadores contradictorios
+    // (ej: publicStatus: "draft" + legacy isPublic: true).
+    const publishedIds = new Set<string>();
 
     let syncBatch = db.batch();
     let batchCount = 0;
@@ -5537,6 +5573,7 @@ export const triggerStoreProductsSync = functions
     for (const productDoc of publishedProducts.values()) {
       const productData = productDoc.data();
       if (!productData || !isProductPublished(productData)) continue;
+      publishedIds.add(productDoc.id);
       const productPayload = buildPublicProductPayload(tenantId, productDoc.id, productData);
       const publicRef = db
         .collection("tenants")
