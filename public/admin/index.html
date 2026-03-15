@@ -67,6 +67,7 @@
           <a href="#/settings/pricing">Pricing</a>
           <a href="#/settings/marketing">Marketing</a>
           <a href="#/settings/users">Usuarios</a>
+          <a href="#/settings/store">Tienda</a>
           <a href="#/settings/cloud-services">Cloud Services</a>
           <a href="#/maintenance">Mantenimiento</a>
         </nav>
@@ -127,6 +128,31 @@
                 </tbody>
               </table>
             </div>
+          </section>
+
+          <section id="storeConfigPanel" class="backup-panel" hidden>
+            <h4>Dominio y catálogo público</h4>
+            <p class="muted">Configurá el dominio personalizado de la tienda y sincronizá el catálogo de productos.</p>
+            <p id="storeCurrentDomain" class="banner"></p>
+
+            <fieldset>
+              <legend>Dominio personalizado</legend>
+              <p class="muted">Ingresá solo el hostname sin <code>https://</code> ni rutas (ej: <code>mitienda.com</code>). Luego, en Firebase Console → Hosting, agregá ese dominio y copiá los registros DNS en tu proveedor para que quede activo.</p>
+              <label>
+                Dominio
+                <input id="storeDomainInput" type="text" maxlength="253" placeholder="mitienda.com" autocomplete="off" inputmode="url" />
+              </label>
+              <button id="setStoreDomainButton" type="button">Vincular dominio</button>
+              <button id="removeStoreDomainButton" type="button" class="secondary">Quitar dominio</button>
+              <p id="storeDomainMessage" class="banner"></p>
+            </fieldset>
+
+            <fieldset>
+              <legend>Catálogo público</legend>
+              <p class="muted">Forzá la sincronización si los productos no aparecen en el catálogo. Necesario la primera vez o cuando se cargan productos masivamente.</p>
+              <button id="syncProductsButton" type="button">Sincronizar productos ahora</button>
+              <p id="syncProductsMessage" class="banner"></p>
+            </fieldset>
           </section>
 
           <section id="paymentsControlPanel" class="backup-panel" hidden>

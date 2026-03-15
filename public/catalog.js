@@ -245,7 +245,9 @@ function renderProducts() {
     const emptyCell = document.createElement("td");
     emptyCell.setAttribute("colspan", hidePrices ? "2" : hideCashPrice ? "3" : "4");
     emptyCell.className = "muted";
-    emptyCell.textContent = "No hay productos para la tienda seleccionada.";
+    emptyCell.textContent = state.products.length === 0
+      ? "Catálogo en construcción. Los productos estarán disponibles pronto."
+      : "No hay productos para el filtro seleccionado.";
     emptyRow.appendChild(emptyCell);
     elements.catalogRows.appendChild(emptyRow);
   } else {
@@ -282,7 +284,11 @@ async function loadCatalog() {
     setStatus(`Cargando catálogo${tenantLabel} desde backend...`);
     state.products = await fetchCatalogProductsFromBackend();
     applyStoreMeta(state.storeMeta);
-    setStatus(state.products.length ? "" : "No hay productos públicos disponibles.");
+    if (!state.products.length) {
+      setStatus("Catálogo en construcción.");
+    } else {
+      setStatus("");
+    }
     renderStoreFilter();
     renderProducts();
   } catch (error) {
