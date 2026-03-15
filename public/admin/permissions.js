@@ -216,6 +216,9 @@ export const ROUTE_POLICIES = Object.freeze({
   "#/platform/audit":           MODULE_ROLE_POLICIES.platformAudit,
   "#/platform/support":         MODULE_ROLE_POLICIES.platformSupport,
   "#/platform/plans":           MODULE_ROLE_POLICIES.platformPlans,
+
+  // Cuenta (todos los roles internos)
+  "#/permissions":              ["owner", "admin", "manager", "cashier"],
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -247,7 +250,7 @@ export const ADMIN_STORE_DATA_RESTRICTED_ROUTES = new Set([
   "#/store/backups",
   "#/store/cloud-sync",
   "#/store/bulk-import",
-  "#/dashboard",   // dashboard de tienda contiene datos internos
+  // Nota: #/dashboard muestra métricas de uso (getUsageMetricsHistory), accesible para admin.
 ]);
 
 export const INTERNAL_ROLES = new Set(["owner", "admin", "manager", "cashier"]);

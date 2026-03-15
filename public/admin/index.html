@@ -134,6 +134,93 @@
 
               <section class="view">
 
+                <section id="dashboardPanel" class="module-panel" hidden>
+                  <h4>Panel de uso del tenant</h4>
+                  <p class="muted">Métricas de uso acumuladas del mes en curso.</p>
+                  <p id="dashboardLoading" class="muted" hidden>Cargando métricas...</p>
+                  <section id="dashboardEmpty" hidden>
+                    <p class="muted">Sin métricas disponibles para este período.</p>
+                    <button id="dashboardRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <section id="dashboardError" hidden>
+                    <p id="dashboardFeedback" class="error"></p>
+                    <button id="dashboardErrorRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <section id="dashboardContent" hidden>
+                    <p class="muted">Período: <strong id="dashboardPeriod">-</strong></p>
+                    <div class="stats-grid">
+                      <div class="stat-card">
+                        <div class="stat-label">Ops Firestore</div>
+                        <div class="stat-value" id="dashboardReads">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Auth</div>
+                        <div class="stat-value" id="dashboardWrites">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Storage</div>
+                        <div class="stat-value" id="dashboardStorage">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Funciones</div>
+                        <div class="stat-value" id="dashboardFunctions">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Errores colección</div>
+                        <div class="stat-value" id="dashboardErrors">-</div>
+                      </div>
+                    </div>
+                  </section>
+                </section>
+
+                <section id="maintenancePanel" class="module-panel" hidden>
+                  <h4>Tareas de mantenimiento</h4>
+                  <p class="muted">Gestión de tareas operativas multi-tenant con auditoría de cambios.</p>
+                  <p id="maintenanceLoading" class="muted" hidden>Cargando tareas...</p>
+                  <p id="maintenanceFeedback" class="banner"></p>
+                  <section id="maintenanceEmpty" hidden>
+                    <p class="muted">No hay tareas de mantenimiento registradas.</p>
+                    <button id="maintenanceRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <section id="maintenanceError" hidden>
+                    <button id="maintenanceErrorRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Título</th>
+                          <th>Estado</th>
+                          <th>Prioridad</th>
+                          <th>Bloqueante</th>
+                          <th>Creado</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="maintenanceBody">
+                        <tr><td colspan="6">Sin tareas registradas.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <form id="maintenanceCreateForm" class="form-grid">
+                    <legend style="font-weight:600;margin-bottom:.5rem">Nueva tarea</legend>
+                    <label>
+                      Título
+                      <input id="maintenanceTitleInput" type="text" maxlength="120" placeholder="Descripción breve de la tarea" required />
+                    </label>
+                    <label>
+                      Prioridad
+                      <select id="maintenancePriorityInput">
+                        <option value="low">Baja</option>
+                        <option value="medium" selected>Media</option>
+                        <option value="high">Alta</option>
+                        <option value="critical">Crítica</option>
+                      </select>
+                    </label>
+                    <button id="maintenanceCreateButton" type="submit">Crear tarea</button>
+                  </form>
+                </section>
+
                 <section id="costDashboardPanel" class="module-panel" hidden>
                   <h4>Costo cloud por tenant y servicio</h4>
                   <p class="muted">Visibilidad mensual de costo y desvíos contra presupuesto.</p>

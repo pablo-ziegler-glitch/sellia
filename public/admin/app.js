@@ -155,6 +155,7 @@ const appState = {
   backupRequestsUnsubscribe: null,
   paymentsFlagsUnsubscribe: null,
   paymentsAuditUnsubscribe: null,
+  maintenanceTasksUnsubscribe: null,
   maintenanceTasks: []
 };
 
@@ -335,6 +336,10 @@ async function syncRouteWithPermissions() {
     link.classList.toggle("active", link.dataset.route === currentRoute);
   });
 
+  if (currentRoute !== "#/maintenance") {
+    stopMaintenanceTasksListener();
+  }
+
   if (currentRoute === "#/dashboard") {
     await loadDashboard();
   }
@@ -451,6 +456,7 @@ function clearSessionState() {
   appState.profile = null;
   appState.sessionMaxMs = DEFAULT_SESSION_MAX_MS; // resetear al default
   appState.maintenanceTasks = [];
+  stopMaintenanceTasksListener();
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
   stopPaymentsListeners();
@@ -762,14 +768,13 @@ function toggleModulePanels(currentRoute) {
 
 async function loadTenantOnboardingPolicy() {
   if (!el.tenantPolicyPanel) return;
-  const canManage = appState.profile?.role === "owner";
-  el.tenantPolicyPanel.hidden = !canManage;
-  if (!canManage) return;
+  const canRead = ["owner", "admin"].includes(appState.profile?.role);
+  if (!canRead) return;
 
   try {
-    const policyRef = doc(appState.firestore, "config", "tenant_onboarding_policy");
-    const snap = await getDoc(policyRef);
-    const mode = snap.exists() && snap.data()?.activationMode === "manual" ? "manual" : "auto";
+    const callable = httpsCallable(appState.cloudFunctions, "getTenantOnboardingPolicy");
+    const response = await callable({});
+    const mode = response?.data?.tenantActivationMode === "manual" ? "manual" : "auto";
     if (el.tenantActivationModeSelect) el.tenantActivationModeSelect.value = mode;
     setTenantPolicyMessage("");
   } catch (error) {
@@ -778,23 +783,167 @@ async function loadTenantOnboardingPolicy() {
 }
 
 async function onSaveTenantOnboardingPolicy() {
-  setTenantPolicyMessage("Función de guardado en migración. Contactá a plataforma para aplicar cambios.");
+  if (!appState.profile || appState.profile.role !== "owner") {
+    setTenantPolicyMessage("Solo el owner puede modificar la política de activación.");
+    return;
+  }
+  const mode = el.tenantActivationModeSelect?.value || "auto";
+  try {
+    if (el.saveTenantPolicyButton) el.saveTenantPolicyButton.disabled = true;
+    const callable = httpsCallable(appState.cloudFunctions, "setTenantOnboardingPolicy");
+    await callable({ tenantActivationMode: mode });
+    setTenantPolicyMessage("Política guardada correctamente.");
+  } catch (error) {
+    setTenantPolicyMessage(parseAuthError(error));
+  } finally {
+    if (el.saveTenantPolicyButton) el.saveTenantPolicyButton.disabled = false;
+  }
 }
 
 async function loadDashboard() {
-  return Promise.resolve();
+  if (!appState.profile || !el.dashboardPanel) return;
+  setDashboardState("loading");
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "getUsageMetricsHistory");
+    const response = await callable({ tenantId: appState.profile.tenantId, limit: 1 });
+    const items = response?.data?.items || [];
+    if (!items.length) {
+      setDashboardState("empty");
+      return;
+    }
+    const item = items[0];
+    const overview = item.overview || {};
+    const period = item.period || {};
+    if (el.dashboardPeriod) {
+      const start = period.start ? new Date(period.start).toLocaleDateString("es-AR") : "-";
+      const end = period.end ? new Date(period.end).toLocaleDateString("es-AR") : "-";
+      el.dashboardPeriod.textContent = `${start} — ${end}`;
+    }
+    if (el.dashboardReads) el.dashboardReads.textContent = formatNumber(overview.firestore?.count ?? 0);
+    if (el.dashboardWrites) el.dashboardWrites.textContent = formatNumber(overview.auth?.count ?? 0);
+    if (el.dashboardStorage) el.dashboardStorage.textContent = formatBytes(overview.storage?.bytes ?? 0);
+    if (el.dashboardFunctions) el.dashboardFunctions.textContent = formatNumber(overview.functions?.count ?? 0);
+    if (el.dashboardErrors) el.dashboardErrors.textContent = formatNumber(item.errors?.count ?? 0);
+    setDashboardState("content");
+  } catch (error) {
+    setDashboardState("error");
+    if (el.dashboardFeedback) el.dashboardFeedback.textContent = parseAuthError(error);
+  }
+}
+
+function setDashboardState(state) {
+  if (el.dashboardLoading) el.dashboardLoading.hidden = state !== "loading";
+  if (el.dashboardEmpty) el.dashboardEmpty.hidden = state !== "empty";
+  if (el.dashboardError) el.dashboardError.hidden = state !== "error";
+  if (el.dashboardContent) el.dashboardContent.hidden = state !== "content";
 }
 
 async function loadMaintenanceTasks() {
-  return Promise.resolve();
+  if (!appState.profile || !el.maintenancePanel) return;
+  stopMaintenanceTasksListener();
+  setMaintenanceState("loading");
+  const q = query(
+    collection(appState.firestore, "tenants", appState.profile.tenantId, "maintenance_tasks"),
+    orderBy("createdAt", "desc"),
+    limit(20)
+  );
+  appState.maintenanceTasksUnsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      appState.maintenanceTasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (snapshot.empty) {
+        setMaintenanceState("empty");
+        return;
+      }
+      setMaintenanceState("content");
+      renderMaintenanceTasks(appState.maintenanceTasks);
+    },
+    (error) => {
+      setMaintenanceState("error", parseAuthError(error));
+    }
+  );
+}
+
+function stopMaintenanceTasksListener() {
+  if (typeof appState.maintenanceTasksUnsubscribe === "function") {
+    appState.maintenanceTasksUnsubscribe();
+  }
+  appState.maintenanceTasksUnsubscribe = null;
+}
+
+function setMaintenanceState(state, message) {
+  if (el.maintenanceLoading) el.maintenanceLoading.hidden = state !== "loading";
+  if (el.maintenanceEmpty) el.maintenanceEmpty.hidden = state !== "empty";
+  if (el.maintenanceError) el.maintenanceError.hidden = state !== "error";
+  if (el.maintenanceFeedback && message !== undefined) el.maintenanceFeedback.textContent = message;
+}
+
+function renderMaintenanceTasks(tasks) {
+  if (!el.maintenanceBody) return;
+  el.maintenanceBody.innerHTML = tasks.map((task) => {
+    const createdAtMs = task.createdAt?.toMillis?.();
+    const createdAt = createdAtMs ? new Date(createdAtMs).toLocaleString() : "-";
+    const isDone = task.status === "completed" || task.status === "cancelled";
+    const actions = isDone
+      ? "-"
+      : `<button class="secondary" data-action="complete" data-task-id="${task.id}">Completar</button>
+         <button class="secondary" data-action="cancel" data-task-id="${task.id}">Cancelar</button>`;
+    return `<tr>
+      <td>${escapeHtml(task.title || "-")}</td>
+      <td>${escapeHtml(task.status || "-")}</td>
+      <td>${escapeHtml(task.priority || "-")}</td>
+      <td>${task.operationalBlocker ? "Sí" : "No"}</td>
+      <td>${createdAt}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join("");
 }
 
 async function onCreateMaintenanceTask(event) {
   event?.preventDefault?.();
-  setSessionBanner("Creación de tareas de mantenimiento en migración.");
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = "Solo owner/admin pueden crear tareas.";
+    return;
+  }
+  const title = (el.maintenanceTitleInput?.value || "").trim();
+  const priority = el.maintenancePriorityInput?.value || "medium";
+  if (title.length < 3) {
+    if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = "El título debe tener al menos 3 caracteres.";
+    return;
+  }
+  try {
+    if (el.maintenanceCreateButton) el.maintenanceCreateButton.disabled = true;
+    if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = "";
+    const callable = httpsCallable(appState.cloudFunctions, "createMaintenanceTask");
+    await callable({ tenantId: appState.profile.tenantId, title, priority });
+    if (el.maintenanceTitleInput) el.maintenanceTitleInput.value = "";
+    if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = "Tarea creada correctamente.";
+  } catch (error) {
+    if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = parseAuthError(error);
+  } finally {
+    if (el.maintenanceCreateButton) el.maintenanceCreateButton.disabled = false;
+  }
 }
 
-function onMaintenanceActions() {}
+async function onMaintenanceActions(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button || !appState.profile) return;
+  const action = button.dataset.action;
+  const taskId = button.dataset.taskId;
+  if (!taskId) return;
+  const statusMap = { complete: "completed", cancel: "cancelled" };
+  const newStatus = statusMap[action];
+  if (!newStatus) return;
+  try {
+    button.disabled = true;
+    if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = "";
+    const callable = httpsCallable(appState.cloudFunctions, "updateMaintenanceTask");
+    await callable({ tenantId: appState.profile.tenantId, taskId, status: newStatus });
+  } catch (error) {
+    if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = parseAuthError(error);
+    button.disabled = false;
+  }
+}
 
 function setTenantPolicyMessage(message) {
   if (el.tenantPolicyMessage) {
@@ -817,7 +966,7 @@ async function loadStoreConfig() {
     el.storeCurrentDomain.textContent = domain
       ? `Dominio actual: ${domain}`
       : "Sin dominio personalizado configurado.";
-    if (el.storeDomainInput && !el.storeDomainInput.value) {
+    if (el.storeDomainInput) {
       el.storeDomainInput.value = domain;
     }
   } catch {
@@ -921,6 +1070,14 @@ function parseAuthError(error) {
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes || 0);
+  if (!Number.isFinite(n) || n === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log2(n) / 10), units.length - 1);
+  return `${(n / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
 function escapeHtml(value) {
