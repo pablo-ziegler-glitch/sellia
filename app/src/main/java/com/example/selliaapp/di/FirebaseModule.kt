@@ -5,6 +5,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.MemoryCacheSettings
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.storage.FirebaseStorage
 import dagger.Module
@@ -41,7 +42,7 @@ object FirebaseModule {
                 // de datos entre sesiones de distintas cuentas/tiendas. Cada lectura
                 // va siempre al servidor, garantizando que el usuario solo ve los datos
                 // de la tienda actualmente autenticada.
-                .setPersistenceEnabled(false)
+                .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
                 .build()
         }
     }

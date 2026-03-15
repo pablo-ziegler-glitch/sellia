@@ -34,6 +34,7 @@ class StorefrontRepositoryImpl @Inject constructor(
                     .document(DOC_STOREFRONT)
                     .get()
                     .await()
+                @Suppress("UNCHECKED_CAST")
                 val data = snapshot.data?.get(TenantConfigContract.Fields.DATA) as? Map<String, Any?>
                 if (data != null) StorefrontConfig.fromFirestore(data) else StorefrontConfig()
             }
