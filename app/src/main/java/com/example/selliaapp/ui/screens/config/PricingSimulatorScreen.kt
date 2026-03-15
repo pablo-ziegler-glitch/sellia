@@ -174,75 +174,88 @@ private fun ResultBreakdownCard(
     result: PricingResult
 ) {
     SimCard("Desglose del cálculo") {
+        // ── Variables intermedias (espejo exacto del PricingCalculator) ───────
+        val operativos = purchasePrice * (settings.operativosLocalPercent / 100.0)
+        val base = purchasePrice + result.fixedCostImputed
+        val targetMargin = settings.gainTargetPercent
+        val baseWithProfit = base * (1 + targetMargin / 100.0)
+        val withOperatives = baseWithProfit + operativos
+        val posnetPct = settings.posnet3CuotasPercent
+        val retencion = settings.transferenciaRetencionPercent
+        // ────────────────────────────────────────────────────────────────────
+
         SectionHeader("Datos de entrada")
         ResultRow("Precio de compra", purchasePrice)
-        ResultRow("Costo fijo imputado", result.fixedCostImputed)
-        ResultRow("Costo fijo unitario", result.fixedCostUnit)
+        ResultRow("Costo fijo unitario (total÷ventas est.)", result.fixedCostUnit)
+        val imputationMode = settings.fixedCostImputationMode.trim().uppercase()
+        val modeLabel = if (imputationMode == PricingSettingsEntity.FixedCostImputationMode.BY_PRICE_RANGE)
+            "Por rango de precio" else "Total a todos los productos"
+        ResultRow("Modo de imputación de costos fijos", modeLabel, isPercent = false)
+        if (imputationMode == PricingSettingsEntity.FixedCostImputationMode.BY_PRICE_RANGE) {
+            IvaInfoRow("Se aplicó un coeficiente de rango sobre el costo unitario según el precio de compra.")
+        }
+        ResultRow("Costo fijo imputado (usado en fórmula)", result.fixedCostImputed)
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         SectionHeader("IVA sobre costos fijos")
-        ResultRow("IVA terminal aplicado", "${settings.ivaTerminalPercent}%", isPercent = true)
+        ResultRow("IVA terminal (%)", "${settings.ivaTerminalPercent}%", isPercent = true)
         IvaInfoRow(
-            "Aplica solo a costos fijos con IVA habilitado (ej.: comisiones, servicios). " +
-                "El costo fijo imputado ya incluye este ajuste."
+            "Aplica solo a costos fijos con IVA habilitado (ej.: comisiones de terminal). " +
+                "El costo fijo imputado ya incluye este ajuste. " +
+                "Los precios de venta al público NO agregan IVA extra al consumidor."
         )
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Fórmula de cálculo")
-        val base = purchasePrice + result.fixedCostImputed
-        ResultRow("Base (compra + costo fijo)", base)
-        val targetMargin = settings.gainTargetPercent
-        ResultRow("Margen objetivo", "${targetMargin}%", isPercent = true)
-        val baseWithProfit = base * (1 + targetMargin / 100.0)
-        ResultRow("Base + margen", baseWithProfit)
-        val operativos = purchasePrice * (settings.operativosLocalPercent / 100.0)
-        ResultRow("Operativos (${settings.operativosLocalPercent}% s/compra)", operativos)
-        val withOperatives = baseWithProfit + operativos
-        ResultRow("Subtotal operativo", withOperatives)
+        SectionHeader("Fórmula paso a paso")
+        ResultRow("① Base (compra + costo fijo imputado)", base)
+        ResultRow("② Margen objetivo (${targetMargin}%)", base * (targetMargin / 100.0))
+        ResultRow("③ Base + margen", baseWithProfit)
+        ResultRow("④ Operativos local (${settings.operativosLocalPercent}% s/compra)", operativos)
+        ResultRow("⑤ Subtotal operativo (③+④)", withOperatives)
+        ResultRow("⑥ Recargo Posnet 3 cuotas (${posnetPct}% s/⑤)", withOperatives * (posnetPct / 100.0))
+        IvaInfoRow("Los precios finales se redondean al escalón más cercano (≤1500→50, ≤3000→100, ≤5000→200, +5000→500)")
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         SectionHeader("Precios finales (Local)")
-        IvaInfoRow("Estos precios son al consumidor final. No se suma IVA adicional al momento de cobrar.")
-        val posnetPct = settings.posnet3CuotasPercent
-        ResultRow("Recargo Posnet 3 cuotas (+${posnetPct}%)", result.listPrice - withOperatives)
+        IvaInfoRow("Precios al consumidor final. NO incluyen IVA adicional. La retención de transferencia es interna.")
         HighlightRow(
-            label = "Precio LISTA",
+            label = "Precio LISTA  (⑤+⑥, redondeado)",
             value = result.listPrice,
-            badge = "Sin recargo IVA"
+            badge = "Incluye recargo Posnet · Sin IVA extra"
         )
         HighlightRow(
-            label = "Precio EFECTIVO",
+            label = "Precio EFECTIVO  (⑤, redondeado)",
             value = result.cashPrice,
-            badge = "Sin recargo IVA"
+            badge = "Sin recargo Posnet · Sin IVA extra"
         )
         HighlightRow(
-            label = "Precio TRANSFERENCIA",
+            label = "Precio TRANSFERENCIA  (⑤, redondeado)",
             value = result.transferPrice,
-            badge = "Sin recargo IVA"
+            badge = "Sin recargo Posnet · Sin IVA extra"
         )
-        val retencion = settings.transferenciaRetencionPercent
-        ResultRow("Retención transf. (${retencion}%)", result.transferPrice - result.transferNetPrice)
-        ResultRow("Neto transferencia (lo que ingresa)", result.transferNetPrice)
+        ResultRow("  ↳ Retención transf. (${retencion}%)", result.transferPrice - result.transferNetPrice)
+        ResultRow("  ↳ Neto que ingresa a tu cuenta", result.transferNetPrice)
 
         if (result.mlPrice != null) {
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             SectionHeader("Precios Mercado Libre / Pago")
-            IvaInfoRow("Precio publicado en ML. Incluye comisión, cuotas y envío. No suma IVA extra al comprador.")
-            HighlightRow("ML sin cuotas", result.mlPrice, badge = "Sin recargo IVA")
+            IvaInfoRow("Precio publicado en ML. La plataforma ya descuenta comisión y cuotas. Sin IVA extra al comprador.")
+            HighlightRow("ML sin cuotas", result.mlPrice, badge = "Sin IVA extra al comprador")
             if (result.ml3cPrice != null) {
-                HighlightRow("ML 3 cuotas", result.ml3cPrice, badge = "Sin recargo IVA")
+                HighlightRow("ML 3 cuotas", result.ml3cPrice, badge = "Sin IVA extra al comprador")
             }
             if (result.ml6cPrice != null) {
-                HighlightRow("ML 6 cuotas", result.ml6cPrice, badge = "Sin recargo IVA")
+                HighlightRow("ML 6 cuotas", result.ml6cPrice, badge = "Sin IVA extra al comprador")
             }
         }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         SectionHeader("Márgenes estimados")
+        IvaInfoRow("Base de costo = compra + costo fijo imputado + operativos")
         val costBase = purchasePrice + result.fixedCostImputed + operativos
         MarginRow("Margen LISTA", result.listPrice, costBase)
         MarginRow("Margen EFECTIVO", result.cashPrice, costBase)
@@ -250,7 +263,7 @@ private fun ResultBreakdownCard(
         if (result.mlPrice != null) {
             val mlComm = result.mlPrice * (settings.mlCommissionPercent / 100.0)
             val mlNet = result.mlPrice - mlComm
-            MarginRow("Margen ML (aprox.)", mlNet, costBase)
+            MarginRow("Margen ML (aprox., sin envío)", mlNet, costBase)
         }
     }
 }
