@@ -54,8 +54,6 @@ class AuthManager @Inject constructor(
     private val _state = MutableStateFlow<AuthState>(AuthState.Loading)
     val state: StateFlow<AuthState> = _state
 
-    private var sessionExpiryJob: Job? = null
-
     private val _lastSessionRefreshAtMs = MutableStateFlow<Long?>(null)
     val lastSessionRefreshAtMs: StateFlow<Long?> = _lastSessionRefreshAtMs
 
@@ -323,7 +321,7 @@ class AuthManager @Inject constructor(
         // ── Verificar límite absoluto de sesión ──────────────────────────────
         // Usamos lastSignInTime del metadata de Firebase: timestamp del último
         // inicio de sesión real (no se actualiza con refreshes de token).
-        val lastSignInMs = user.metadata?.lastSignInTime ?: System.currentTimeMillis()
+        val lastSignInMs = user.metadata?.lastSignInTimestamp ?: System.currentTimeMillis()
         val sessionAgeMs = System.currentTimeMillis() - lastSignInMs
         if (sessionAgeMs > sessionMaxDurationMs) {
             val hours = sessionMaxDurationMs / (1000 * 60 * 60)

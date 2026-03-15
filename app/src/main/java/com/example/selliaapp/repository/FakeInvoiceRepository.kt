@@ -5,8 +5,10 @@ import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
 import com.example.selliaapp.data.model.OrderStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
+import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.InvoiceDraft
+import com.example.selliaapp.data.model.sales.InvoiceProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceResult
 import com.example.selliaapp.data.model.sales.InvoiceSummary
 import kotlinx.coroutines.flow.Flow
@@ -42,4 +44,10 @@ class FakeInvoiceRepository : InvoiceRepository {
     override suspend fun salesLastDays(dias: Int): List<DailySalesPoint> = emptyList()
 
     override suspend fun refreshOrderStatus(orderId: String): OrderStatus? = null
+
+    override suspend fun getProfitReport(from: Long, to: Long): List<InvoiceProfitSummary> = emptyList()
+
+    override suspend fun getDailyProfitSummary(from: Long, to: Long): List<DailyProfitSummary> = emptyList()
+
+    override fun observeProfitSummaries(): Flow<List<InvoiceProfitSummary>> = flowOf(emptyList())
 }
