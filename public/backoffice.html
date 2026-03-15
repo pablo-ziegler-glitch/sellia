@@ -1,9 +1,19 @@
 <!doctype html>
+<!--
+  DEPRECADO: Este backoffice legado está mantenido únicamente por compatibilidad.
+  El backoffice activo es /admin/. Plan de retiro:
+    - Fase 1 (actual): ambos coexisten; /backoffice.html redirigirá a /admin/ vía banner.
+    - Fase 2: agregar meta-redirect automático a /admin/ tras 30 días de aviso.
+    - Fase 3: eliminar este archivo y redirigir la URL desde firebase.json.
+  No agregar nuevas features aquí. Dirigir todo desarrollo a /admin/.
+-->
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sellia Backoffice</title>
+  <title>FLOKI Backoffice (Legado)</title>
+  <meta name="theme-color" content="#C9A227" />
+  <link rel="icon" href="/assets/favicon.v1.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -28,12 +38,43 @@
         <button data-filter="overdue" class="bo-filter">Vencidas</button>
         <button data-filter="blocker" class="bo-filter">Bloqueantes operativas</button>
       </div>
+      <div class="bo-maintenance-actions">
+        <button id="maintenance-create-btn" class="bo-filter">Crear tarea</button>
+        <button id="maintenance-retry-btn" class="bo-filter">Reintentar carga</button>
+      </div>
+      <p id="maintenance-status" class="bo-maintenance-status" role="status" aria-live="polite"></p>
       <ul id="maintenance-list" class="bo-list"></ul>
+      <button id="maintenance-load-more-btn" class="bo-filter bo-load-more" hidden>Cargar más tareas</button>
+    </section>
+
+
+    <section>
+      <h2>Pagos pendientes</h2>
+      <p>Consultá manualmente al provider para confirmar estado y recibir recomendación de acción.</p>
+      <div class="bo-payments-toolbar">
+        <button id="payments-retry-btn" class="bo-filter">Reintentar carga</button>
+      </div>
+      <p id="payments-status" class="bo-maintenance-status" role="status" aria-live="polite"></p>
+      <ul id="pending-payments-list" class="bo-list"></ul>
+    </section>
+
+    <section>
+      <h2>Backups y restore</h2>
+      <p>El restore nunca se ejecuta directo: primero se crea solicitud y se valida aprobación requerida.</p>
+      <div class="bo-restore-guard">
+        <label>
+          <input id="restore-confirm-check" type="checkbox" />
+          Confirmo que revisé alcance, runId y diff estimado.
+        </label>
+        <button id="restore-request-btn" class="bo-filter" disabled>Solicitar restore</button>
+      </div>
+      <ul id="restore-history-list" class="bo-list"></ul>
     </section>
   </main>
 
-  <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
+  <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous" defer></script>
   <script src="/safe-dom.js" defer></script>
-  <script src="/backoffice.js" defer></script>
+  <script src="/config.js" defer></script>
+  <script type="module" src="/backoffice.js"></script>
 </body>
 </html>

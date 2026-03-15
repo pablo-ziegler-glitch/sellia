@@ -206,6 +206,20 @@ class MarketingConfigRepository @Inject constructor(
                     SetOptions.merge()
                 )
                 .await()
+
+            if (publicDomain.isNotBlank()) {
+                firestore.collection("domain_to_tenant")
+                    .document(publicDomain)
+                    .set(
+                        mapOf(
+                            "tenantId" to tenantId,
+                            "createdAt" to FieldValue.serverTimestamp(),
+                            "updatedBy" to "android_marketing"
+                        ),
+                        SetOptions.merge()
+                    )
+                    .await()
+            }
         }
     }
 

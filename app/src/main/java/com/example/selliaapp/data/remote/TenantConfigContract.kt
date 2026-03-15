@@ -9,6 +9,7 @@ object TenantConfigContract {
     const val DOC_SECURITY = "security"
     const val DOC_CLOUD_SERVICES = "cloud_services"
     const val DOC_DEVELOPMENT_OPTIONS = "development_options"
+    const val DOC_PUBLIC_CATALOG = "public_catalog"
 
     const val CURRENT_SCHEMA_VERSION = 1
 

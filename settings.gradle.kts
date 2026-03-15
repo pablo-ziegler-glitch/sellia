@@ -9,11 +9,8 @@ pluginManagement {
 
             }
         }
-        maven(url = "https://maven.aliyun.com/repository/google")
-        maven(url = "https://maven.google.com")
         mavenCentral()
-        maven(url = "https://maven.aliyun.com/repository/central")
-        maven(url = "https://repo1.maven.org/maven2")
+        // Gradle plugin artifacts publicados en el Plugin Portal.
         gradlePluginPortal()
     }
 }
@@ -22,11 +19,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven(url = "https://jitpack.io") // <- necesario para tehras/charts
+        // Requerido por la dependencia com.github.tehras:charts.
+        maven(url = "https://jitpack.io")
 
     }
 }
 
 rootProject.name = "selliaApp"
 include(":app")
-

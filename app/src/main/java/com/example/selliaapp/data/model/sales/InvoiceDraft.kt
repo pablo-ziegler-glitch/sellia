@@ -1,4 +1,4 @@
- package com.example.selliaapp.data.model.sales
+package com.example.selliaapp.data.model.sales
 
 /**
  * Borrador de factura generado a partir del carrito.
@@ -16,5 +16,6 @@ data class InvoiceDraft(
     val paymentMethod: String = "",
     val paymentNotes: String? = null,
     val customerId: Long? = null,
-    val customerName: String? = null
+    val customerName: String? = null,
+    val breakdown: SaleBreakdown? = null
 )

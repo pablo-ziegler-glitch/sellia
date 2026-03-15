@@ -1,5 +1,16 @@
 # Reglas de seguridad Firestore (multi-tenant)
 
+
+## Fuente de verdad de permisos por rol
+
+La política transversal por módulos se centraliza en:
+
+- `functions/src/security/rolePermissionsMatrix.ts` (**canónica runtime única**)
+- `public/admin/permissions.js` (proyección frontend)
+- `docs/security/ROLE_PERMISSIONS_MATRIX.md` (proyección documental)
+
+Para Firestore administrativo de usuarios, el módulo aplicable es `users` (permitido solo para `owner` y `admin`).
+
 ## Política vigente para gestión de usuarios
 
 La política final de negocio queda definida así:
@@ -31,7 +42,20 @@ Se revisaron y dejaron consistentes los `match` administrativos que dependen de 
 - `match /users/{userId}` (paths administrativos)
 - `match /account_requests/{requestId}`
 
-Con esta consolidación, cualquier cambio futuro de política por rol debe tocar una sola fuente de verdad (`hasManageUsersRole`).
+### Compatibilidad de membresía tenant (`tenant_users`)
+
+Se agregó compatibilidad para membresías cuyo `documentId` en `tenant_users` usa email normalizado (`{tenantId}_{email}`) además de UID (`{tenantId}_{uid}`).
+
+Motivo: algunos flujos legacy del cliente Android escriben `tenant_users` con email como sufijo de ID, mientras que las reglas anteriores validaban únicamente por UID y terminaban denegando accesos legítimos de lectura/escritura en paths bajo `tenants/{tenantId}`.
+
+Implementación en reglas:
+
+- Nuevo helper `requesterEmail()` (claim `email` o fallback `users/{uid}.email`).
+- Nuevo helper `hasTenantMembershipDoc(tenantId)` que verifica existencia por UID o por email.
+- `isTenantMember(tenantId)` delega en `hasTenantMembershipDoc(tenantId)`.
+
+
+Con esta consolidación, cualquier cambio futuro de política por rol debe tocar una sola fuente de verdad (`functions/src/security/rolePermissionsMatrix.ts`) y luego actualizar changelog + revisión de seguridad en `docs/security/PERMISSIONS_CHANGELOG.md`.
 
 ## Validación con Emulator
 
@@ -69,3 +93,10 @@ npm run claims:super-admin:revoke -- --uid <UID>
 ```
 
 Tras actualizar claims, el cliente debe refrescar el ID token para que Firestore/Storage apliquen la nueva autorización.
+
+
+## Gobernanza y control en CI
+
+- Validación automática docs/runtime/frontend: `node functions/scripts/check-role-permissions-drift.js`.
+- El pipeline `Permissions Governance` falla si hay drift sin aprobación temporal vigente (`docs/security/permissions-drift-approvals.json`).
+- Toda versión nueva debe registrar su cambio en `docs/security/PERMISSIONS_CHANGELOG.md` con `Security review: APPROVED`.

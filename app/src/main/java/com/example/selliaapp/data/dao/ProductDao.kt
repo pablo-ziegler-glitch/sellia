@@ -134,10 +134,11 @@ interface ProductDao {
      */
     @Transaction
     suspend fun upsertByKeys(incoming: ProductEntity): Int {
+        val incomingBarcode = incoming.barcode
         val existing: ProductEntity? = when {
-            !incoming.barcode.isNullOrBlank() -> getByBarcodeOnce(incoming.barcode!!)
-            !incoming.name.isNullOrBlank()    -> getByNameOnce(incoming.name)
-            else                              -> null
+            !incomingBarcode.isNullOrBlank() -> getByBarcodeOnce(incomingBarcode)
+            !incoming.name.isNullOrBlank()   -> getByNameOnce(incoming.name)
+            else                             -> null
         }
         return if (existing == null) {
             insert(incoming).toInt()

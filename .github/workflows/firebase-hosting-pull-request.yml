@@ -8,12 +8,28 @@ permissions:
   contents: read
   pull-requests: write
 jobs:
-  build_and_preview:
+  security-gate:
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: no
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+      - run: npm ci
+      - run: npm --prefix functions ci
+      - run: npm --prefix functions run test:security:bo
+
+  build_and_preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    needs: security-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

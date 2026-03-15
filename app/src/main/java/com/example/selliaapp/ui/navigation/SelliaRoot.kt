@@ -88,14 +88,7 @@ fun SelliaRoot(
                     authViewModel.reportAuthError("No se pudo obtener el token de Google.")
                 } else {
                     if (googleAuthFlow == GoogleAuthFlow.REGISTER_FINAL_CUSTOMER) {
-                        val tenantName = registerState.tenants.firstOrNull {
-                            it.id == registerState.selectedTenantId
-                        }?.name
-                        registerViewModel.registerWithGoogle(
-                            idToken = token,
-                            tenantId = registerState.selectedTenantId,
-                            tenantName = tenantName
-                        )
+                        registerViewModel.registerWithGoogle(idToken = token)
                     } else {
                         authViewModel.signInWithGoogle(token, allowOnboardingFallback = false)
                     }
@@ -170,7 +163,7 @@ fun SelliaRoot(
             val tenantId = (authState as AuthState.Authenticated).session.tenantId
             LaunchedEffect(tenantId) {
                 // Fuerza una sincronización inicial al entrar con una sesión en un dispositivo nuevo.
-                SyncScheduler.enqueueNow(context, false)
+                SyncScheduler.enqueueNow(context)
             }
             SelliaApp(
                 navController = navController,
@@ -220,21 +213,10 @@ fun SelliaRoot(
                     isLoading = registerState.isLoading,
                     errorMessage = registerState.errorMessage,
                     successMessage = registerState.successMessage,
-                    tenants = registerState.tenants,
-                    selectedTenantId = registerState.selectedTenantId,
                     mode = registerState.mode,
-                    isLoadingTenants = registerState.isLoadingTenants,
                     onModeChange = registerViewModel::updateMode,
-                    onTenantChange = registerViewModel::selectTenant,
                     onSubmit = registerViewModel::register,
-                    onGoogleSignInClick = { tenantId, _ ->
-                        if (tenantId.isNullOrBlank()) {
-                            registerViewModel.clearError()
-                            authViewModel.reportAuthError("Seleccioná una tienda para continuar.")
-                        } else {
-                            onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER)
-                        }
-                    },
+                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER) },
                     onLoginClick = {
                         registerViewModel.clearError()
                         isRegistering = false
@@ -259,21 +241,10 @@ fun SelliaRoot(
                     isLoading = registerState.isLoading,
                     errorMessage = registerState.errorMessage,
                     successMessage = registerState.successMessage,
-                    tenants = registerState.tenants,
-                    selectedTenantId = registerState.selectedTenantId,
                     mode = registerState.mode,
-                    isLoadingTenants = registerState.isLoadingTenants,
                     onModeChange = registerViewModel::updateMode,
-                    onTenantChange = registerViewModel::selectTenant,
                     onSubmit = registerViewModel::register,
-                    onGoogleSignInClick = { tenantId, _ ->
-                        if (tenantId.isNullOrBlank()) {
-                            registerViewModel.clearError()
-                            authViewModel.reportAuthError("Seleccioná una tienda para continuar.")
-                        } else {
-                            onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER)
-                        }
-                    },
+                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER) },
                     onLoginClick = {
                         registerViewModel.clearError()
                         isRegistering = false

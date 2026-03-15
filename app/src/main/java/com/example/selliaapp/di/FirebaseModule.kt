@@ -5,6 +5,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.MemoryCacheSettings
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.storage.FirebaseStorage
 import dagger.Module
@@ -36,7 +37,12 @@ object FirebaseModule {
         // [NUEVO] Usa el FirebaseApp ya inicializado (evita Default FirebaseApp not initialized)
         return FirebaseFirestore.getInstance(firebaseApp).apply {
             firestoreSettings = FirebaseFirestoreSettings.Builder()
-                // .setPersistenceEnabled(true) // si querés cache offline
+                // Persistencia offline DESHABILITADA intencionalmente.
+                // Razón de seguridad: sin caché local no puede haber contaminación
+                // de datos entre sesiones de distintas cuentas/tiendas. Cada lectura
+                // va siempre al servidor, garantizando que el usuario solo ve los datos
+                // de la tienda actualmente autenticada.
+                .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
                 .build()
         }
     }

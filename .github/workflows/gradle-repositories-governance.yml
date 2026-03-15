@@ -1,0 +1,17 @@
+name: Gradle Repositories Governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate-gradle-repositories:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate approved Gradle repositories
+        run: ./scripts/check-approved-gradle-repos.sh

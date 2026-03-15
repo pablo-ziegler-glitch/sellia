@@ -2,7 +2,7 @@
   "name": "functions",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "scripts": {
@@ -17,12 +17,17 @@
     "claims:super-admin:grant": "node scripts/manage-super-admin-claim.js --grant",
     "claims:super-admin:revoke": "node scripts/manage-super-admin-claim.js --revoke",
     "admin:grant:dry": "node scripts/manage-admin-access.js --dry-run",
-    "admin:grant": "node scripts/manage-admin-access.js"
+    "admin:grant": "node scripts/manage-admin-access.js",
+    "admin:audit": "node scripts/audit-admin-integrity.js",
+    "admin:diagnose": "node scripts/admin-integrity-helpers.js",
+    "admin:health-check": "node scripts/admin-integrity-helpers.js --health-check",
+    "check:permissions-drift": "node scripts/check-role-permissions-drift.js",
+    "test:security:bo": "vitest run test/backofficeSecurity.integration.test.ts"
   },
   "dependencies": {
     "axios": "^1.6.7",
     "firebase-admin": "^11.11.1",
-    "firebase-functions": "^4.4.1",
+    "firebase-functions": "^4.9.0",
     "googleapis": "^133.0.0"
   },
   "devDependencies": {

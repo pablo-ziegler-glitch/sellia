@@ -2,9 +2,17 @@ const CONFIG_PLACEHOLDER = "REEMPLAZAR";
 
 const config = window.STORE_CONFIG || {};
 const firebaseConfig = config.firebase || {};
-const publicCollection = config.publicProductCollection || "public_products";
+const catalogApiBaseUrl = (config.publicCatalogApiBaseUrl || "/public/catalog").trim();
 const catalogLimit = Number(config.publicCatalogLimit) > 0 ? Number(config.publicCatalogLimit) : 1000;
-const catalogTenantId = (config.tenantId || "").trim();
+const catalogPageSize = Math.min(100, Number(config.publicCatalogPageSize) > 0 ? Number(config.publicCatalogPageSize) : 50);
+const catalogSort = String(config.publicCatalogSort || "name_asc").trim();
+const queryParams = new URLSearchParams(window.location.search || "");
+const tenantFromQuery = (
+  queryParams.get("tenantId") ||
+  queryParams.get("tienda") ||
+  queryParams.get("TIENDA") ||
+  ""
+).trim();
 
 const { sanitizeText } = window.SafeDom || {};
 
@@ -12,12 +20,24 @@ const elements = {
   storeFilter: document.getElementById("storeFilter"),
   catalogRows: document.getElementById("catalogRows"),
   catalogStatus: document.getElementById("catalogStatus"),
-  catalogCount: document.getElementById("catalogCount")
+  catalogCount: document.getElementById("catalogCount"),
+  catalogHeader: document.getElementById("catalogHeader"),
+  catalogLogo: document.getElementById("catalogLogo"),
+  catalogStoreName: document.getElementById("catalogStoreName"),
+  catalogHero: document.getElementById("catalogHero"),
+  catalogHeroTitle: document.getElementById("catalogHeroTitle"),
+  catalogHeroSubtitle: document.getElementById("catalogHeroSubtitle"),
+  catalogDefaultHeader: document.getElementById("catalogDefaultHeader"),
+  catalogFooter: document.getElementById("catalogFooter"),
+  catalogFooterText: document.getElementById("catalogFooterText"),
+  colHeaderListPrice: document.getElementById("colHeaderListPrice"),
+  colHeaderCashPrice: document.getElementById("colHeaderCashPrice")
 };
 
 const state = {
   products: [],
-  activeStore: "all"
+  activeStore: "all",
+  storeMeta: null
 };
 
 function isConfiguredValue(value) {
@@ -57,90 +77,130 @@ function normalizeProduct(raw) {
   };
 }
 
-function parseFirestoreDocument(doc) {
-  if (!doc?.fields) return null;
-  const fields = doc.fields;
-  const readString = (key) => fields[key]?.stringValue || "";
-  const readNumber = (key) => {
-    const rawValue = fields[key]?.doubleValue ?? fields[key]?.integerValue;
-    if (rawValue === undefined || rawValue === null || rawValue === "") return null;
-    const numberValue = Number(rawValue);
-    return Number.isFinite(numberValue) ? numberValue : null;
-  };
-
-  return {
-    id: doc.name?.split("/").pop() || "",
-    tenantId: readString("tenantId"),
-    storeName: readString("storeName"),
-    name: readString("name"),
-    sku: readString("sku"),
-    code: readString("code"),
-    barcode: readString("barcode"),
-    listPrice: readNumber("listPrice"),
-    cashPrice: readNumber("cashPrice")
-  };
+function getCatalogTenantId() {
+  if (tenantFromQuery) return tenantFromQuery;
+  return (config.tenantId || "").trim();
 }
 
-function buildRunQueryUrl() {
-  const projectId = firebaseConfig.projectId;
-  const apiKey = firebaseConfig.apiKey;
-  if (!isConfiguredValue(projectId) || !isConfiguredValue(apiKey)) return null;
-  if (catalogTenantId) {
-    return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/tenants/${encodeURIComponent(
-      catalogTenantId
-    )}:runQuery?key=${apiKey}`;
-  }
-  return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+function buildCatalogEndpointUrl(pageToken = "") {
+  const catalogTenantId = getCatalogTenantId();
+  const baseUrl = catalogApiBaseUrl || "/public/catalog";
+  const query = new URLSearchParams();
+  if (catalogTenantId) query.set("tenantId", catalogTenantId);
+  query.set("pageSize", String(catalogPageSize));
+  query.set("sort", catalogSort);
+  if (pageToken) query.set("pageToken", pageToken);
+
+  const hasQuery = baseUrl.includes("?");
+  return `${baseUrl}${hasQuery ? "&" : "?"}${query.toString()}`;
 }
 
-async function fetchFirestoreProducts() {
-  const runQueryUrl = buildRunQueryUrl();
-  if (!runQueryUrl) {
-    throw new Error("Falta configurar firebase.projectId o firebase.apiKey en config.js");
+function buildFriendlyCatalogError(error) {
+  const message = String(error?.message || "");
+  if (message.includes("tenantId es requerido")) {
+    return "Falta tenantId en la URL. Usá ?tenantId=<id_tienda>.";
+  }
+  if (message.includes("Rate limit")) {
+    return "Demasiadas solicitudes al catálogo. Reintentá en unos segundos.";
+  }
+  return message || "Error al cargar catálogo público.";
+}
+
+async function fetchCatalogProductsFromBackend() {
+  const catalogTenantId = getCatalogTenantId();
+  if (!catalogTenantId) {
+    throw new Error("tenantId es requerido para consultar el catálogo público");
   }
 
-  const body = {
-    structuredQuery: {
-      from: [{ collectionId: publicCollection, allDescendants: !catalogTenantId }],
-      select: {
-        fields: [
-          { fieldPath: "tenantId" },
-          { fieldPath: "storeName" },
-          { fieldPath: "name" },
-          { fieldPath: "sku" },
-          { fieldPath: "code" },
-          { fieldPath: "barcode" },
-          { fieldPath: "listPrice" },
-          { fieldPath: "cashPrice" }
-        ]
-      },
-      orderBy: [
-        { field: { fieldPath: "tenantId" }, direction: "ASCENDING" },
-        { field: { fieldPath: "name" }, direction: "ASCENDING" }
-      ],
-      limit: catalogLimit
+  const items = [];
+  let pageToken = "";
+
+  while (items.length < catalogLimit) {
+    const response = await fetch(buildCatalogEndpointUrl(pageToken), {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Backend catálogo respondió ${response.status}`);
     }
-  };
 
-  const response = await fetch(runQueryUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+    const data = await response.json();
+    const pageItems = Array.isArray(data.items) ? data.items : [];
+    items.push(...pageItems.map((product) => normalizeProduct(product)));
 
-  if (!response.ok) {
-    throw new Error(`Firestore respondió ${response.status}`);
+    if (!state.storeMeta && data.storeMeta) {
+      state.storeMeta = data.storeMeta;
+    }
+
+    if (!data.nextPageToken) break;
+    pageToken = String(data.nextPageToken);
   }
 
-  const rows = await response.json();
-  return rows
-    .map((row) => parseFirestoreDocument(row.document))
-    .filter(Boolean)
-    .map((product) => normalizeProduct(product));
+  return items.slice(0, catalogLimit);
+}
+
+function applyStoreMeta(meta) {
+  if (!meta) return;
+
+  const safe = sanitizeText || ((v) => String(v));
+
+  if (meta.storeName) {
+    document.title = `${safe(meta.storeName)} | Catálogo`;
+  }
+
+  if (meta.storeName || meta.storeLogoUrl) {
+    if (elements.catalogHeader) {
+      elements.catalogHeader.hidden = false;
+    }
+    if (meta.storeLogoUrl && elements.catalogLogo) {
+      elements.catalogLogo.src = meta.storeLogoUrl;
+      elements.catalogLogo.alt = safe(meta.storeName || "Logo");
+      elements.catalogLogo.hidden = false;
+    }
+    if (meta.storeName && elements.catalogStoreName) {
+      elements.catalogStoreName.textContent = safe(meta.storeName);
+    }
+  }
+
+  if (meta.heroTitle) {
+    if (elements.catalogHero) elements.catalogHero.hidden = false;
+    if (elements.catalogHeroTitle) elements.catalogHeroTitle.textContent = safe(meta.heroTitle);
+    if (meta.heroSubtitle && elements.catalogHeroSubtitle) {
+      elements.catalogHeroSubtitle.textContent = safe(meta.heroSubtitle);
+    }
+    if (elements.catalogDefaultHeader) elements.catalogDefaultHeader.hidden = true;
+  }
+
+  if (meta.footerText) {
+    if (elements.catalogFooter) elements.catalogFooter.hidden = false;
+    if (elements.catalogFooterText) elements.catalogFooterText.textContent = safe(meta.footerText);
+  }
+
+  if (meta.palette?.primary) {
+    document.documentElement.style.setProperty("--catalog-primary", meta.palette.primary);
+  }
+  if (meta.palette?.secondary) {
+    document.documentElement.style.setProperty("--catalog-secondary", meta.palette.secondary);
+  }
+
+  if (meta.showPrices === false) {
+    if (elements.colHeaderListPrice) elements.colHeaderListPrice.hidden = true;
+    if (elements.colHeaderCashPrice) elements.colHeaderCashPrice.hidden = true;
+  } else if (meta.showCashPrice === false) {
+    if (elements.colHeaderCashPrice) elements.colHeaderCashPrice.hidden = true;
+  }
+
+  const resolvedFromHostname = config._resolvedFromHostname === true;
+  if (resolvedFromHostname && elements.storeFilter) {
+    elements.storeFilter.closest(".catalog-toolbar")?.querySelector("label")?.remove();
+    elements.storeFilter.hidden = true;
+  }
 }
 
 function renderStoreFilter() {
-  if (!elements.storeFilter) return;
+  if (!elements.storeFilter || elements.storeFilter.hidden) return;
 
   const stores = new Map();
   state.products.forEach((product) => {
@@ -173,26 +233,37 @@ function getVisibleProducts() {
 function renderProducts() {
   if (!elements.catalogRows || !elements.catalogCount) return;
 
+  const meta = state.storeMeta;
+  const hidePrices = meta?.showPrices === false;
+  const hideCashPrice = meta?.showCashPrice === false;
+
   const visibleProducts = getVisibleProducts();
   elements.catalogRows.replaceChildren();
 
   if (visibleProducts.length === 0) {
     const emptyRow = document.createElement("tr");
     const emptyCell = document.createElement("td");
-    emptyCell.setAttribute("colspan", "4");
+    emptyCell.setAttribute("colspan", hidePrices ? "2" : hideCashPrice ? "3" : "4");
     emptyCell.className = "muted";
-    emptyCell.textContent = "No hay productos para la tienda seleccionada.";
+    emptyCell.textContent = state.products.length === 0
+      ? "Catálogo en construcción. Los productos estarán disponibles pronto."
+      : "No hay productos para el filtro seleccionado.";
     emptyRow.appendChild(emptyCell);
     elements.catalogRows.appendChild(emptyRow);
   } else {
     visibleProducts.forEach((product) => {
       const row = document.createElement("tr");
-      [
+      const cells = [
         sanitizeText ? sanitizeText(product.name) : String(product.name),
-        sanitizeText ? sanitizeText(product.sku) : String(product.sku),
-        formatCurrency(product.listPrice),
-        formatCurrency(product.cashPrice)
-      ].forEach((value) => {
+        sanitizeText ? sanitizeText(product.sku) : String(product.sku)
+      ];
+      if (!hidePrices) {
+        cells.push(formatCurrency(product.listPrice));
+        if (!hideCashPrice) {
+          cells.push(formatCurrency(product.cashPrice));
+        }
+      }
+      cells.forEach((value) => {
         const cell = document.createElement("td");
         cell.textContent = value;
         row.appendChild(cell);
@@ -206,15 +277,23 @@ function renderProducts() {
 
 async function loadCatalog() {
   try {
-    const tenantLabel = catalogTenantId ? ` de ${catalogTenantId}` : "";
-    setStatus(`Cargando catálogo${tenantLabel} desde Firestore...`);
-    state.products = await fetchFirestoreProducts();
-    setStatus(state.products.length ? "" : "No hay productos públicos disponibles.");
+    const catalogTenantId = getCatalogTenantId();
+    const tenantLabel = catalogTenantId
+      ? ` de la tienda ${catalogTenantId}`
+      : " de todas las tiendas";
+    setStatus(`Cargando catálogo${tenantLabel} desde backend...`);
+    state.products = await fetchCatalogProductsFromBackend();
+    applyStoreMeta(state.storeMeta);
+    if (!state.products.length) {
+      setStatus("Catálogo en construcción.");
+    } else {
+      setStatus("");
+    }
     renderStoreFilter();
     renderProducts();
   } catch (error) {
     console.error("No se pudo cargar el catálogo", error);
-    setStatus(error.message || "Error al cargar catálogo desde Firestore.", true);
+    setStatus(buildFriendlyCatalogError(error), true);
     state.products = [];
     renderStoreFilter();
     renderProducts();

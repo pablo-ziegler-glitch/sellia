@@ -73,6 +73,10 @@ Backoffice separado (operación interna):
 - `http://localhost:8080/admin/`
 - Requiere Firebase Auth + perfil en `users/{uid}` (tenant/role/status).
 
+Backoffice legacy (mantenimiento puntual / compatibilidad):
+- `http://localhost:8080/backoffice.html`
+- No reemplaza el flujo principal de `admin/`; mantener solo para transición controlada.
+
 ## 🚀 Despliegue a producción (secuencia única y obligatoria)
 > Esta secuencia es **obligatoria** para evitar desalineación entre reglas/índices, funciones y hosting. No cambiar el orden.
 
@@ -140,6 +144,7 @@ En App Hosting, configurá como raíz del servicio la carpeta del repositorio (`
 
 Guía recomendada para producción con QR público (web + app):
 - `docs/produccion-qr-web-app.md`
+- `docs/sre-sli-slo-alerting-runbooks.md` (SLI/SLO, alertas, runbooks, MTTR y postmortems)
 
 ## 🖼️ Reemplazo de assets
 - Para reemplazar imágenes, agregalas dentro de `public/assets/` en formato `.webp`.

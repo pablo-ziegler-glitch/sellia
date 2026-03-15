@@ -23,8 +23,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -49,19 +51,30 @@ fun ProviderInvoiceReaderScreen(
     val state by vm.state.collectAsState()
     val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
     val context = LocalContext.current
-    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+    val callbackGuard = remember { CallbackLifecycleGuard() }
     val scope = rememberCoroutineScope()
+
+    DisposableEffect(recognizer, callbackGuard) {
+        onDispose {
+            callbackGuard.dispose()
+            recognizer.close()
+        }
+    }
 
     fun processBitmap(bitmap: Bitmap) {
         recognizer.process(InputImage.fromBitmap(bitmap, 0))
             .addOnSuccessListener { result ->
+                if (!callbackGuard.isActive()) return@addOnSuccessListener
                 val detectedText = result.text.trim()
                 if (detectedText.isNotBlank()) {
-                    val merged = if (state.rawText.isBlank()) detectedText else "${state.rawText}\n\n$detectedText"
+                    val currentRawText = vm.state.value.rawText
+                    val merged = if (currentRawText.isBlank()) detectedText else "${currentRawText}\n\n$detectedText"
                     vm.onRawTextChange(merged)
                 }
             }
             .addOnFailureListener {
+                if (!callbackGuard.isActive()) return@addOnFailureListener
                 vm.onError("No se pudo leer texto de la imagen. Intentá con otra foto más nítida.")
             }
     }
@@ -86,6 +99,7 @@ fun ProviderInvoiceReaderScreen(
                 }
             }.onSuccess(::processBitmap)
                 .onFailure {
+                    if (!callbackGuard.isActive()) return@onFailure
                     vm.onError("No se pudo abrir la imagen seleccionada")
                 }
         }

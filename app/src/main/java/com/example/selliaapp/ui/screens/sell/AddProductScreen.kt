@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -44,16 +45,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.text.NumberFormat
+import java.util.Locale
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.ui.components.ImageUrlListEditor
 import com.example.selliaapp.ui.components.MultiSelectChipPicker
+import com.example.selliaapp.ui.components.NetGainChannel
+import com.example.selliaapp.ui.components.ProductNetGainPanel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel.UiState
 import com.example.selliaapp.viewmodel.PrefillData
@@ -112,13 +123,13 @@ fun AddProductScreen(
 
     // Precios y stock
     var purchasePriceText by remember { mutableStateOf("") }
+    var gainTargetPercentText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
     var cashPriceText by remember { mutableStateOf("") }
     var transferPriceText by remember { mutableStateOf("") }
     var mlPriceText by remember { mutableStateOf("") }
     var ml3cPriceText by remember { mutableStateOf("") }
     var ml6cPriceText by remember { mutableStateOf("") }
-    var manualGainPercentText by remember { mutableStateOf("") }
     var stockText by remember { mutableStateOf("0") }
 
     // Extras
@@ -145,6 +156,7 @@ fun AddProductScreen(
         viewModel.getAllCategoryNames().collectAsState(initial = emptyList()).value
     val providers: List<String> =
         viewModel.getAllProviderNames().collectAsState(initial = emptyList()).value
+    val pricingSettings by viewModel.pricingSettings.collectAsState()
 
     // Si editás, precargamos desde DB
     LaunchedEffect(editId) {
@@ -159,10 +171,10 @@ fun AddProductScreen(
                 cashPriceText = p.cashPrice?.toString() ?: ""
                 transferPriceText = p.transferPrice?.toString() ?: ""
                 purchasePriceText = p.purchasePrice?.toString() ?: ""
+                gainTargetPercentText = p.gainTargetPercent?.toString() ?: ""
                 mlPriceText = p.mlPrice?.toString() ?: ""
                 ml3cPriceText = p.ml3cPrice?.toString() ?: ""
                 ml6cPriceText = p.ml6cPrice?.toString() ?: ""
-                manualGainPercentText = p.manualGainPercent?.toString() ?: ""
                 stockText = p.quantity.toString()
                 description = p.description.orEmpty()
 
@@ -383,6 +395,14 @@ fun AddProductScreen(
             )
 
             OutlinedTextField(
+                value = gainTargetPercentText,
+                onValueChange = { gainTargetPercentText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                label = { Text("Ganancia individual (%)") },
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = { Text("Dejá vacío para usar la ganancia general de la configuración de pricing.") }
+            )
+
+            OutlinedTextField(
                 value = code,
                 onValueChange = { code = it },
                 label = { Text("Código interno (SKU)") },
@@ -449,15 +469,23 @@ fun AddProductScreen(
                 )
             }
 
-            OutlinedTextField(
-                value = manualGainPercentText,
-                onValueChange = { manualGainPercentText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                label = { Text("Ganancia manual (%)") },
-                supportingText = { Text("Si se completa, tiene prioridad sobre la regla general") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // --- Desglose de ganancia neta por canal ---
+            val purchaseVal = purchasePriceText.replace(',', '.').toDoubleOrNull()
+            if (purchaseVal != null && purchaseVal > 0) {
+                ProductNetGainPanel(
+                    purchasePrice = purchaseVal,
+                    posnetPercent = pricingSettings?.posnet3CuotasPercent ?: 0.0,
+                    operativosPercent = pricingSettings?.operativosLocalPercent ?: 0.0,
+                    channels = listOfNotNull(
+                        listPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Lista", it, applyPosnet = true) },
+                        cashPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Efectivo", it, applyPosnet = false) },
+                        transferPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Transferencia", it, applyPosnet = false) },
+                        mlPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (0C)", it, applyPosnet = false) },
+                        ml3cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (3C)", it, applyPosnet = false) },
+                        ml6cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (6C)", it, applyPosnet = false) }
+                    )
+                )
+            }
 
             OutlinedTextField(
                 value = description,
@@ -664,7 +692,7 @@ fun AddProductScreen(
                         val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
                         val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
                         val ml6cPrice = ml6cPriceText.replace(',', '.').toDoubleOrNull()
-                        val manualGainPercent = manualGainPercentText.replace(',', '.').toDoubleOrNull()
+                        val gainTargetPercent = gainTargetPercentText.replace(',', '.').toDoubleOrNull()
                         val qty = stockText.toIntOrNull() ?: 0
                         val minStock = minStockText.toIntOrNull()
 
@@ -682,7 +710,6 @@ fun AddProductScreen(
                                 mlPrice = mlPrice,
                                 ml3cPrice = ml3cPrice,
                                 ml6cPrice = ml6cPrice,
-                                manualGainPercent = manualGainPercent,
                                 stock = qty,
                                 code = code.ifBlank { null },
                                 description = description.ifBlank { null },
@@ -695,6 +722,7 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
+                                gainTargetPercent = gainTargetPercent,
                                 canManagePublication = canManagePublication,
                                 publishRequested = isPublished,
                                 pendingImageUris = pendingImageUris.toList()
@@ -718,7 +746,6 @@ fun AddProductScreen(
                                 mlPrice = mlPrice,
                                 ml3cPrice = ml3cPrice,
                                 ml6cPrice = ml6cPrice,
-                                manualGainPercent = manualGainPercent,
                                 stock = qty,
                                 code = code.ifBlank { null },
                                 description = description.ifBlank { null },
@@ -731,6 +758,7 @@ fun AddProductScreen(
                                 color = color.ifBlank { null },
                                 sizes = selectedSizes,
                                 minStock = minStock,
+                                gainTargetPercent = gainTargetPercent,
                                 canManagePublication = canManagePublication,
                                 publishRequested = isPublished
                             ) { result ->
@@ -772,6 +800,7 @@ private fun persistPreviewBitmap(context: android.content.Context, bitmap: Bitma
         Uri.fromFile(file)
     }.getOrNull()
 }
+
 
 @Composable
 private fun InfoMessage(

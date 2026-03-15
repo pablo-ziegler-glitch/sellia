@@ -10,6 +10,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -21,6 +22,7 @@ import javax.inject.Singleton
 class AuthOnboardingRepositoryImpl @Inject constructor(
     private val auth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
+    private val functions: FirebaseFunctions,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) : AuthOnboardingRepository {
 
@@ -29,6 +31,8 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         const val ACCOUNT_TYPE_FINAL_CUSTOMER = "final_customer"
         const val ACCOUNT_ORIGIN_PUBLIC_SIGN_UP = "public_sign_up"
         const val ACCOUNT_ORIGIN_ADMIN_FLOW = "admin_flow"
+        const val TENANT_ACTIVATION_MODE_AUTO = "auto"
+        const val TENANT_ACTIVATION_MODE_MANUAL = "manual"
     }
 
     override suspend fun registerStore(
@@ -46,6 +50,12 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             val batch = firestore.batch()
             val createdAt = FieldValue.serverTimestamp()
             val resolvedSkuPrefix = normalizeSkuPrefix(skuPrefix) ?: deriveSkuPrefix(storeName)
+            val activationMode = resolveTenantActivationMode()
+            val requiresManualApproval = activationMode == TENANT_ACTIVATION_MODE_MANUAL
+            val accountStatus = if (requiresManualApproval) "pending" else "active"
+            val tenantStatus = if (requiresManualApproval) "pending_approval" else "active"
+            val activationPolicy = if (requiresManualApproval) "manual_admin_approval" else "auto_active"
+            val loginEnabled = !requiresManualApproval
 
             val userRef = firestore.collection("users").document(user.uid)
             batch.set(
@@ -56,9 +66,12 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "email" to email,
                     "role" to AppRole.OWNER.raw,
                     "accountType" to ACCOUNT_TYPE_STORE_OWNER,
-                    "status" to "pending",
+                    "status" to accountStatus,
+                    "isAdmin" to false,
+                    "isSuperAdmin" to false,
                     "createdAt" to createdAt,
-                    "accountOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW
+                    "accountOrigin" to ACCOUNT_ORIGIN_ADMIN_FLOW,
+                    "isActive" to loginEnabled
                 )
             )
 
@@ -72,9 +85,10 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "phone" to storePhone,
                     "ownerUid" to user.uid,
                     "ownerEmail" to email,
-                    "status" to "pending",
-                    "activationPolicy" to "manual_admin_approval",
-                    "loginEnabled" to false,
+                    "status" to tenantStatus,
+                    "activationPolicy" to activationPolicy,
+                    "loginEnabled" to loginEnabled,
+                    "isActive" to loginEnabled,
                     "enabledModules" to defaultEnabledModules(),
                     "skuPrefix" to resolvedSkuPrefix,
                     "createdAt" to createdAt,
@@ -110,11 +124,13 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 requestRef,
                 mapOf(
                     "uid" to user.uid,
+                    "requestedBy" to user.uid,
                     "email" to email,
                     "accountType" to ACCOUNT_TYPE_STORE_OWNER,
-                    "status" to "pending",
-                    "activationPolicy" to "manual_admin_approval",
-                    "loginEnabled" to false,
+                    "status" to accountStatus,
+                    "activationPolicy" to activationPolicy,
+                    "loginEnabled" to loginEnabled,
+                    "isActive" to loginEnabled,
                     "tenantId" to tenantId,
                     "storeName" to storeName,
                     "storeAddress" to storeAddress,
@@ -136,7 +152,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     "name" to storeName,
                     "email" to email.trim().lowercase(),
                     "role" to AppRole.OWNER.raw,
-                    "isActive" to true,
+                    "isActive" to loginEnabled,
                     "updatedAt" to createdAt,
                     "provisioningFlow" to ACCOUNT_ORIGIN_ADMIN_FLOW
                 ),
@@ -163,59 +179,33 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         customerPhone: String?
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
-            // El alta pública siempre debe crear un cliente final (viewer).
-            val normalizedTenantId = tenantId?.trim().orEmpty()
-                .ifBlank { throw IllegalArgumentException("Debés seleccionar una tienda válida") }
-            val tenantSnapshot = firestore.collection("tenants")
-                .document(normalizedTenantId)
-                .get()
-                .await()
-            if (!tenantSnapshot.exists()) {
-                throw IllegalArgumentException("La tienda seleccionada no existe")
-            }
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
             val createdAt = FieldValue.serverTimestamp()
             val userRef = firestore.collection("users").document(user.uid)
             userRef.set(
                 mapOf(
-                    "tenantId" to normalizedTenantId,
-                    "tenantIds" to listOf(normalizedTenantId),
                     "email" to email,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                     "status" to "active",
+                    "isAdmin" to false,
+                    "isSuperAdmin" to false,
                     "displayName" to customerName,
                     "phone" to customerPhone,
                     "createdAt" to createdAt,
                     "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                 )
             ).await()
-            firestore.collection("tenant_users")
-                .document("${normalizedTenantId}_${email.trim().lowercase()}")
-                .set(
-                    mapOf(
-                        "tenantId" to normalizedTenantId,
-                        "name" to customerName,
-                        "email" to email.trim().lowercase(),
-                        "role" to AppRole.VIEWER.raw,
-                        "isActive" to true,
-                        "updatedAt" to createdAt,
-                        "provisioningFlow" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
             firestore.collection("account_requests")
                 .document(user.uid)
                 .set(
                     mapOf(
                         "uid" to user.uid,
+                        "requestedBy" to user.uid,
                         "email" to email,
                         "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
-                        "tenantId" to normalizedTenantId,
-                        "tenantName" to tenantName.orEmpty(),
                         "contactName" to customerName,
                         "contactPhone" to customerPhone,
                         "createdAt" to createdAt,
@@ -225,7 +215,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                 )
                 .await()
             sendEmailVerification(user)
-            OnboardingResult(uid = user.uid, tenantId = normalizedTenantId)
+            OnboardingResult(uid = user.uid, tenantId = "")
         }.onFailure {
             val currentUser = auth.currentUser
             if (currentUser != null && currentUser.email == email) {
@@ -235,19 +225,9 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
     }
 
     override suspend fun registerViewerWithGoogle(
-        idToken: String,
-        tenantId: String,
-        tenantName: String
+        idToken: String
     ): Result<OnboardingResult> = withContext(io) {
         runCatching {
-            // Google Sign-In público: restringido a cliente final (viewer).
-            val tenantSnapshot = firestore.collection("tenants")
-                .document(tenantId)
-                .get()
-                .await()
-            if (!tenantSnapshot.exists()) {
-                throw IllegalArgumentException("La tienda seleccionada no existe")
-            }
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             val result = auth.signInWithCredential(credential).await()
             val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
@@ -257,43 +237,27 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             val displayName = (user.displayName ?: "").trim()
             userRef.set(
                 mapOf(
-                    "tenantId" to tenantId,
-                    "tenantIds" to listOf(tenantId),
                     "email" to normalizedEmail,
                     "role" to AppRole.VIEWER.raw,
                     "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                     "status" to "active",
+                    "isAdmin" to false,
+                    "isSuperAdmin" to false,
                     "displayName" to displayName,
                     "createdAt" to createdAt,
                     "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
                 ),
                 SetOptions.merge()
             ).await()
-            firestore.collection("tenant_users")
-                .document("${tenantId}_${normalizedEmail}")
-                .set(
-                    mapOf(
-                        "tenantId" to tenantId,
-                        "name" to displayName,
-                        "email" to normalizedEmail,
-                        "role" to AppRole.VIEWER.raw,
-                        "isActive" to true,
-                        "updatedAt" to createdAt,
-                        "provisioningFlow" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
             firestore.collection("account_requests")
                 .document(user.uid)
                 .set(
                     mapOf(
                         "uid" to user.uid,
+                        "requestedBy" to user.uid,
                         "email" to (user.email ?: ""),
                         "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
                         "status" to "active",
-                        "tenantId" to tenantId,
-                        "tenantName" to tenantName,
                         "contactName" to (user.displayName ?: ""),
                         "createdAt" to createdAt,
                         "requestOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
@@ -301,7 +265,7 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
                     SetOptions.merge()
                 )
                 .await()
-            OnboardingResult(uid = user.uid, tenantId = tenantId)
+            OnboardingResult(uid = user.uid, tenantId = "")
         }
     }
 
@@ -328,4 +292,21 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
         "cash" to true,
         "marketing" to false
     )
+
+    private suspend fun resolveTenantActivationMode(): String {
+        return runCatching {
+            val result = functions
+                .getHttpsCallable("getTenantOnboardingPolicy")
+                .call()
+                .await()
+            val data = result.data as? Map<*, *> ?: emptyMap<Any, Any>()
+            val mode = (data["tenantActivationMode"] as? String)?.trim()?.lowercase().orEmpty()
+            when (mode) {
+                TENANT_ACTIVATION_MODE_MANUAL -> TENANT_ACTIVATION_MODE_MANUAL
+                else -> TENANT_ACTIVATION_MODE_AUTO
+            }
+        }.getOrElse {
+            TENANT_ACTIVATION_MODE_AUTO
+        }
+    }
 }

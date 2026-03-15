@@ -5,11 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sellia Backoffice</title>
     <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#C9A227" />
+    <link rel="icon" href="../assets/favicon.v1.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="../assets/favicon.v1.svg" />
+    <link rel="manifest" href="../manifest.json" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="layout">
-      <section id="authPanel" class="panel auth-panel">
+
+      <!-- ── Auth panel ── -->
+      <section id="authPanel" class="auth-panel">
+        <div class="auth-brand">
+          <img src="../assets/logo.svg" class="auth-logo" alt="FLOKI" />
+        </div>
         <h1>Backoffice interno</h1>
         <p class="muted">Acceso exclusivo para operadores del tenant.</p>
 
@@ -27,51 +36,373 @@
 
         <button id="googleLogin" class="google-btn" type="button">Ingresar con Google</button>
         <p id="authError" class="error" role="alert"></p>
-      </section>
 
-      <section id="appPanel" class="panel app-panel" hidden>
-        <header class="topbar">
-          <h2>Sellia Admin</h2>
-          <button id="logoutButton" class="secondary" type="button">Cerrar sesión</button>
-        </header>
-
-        <p id="sessionBanner" class="banner"></p>
-
-        <div class="session-context">
-          <span>Tenant: <strong id="tenantBadge">-</strong></span>
-          <span>Rol: <strong id="roleBadge">-</strong></span>
-          <span>Status: <strong id="statusBadge">-</strong></span>
-        </div>
-
-        <aside class="permissions">
-          <h3>Permisos efectivos</h3>
-          <ul id="permissionsList"></ul>
+        <aside class="permissions backup-permissions">
+          <h3>Backup visual · permisos por default para admin</h3>
+          <p class="muted">El rol <strong>admin</strong> siempre inicia con todos los permisos del canal backoffice habilitados.</p>
+          <ul id="defaultAdminPermissions"></ul>
         </aside>
-
-        <nav class="nav-grid">
-          <a href="#/dashboard">Dashboard</a>
-          <a href="#/settings/pricing">Pricing</a>
-          <a href="#/settings/marketing">Marketing</a>
-          <a href="#/settings/users">Usuarios</a>
-          <a href="#/settings/cloud-services">Cloud Services</a>
-          <a href="#/maintenance">Mantenimiento</a>
-        </nav>
-
-        <section class="view">
-          <h3 id="viewTitle">Panel de uso</h3>
-          <p id="viewDescription">Seleccioná un módulo del backoffice.</p>
-        </section>
-
-        <section id="deniedState" class="state denied" hidden>
-          <h4>Acceso denegado</h4>
-          <p>No tenés permisos para este módulo.</p>
-        </section>
-
-        <section id="missingTenantState" class="state warning" hidden>
-          <h4>Cuenta sin tenant válido</h4>
-          <p>Solicitá al owner del proyecto asignación correcta.</p>
-        </section>
       </section>
+
+      <!-- ── App panel ── -->
+      <section id="appPanel" class="app-panel" hidden>
+        <div class="app-shell">
+
+          <!-- Left sidebar -->
+          <aside class="sidebar">
+            <div class="sidebar-brand">
+              <img src="../assets/logo.svg" class="sidebar-logo" alt="FLOKI" />
+              <span class="sidebar-brand-name">Backoffice</span>
+            </div>
+
+            <nav class="sidebar-nav">
+              <a href="#/dashboard" class="nav-item" data-route="#/dashboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Dashboard
+              </a>
+
+              <div class="nav-section-label">Configuración</div>
+
+              <a href="#/settings/pricing" class="nav-item" data-route="#/settings/pricing">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Pricing
+              </a>
+
+              <a href="#/settings/marketing" class="nav-item" data-route="#/settings/marketing">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                Marketing
+              </a>
+
+              <a href="#/settings/users" class="nav-item" data-route="#/settings/users">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Usuarios
+              </a>
+
+              <a href="#/settings/store" class="nav-item" data-route="#/settings/store">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Tienda
+              </a>
+
+              <a href="#/settings/cloud-services" class="nav-item" data-route="#/settings/cloud-services">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                Cloud Services
+              </a>
+
+              <a href="#/maintenance" class="nav-item" data-route="#/maintenance">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                Mantenimiento
+              </a>
+
+              <div class="nav-section-label">Cuenta</div>
+
+              <a href="#/permissions" class="nav-item" data-route="#/permissions">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Mis permisos
+              </a>
+            </nav>
+
+            <div class="sidebar-footer">
+              <div class="sidebar-user">
+                <div class="sidebar-user-avatar">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <div class="sidebar-user-info">
+                  <strong id="tenantBadge">-</strong>
+                  <span id="roleBadge">-</span>
+                </div>
+              </div>
+              <div class="sidebar-status">
+                Estado: <span id="statusBadge">-</span>
+              </div>
+              <button id="logoutButton" class="logout-btn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Cerrar sesión
+              </button>
+            </div>
+          </aside>
+
+          <!-- Main content -->
+          <div class="main-content">
+            <div class="main-inner">
+
+              <p id="sessionBanner" class="banner"></p>
+
+              <div class="view-header">
+                <h2 id="viewTitle">Panel de uso</h2>
+                <p id="viewDescription" class="muted">Seleccioná un módulo del backoffice.</p>
+              </div>
+
+              <section class="view">
+
+                <section id="dashboardPanel" class="module-panel" hidden>
+                  <h4>Panel de uso del tenant</h4>
+                  <p class="muted">Métricas de uso acumuladas del mes en curso.</p>
+                  <p id="dashboardLoading" class="muted" hidden>Cargando métricas...</p>
+                  <section id="dashboardEmpty" hidden>
+                    <p class="muted">Sin métricas disponibles para este período.</p>
+                    <button id="dashboardRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <section id="dashboardError" hidden>
+                    <p id="dashboardFeedback" class="error"></p>
+                    <button id="dashboardErrorRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <section id="dashboardContent" hidden>
+                    <p class="muted">Período: <strong id="dashboardPeriod">-</strong></p>
+                    <div class="stats-grid">
+                      <div class="stat-card">
+                        <div class="stat-label">Ops Firestore</div>
+                        <div class="stat-value" id="dashboardReads">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Auth</div>
+                        <div class="stat-value" id="dashboardWrites">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Storage</div>
+                        <div class="stat-value" id="dashboardStorage">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Funciones</div>
+                        <div class="stat-value" id="dashboardFunctions">-</div>
+                      </div>
+                      <div class="stat-card">
+                        <div class="stat-label">Errores colección</div>
+                        <div class="stat-value" id="dashboardErrors">-</div>
+                      </div>
+                    </div>
+                  </section>
+                </section>
+
+                <section id="maintenancePanel" class="module-panel" hidden>
+                  <h4>Tareas de mantenimiento</h4>
+                  <p class="muted">Gestión de tareas operativas multi-tenant con auditoría de cambios.</p>
+                  <p id="maintenanceLoading" class="muted" hidden>Cargando tareas...</p>
+                  <p id="maintenanceFeedback" class="banner"></p>
+                  <section id="maintenanceEmpty" hidden>
+                    <p class="muted">No hay tareas de mantenimiento registradas.</p>
+                    <button id="maintenanceRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <section id="maintenanceError" hidden>
+                    <button id="maintenanceErrorRetryButton" type="button">Reintentar</button>
+                  </section>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Título</th>
+                          <th>Estado</th>
+                          <th>Prioridad</th>
+                          <th>Bloqueante</th>
+                          <th>Creado</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="maintenanceBody">
+                        <tr><td colspan="6">Sin tareas registradas.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <form id="maintenanceCreateForm" class="form-grid">
+                    <legend style="font-weight:600;margin-bottom:.5rem">Nueva tarea</legend>
+                    <label>
+                      Título
+                      <input id="maintenanceTitleInput" type="text" maxlength="120" placeholder="Descripción breve de la tarea" required />
+                    </label>
+                    <label>
+                      Prioridad
+                      <select id="maintenancePriorityInput">
+                        <option value="low">Baja</option>
+                        <option value="medium" selected>Media</option>
+                        <option value="high">Alta</option>
+                        <option value="critical">Crítica</option>
+                      </select>
+                    </label>
+                    <button id="maintenanceCreateButton" type="submit">Crear tarea</button>
+                  </form>
+                </section>
+
+                <section id="costDashboardPanel" class="module-panel" hidden>
+                  <h4>Costo cloud por tenant y servicio</h4>
+                  <p class="muted">Visibilidad mensual de costo y desvíos contra presupuesto.</p>
+                  <div class="cost-summary">
+                    <span>Presupuesto mensual: <strong id="budgetTotalValue">-</strong></span>
+                    <span>Costo actual: <strong id="currentCostTotalValue">-</strong></span>
+                    <span>Desvío: <strong id="costDeltaValue">-</strong></span>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Servicio</th>
+                          <th>Costo actual</th>
+                          <th>Presupuesto</th>
+                          <th>% uso</th>
+                        </tr>
+                      </thead>
+                      <tbody id="costByServiceBody">
+                        <tr><td colspan="4">Sin datos de costo.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section id="backupPanel" class="module-panel" hidden>
+                  <h4>Resguardo de datos del tenant</h4>
+                  <p class="muted">Solicitá un backup puntual y monitoreá su ejecución.</p>
+                  <label>
+                    Motivo
+                    <input id="backupReasonInput" type="text" maxlength="180" placeholder="Ej: antes de una migración de catálogo" />
+                  </label>
+                  <button id="requestBackupButton" type="button">Solicitar backup ahora</button>
+                  <p id="backupMessage" class="banner"></p>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Request</th>
+                          <th>Estado</th>
+                          <th>Creado</th>
+                          <th>Usuario</th>
+                          <th>Doc count</th>
+                          <th>Error</th>
+                        </tr>
+                      </thead>
+                      <tbody id="backupRequestsBody">
+                        <tr><td colspan="6">Sin solicitudes recientes.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section id="storeConfigPanel" class="module-panel" hidden>
+                  <h4>Dominio y catálogo público</h4>
+                  <p class="muted">Configurá el dominio personalizado de la tienda y sincronizá el catálogo de productos.</p>
+                  <p id="storeCurrentDomain" class="banner"></p>
+
+                  <fieldset>
+                    <legend>Dominio personalizado</legend>
+                    <p class="muted">Ingresá solo el hostname sin <code>https://</code> ni rutas (ej: <code>mitienda.com</code>). Luego, en Firebase Console → Hosting, agregá ese dominio y copiá los registros DNS en tu proveedor para que quede activo.</p>
+                    <label>
+                      Dominio
+                      <input id="storeDomainInput" type="text" maxlength="253" placeholder="mitienda.com" autocomplete="off" inputmode="url" />
+                    </label>
+                    <div class="btn-row">
+                      <button id="setStoreDomainButton" type="button">Vincular dominio</button>
+                      <button id="removeStoreDomainButton" type="button" class="secondary">Quitar dominio</button>
+                    </div>
+                    <p id="storeDomainMessage" class="banner"></p>
+                  </fieldset>
+
+                  <fieldset>
+                    <legend>Catálogo público</legend>
+                    <p class="muted">Forzá la sincronización si los productos no aparecen en el catálogo. Necesario la primera vez o cuando se cargan productos masivamente.</p>
+                    <button id="syncProductsButton" type="button">Sincronizar productos ahora</button>
+                    <p id="syncProductsMessage" class="banner"></p>
+                  </fieldset>
+                </section>
+
+                <section id="paymentsControlPanel" class="module-panel" hidden>
+                  <h4>Control de contingencia Mercado Pago</h4>
+                  <p class="muted">Permite apagar/encender MP a nivel global o tenant, con motivo obligatorio y auditoría.</p>
+
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Toggle</th>
+                          <th>Estado</th>
+                          <th>Actualizado</th>
+                          <th>Usuario</th>
+                        </tr>
+                      </thead>
+                      <tbody id="paymentsFlagsBody">
+                        <tr><td colspan="4">Sin datos de flags.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="form-grid">
+                    <label>
+                      Alcance
+                      <select id="paymentsToggleScope">
+                        <option value="tenant">Tenant</option>
+                        <option value="global">Global (solo super admin)</option>
+                      </select>
+                    </label>
+                    <label>
+                      Estado objetivo
+                      <select id="paymentsToggleEnabled">
+                        <option value="true">Habilitar MP</option>
+                        <option value="false">Deshabilitar MP</option>
+                      </select>
+                    </label>
+                    <label>
+                      Motivo (auditoría)
+                      <input id="paymentsToggleReason" type="text" maxlength="240" placeholder="Ej: incidente PSP #INC-2026-001" />
+                    </label>
+                  </div>
+                  <button id="paymentsToggleButton" type="button">Aplicar toggle</button>
+                  <p id="paymentsToggleMessage" class="banner"></p>
+
+                  <h5>Auditoría reciente</h5>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Scope</th>
+                          <th>Estado</th>
+                          <th>Actor</th>
+                          <th>Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody id="paymentsAuditBody">
+                        <tr><td colspan="5">Sin eventos recientes.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+              </section>
+
+              <section id="tenantPolicyPanel" class="module-panel" hidden>
+                <h4>Política global de activación de nuevas tiendas</h4>
+                <p class="muted">Por defecto las nuevas tiendas quedan activas automáticamente. Solo impacta cuentas nuevas.</p>
+                <label>
+                  Modo de activación
+                  <select id="tenantActivationModeSelect">
+                    <option value="auto">Auto (default, activa al crear)</option>
+                    <option value="manual">Manual (requiere aprobación)</option>
+                  </select>
+                </label>
+                <button id="saveTenantPolicyButton" type="button">Guardar política</button>
+                <p id="tenantPolicyMessage" class="banner"></p>
+              </section>
+
+              <section id="permissionsPanel" class="module-panel" hidden>
+                  <div class="permissions-header">
+                    <div id="permissionsRoleBadge" class="permissions-role-badge"></div>
+                    <p class="muted">Estos son los permisos activos asignados a tu perfil en el backoffice.</p>
+                  </div>
+                  <div id="permissionsTagList" class="permissions-tag-list"></div>
+                </section>
+
+              <section id="deniedState" class="state denied" hidden>
+                <h4>Acceso denegado</h4>
+                <p>No tenés permisos para este módulo.</p>
+              </section>
+
+              <section id="missingTenantState" class="state warning" hidden>
+                <h4>Cuenta sin tenant válido</h4>
+                <p>Solicitá al owner del proyecto asignación correcta.</p>
+              </section>
+
+            </div>
+          </div>
+
+        </div>
+      </section>
+
     </main>
 
     <script src="../config.js"></script>

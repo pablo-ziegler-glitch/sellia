@@ -319,14 +319,37 @@ La función **solo modifica metadatos de titularidad/permisos** (`tenants`, `use
 
 ---
 
-## Backup total automático cada 24h (retención 7)
+## Backup total automático cada 24h (Storage + metadatos en Firestore)
 
 Se incorporó la función programada:
 
 - **Nombre:** `createDailyTenantBackups`
 - **Frecuencia:** cada 24h (UTC)
 - **Cobertura:** respaldo recursivo completo de cada `tenants/{tenantId}` con todas sus subcolecciones.
-- **Destino:** `tenant_backups/{tenantId}/runs/{runId}` + `chunks/*`
-- **Retención:** se conservan solo los **últimos 7** backups por tenant; los más antiguos se eliminan automáticamente.
+- **Payload completo:** se serializa a JSON, se comprime con `gzip` y se sube a Cloud Storage en `gs://<bucket>/tenant-backups/{tenantId}/{runId}.json.gz`.
+- **Metadatos en Firestore:** `tenant_backups/{tenantId}/runs/{runId}` guarda estado, actor, métricas (`docCount`, bytes), checksum `sha256` y puntero al archivo (`storageBucket`, `storagePath`, `storageUri`).
+- **Retención Firestore:** se conservan solo los **últimos 7** metadatos por tenant para la UI; al podar una corrida también se elimina su archivo en Storage.
+- **Retención Storage (recomendada):** configurar lifecycle policy por bucket (por ejemplo 30/60/90 días) para borrar automáticamente objetos antiguos y controlar costo de almacenamiento.
 
-Esto permite restauración por corridas y evita crecimiento ilimitado de costo en Firestore.
+- **Consistencia ante fallos:** si falla la escritura de metadatos después de subir el archivo, la función intenta rollback del objeto en Storage para evitar archivos huérfanos.
+- **Trigger de purga optimizado:** `purgeDeletedProductFromBackups` solo dispara nuevo backup cuando `purgeBackup` cambia de `false -> true`, evitando corridas duplicadas por actualizaciones posteriores.
+Esto reduce drásticamente costo de lecturas/escrituras en Firestore y permite backups más grandes sin fragmentar en chunks.
+
+### Ejemplo de lifecycle policy (Storage)
+
+```json
+{
+  "rule": [
+    {
+      "action": { "type": "Delete" },
+      "condition": { "age": 60, "matchesPrefix": ["tenant-backups/"] }
+    }
+  ]
+}
+```
+
+Aplicación:
+
+```bash
+gsutil lifecycle set lifecycle.json gs://<bucket>
+```

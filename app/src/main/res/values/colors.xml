@@ -10,4 +10,13 @@
     <color name="valkirja_dark_background">#2B2622</color>
     <color name="valkirja_dark_surface">#3A332E</color>
     <color name="valkirja_dark_outline">#6E5E4F</color>
+
+    <!-- FLOKI brand palette -->
+    <color name="floki_gold_light">#F2CC6B</color>
+    <color name="floki_gold_mid">#C9A227</color>
+    <color name="floki_gold_secondary">#A07F1A</color>
+    <color name="floki_gold_dark">#7A5A0A</color>
+    <color name="floki_dark_bg">#0D0F1A</color>
+    <color name="floki_dark_surface">#181A22</color>
+    <color name="floki_glow_accent">#1A1610</color>
 </resources>

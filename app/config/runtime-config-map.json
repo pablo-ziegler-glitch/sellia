@@ -1,0 +1,25 @@
+{
+  "platform": "android",
+  "mappings": {
+    "APP_CHECK_ENFORCEMENT_MODE": {
+      "equivalent": "BuildConfig.APP_CHECK_DEBUG",
+      "source": "buildConfigField",
+      "notes": "Mapeo semántico inverso: APP_CHECK_DEBUG=true equivale a monitor en entornos no productivos."
+    },
+    "MP_ACCESS_TOKEN": { "notApplicable": true, "reason": "Secreto solo backend." },
+    "MP_WEBHOOK_SECRET": { "notApplicable": true, "reason": "Secreto solo backend." },
+    "MP_WEBHOOK_SECRET_REFS": { "notApplicable": true, "reason": "Gestión de secretos solo backend." },
+    "MP_WEBHOOK_SIGNATURE_WINDOW_MS": { "notApplicable": true, "reason": "Validación webhook ocurre en Functions." },
+    "MP_WEBHOOK_REPLAY_TTL_MS": { "notApplicable": true, "reason": "Deduplicación de webhook ocurre en Functions." },
+    "MP_WEBHOOK_IP_ALLOWLIST": { "notApplicable": true, "reason": "Control de red solo backend." },
+    "ADMIN_RATE_LIMIT_PER_MINUTE": { "notApplicable": true, "reason": "Rate limit en callables backend." },
+    "MP_RECONCILIATION_PENDING_MINUTES": { "notApplicable": true, "reason": "Operación batch backend." },
+    "MP_RECONCILIATION_BATCH_SIZE": { "notApplicable": true, "reason": "Operación batch backend." },
+    "MP_AGED_PENDING_ALERT_MINUTES": { "notApplicable": true, "reason": "Alerting backend." },
+    "BILLING_SOURCE": { "notApplicable": true, "reason": "Gobernanza de costos backend." },
+    "BILLING_PROJECT_ID": { "notApplicable": true, "reason": "Gobernanza de costos backend." },
+    "BILLING_BIGQUERY_PROJECT": { "notApplicable": true, "reason": "Gobernanza de costos backend." },
+    "BILLING_BIGQUERY_DATASET": { "notApplicable": true, "reason": "Gobernanza de costos backend." },
+    "BILLING_BIGQUERY_TABLE": { "notApplicable": true, "reason": "Gobernanza de costos backend." }
+  }
+}

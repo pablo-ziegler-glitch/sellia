@@ -26,6 +26,10 @@
           <h1 id="productTitle">Buscando producto...</h1>
           <div class="product-meta" id="productMeta"></div>
         </div>
+        <div class="view-mode-toggle" id="viewModeToggle" hidden>
+          <button class="view-mode-btn is-active" data-mode="client" id="btnModeClient">Vista Cliente</button>
+          <button class="view-mode-btn" data-mode="owner" id="btnModeOwner">Vista Dueño</button>
+        </div>
         <div class="hero-actions">
           <a class="button primary" id="ctaWhatsapp" href="#" target="_blank" rel="noopener">
             Consultar por WhatsApp
@@ -43,6 +47,10 @@
         <div class="product-gallery" id="productGallery"></div>
         <div class="product-hero">
           <div class="price-grid" id="priceGrid"></div>
+          <div class="owner-section" id="ownerSection" hidden>
+            <h2>Datos internos</h2>
+            <div class="owner-grid" id="ownerGrid"></div>
+          </div>
           <div>
             <h2>Descripción</h2>
             <p id="productDescription" class="muted"></p>
@@ -58,7 +66,7 @@
     </main>
 
     <script src="/config.js"></script>
-    <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
+    <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous" defer></script>
     <script src="/safe-dom.js" defer></script>
     <script src="/product.js" defer></script>
   </body>

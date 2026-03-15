@@ -4,7 +4,10 @@
     "indexes": "firestore.indexes.json"
   },
   "functions": {
-    "source": "functions"
+    "source": "functions",
+    "predeploy": [
+      "npm --prefix \"$RESOURCE_DIR\" run build"
+    ]
   },
   "storage": {
     "rules": "storage.rules"
@@ -22,7 +25,7 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://firebasestorage.googleapis.com https://storage.googleapis.com; connect-src 'self' https://firestore.googleapis.com; frame-src https://www.youtube-nocookie.com; manifest-src 'self'; upgrade-insecure-requests"
+            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://firebasestorage.googleapis.com https://storage.googleapis.com; connect-src 'self' https://firestore.googleapis.com https://www.google-analytics.com https://*.google-analytics.com; frame-src https://www.youtube-nocookie.com; manifest-src 'self'; upgrade-insecure-requests"
           },
           {
             "key": "X-Content-Type-Options",
@@ -47,19 +50,83 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; frame-src https://accounts.google.com; manifest-src 'self'; upgrade-insecure-requests"
+            "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://apis.google.com https://us-central1-sellia1993.cloudfunctions.net; frame-src https://accounts.google.com https://sellia1993.firebaseapp.com; manifest-src 'self'; upgrade-insecure-requests"
           }
         ]
       },
       {
-        "source": "**/*.@(js|css|html)",
+        "source": "**/*.v*.@(js|css|svg|png|jpg|jpeg|webp|ico)",
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "no-cache"
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(html|json)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=300, must-revalidate"
           }
         ]
       }
+    ],
+    "redirects": [
+      {
+        "source": "/backoffice/users_roles",
+        "destination": "/admin/#/settings/users",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/cloud_services",
+        "destination": "/admin/#/settings/cloud-services",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/global_pricing",
+        "destination": "/admin/#/settings/pricing",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/tenant_lifecycle",
+        "destination": "/admin/#/dashboard",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/bulk_abm",
+        "destination": "/admin/#/maintenance",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/store",
+        "destination": "/admin/#/settings/store",
+        "type": 301
+      },
+      {
+        "source": "/backoffice/**",
+        "destination": "/admin/",
+        "type": 301
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/public/catalog",
+        "function": "publicCatalog"
+      }
+    ],
+    "predeploy": [
+      "npm run check:admin-js-syntax"
     ]
   }
 }

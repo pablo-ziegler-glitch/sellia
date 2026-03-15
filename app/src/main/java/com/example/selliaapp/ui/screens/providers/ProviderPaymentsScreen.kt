@@ -1,7 +1,5 @@
 package com.example.selliaapp.ui.screens.providers
 
-
-
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,8 +45,29 @@ fun ProviderPaymentsScreen(
     var ref by remember { mutableStateOf(TextFieldValue("")) }
     var amount by remember { mutableStateOf(TextFieldValue("")) }
 
+    val normalizedRef = ref.text.trim()
+    val parsedAmount = amount.text.trim().toDoubleOrNull()
+    val refError = when {
+        !showDialog -> null
+        normalizedRef.isEmpty() -> "La referencia es obligatoria."
+        else -> null
+    }
+    val amountError = when {
+        !showDialog -> null
+        amount.text.isBlank() -> "Ingresa un monto."
+        parsedAmount == null -> "Ingresa un monto numérico válido."
+        parsedAmount <= 0.0 -> "El monto debe ser mayor a 0."
+        else -> null
+    }
+    val canSave = selectedId != null && refError == null && amountError == null
+
     Scaffold(topBar = { BackTopAppBar(title = "Pagos a Proveedores", onBack = onBack) }) { inner ->
-        Column(Modifier.padding(inner).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier
+                .padding(inner)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(pending) { row ->
                     val inv = row.invoice
@@ -57,7 +76,12 @@ fun ProviderPaymentsScreen(
                             headlineContent = { Text("Factura ${inv.number}  • Total: ${"%.2f".format(inv.total)}") },
                             supportingContent = { Text("Proveedor #${inv.providerId}  • Fecha: ${Date(inv.issueDateMillis)}") },
                             trailingContent = {
-                                Button(onClick = { selectedId = inv.id; showDialog = true }) {
+                                Button(onClick = {
+                                    selectedId = inv.id
+                                    showDialog = true
+                                    ref = TextFieldValue("")
+                                    amount = TextFieldValue("")
+                                }) {
                                     Text("Marcar Paga")
                                 }
                             }
@@ -74,25 +98,50 @@ fun ProviderPaymentsScreen(
             title = { Text("Confirmar pago") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = ref, onValueChange = { ref = it }, label = { Text("Referencia/ID de pago") })
-                    OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Monto pagado") })
+                    OutlinedTextField(
+                        value = ref,
+                        onValueChange = { ref = it },
+                        label = { Text("Referencia/ID de pago") },
+                        isError = refError != null,
+                        supportingText = {
+                            if (refError != null) {
+                                Text(refError)
+                            }
+                        }
+                    )
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = { amount = it },
+                        label = { Text("Monto pagado") },
+                        isError = amountError != null,
+                        supportingText = {
+                            if (amountError != null) {
+                                Text(amountError)
+                            }
+                        }
+                    )
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val id = selectedId!!
-                    val row = pending.firstOrNull { it.invoice.id == id } ?: return@TextButton
-                    val amt = amount.text.toDoubleOrNull() ?: 0.0
-                    scope.launch {
-                        repo.markPaid(
-                            invoice = row.invoice,
-                            ref = ref.text.trim(),
-                            amount = amt,
-                            paymentDateMillis = System.currentTimeMillis()
-                        )
-                        showDialog = false
-                    }
-                }) { Text("Guardar") }
+                TextButton(
+                    onClick = {
+                        val id = selectedId!!
+                        val row = pending.firstOrNull { it.invoice.id == id } ?: return@TextButton
+                        val amt = parsedAmount ?: return@TextButton
+                        scope.launch {
+                            repo.markPaid(
+                                invoice = row.invoice,
+                                ref = normalizedRef,
+                                amount = amt,
+                                paymentDateMillis = System.currentTimeMillis(),
+                                actor = "provider_payments_ui",
+                                reason = "manual_payment_confirmation"
+                            )
+                            showDialog = false
+                        }
+                    },
+                    enabled = canSave
+                ) { Text("Guardar") }
             },
             dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancelar") } }
         )

@@ -5,13 +5,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.data.local.entity.PricingSettingsEntity
 import com.example.selliaapp.data.model.sales.CartItem
 import com.example.selliaapp.data.model.sales.InvoiceDraft
+import com.example.selliaapp.data.model.sales.SaleBreakdown
 import com.example.selliaapp.data.local.entity.CashMovementType
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.InvoiceRepository
 import com.example.selliaapp.repository.CustomerRepository
+import com.example.selliaapp.repository.PricingConfigRepository
 import com.example.selliaapp.repository.SellDraft
 import com.example.selliaapp.repository.SellDraftItem
 import com.example.selliaapp.repository.SellDraftRepository
@@ -38,15 +41,20 @@ class SellViewModel @Inject constructor(
     private val invoiceRepo: InvoiceRepository,
     private val cashRepository: CashRepository,
     private val sellDraftRepository: SellDraftRepository,
-    private val customerRepository: CustomerRepository
+    private val customerRepository: CustomerRepository,
+    private val pricingConfigRepository: PricingConfigRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SellUiState())
     val state: StateFlow<SellUiState> = _state.asStateFlow()
     private var customerSummaryJob: Job? = null
+    private var pricingSettings: PricingSettingsEntity? = null
 
     init {
         restoreDraft()
+        viewModelScope.launch {
+            runCatching { pricingSettings = pricingConfigRepository.getSettings() }
+        }
     }
 
     // ----- Escaneo: helper de resultado -----
@@ -81,7 +89,7 @@ class SellViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                val p = withContext(Dispatchers.IO) { resolveProductByScan(barcode) }
+                val p = resolveProductByScan(barcode)
                 if (p == null) {
                     onNotFound()
                 } else {
@@ -162,6 +170,7 @@ class SellViewModel @Inject constructor(
                         listPrice = listPrice,
                         cashPrice = cashPrice,
                         transferPrice = transferPrice,
+                        purchasePrice = product.purchasePrice ?: 0.0,
                         qty = q,
                         maxStock = max
                     )
@@ -240,6 +249,7 @@ class SellViewModel @Inject constructor(
         val baseConDescuento = (subtotal - totalDiscount).coerceAtLeast(0.0)
         val recargo = baseConDescuento * base.surchargePercent / 100.0
         val total = baseConDescuento + recargo
+        val breakdown = computeBreakdown(items, base.paymentMethod, total)
 
         return base.copy(
             items = items,
@@ -249,7 +259,48 @@ class SellViewModel @Inject constructor(
             customerDiscountAmount = customerDiscount,
             surchargeAmount = recargo,
             total = total,
-            stockViolations = violations
+            stockViolations = violations,
+            breakdown = breakdown
+        )
+    }
+
+    private fun computeBreakdown(items: List<CartItemUi>, method: PaymentMethod, actualTotal: Double): SaleBreakdown? {
+        val settings = pricingSettings ?: return null
+        if (actualTotal <= 0.0) return null
+        val operativosRate = settings.operativosLocalPercent / 100.0
+
+        val (feeRate, feePercent) = when (method) {
+            PaymentMethod.LISTA -> {
+                val rate = settings.posnet3CuotasPercent / 100.0
+                rate to settings.posnet3CuotasPercent
+            }
+            PaymentMethod.EFECTIVO -> {
+                val rate = settings.cobroEnMomentoCostPercent / 100.0
+                rate to settings.cobroEnMomentoCostPercent
+            }
+            PaymentMethod.TRANSFERENCIA -> {
+                val rate = settings.transferenciaRetencionPercent / 100.0
+                rate to settings.transferenciaRetencionPercent
+            }
+        }
+
+        val grossAmount = actualTotal
+        // Para LISTA la comisión está embebida en el precio; para otros se aplica sobre el monto
+        val feeAmount = when (method) {
+            PaymentMethod.LISTA -> grossAmount * feeRate / (1.0 + feeRate)
+            else -> grossAmount * feeRate
+        }
+        val purchaseCostTotal = items.sumOf { it.purchasePrice * it.qty }
+        val operativosFeeAmount = purchaseCostTotal * operativosRate
+        val estimatedNetGain = grossAmount - feeAmount - purchaseCostTotal - operativosFeeAmount
+        return SaleBreakdown(
+            grossAmount = grossAmount,
+            posnetFeeAmount = feeAmount,
+            posnetFeePercent = feePercent,
+            purchaseCostTotal = purchaseCostTotal,
+            operativosFeeAmount = operativosFeeAmount,
+            operativosFeePercent = settings.operativosLocalPercent,
+            estimatedNetGain = estimatedNetGain
         )
     }
 
@@ -425,7 +476,8 @@ class SellViewModel @Inject constructor(
                     paymentMethod = current.paymentMethod.name,
                     paymentNotes = current.paymentNotes.takeIf { it.isNotBlank() },
                     customerId = resolvedCustomerId,
-                    customerName = resolvedCustomerName
+                    customerName = resolvedCustomerName,
+                    breakdown = current.breakdown
                 )
 
                 val result = invoiceRepo.confirmInvoice(draft)
@@ -467,6 +519,7 @@ class SellViewModel @Inject constructor(
                     listPrice = item.listPrice,
                     cashPrice = item.cashPrice,
                     transferPrice = item.transferPrice,
+                    purchasePrice = item.purchasePrice,
                     qty = item.qty.coerceAtLeast(1),
                     maxStock = item.maxStock.coerceAtLeast(0)
                 )
@@ -504,6 +557,7 @@ class SellViewModel @Inject constructor(
                     listPrice = item.listPrice,
                     cashPrice = item.cashPrice,
                     transferPrice = item.transferPrice,
+                    purchasePrice = item.purchasePrice,
                     qty = item.qty,
                     maxStock = item.maxStock
                 )

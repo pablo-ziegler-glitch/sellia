@@ -8,6 +8,9 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import com.example.selliaapp.auth.FirebaseSessionException
+import com.example.selliaapp.auth.TenantProvider
+import com.google.firebase.storage.StorageException
 import com.google.firebase.firestore.FirebaseFirestoreException
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -22,7 +25,8 @@ import dagger.hilt.components.SingletonComponent
 class SyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val syncRepository: SyncRepository
+    private val syncRepository: SyncRepository,
+    private val tenantProvider: TenantProvider
 ) : CoroutineWorker(appContext, params) {
 
     /**
@@ -38,19 +42,40 @@ class SyncWorker @AssistedInject constructor(
         EntryPointAccessors.fromApplication(
             appContext,
             SyncWorkerEntryPoint::class.java
-        ).syncRepository()
+        ).syncRepository(),
+        EntryPointAccessors.fromApplication(
+            appContext,
+            SyncWorkerEntryPoint::class.java
+        ).tenantProvider()
     )
 
     override suspend fun doWork(): Result {
         Log.i(TAG, "Iniciando sincronización manual (workId=$id)")
+        if (tenantProvider.currentTenantId() == null) {
+            Log.i(TAG, "Sin sesión activa, omitiendo sincronización (workId=$id)")
+            return Result.success(
+                workDataOf(
+                    OUTPUT_STATUS to "skipped",
+                    OUTPUT_MESSAGE to "Sin sesión activa, sincronización omitida."
+                )
+            )
+        }
         return try {
-            val includeBackup = inputData.getBoolean(INPUT_BACKUP, false)
-            syncRepository.runSync(includeBackup)
+            syncRepository.runSync(includeBackup = true)
             Log.i(TAG, "Sincronización completada con éxito")
             Result.success(
                 workDataOf(
                     OUTPUT_STATUS to "success",
                     OUTPUT_MESSAGE to "Sincronización completada con éxito."
+                )
+            )
+        } catch (sessionError: FirebaseSessionException) {
+            Log.e(TAG, "Error de sesión durante la sincronización (workId=$id)", sessionError)
+            val message = sessionError.message ?: buildErrorMessage(sessionError)
+            Result.failure(
+                workDataOf(
+                    OUTPUT_STATUS to if (isPermissionDeniedSessionError(sessionError)) "failed_permission" else "failed",
+                    OUTPUT_MESSAGE to message
                 )
             )
         } catch (t: Throwable) {
@@ -62,6 +87,20 @@ class SyncWorker @AssistedInject constructor(
                     OUTPUT_MESSAGE to message
                 )
             )
+        }
+    }
+
+    private fun isPermissionDeniedSessionError(error: FirebaseSessionException): Boolean {
+        return when (val rootCause = error.cause) {
+            is FirebaseFirestoreException -> {
+                rootCause.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
+            }
+
+            is StorageException -> {
+                rootCause.errorCode == StorageException.ERROR_NOT_AUTHORIZED
+            }
+
+            else -> false
         }
     }
 
@@ -79,13 +118,11 @@ class SyncWorker @AssistedInject constructor(
         const val TAG: String = "SyncWorker"
         const val OUTPUT_STATUS: String = "status"
         const val OUTPUT_MESSAGE: String = "message"
-        const val INPUT_BACKUP: String = "include_backup"
-
-        fun inputData(includeBackup: Boolean) = workDataOf(INPUT_BACKUP to includeBackup)
     }
 }
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface SyncWorkerEntryPoint {
     fun syncRepository(): SyncRepository
+    fun tenantProvider(): TenantProvider
 }

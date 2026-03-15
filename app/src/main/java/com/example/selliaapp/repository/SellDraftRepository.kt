@@ -47,6 +47,7 @@ class SellDraftRepository @Inject constructor(
                         .put("listPrice", item.listPrice)
                         .put("cashPrice", item.cashPrice)
                         .put("transferPrice", item.transferPrice)
+                        .put("purchasePrice", item.purchasePrice)
                         .put("qty", item.qty)
                         .put("maxStock", item.maxStock)
                 )
@@ -81,6 +82,7 @@ class SellDraftRepository @Inject constructor(
                         listPrice = item.optDouble("listPrice", 0.0),
                         cashPrice = item.optDouble("cashPrice", 0.0),
                         transferPrice = item.optDouble("transferPrice", 0.0),
+                        purchasePrice = item.optDouble("purchasePrice", 0.0),
                         qty = item.optInt("qty", 1),
                         maxStock = item.optInt("maxStock", 0)
                     )
@@ -127,6 +129,7 @@ data class SellDraftItem(
     val listPrice: Double,
     val cashPrice: Double,
     val transferPrice: Double,
+    val purchasePrice: Double = 0.0,
     val qty: Int,
     val maxStock: Int
 )

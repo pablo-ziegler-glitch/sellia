@@ -1,11 +1,14 @@
 import * as functions from "firebase-functions";
-import { defineString } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import axios from "axios";
 import { AxiosError } from "axios";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { gzipSync } from "zlib";
 import { google, monitoring_v3 } from "googleapis";
 import { getPointValue } from "./monitoring.helpers";
+import { hasRoleForModule } from "./security/rolePermissionsMatrix";
+import { resolveFieldVisibility, type PiiRole } from "./security/piiPolicy";
+import { authorizeUsageMetricsAccess } from "./usageMetricsAccess";
 import {
   buildUsageOverview,
   getCurrentDayKey,
@@ -15,10 +18,39 @@ import {
   type UsageMetricResult,
   type UsageServiceMetrics,
 } from "./usageMetrics.helpers";
+import {
+  createApproveTenantRestoreRequestHandler,
+  createRequestTenantBackupHandler,
+  createRequestTenantRestoreHandler,
+  type ApproveRestoreRequestPayload,
+  type RestoreRequestPayload,
+  type RestoreScope,
+} from "./tenantBackup";
+import { buildRoleScopedOwnershipResponse, maskPhone, redactObject } from "./redaction";
+import { PaymentsCoreService } from "./payments/payments-core";
+import { createMpPaymentIntent, fetchMpPayment } from "./payments/payments-mp-adapter";
+import {
+  getAdminRateLimitPerMinute as cfgGetAdminRateLimitPerMinute,
+  getAgedPendingAlertMinutes as cfgGetAgedPendingAlertMinutes,
+  getAppCheckEnforcementMode as cfgGetAppCheckEnforcementMode,
+  getBillingConfig as cfgGetBillingConfig,
+  getFallbackWebhookSecret as cfgGetFallbackWebhookSecret,
+  getIpAllowlist as cfgGetIpAllowlist,
+  getMpConfig as cfgGetMpConfig,
+  getMpPendingReconciliationMinutes as cfgGetMpPendingReconciliationMinutes,
+  getMpReconciliationBatchSize as cfgGetMpReconciliationBatchSize,
+  getMpWebhookReplayTtlMs as cfgGetMpWebhookReplayTtlMs,
+  getMpWebhookSignatureWindowMs as cfgGetMpWebhookSignatureWindowMs,
+  parseWebhookSecretRefs as cfgParseWebhookSecretRefs,
+} from "./config/getters";
+import { createSetMainLandingConfigHandler, createSetTenantStoreLandingConfigHandler } from "./landingConfig";
+import { onStoreRequestStatusChange } from "./storeRequests";
 
 admin.initializeApp();
 
 const db = admin.firestore();
+const storage = admin.storage();
+const paymentsCore = new PaymentsCoreService(db);
 
 type UsageSource = "monitoring" | "bigquery";
 
@@ -54,7 +86,12 @@ type BillingConfig = {
 
 type MpConfig = {
   accessToken: string;
-  webhookSecret: string;
+};
+
+type PaymentToggleState = {
+  globalEnabled: boolean;
+  tenantEnabled: boolean;
+  effectiveEnabled: boolean;
 };
 
 type PreferenceItemInput = {
@@ -67,12 +104,20 @@ type PreferenceItemInput = {
   currencyId?: string;
 };
 
+type OrderPaymentLifecycleStatus =
+  | "pending_confirmation"
+  | "approved"
+  | "rejected"
+  | "failed";
+
 type PaymentStatus = "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
 
 type PaymentWebhookTransactionResult = {
   ignoredDuplicate: boolean;
   transitionApplied: boolean;
 };
+
+type PaymentActionRecommendation = "reintentar" | "esperar" | "cancelar" | "escalar";
 
 type ResolveTenantInput = {
   tenantIdFromReference: string;
@@ -101,31 +146,359 @@ const TERMINAL_PAYMENT_STATUSES = new Set<PaymentStatus>([
   "REJECTED",
   "FAILED",
 ]);
-const MP_SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
-const CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE = "2026-03-31";
+const MANUAL_RECONCILIATION_RECOMMENDATIONS: Record<PaymentStatus, PaymentActionRecommendation> = {
+  PENDING: "esperar",
+  APPROVED: "esperar",
+  REJECTED: "cancelar",
+  FAILED: "reintentar",
+};
 
-const MP_ACCESS_TOKEN_PARAM = defineString("MP_ACCESS_TOKEN");
-const MP_WEBHOOK_SECRET_PARAM = defineString("MP_WEBHOOK_SECRET");
-const BILLING_SOURCE_PARAM = defineString("BILLING_SOURCE", {
-  default: "monitoring",
-});
-const BILLING_PROJECT_ID_PARAM = defineString("BILLING_PROJECT_ID");
-const BILLING_BIGQUERY_PROJECT_PARAM = defineString("BILLING_BIGQUERY_PROJECT");
-const BILLING_BIGQUERY_DATASET_PARAM = defineString("BILLING_BIGQUERY_DATASET");
-const BILLING_BIGQUERY_TABLE_PARAM = defineString("BILLING_BIGQUERY_TABLE");
 
-const getOptionalParam = (param: ReturnType<typeof defineString>): string | undefined => {
+const GLOBAL_FLAGS_COLLECTION = "config";
+const GLOBAL_FLAGS_DOC_ID = "runtime_flags";
+const TENANT_FLAGS_SUBCOLLECTION = "config";
+const TENANT_FLAGS_DOC_ID = "runtime_flags";
+const MP_FALLBACK_PAYMENT_METHOD = "TRANSFERENCIA";
+const MP_GLOBAL_FLAG_PATH = "payments.mp.enabled";
+const MP_TENANT_FLAG_PATH = "tenant.payments.mp.enabled";
+
+const TENANT_ONBOARDING_POLICY_DOC = "tenant_onboarding";
+const TENANT_ONBOARDING_POLICY_COLLECTION = "platform_config";
+const TENANT_ACTIVATION_MODE_AUTO = "auto";
+const TENANT_ACTIVATION_MODE_MANUAL = "manual";
+
+const WEBHOOK_SECRET_CACHE_TTL_MS = 60_000;
+const PUBLIC_CATALOG_CACHE_TTL_MS = 60_000;
+const PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS = 60_000;
+const PUBLIC_CATALOG_RATE_LIMIT_MAX = 90;
+const PUBLIC_CATALOG_MAX_PAGE_SIZE = 100;
+const PUBLIC_CATALOG_DEFAULT_PAGE_SIZE = 25;
+const PUBLIC_CATALOG_SORT_ALLOWLIST = new Set(["name_asc", "name_desc", "updated_desc"]);
+
+let cachedWebhookSecrets: {
+  expiresAtMs: number;
+  value: string[];
+} | null = null;
+
+let publicCatalogCache = new Map<string, { expiresAtMs: number; response: PublicCatalogResponse }>();
+let publicCatalogRateLimitStore = new Map<string, { windowStartMs: number; count: number }>();
+
+type PublicCatalogSort = "name_asc" | "name_desc" | "updated_desc";
+
+type PublicCatalogRequestParams = {
+  tenantId: string;
+  pageSize: number;
+  sort: PublicCatalogSort;
+  pageToken: string;
+};
+
+type PublicCatalogPageToken = {
+  sort: PublicCatalogSort;
+  cursorName: string;
+  cursorUpdatedAtMs: number | null;
+  cursorProductName: string;
+};
+
+type PublicCatalogResponseItem = {
+  id: string;
+  tenantId: string;
+  storeName: string;
+  name: string;
+  sku: string;
+  code: string;
+  barcode: string;
+  listPrice: number | null;
+  cashPrice: number | null;
+  updatedAt: string | null;
+};
+
+type PublicCatalogStoreMeta = {
+  tenantId: string;
+  storeName: string;
+  storeLogoUrl: string;
+  palette: { primary: string; secondary: string; tertiary: string };
+  heroTitle: string;
+  heroSubtitle: string;
+  footerText: string;
+  showPrices: boolean;
+  showCashPrice: boolean;
+};
+
+type PublicCatalogResponse = {
+  items: PublicCatalogResponseItem[];
+  nextPageToken: string | null;
+  totalApprox: number;
+  storeMeta?: PublicCatalogStoreMeta | null;
+};
+
+const PUBLIC_CATALOG_FIELDS = [
+  "tenantId",
+  "storeName",
+  "name",
+  "sku",
+  "code",
+  "barcode",
+  "listPrice",
+  "cashPrice",
+  "updatedAt",
+] as const;
+
+const extractRequestIp = (req: functions.https.Request): string => {
+  const xff = normalizeString(String(req.headers["x-forwarded-for"] ?? ""));
+  if (xff) {
+    const firstIp = xff.split(",")[0]?.trim();
+    if (firstIp) return firstIp;
+  }
+  return normalizeString(req.ip) || "unknown";
+};
+
+const buildPublicCatalogFingerprint = (req: functions.https.Request): string => {
+  const userAgent = normalizeString(String(req.headers["user-agent"] ?? "")).toLowerCase();
+  const acceptLanguage = normalizeString(String(req.headers["accept-language"] ?? "")).toLowerCase();
+  return createHash("sha256")
+    .update(`${userAgent}|${acceptLanguage}`)
+    .digest("hex")
+    .slice(0, 24);
+};
+
+const parsePublicCatalogPageSize = (value: unknown): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return PUBLIC_CATALOG_DEFAULT_PAGE_SIZE;
+  return Math.min(Math.floor(parsed), PUBLIC_CATALOG_MAX_PAGE_SIZE);
+};
+
+const parsePublicCatalogSort = (value: unknown): PublicCatalogSort => {
+  const normalized = normalizeString(String(value ?? "")).toLowerCase();
+  if (PUBLIC_CATALOG_SORT_ALLOWLIST.has(normalized)) {
+    return normalized as PublicCatalogSort;
+  }
+  return "name_asc";
+};
+
+const parsePublicCatalogParams = (query: functions.https.Request["query"]): PublicCatalogRequestParams => {
+  const tenantId = normalizeString(String(query.tenantId ?? ""));
+  if (!tenantId || !/^[a-zA-Z0-9_-]{3,80}$/.test(tenantId)) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId es requerido y debe ser alfanumérico (3-80, permitidos: _ -)."
+    );
+  }
+
+  const pageToken = normalizeString(String(query.pageToken ?? ""));
+  if (pageToken.length > 1024) {
+    throw new functions.https.HttpsError("invalid-argument", "pageToken excede longitud máxima.");
+  }
+
+  return {
+    tenantId,
+    pageSize: parsePublicCatalogPageSize(query.pageSize),
+    sort: parsePublicCatalogSort(query.sort),
+    pageToken,
+  };
+};
+
+const decodePublicCatalogPageToken = (
+  token: string,
+  expectedSort: PublicCatalogSort
+): PublicCatalogPageToken | null => {
+  if (!token) return null;
   try {
-    const value = param.value();
-    if (typeof value !== "string") {
-      return undefined;
+    const decoded = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as PublicCatalogPageToken;
+    if (
+      !decoded ||
+      decoded.sort !== expectedSort ||
+      typeof decoded.cursorName !== "string" ||
+      typeof decoded.cursorProductName !== "string" ||
+      (decoded.cursorUpdatedAtMs !== null && !Number.isFinite(decoded.cursorUpdatedAtMs))
+    ) {
+      throw new Error("invalid token");
     }
-    const normalized = value.trim();
-    return normalized.length > 0 ? normalized : undefined;
-  } catch (_error) {
-    return undefined;
+    return decoded;
+  } catch (error) {
+    throw new functions.https.HttpsError("invalid-argument", "pageToken inválido.");
   }
 };
+
+const encodePublicCatalogPageToken = (token: PublicCatalogPageToken): string =>
+  Buffer.from(JSON.stringify(token)).toString("base64url");
+
+const enforcePublicCatalogRateLimit = (req: functions.https.Request, tenantId: string): void => {
+  const now = Date.now();
+  const ip = extractRequestIp(req);
+  const fingerprint = buildPublicCatalogFingerprint(req);
+  const key = `${tenantId}|${ip}|${fingerprint}`;
+  const current = publicCatalogRateLimitStore.get(key);
+
+  if (!current || now - current.windowStartMs >= PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS) {
+    publicCatalogRateLimitStore.set(key, { windowStartMs: now, count: 1 });
+  } else {
+    current.count += 1;
+    publicCatalogRateLimitStore.set(key, current);
+    if (current.count > PUBLIC_CATALOG_RATE_LIMIT_MAX) {
+      throw new functions.https.HttpsError("resource-exhausted", "Rate limit excedido para este catálogo.");
+    }
+  }
+
+  if (publicCatalogRateLimitStore.size > 4000) {
+    const threshold = now - PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS * 2;
+    publicCatalogRateLimitStore = new Map(
+      [...publicCatalogRateLimitStore.entries()].filter(([, value]) => value.windowStartMs >= threshold)
+    );
+  }
+};
+
+const getPublicCatalogCached = (cacheKey: string): PublicCatalogResponse | null => {
+  const entry = publicCatalogCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expiresAtMs <= Date.now()) {
+    publicCatalogCache.delete(cacheKey);
+    return null;
+  }
+  return entry.response;
+};
+
+const setPublicCatalogCached = (cacheKey: string, response: PublicCatalogResponse): void => {
+  if (publicCatalogCache.size > 4000) {
+    const now = Date.now();
+    publicCatalogCache = new Map(
+      [...publicCatalogCache.entries()].filter(([, value]) => value.expiresAtMs > now)
+    );
+  }
+  publicCatalogCache.set(cacheKey, {
+    expiresAtMs: Date.now() + PUBLIC_CATALOG_CACHE_TTL_MS,
+    response,
+  });
+};
+
+const getFirestoreOrderBy = (sort: PublicCatalogSort): FirebaseFirestore.OrderByDirection =>
+  sort === "name_desc" ? "desc" : "asc";
+
+const toPublicCatalogResponseItem = (
+  doc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+): PublicCatalogResponseItem => {
+  const data = doc.data();
+  const updatedAtTimestamp = data.updatedAt;
+  const updatedAt =
+    updatedAtTimestamp && typeof updatedAtTimestamp.toDate === "function"
+      ? updatedAtTimestamp.toDate().toISOString()
+      : null;
+  return {
+    id: doc.id,
+    tenantId: normalizeString(data.tenantId),
+    storeName: normalizeString(data.storeName),
+    name: normalizeString(data.name),
+    sku: normalizeString(data.sku),
+    code: normalizeString(data.code),
+    barcode: normalizeString(data.barcode),
+    listPrice: Number.isFinite(Number(data.listPrice)) ? Number(data.listPrice) : null,
+    cashPrice: Number.isFinite(Number(data.cashPrice)) ? Number(data.cashPrice) : null,
+    updatedAt,
+  };
+};
+
+const fetchPublicCatalogStoreMeta = async (
+  tenantId: string
+): Promise<PublicCatalogStoreMeta | null> => {
+  try {
+    const tenantConfigRef = db.collection("tenants").doc(tenantId).collection("config");
+    const [marketingSnap, catalogSnap] = await Promise.all([
+      tenantConfigRef.doc("marketing").get(),
+      tenantConfigRef.doc("public_catalog").get(),
+    ]);
+
+    const marketingData = (marketingSnap.exists ? marketingSnap.data()?.data : null) as
+      | Record<string, unknown>
+      | null;
+    const catalogData = (catalogSnap.exists ? catalogSnap.data()?.data : null) as
+      | Record<string, unknown>
+      | null;
+
+    const palette = (marketingData?.palette ?? {}) as Record<string, unknown>;
+
+    return {
+      tenantId,
+      storeName: normalizeString(String(marketingData?.storeName ?? "")),
+      storeLogoUrl: normalizeString(String(marketingData?.storeLogoUrl ?? "")),
+      palette: {
+        primary: normalizeString(String(palette.primary ?? "")),
+        secondary: normalizeString(String(palette.secondary ?? "")),
+        tertiary: normalizeString(String(palette.tertiary ?? "")),
+      },
+      heroTitle: normalizeString(String(catalogData?.heroTitle ?? "")),
+      heroSubtitle: normalizeString(String(catalogData?.heroSubtitle ?? "")),
+      footerText: normalizeString(String(catalogData?.footerText ?? "")),
+      showPrices: catalogData?.showPrices !== false,
+      showCashPrice: catalogData?.showCashPrice !== false,
+    };
+  } catch (error) {
+    console.warn("fetchPublicCatalogStoreMeta failed", { tenantId, error });
+    return null;
+  }
+};
+
+
+const parseBooleanFlagValue = (value: unknown, defaultValue: boolean): boolean => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return defaultValue;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on", "enabled"].includes(normalized)) return true;
+    if (["false", "0", "no", "off", "disabled"].includes(normalized)) return false;
+  }
+  return defaultValue;
+};
+
+const getPathValue = (source: Record<string, unknown>, path: string): unknown => {
+  return path.split(".").reduce<unknown>((acc, segment) => {
+    if (typeof acc !== "object" || acc === null) return undefined;
+    return (acc as Record<string, unknown>)[segment];
+  }, source);
+};
+
+const parseFlagFromDoc = (docData: Record<string, unknown>, path: string, defaultValue: boolean): boolean => {
+  const nested = getPathValue(docData, path);
+  if (nested !== undefined) return parseBooleanFlagValue(nested, defaultValue);
+
+  const flatKeyValue = docData[path];
+  if (flatKeyValue !== undefined) return parseBooleanFlagValue(flatKeyValue, defaultValue);
+
+  return defaultValue;
+};
+
+const getPaymentToggleState = async (tenantId: string): Promise<PaymentToggleState> => {
+  const normalizedTenantId = normalizeString(tenantId);
+  if (!normalizedTenantId) {
+    return { globalEnabled: true, tenantEnabled: true, effectiveEnabled: true };
+  }
+
+  const [globalFlagsDoc, tenantFlagsDoc] = await Promise.all([
+    db.collection(GLOBAL_FLAGS_COLLECTION).doc(GLOBAL_FLAGS_DOC_ID).get(),
+    db
+      .collection("tenants")
+      .doc(normalizedTenantId)
+      .collection(TENANT_FLAGS_SUBCOLLECTION)
+      .doc(TENANT_FLAGS_DOC_ID)
+      .get(),
+  ]);
+
+  const globalEnabled = globalFlagsDoc.exists
+    ? parseFlagFromDoc((globalFlagsDoc.data() ?? {}) as Record<string, unknown>, MP_GLOBAL_FLAG_PATH, true)
+    : true;
+  const tenantEnabled = tenantFlagsDoc.exists
+    ? parseFlagFromDoc((tenantFlagsDoc.data() ?? {}) as Record<string, unknown>, MP_TENANT_FLAG_PATH, true)
+    : true;
+
+  return {
+    globalEnabled,
+    tenantEnabled,
+    effectiveEnabled: globalEnabled && tenantEnabled,
+  };
+};
+
 
 const summarizeMercadoPagoError = (error: unknown) => {
   if (!axios.isAxiosError(error)) {
@@ -422,57 +795,75 @@ const buildPublicProductPayload = (
   };
 };
 
-const getMpConfig = (): MpConfig => {
-  const accessToken =
-    process.env.MP_ACCESS_TOKEN?.trim() ??
-    getOptionalParam(MP_ACCESS_TOKEN_PARAM);
-  const webhookSecret =
-    process.env.MP_WEBHOOK_SECRET?.trim() ??
-    getOptionalParam(MP_WEBHOOK_SECRET_PARAM);
+const getMpConfig = (): MpConfig => cfgGetMpConfig();
 
-  if (!accessToken || !webhookSecret) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Mercado Pago credentials are missing."
+const getMpWebhookSignatureWindowMs = (): number => cfgGetMpWebhookSignatureWindowMs();
+
+const getMpWebhookReplayTtlMs = (): number => cfgGetMpWebhookReplayTtlMs();
+
+const parseWebhookSecretRefs = (): string[] => cfgParseWebhookSecretRefs();
+
+const getMpWebhookSecrets = async (): Promise<string[]> => {
+  const cached = cachedWebhookSecrets;
+  if (cached && cached.expiresAtMs > Date.now() && cached.value.length > 0) {
+    return cached.value;
+  }
+
+  const fallbackSecret =
+    cfgGetFallbackWebhookSecret();
+
+  const refs = parseWebhookSecretRefs();
+  const secretSet = new Set<string>();
+
+  if (fallbackSecret) {
+    secretSet.add(fallbackSecret);
+  }
+
+  if (refs.length > 0) {
+    const auth = await google.auth.getClient({
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    });
+    google.options({ auth });
+    const secretManager = google.secretmanager("v1");
+
+    await Promise.all(
+      refs.map(async (ref) => {
+        try {
+          const response = await secretManager.projects.secrets.versions.access({
+            name: ref,
+          });
+          const payload = response.data.payload?.data ?? "";
+          const secretValue = Buffer.from(payload, "base64").toString("utf8").trim();
+          if (secretValue) {
+            secretSet.add(secretValue);
+          }
+        } catch (error) {
+          console.error("Failed to load Mercado Pago webhook secret from Secret Manager", {
+            ref,
+            error: summarizeError(error),
+          });
+        }
+      })
     );
   }
 
-  return { accessToken, webhookSecret };
-};
-
-const getBillingConfig = (): BillingConfig => {
-  const projectId =
-    process.env.GCP_PROJECT ??
-    process.env.GCLOUD_PROJECT ??
-    process.env.BILLING_PROJECT_ID ??
-    getOptionalParam(BILLING_PROJECT_ID_PARAM) ??
-    "";
-  if (!projectId) {
+  const secrets = [...secretSet];
+  if (secrets.length === 0) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "Billing projectId is missing."
+      "Mercado Pago webhook secrets are missing."
     );
   }
-  const rawSource =
-    process.env.BILLING_SOURCE ??
-    getOptionalParam(BILLING_SOURCE_PARAM) ??
-    "monitoring";
-  const source: UsageSource = rawSource === "bigquery" ? "bigquery" : "monitoring";
 
-  return {
-    source,
-    projectId,
-    bigqueryProjectId:
-      process.env.BILLING_BIGQUERY_PROJECT ??
-      getOptionalParam(BILLING_BIGQUERY_PROJECT_PARAM),
-    bigqueryDataset:
-      process.env.BILLING_BIGQUERY_DATASET ??
-      getOptionalParam(BILLING_BIGQUERY_DATASET_PARAM),
-    bigqueryTable:
-      process.env.BILLING_BIGQUERY_TABLE ??
-      getOptionalParam(BILLING_BIGQUERY_TABLE_PARAM),
+  cachedWebhookSecrets = {
+    value: secrets,
+    expiresAtMs: Date.now() + WEBHOOK_SECRET_CACHE_TTL_MS,
   };
+
+  return secrets;
 };
+
+const getBillingConfig = (): BillingConfig => cfgGetBillingConfig();
 
 const normalizeString = (value: unknown): string => {
   if (typeof value === "string") {
@@ -483,6 +874,14 @@ const normalizeString = (value: unknown): string => {
   }
   return "";
 };
+
+const normalizeTenantActivationMode = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  return normalized === TENANT_ACTIVATION_MODE_MANUAL
+    ? TENANT_ACTIVATION_MODE_MANUAL
+    : TENANT_ACTIVATION_MODE_AUTO;
+};
+
 
 const extractTenantId = (payment: unknown): string => {
   const source = (payment ?? {}) as Record<string, unknown>;
@@ -501,6 +900,9 @@ const extractTenantId = (payment: unknown): string => {
 
 const buildExternalReference = (tenantId: string, orderId: string): string =>
   `tenant:${tenantId}|order:${orderId}`;
+
+const buildPreferenceIdempotencyKey = (tenantId: string, orderId: string): string =>
+  createHash("sha256").update(`${tenantId}|${orderId}|checkout_preference`).digest("hex");
 
 const parseExternalReference = (externalReference: unknown): ExternalReferenceData => {
   const raw = normalizeString(externalReference);
@@ -575,6 +977,85 @@ const mapPaymentStatus = (status: unknown): PaymentStatus => {
     return "REJECTED";
   }
   return "FAILED";
+};
+
+const recommendPaymentAction = (input: {
+  providerStatus: PaymentStatus;
+  lastKnownStatus: PaymentStatus | null;
+  statusDetail: unknown;
+}): PaymentActionRecommendation => {
+  const statusDetail = normalizeString(input.statusDetail).toLowerCase();
+
+  if (input.providerStatus === "APPROVED") {
+    return "esperar";
+  }
+
+  if (input.providerStatus === "PENDING") {
+    if (statusDetail.includes("manual_review") || statusDetail.includes("pending_review")) {
+      return "escalar";
+    }
+    if (input.lastKnownStatus === "FAILED" || input.lastKnownStatus === "REJECTED") {
+      return "reintentar";
+    }
+    return "esperar";
+  }
+
+  if (input.providerStatus === "REJECTED") {
+    if (statusDetail.includes("insufficient_amount") || statusDetail.includes("cc_rejected_insufficient_amount")) {
+      return "reintentar";
+    }
+    if (statusDetail.includes("high_risk") || statusDetail.includes("fraud")) {
+      return "escalar";
+    }
+    return "cancelar";
+  }
+
+  if (input.providerStatus === "FAILED") {
+    if (statusDetail.includes("timeout") || statusDetail.includes("network")) {
+      return "reintentar";
+    }
+    return "escalar";
+  }
+
+  return MANUAL_RECONCILIATION_RECOMMENDATIONS[input.providerStatus] ?? "escalar";
+};
+
+const syncCashClosureReconciliation = async (input: {
+  tenantId: string;
+  paymentId: string;
+  recommendation: PaymentActionRecommendation;
+  providerStatus: PaymentStatus;
+  actorUid: string;
+}) => {
+  const { tenantId, paymentId, recommendation, providerStatus, actorUid } = input;
+  const status = recommendation === "esperar" ? "clear" : "pending_action";
+
+  await db
+    .collection("tenants")
+    .doc(tenantId)
+    .collection("cash_closure_reconciliation")
+    .doc(paymentId)
+    .set(
+      {
+        tenantId,
+        paymentId,
+        providerStatus,
+        recommendation,
+        status,
+        updatedByUid: actorUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+};
+
+const mapOrderPaymentLifecycleStatus = (
+  paymentStatus: PaymentStatus
+): OrderPaymentLifecycleStatus => {
+  if (paymentStatus === "APPROVED") return "approved";
+  if (paymentStatus === "REJECTED") return "rejected";
+  if (paymentStatus === "FAILED") return "failed";
+  return "pending_confirmation";
 };
 
 const parseStoredPaymentStatus = (status: unknown): PaymentStatus | null => {
@@ -912,6 +1393,7 @@ const validateMpSignature = (input: {
   requestId: string;
   dataId: string;
   webhookSecret: string;
+  maxAgeMs: number;
 }): { isValid: boolean; reason?: string; ts: number } => {
   const parsedHeader = parseMpSignatureHeader(input.signatureHeader);
   if (!parsedHeader) {
@@ -923,7 +1405,7 @@ const validateMpSignature = (input: {
   }
 
   const ageMs = Math.abs(Date.now() - parsedHeader.ts * 1000);
-  if (ageMs > MP_SIGNATURE_WINDOW_MS) {
+  if (ageMs > input.maxAgeMs) {
     return {
       isValid: false,
       reason: "signature_out_of_window",
@@ -964,56 +1446,84 @@ const validateMpSignature = (input: {
   };
 };
 
-const consumeWebhookNonce = async ({
-  tenantId,
-  paymentId,
-  requestId,
-  ts,
-}: {
-  tenantId: string;
-  paymentId: string;
-  requestId: string;
-  ts: number;
-}): Promise<boolean> => {
-  const nonceId = `${requestId}.${ts}`;
-  const nonceRef = db
-    .collection("tenants")
-    .doc(tenantId)
-    .collection("payments")
-    .doc(paymentId)
-    .collection("webhookNonces")
-    .doc(nonceId);
+const getWebhookEventId = (req: functions.https.Request): string => {
+  const eventId =
+    req.get("x-event-id") ??
+    req.body?.id ??
+    req.body?.event_id ??
+    req.query?.id ??
+    "";
+  return normalizeString(eventId);
+};
 
+const logWebhookSecurityEvent = async (payload: {
+  reason: string;
+  requestId: string;
+  paymentId: string;
+  sourceIp: string;
+  eventId: string;
+  signatureTs?: number;
+}): Promise<void> => {
+  try {
+    await db.collection(APP_CHECK_REJECT_COLLECTION).doc().set({
+      type: "mp_webhook_signature_failure",
+      reason: payload.reason,
+      requestId: payload.requestId || null,
+      paymentId: payload.paymentId || null,
+      eventId: payload.eventId || null,
+      sourceIp: payload.sourceIp || null,
+      signatureTs: payload.signatureTs ?? null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Failed to persist webhook security event", {
+      reason: payload.reason,
+      requestId: payload.requestId || "n/a",
+      paymentId: payload.paymentId || "n/a",
+      error: summarizeError(error),
+    });
+  }
+};
+
+const consumeWebhookReplayGuard = async ({
+  eventId,
+  requestId,
+  paymentId,
+  signatureTs,
+}: {
+  eventId: string;
+  requestId: string;
+  paymentId: string;
+  signatureTs: number;
+}): Promise<boolean> => {
+  const replayId = createHash("sha256")
+    .update(`${eventId}|${requestId}`)
+    .digest("hex");
+  const replayRef = db.collection("webhookReplayGuards").doc(replayId);
   const nowMs = Date.now();
-  const expiresAt = admin.firestore.Timestamp.fromMillis(
-    nowMs + MP_SIGNATURE_WINDOW_MS
-  );
+  const expiresAt = admin.firestore.Timestamp.fromMillis(nowMs + getMpWebhookReplayTtlMs());
 
   return db.runTransaction(async (transaction) => {
-    const nonceDoc = await transaction.get(nonceRef);
-    const existingExpiresAt = nonceDoc.get(
-      "expiresAt"
-    ) as admin.firestore.Timestamp | undefined;
+    const replayDoc = await transaction.get(replayRef);
+    const existingExpiresAt = replayDoc.get("expiresAt") as admin.firestore.Timestamp | undefined;
 
-    if (
-      nonceDoc.exists &&
-      existingExpiresAt &&
-      existingExpiresAt.toMillis() > nowMs
-    ) {
+    if (replayDoc.exists && existingExpiresAt && existingExpiresAt.toMillis() > nowMs) {
       return false;
     }
 
     transaction.set(
-      nonceRef,
+      replayRef,
       {
+        replayId,
+        eventId,
         requestId,
-        ts,
-        nonceId,
+        paymentId,
+        signatureTs,
         expiresAt,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: nonceDoc.exists
-          ? nonceDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
+        createdAt: replayDoc.exists
+          ? replayDoc.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
           : admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -1337,6 +1847,13 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
   );
   const requiredTenantId = tenantId || metadataTenantId;
   const payerEmail = normalizeString(payload.payer_email ?? payload.payerEmail);
+  const providedOrderId = normalizeString(payload.orderId ?? payload.order_id ?? orderId);
+  const orderDocId = providedOrderId || db.collection("_").doc().id;
+  const providedIdempotencyKey = normalizeString(
+    payload.idempotencyKey ?? payload.idempotency_key
+  );
+  const idempotencyKey =
+    providedIdempotencyKey || buildPreferenceIdempotencyKey(requiredTenantId, orderDocId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new functions.https.HttpsError(
@@ -1356,6 +1873,18 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
     throw new functions.https.HttpsError(
       "invalid-argument",
       "tenantId is required to create a payment preference."
+    );
+  }
+
+  const toggleState = await getPaymentToggleState(requiredTenantId);
+  if (!toggleState.effectiveEnabled) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Mercado Pago está temporalmente deshabilitado para este tenant.",
+      {
+        fallbackPaymentMethod: MP_FALLBACK_PAYMENT_METHOD,
+        mpEnabled: toggleState,
+      }
     );
   }
 
@@ -1379,10 +1908,33 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
 
   const metadata = {
     ...metadataInput,
-    orderId: orderId || undefined,
+    orderId: orderDocId,
+    idempotencyKey,
     tenantId: requiredTenantId,
   };
-  const externalReference = buildExternalReference(requiredTenantId, orderId);
+  const externalReference = buildExternalReference(requiredTenantId, orderDocId);
+  const tenantRef = db.collection("tenants").doc(requiredTenantId);
+  const orderRef = tenantRef.collection("orders").doc(orderDocId);
+
+  await orderRef.set(
+    {
+      status: "pending_confirmation",
+      paymentStatus: "pending_confirmation",
+      amount,
+      currency: "ARS",
+      provider: "mercado_pago",
+      orderId: orderDocId,
+      idempotencyKey,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      checkoutStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastPreferenceRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      checkoutAttempts: admin.firestore.FieldValue.increment(1),
+      statusDetail: "checkout_started",
+      metadata,
+      externalReference,
+    },
+    { merge: true }
+  );
 
   let response;
   try {
@@ -1397,6 +1949,7 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          "X-Idempotency-Key": idempotencyKey,
         },
       }
     );
@@ -1408,7 +1961,9 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
       status: mpError.status,
       code: mpError.code,
       message: mpError.message,
-      response: mpError.data,
+      responseSummary: redactObject(mpError.data),
+      payerEmail: maskEmail(payerEmail),
+      payerPhone: maskPhone(payload.payer_phone ?? payload.payerPhone),
     });
     throw new functions.https.HttpsError(
       mapMercadoPagoStatusToHttpsCode(mpError.status),
@@ -1417,7 +1972,7 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
         provider: "mercado_pago",
         status: mpError.status,
         code: mpError.code,
-        response: mpError.data,
+        response: redactObject(mpError.data),
       }
     );
   }
@@ -1434,25 +1989,227 @@ const createPaymentPreferenceHandler = async (data: unknown) => {
     init_point: initPoint,
     preference_id: response.data?.id,
     sandbox_init_point: response.data?.sandbox_init_point,
+    order_id: orderDocId,
+    idempotency_key: idempotencyKey,
+    payment_status: "pending_confirmation",
   };
 };
 
-export const createPaymentPreference =
-  functions.runWith({ enforceAppCheck: false }).https.onCall(createPaymentPreferenceHandler);
+const requireAuthenticatedUser = (context: functions.https.CallableContext): string => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError("unauthenticated", "Authentication required.");
+  }
+  return context.auth.uid;
+};
 
-/**
- * @deprecated Use `createPaymentPreference`. This alias will be retired on 2026-03-31.
- */
-export const createPreference = functions
-  .runWith({ enforceAppCheck: false })
-  .https.onCall(async (data: unknown, context) => {
-    console.warn("Deprecated Cloud Function alias invoked: createPreference", {
-      canonicalEndpoint: "createPaymentPreference",
-      aliasRetirementDate: CREATE_PREFERENCE_ALIAS_RETIREMENT_DATE,
-      uid: context.auth?.uid ?? null,
-    });
-    return createPaymentPreferenceHandler(data);
+const createPaymentIntentHandler = async (
+  data: unknown,
+  context: functions.https.CallableContext
+) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const orderId = normalizeString(payload.orderId);
+  const amount = Number(payload.amount);
+  const currency = normalizeString(payload.currency) || "ARS";
+  const description = normalizeString(payload.description);
+  const payerEmail = normalizeString(payload.payerEmail ?? payload.payer_email);
+  const items: PreferenceItemInput[] = Array.isArray(payload.items)
+    ? (payload.items as PreferenceItemInput[])
+    : [];
+  const metadata =
+    typeof payload.metadata === "object" && payload.metadata !== null
+      ? (payload.metadata as Record<string, unknown>)
+      : {};
+
+  if (!tenantId || !orderId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId and orderId are required."
+    );
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new functions.https.HttpsError("invalid-argument", "amount must be a positive number.");
+  }
+
+  if (items.length === 0) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "items must contain at least one entry."
+    );
+  }
+
+  const { accessToken } = getMpConfig();
+  const { intentId, attemptId } = await paymentsCore.createPaymentIntent({
+    tenantId,
+    orderId,
+    amount,
+    currency,
+    provider: "mercado_pago",
+    metadata,
+    actorUid,
   });
+
+  try {
+    const mp = await createMpPaymentIntent({
+      accessToken,
+      tenantId,
+      orderId,
+      intentId,
+      amount,
+      currency,
+      description,
+      payerEmail,
+      items,
+      metadata,
+    });
+
+    await paymentsCore.registerProviderAttempt({
+      tenantId,
+      intentId,
+      attemptId,
+      providerPreferenceId: mp.preferenceId,
+    });
+
+    return {
+      intentId,
+      attemptId,
+      provider: "mercado_pago",
+      preferenceId: mp.preferenceId,
+      initPoint: mp.initPoint,
+      sandboxInitPoint: mp.sandboxInitPoint,
+    };
+  } catch (error) {
+    const mpError = summarizeMercadoPagoError(error);
+    console.error("createPaymentIntent provider call failed", {
+      tenantId,
+      orderId,
+      intentId,
+      attemptId,
+      status: mpError.status,
+      code: mpError.code,
+      message: mpError.message,
+    });
+
+    throw new functions.https.HttpsError(
+      mapMercadoPagoStatusToHttpsCode(mpError.status),
+      `Mercado Pago error: ${mpError.message}`,
+      {
+        provider: "mercado_pago",
+        status: mpError.status,
+        code: mpError.code,
+      }
+    );
+  }
+};
+
+const confirmByWebhookHandler = async (data: unknown, context: functions.https.CallableContext) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const intentId = normalizeString(payload.intentId);
+  const attemptId = normalizeString(payload.attemptId);
+  const providerPaymentId = normalizeString(payload.providerPaymentId ?? payload.paymentId);
+  const providerStatus = normalizeString(payload.providerStatus ?? payload.status);
+  const providerEventId = normalizeString(payload.providerEventId ?? payload.eventId);
+  const requestId = normalizeString(payload.requestId);
+  const rawProviderPayload =
+    typeof payload.rawProviderPayload === "object" && payload.rawProviderPayload !== null
+      ? (payload.rawProviderPayload as Record<string, unknown>)
+      : {};
+
+  if (!tenantId || !intentId || !attemptId || !providerPaymentId || !providerStatus) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId, intentId, attemptId, providerPaymentId and providerStatus are required."
+    );
+  }
+
+  return paymentsCore.confirmByWebhook({
+    tenantId,
+    intentId,
+    attemptId,
+    providerPaymentId,
+    providerStatus,
+    providerEventId: providerEventId || undefined,
+    requestId: requestId || undefined,
+    rawProviderPayload,
+    source: "webhook",
+    actorUid,
+  });
+};
+
+const reconcilePaymentHandler = async (data: unknown, context: functions.https.CallableContext) => {
+  const actorUid = requireAuthenticatedUser(context);
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const tenantId = normalizeString(payload.tenantId);
+  const attemptId = normalizeString(payload.attemptId);
+  const providerPaymentId = normalizeString(payload.providerPaymentId ?? payload.paymentId);
+  const { accessToken } = getMpConfig();
+
+  if (!tenantId || !attemptId || !providerPaymentId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "tenantId, attemptId and providerPaymentId are required."
+    );
+  }
+
+  const canonicalPayment = await fetchMpPayment(accessToken, providerPaymentId);
+  const intentId = canonicalPayment.intentId;
+
+  if (!intentId) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Unable to reconcile payment without intentId in provider payload."
+    );
+  }
+
+  const result = await paymentsCore.confirmByWebhook({
+    tenantId,
+    intentId,
+    attemptId,
+    providerPaymentId,
+    providerStatus: canonicalPayment.providerStatus,
+    amount: canonicalPayment.amount,
+    currency: canonicalPayment.currency,
+    rawProviderPayload: canonicalPayment.rawProviderPayload,
+    source: "reconciliation",
+    actorUid,
+  });
+
+  return {
+    transitionApplied: result.transitionApplied,
+    providerStatus: canonicalPayment.providerStatus,
+    orderId: canonicalPayment.orderId,
+    intentId,
+  };
+};
+
+
+// --- Store request notifications (approval/rejection) ---
+export { onStoreRequestStatusChange };
+
+export const setMainLandingConfig = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(createSetMainLandingConfigHandler(db));
+
+export const setTenantStoreLandingConfig = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(createSetTenantStoreLandingConfigHandler(db));
+
+export const createPaymentIntent =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentIntentHandler);
+
+export const confirmByWebhook =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(confirmByWebhookHandler);
+
+export const reconcilePayment =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(reconcilePaymentHandler);
+
+export const createPaymentPreference =
+  functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentPreferenceHandler);
+
 
 export const collectUsageMetrics = functions.pubsub
   .schedule("every 24 hours")
@@ -1572,17 +2329,36 @@ type UsageHistoryItem = {
   updatedAt: string | null;
 };
 
-export const getUsageMetricsHistory = functions.https.onCall(async (data) => {
+export const getUsageMetricsHistory = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
+  const uid = normalizeString(context.auth?.uid);
+  if (!uid) {
+    throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+  }
+
   const requestedLimit = Number((data as { limit?: number } | undefined)?.limit ?? 6);
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 24)
     : 6;
 
-  const snapshot = await db
-    .collection(USAGE_COLLECTION)
-    .orderBy("monthKey", "desc")
-    .limit(limit)
-    .get();
+  const userDoc = await db.collection("users").doc(uid).get();
+  const decision = authorizeUsageMetricsAccess(
+    data as { tenantId?: unknown } | undefined,
+    {
+      auth: {
+        uid,
+        token: {
+          superAdmin: context.auth?.token?.superAdmin === true,
+        },
+      },
+    },
+    userDoc.exists ? userDoc.data() : undefined
+  );
+
+  const query = decision.scope === "tenant"
+    ? db.collection("tenants").doc(decision.requestedTenantId).collection(USAGE_COLLECTION)
+    : db.collection(USAGE_COLLECTION);
+
+  const snapshot = await query.orderBy("monthKey", "desc").limit(limit).get();
 
   const history: UsageHistoryItem[] = snapshot.docs.map((doc) => {
     const raw = doc.data() as Record<string, unknown>;
@@ -1606,9 +2382,47 @@ export const getUsageMetricsHistory = functions.https.onCall(async (data) => {
     };
   });
 
+  const auditPayload = {
+    eventType: "metrics_access",
+    action: "USAGE_METRICS_HISTORY_READ",
+    actorUid: decision.uid,
+    scope: decision.scope,
+    status: "success",
+    targetTenantId: decision.requestedTenantId || null,
+    limit,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (decision.scope === "tenant") {
+    await db
+      .collection("tenants")
+      .doc(decision.requestedTenantId)
+      .collection("audit_logs")
+      .doc()
+      .set(auditPayload);
+  } else {
+    await db.collection("audit_logs").doc().set(auditPayload);
+  }
+
+  console.info("Usage metrics accessed", {
+    ...sanitizePiiForLog({
+      domain: "logs",
+      role: "auditor",
+      fields: {
+        actorUid: decision.uid,
+      },
+    }),
+    role: decision.role,
+    scope: decision.scope,
+    tenantId: decision.requestedTenantId || null,
+    limit,
+  });
+
   return {
     items: history,
     limit,
+    scope: decision.scope,
+    tenantId: decision.requestedTenantId || null,
   };
 });
 
@@ -1630,17 +2444,13 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
   const signatureHeader = req.get("x-signature") ?? "";
   const requestId = req.get("x-request-id") ?? "";
   const dataId = getDataId(req);
+  const sourceIp = normalizeString(req.ip);
+  const isIpAllowed = getIpAllowlist().some((cidr) => isIpInCidr(sourceIp, cidr));
 
-  const signatureValidation = validateMpSignature({
-    signatureHeader,
-    requestId,
-    dataId,
-    webhookSecret: config.webhookSecret,
-  });
-
-  if (!signatureValidation.isValid) {
+  if (!isIpAllowed) {
     console.info("Mercado Pago webhook rejected", {
-      reason: signatureValidation.reason ?? "invalid_signature",
+      reason: "ip_not_allowlisted",
+      sourceIp: sourceIp || "n/a",
       requestId: requestId || "n/a",
       paymentId: dataId || "n/a",
     });
@@ -1649,6 +2459,82 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
   }
 
   const paymentId = String(dataId);
+  const eventId = getWebhookEventId(req) || paymentId;
+
+  const signatureWindowMs = getMpWebhookSignatureWindowMs();
+  let webhookSecrets: string[];
+  try {
+    webhookSecrets = await getMpWebhookSecrets();
+  } catch {
+    console.info("Mercado Pago webhook secrets missing for webhook validation.");
+    res.status(500).send("Configuration error");
+    return;
+  }
+
+  const signatureValidation = webhookSecrets
+    .map((webhookSecret) =>
+      validateMpSignature({
+        signatureHeader,
+        requestId,
+        dataId,
+        webhookSecret,
+        maxAgeMs: signatureWindowMs,
+      })
+    )
+    .find((result) => result.isValid) ??
+    validateMpSignature({
+      signatureHeader,
+      requestId,
+      dataId,
+      webhookSecret: webhookSecrets[0],
+      maxAgeMs: signatureWindowMs,
+    });
+
+  if (!signatureValidation.isValid) {
+    await logWebhookSecurityEvent({
+      reason: signatureValidation.reason ?? "invalid_signature",
+      requestId,
+      paymentId,
+      sourceIp,
+      eventId,
+      signatureTs: signatureValidation.ts,
+    });
+
+    console.info("Mercado Pago webhook rejected", {
+      reason: signatureValidation.reason ?? "invalid_signature",
+      requestId: requestId || "n/a",
+      paymentId: dataId || "n/a",
+      eventId: eventId || "n/a",
+    });
+    res.status(401).send("Invalid signature");
+    return;
+  }
+
+  const replayAccepted = await consumeWebhookReplayGuard({
+    eventId,
+    requestId,
+    paymentId,
+    signatureTs: signatureValidation.ts,
+  });
+
+  if (!replayAccepted) {
+    await logWebhookSecurityEvent({
+      reason: "replay_detected",
+      requestId,
+      paymentId,
+      sourceIp,
+      eventId,
+      signatureTs: signatureValidation.ts,
+    });
+    console.info("Mercado Pago webhook rejected", {
+      reason: "replay_detected",
+      requestId: requestId || "n/a",
+      paymentId: paymentId || "n/a",
+      eventId: eventId || "n/a",
+    });
+    res.status(401).send("Invalid signature");
+    return;
+  }
 
   try {
     const paymentResponse = await axios.get(
@@ -1679,24 +2565,6 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
         orderId: orderId || "n/a",
       });
       res.status(200).send("ok");
-      return;
-    }
-
-    const nonceAccepted = await consumeWebhookNonce({
-      tenantId,
-      paymentId,
-      requestId,
-      ts: signatureValidation.ts,
-    });
-
-    if (!nonceAccepted) {
-      console.info("Mercado Pago webhook rejected", {
-        reason: "signature_reused",
-        tenantId,
-        paymentId,
-        requestId,
-      });
-      res.status(401).send("Invalid signature");
       return;
     }
 
@@ -1800,12 +2668,17 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     if (orderId) {
+      const lifecycleStatus = mapOrderPaymentLifecycleStatus(paymentStatus);
       await tenantRef
         .collection("orders")
         .doc(orderId)
         .set(
           {
             paymentId,
+            paymentStatus: lifecycleStatus,
+            status: lifecycleStatus,
+            statusDetail: payment?.status_detail ?? null,
+            updatedAtMillis: Date.now(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -1823,17 +2696,223 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
     res.status(200).send("ok");
   } catch (error) {
     const mpError = summarizeMercadoPagoError(error);
+    const sanitizedError = sanitizePiiForLog({
+      domain: "logs",
+      role: "support",
+      fields: {
+        payerEmail: (mpError.data as Record<string, unknown> | null | undefined)?.payer_email,
+      },
+    });
+
     console.error("Mercado Pago webhook processing failed", {
       paymentId,
       requestId: requestId || "n/a",
       status: mpError.status,
       code: mpError.code,
       message: mpError.message,
-      response: mpError.data,
+      response: {
+        ...((mpError.data as Record<string, unknown> | null) ?? {}),
+        ...sanitizedError,
+      },
     });
     res.status(500).send("error");
   }
 });
+
+export const reconcilePendingPayments = functions.pubsub
+  .schedule("every 10 minutes")
+  .timeZone("UTC")
+  .onRun(async () => {
+    let config: MpConfig;
+    try {
+      config = getMpConfig();
+    } catch {
+      console.warn("Skipping pending payment reconciliation due to missing Mercado Pago credentials");
+      return null;
+    }
+
+    const now = Date.now();
+    const pendingMinutes = getMpPendingReconciliationMinutes();
+    const alertMinutes = getAgedPendingAlertMinutes();
+    const batchSize = getMpReconciliationBatchSize();
+    const threshold = admin.firestore.Timestamp.fromMillis(now - pendingMinutes * 60_000);
+    const runRef = db.collection(PAYMENT_RECONCILIATION_RUNS_COLLECTION).doc();
+    const runId = runRef.id;
+
+    const statusVariants = ["PENDING", "pending"];
+    const candidateRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+
+    for (const status of statusVariants) {
+      const snapshot = await db
+        .collectionGroup("payments")
+        .where("status", "==", status)
+        .where("createdAt", "<=", threshold)
+        .limit(batchSize)
+        .get();
+
+      for (const doc of snapshot.docs) {
+        candidateRefs.set(doc.ref.path, doc.ref);
+        if (candidateRefs.size >= batchSize) {
+          break;
+        }
+      }
+
+      if (candidateRefs.size >= batchSize) {
+        break;
+      }
+    }
+
+    const candidates = await Promise.all(Array.from(candidateRefs.values()).map((ref) => ref.get()));
+
+    const summary = {
+      runId,
+      pendingMinutes,
+      alertMinutes,
+      batchSize,
+      scanned: candidates.length,
+      reconciled: 0,
+      disputes: 0,
+      agedAlerts: 0,
+      officialFetchErrors: 0,
+      startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      finishedAt: null as admin.firestore.FieldValue | admin.firestore.Timestamp | null,
+    };
+
+    for (const paymentDoc of candidates) {
+      const paymentData = (paymentDoc.data() ?? {}) as Record<string, unknown>;
+      const paymentId = paymentDoc.id;
+      const tenantId = paymentDoc.ref.parent.parent?.id ?? "";
+      const orderId = normalizeString(paymentData.orderId);
+
+      if (!tenantId) {
+        console.warn("Skipping reconciliation candidate without tenant context", {
+          paymentId,
+          path: paymentDoc.ref.path,
+          runId,
+        });
+        continue;
+      }
+
+      const createdAt = paymentData.createdAt as admin.firestore.Timestamp | undefined;
+      const createdAtMs = createdAt?.toMillis?.() ?? now;
+      const ageMinutes = Math.max(0, Math.floor((now - createdAtMs) / 60_000));
+      const internalStatus = parseStoredPaymentStatus(paymentData.status) ?? "PENDING";
+
+      try {
+        const paymentResponse = await axios.get(`${MERCADOPAGO_API}/v1/payments/${paymentId}`, {
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        });
+
+        const officialPayment = (paymentResponse.data ?? {}) as Record<string, unknown>;
+        const officialStatus = mapPaymentStatus(officialPayment.status);
+        const officialSummary = buildMercadoPagoSummary(officialPayment);
+        const statusMismatch = officialStatus !== internalStatus;
+        const amountMismatch =
+          Number.isFinite(Number(paymentData.amount)) &&
+          Number.isFinite(Number(officialPayment.transaction_amount)) &&
+          Number(paymentData.amount) !== Number(officialPayment.transaction_amount);
+        const reasons: string[] = [];
+        if (statusMismatch) {
+          reasons.push("status_mismatch");
+        }
+        if (amountMismatch) {
+          reasons.push("amount_mismatch");
+        }
+
+        await paymentDoc.ref.set(
+          {
+            status: canApplyPaymentTransition(internalStatus, officialStatus) ? officialStatus : internalStatus,
+            reconciliation: {
+              lastRunId: runId,
+              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+              pendingAgeMinutes: ageMinutes,
+              officialStatus,
+              internalStatus,
+              discrepancy: reasons.length > 0,
+              reasons,
+              officialSummary,
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (reasons.length > 0) {
+          await upsertPaymentDispute({
+            tenantId,
+            paymentId,
+            orderId,
+            reasons,
+            officialSummary,
+            runId,
+          });
+          summary.disputes += 1;
+        }
+
+        if (ageMinutes >= alertMinutes) {
+          await upsertAgedPendingOperationalAlert({
+            tenantId,
+            paymentId,
+            orderId,
+            ageMinutes,
+            thresholdMinutes: alertMinutes,
+            runId,
+          });
+          summary.agedAlerts += 1;
+        }
+
+        summary.reconciled += 1;
+      } catch (error) {
+        summary.officialFetchErrors += 1;
+        const mpError = summarizeMercadoPagoError(error);
+
+        await paymentDoc.ref.set(
+          {
+            reconciliation: {
+              lastRunId: runId,
+              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+              pendingAgeMinutes: ageMinutes,
+              error: {
+                status: mpError.status,
+                code: mpError.code,
+                message: mpError.message,
+              },
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        console.error("Mercado Pago reconciliation fetch failed", {
+          runId,
+          tenantId,
+          paymentId,
+          status: mpError.status,
+          code: mpError.code,
+          message: mpError.message,
+        });
+      }
+    }
+
+    summary.finishedAt = admin.firestore.FieldValue.serverTimestamp();
+    await runRef.set(summary, { merge: true });
+
+    console.info("Pending payments reconciliation finished", {
+      runId,
+      scanned: summary.scanned,
+      reconciled: summary.reconciled,
+      disputes: summary.disputes,
+      agedAlerts: summary.agedAlerts,
+      officialFetchErrors: summary.officialFetchErrors,
+      pendingMinutes,
+      alertMinutes,
+      batchSize,
+    });
+
+    return null;
+  });
 
 export const evaluateUsageAlerts = functions.pubsub
   .schedule("every 6 hours")
@@ -1950,7 +3029,8 @@ export const refreshPublicProducts = functions.pubsub
         .doc("public_store");
       const configSnap = await configRef.get();
       const configData = configSnap.data() || {};
-      const enabled = configData.publicEnabled === true;
+      // publicEnabled es true por defecto; solo se omite si está explícitamente en false
+      const enabled = configData.publicEnabled !== false;
       if (!enabled) {
         continue;
       }
@@ -2040,6 +3120,132 @@ export const refreshPublicProducts = functions.pubsub
     return null;
   });
 
+export const publicCatalog = functions
+  .runWith({
+    timeoutSeconds: 30,
+    memory: "256MB",
+  })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+
+    if (req.method !== "GET") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+
+    try {
+      const params = parsePublicCatalogParams(req.query);
+      enforcePublicCatalogRateLimit(req, params.tenantId);
+
+      const cacheKey = `${params.tenantId}|${params.sort}|${params.pageSize}|${params.pageToken}`;
+      const cached = getPublicCatalogCached(cacheKey);
+      if (cached) {
+        res.set("Cache-Control", "public, max-age=30");
+        res.status(200).json(cached);
+        return;
+      }
+
+      const token = decodePublicCatalogPageToken(params.pageToken, params.sort);
+      let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = db
+        .collection("tenants")
+        .doc(params.tenantId)
+        .collection("public_products")
+        .select(...PUBLIC_CATALOG_FIELDS)
+        .orderBy("name", getFirestoreOrderBy(params.sort));
+
+      if (params.sort === "updated_desc") {
+        query = db
+          .collection("tenants")
+          .doc(params.tenantId)
+          .collection("public_products")
+          .select(...PUBLIC_CATALOG_FIELDS)
+          .orderBy("updatedAt", "desc")
+          .orderBy("name", "asc");
+      }
+
+      if (token) {
+        if (params.sort === "updated_desc") {
+          query = query.startAfter(
+            token.cursorUpdatedAtMs !== null
+              ? admin.firestore.Timestamp.fromMillis(token.cursorUpdatedAtMs)
+              : null,
+            token.cursorName
+          );
+        } else {
+          query = query.startAfter(token.cursorName);
+        }
+      }
+
+      const snapshot = await query.limit(params.pageSize + 1).get();
+      const docs = snapshot.docs;
+      const hasMore = docs.length > params.pageSize;
+      const pageDocs = hasMore ? docs.slice(0, params.pageSize) : docs;
+      const items = pageDocs.map(toPublicCatalogResponseItem);
+
+      const totalAgg = await db
+        .collection("tenants")
+        .doc(params.tenantId)
+        .collection("public_products")
+        .count()
+        .get();
+
+      let nextPageToken: string | null = null;
+      if (hasMore && pageDocs.length > 0) {
+        const last = pageDocs[pageDocs.length - 1];
+        const lastData = last.data();
+        const updatedAtTs = lastData.updatedAt;
+        nextPageToken = encodePublicCatalogPageToken({
+          sort: params.sort,
+          cursorName: normalizeString(lastData.name) || last.id,
+          cursorProductName: normalizeString(lastData.name) || last.id,
+          cursorUpdatedAtMs:
+            updatedAtTs && typeof updatedAtTs.toMillis === "function"
+              ? updatedAtTs.toMillis()
+              : null,
+        });
+      }
+
+      const isFirstPage = !params.pageToken;
+      const storeMeta = isFirstPage
+        ? await fetchPublicCatalogStoreMeta(params.tenantId)
+        : null;
+
+      const response: PublicCatalogResponse = {
+        items,
+        nextPageToken,
+        totalApprox: totalAgg.data().count,
+        storeMeta,
+      };
+
+      setPublicCatalogCached(cacheKey, response);
+      res.set("Cache-Control", "public, max-age=30");
+      res.status(200).json(response);
+    } catch (error) {
+      const isHttpsError = error instanceof functions.https.HttpsError;
+      const status = isHttpsError
+        ? error.code === "resource-exhausted"
+          ? 429
+          : error.code === "invalid-argument"
+            ? 400
+            : 500
+        : 500;
+
+      const message = isHttpsError ? error.message : "No se pudo cargar el catálogo";
+      console.error("publicCatalog request failed", {
+        message,
+        error: error instanceof Error ? error.stack : String(error),
+      });
+      res.status(status).json({ error: message });
+    }
+  });
+
 type TenantOwnershipAction =
   | "ASSOCIATE_OWNER"
   | "TRANSFER_PRIMARY_OWNER"
@@ -2058,8 +3264,337 @@ type TenantBackupDocument = {
   data: admin.firestore.DocumentData;
 };
 
+
+type TenantBackupRunResult = {
+  runId: string;
+  docCount: number;
+};
+
+type BackupCriticality = "hot" | "warm" | "cold";
+
+type TenantBackupPolicy = {
+  criticality: BackupCriticality;
+  retentionCount: number;
+  archiveAfterDays: number;
+  purgeAfterDays: number;
+  archiveStorageClass: "NEARLINE" | "COLDLINE" | "ARCHIVE";
+};
+
 const BACKUP_RETENTION_COUNT = 7;
 const BACKUP_CHUNK_SIZE = 150;
+const BACKUP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
+const BACKUP_DEDUP_LOOKBACK = 12;
+const BACKUP_POLICY_BY_CRITICALITY: Record<BackupCriticality, TenantBackupPolicy> = {
+  hot: {
+    criticality: "hot",
+    retentionCount: 14,
+    archiveAfterDays: 3,
+    purgeAfterDays: 30,
+    archiveStorageClass: "NEARLINE",
+  },
+  warm: {
+    criticality: "warm",
+    retentionCount: 10,
+    archiveAfterDays: 7,
+    purgeAfterDays: 60,
+    archiveStorageClass: "COLDLINE",
+  },
+  cold: {
+    criticality: "cold",
+    retentionCount: 6,
+    archiveAfterDays: 14,
+    purgeAfterDays: 120,
+    archiveStorageClass: "ARCHIVE",
+  },
+};
+
+const APP_CHECK_REJECT_COLLECTION = "securityTelemetry";
+const ADMIN_RATE_LIMIT_COLLECTION = "adminRateLimits";
+const PAYMENT_RECONCILIATION_RUNS_COLLECTION = "payment_reconciliation_runs";
+const PAYMENT_DISPUTES_COLLECTION = "payment_disputes";
+
+type AppCheckEnforcementMode = "monitor" | "enforce";
+
+const getAppCheckEnforcementMode = (): AppCheckEnforcementMode => cfgGetAppCheckEnforcementMode();
+
+const getAdminRateLimitPerMinute = (): number => cfgGetAdminRateLimitPerMinute();
+
+const getMpPendingReconciliationMinutes = (): number => cfgGetMpPendingReconciliationMinutes();
+
+const getMpReconciliationBatchSize = (): number => cfgGetMpReconciliationBatchSize();
+
+const getAgedPendingAlertMinutes = (): number => cfgGetAgedPendingAlertMinutes();
+
+const buildMercadoPagoSummary = (payment: Record<string, unknown>) => ({
+  id: normalizeString(payment.id),
+  status: normalizeString(payment.status),
+  statusDetail: normalizeString(payment.status_detail),
+  transactionAmount: Number(payment.transaction_amount ?? NaN),
+  currencyId: normalizeString(payment.currency_id),
+  approvedAt: normalizeString(payment.date_approved),
+  createdAt: normalizeString(payment.date_created),
+  externalReference: normalizeString(payment.external_reference),
+});
+
+const upsertAgedPendingOperationalAlert = async (params: {
+  tenantId: string;
+  paymentId: string;
+  orderId: string;
+  ageMinutes: number;
+  thresholdMinutes: number;
+  runId: string;
+}): Promise<void> => {
+  const alertId = sanitizeAlertId(`payment_pending_aged_${params.paymentId}`);
+  const alertRef = db
+    .collection("tenants")
+    .doc(params.tenantId)
+    .collection("alerts")
+    .doc(alertId);
+
+  await alertRef.set(
+    {
+      tenantId: params.tenantId,
+      category: "payment_operations",
+      type: "PAYMENT_PENDING_AGED",
+      paymentId: params.paymentId,
+      orderId: params.orderId || null,
+      status: "active",
+      severity: "warning",
+      title: "Pago pendiente envejecido",
+      message: `El pago ${params.paymentId} sigue pendiente hace ${params.ageMinutes} minutos.`,
+      thresholdMinutes: params.thresholdMinutes,
+      ageMinutes: params.ageMinutes,
+      runId: params.runId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      readBy: [],
+    },
+    { merge: true }
+  );
+};
+
+const upsertPaymentDispute = async (params: {
+  tenantId: string;
+  paymentId: string;
+  orderId: string;
+  reasons: string[];
+  officialSummary: ReturnType<typeof buildMercadoPagoSummary>;
+  runId: string;
+}): Promise<void> => {
+  const disputeId = sanitizeAlertId(`${params.paymentId}_${params.reasons.join("_")}`);
+  await db
+    .collection("tenants")
+    .doc(params.tenantId)
+    .collection(PAYMENT_DISPUTES_COLLECTION)
+    .doc(disputeId)
+    .set(
+      {
+        tenantId: params.tenantId,
+        paymentId: params.paymentId,
+        orderId: params.orderId || null,
+        queue: PAYMENT_DISPUTES_COLLECTION,
+        status: "open",
+        reasons: params.reasons,
+        officialSummary: params.officialSummary,
+        runId: params.runId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+};
+
+const ipToUint32 = (ip: string): number | null => {
+  const octets = ip.split(".").map((segment) => Number(segment));
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return null;
+  }
+
+  return (((octets[0] << 24) >>> 0) + ((octets[1] << 16) >>> 0) + ((octets[2] << 8) >>> 0) + octets[3]) >>> 0;
+};
+
+const isIpInCidr = (ip: string, cidr: string): boolean => {
+  const [rawNetwork, rawMask] = cidr.split("/");
+  const network = ipToUint32(rawNetwork.trim());
+  const target = ipToUint32(ip.trim());
+  const maskBits = Number(rawMask);
+
+  if (network === null || target === null || !Number.isInteger(maskBits) || maskBits < 0 || maskBits > 32) {
+    return false;
+  }
+
+  if (maskBits === 0) {
+    return true;
+  }
+
+  const mask = (0xffffffff << (32 - maskBits)) >>> 0;
+  return (network & mask) === (target & mask);
+};
+
+const getIpAllowlist = (): string[] => cfgGetIpAllowlist();
+
+const getRequestIp = (context: functions.https.CallableContext): string =>
+  normalizeString(context.rawRequest?.ip);
+
+const maskWithPattern = (value: string, keepStart: number, keepEnd: number): string => {
+  const normalized = normalizeString(value);
+  if (!normalized) return "";
+  if (normalized.length <= keepStart + keepEnd) {
+    return "*".repeat(Math.max(normalized.length, 4));
+  }
+  return `${normalized.slice(0, keepStart)}${"*".repeat(normalized.length - keepStart - keepEnd)}${normalized.slice(-keepEnd)}`;
+};
+
+const maskEmail = (value: unknown): string => {
+  const normalized = normalizeString(value).toLowerCase();
+  const [local, domain] = normalized.split("@");
+  if (!local || !domain) return maskWithPattern(normalized, 1, 1);
+  return `${maskWithPattern(local, 1, 1)}@${domain}`;
+};
+
+const maskIp = (value: unknown): string => {
+  const ip = normalizeString(value);
+  const parts = ip.split(".");
+  if (parts.length !== 4) return maskWithPattern(ip, 2, 0);
+  return `${parts[0]}.${parts[1]}.*.*`;
+};
+
+const maskUid = (value: unknown): string => maskWithPattern(normalizeString(value), 4, 2);
+
+const sanitizePiiForLog = (params: {
+  domain: "users" | "customers" | "logs" | "exports";
+  role?: PiiRole | null;
+  fields: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const role = params.role ?? null;
+  return Object.fromEntries(
+    Object.entries(params.fields).map(([key, rawValue]) => {
+      const visibility = resolveFieldVisibility(params.domain, key, role);
+      if (rawValue === null || rawValue === undefined) {
+        return [key, null];
+      }
+      const stringValue = normalizeString(rawValue);
+      if (visibility === "full") {
+        return [key, rawValue];
+      }
+      if (key.toLowerCase().includes("email")) {
+        return [key, visibility === "partial" ? maskEmail(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("ip")) {
+        return [key, visibility === "partial" ? maskIp(stringValue) : "***MASKED***"];
+      }
+      if (key.toLowerCase().includes("uid")) {
+        return [key, visibility === "partial" ? maskUid(stringValue) : "***MASKED***"];
+      }
+      return [key, visibility === "partial" ? maskWithPattern(stringValue, 1, 1) : "***MASKED***"];
+    })
+  );
+};
+
+const recordAppCheckRejection = async (params: {
+  operation: string;
+  uid: string;
+  tenantId: string;
+  ip: string;
+  appId: string;
+  reason: string;
+}): Promise<void> => {
+  const docRef = db.collection(APP_CHECK_REJECT_COLLECTION).doc("app_check").collection("events").doc();
+  await docRef.set({
+    operation: params.operation,
+    uid: params.uid,
+    tenantId: params.tenantId || null,
+    ip: params.ip || null,
+    appId: params.appId || null,
+    reason: params.reason,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
+const assertAppCheckForInternalCallable = async (params: {
+  operation: string;
+  context: functions.https.CallableContext;
+  tenantId?: string;
+}): Promise<void> => {
+  const mode = getAppCheckEnforcementMode();
+  const appId = normalizeString(params.context.app?.appId);
+  if (appId) {
+    return;
+  }
+
+  const uid = normalizeString(params.context.auth?.uid);
+  const tenantId = normalizeString(params.tenantId);
+  const ip = getRequestIp(params.context);
+
+  await recordAppCheckRejection({
+    operation: params.operation,
+    uid,
+    tenantId,
+    ip,
+    appId,
+    reason: mode === "enforce" ? "missing_app_check_enforced" : "missing_app_check_monitor",
+  });
+
+  if (mode === "enforce") {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "App Check token requerido para este endpoint"
+    );
+  }
+};
+
+const enforceAdminRateLimit = async (params: {
+  operation: string;
+  uid: string;
+  tenantId: string;
+  ip: string;
+}): Promise<void> => {
+  const uid = normalizeString(params.uid);
+  const tenantId = normalizeString(params.tenantId);
+  if (!uid || !tenantId) {
+    return;
+  }
+
+  const ip = normalizeString(params.ip) || "unknown";
+  const now = Date.now();
+  const windowStartMs = now - 60_000;
+  const bucketMinute = Math.floor(now / 60_000);
+  const idSource = `${params.operation}|${uid}|${tenantId}|${ip}|${bucketMinute}`;
+  const bucketId = createHash("sha256").update(idSource).digest("hex");
+  const bucketRef = db.collection(ADMIN_RATE_LIMIT_COLLECTION).doc(bucketId);
+
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(bucketRef);
+    const count = Number(snapshot.get("count") ?? 0) + 1;
+    const limit = getAdminRateLimitPerMinute();
+
+    if (count > limit) {
+      throw new functions.https.HttpsError(
+        "resource-exhausted",
+        `Rate limit excedido para ${params.operation}`
+      );
+    }
+
+    tx.set(
+      bucketRef,
+      {
+        operation: params.operation,
+        uid,
+        tenantId,
+        ip,
+        minuteBucket: bucketMinute,
+        count,
+        windowStartAt: admin.firestore.Timestamp.fromMillis(windowStartMs),
+        expiresAt: admin.firestore.Timestamp.fromMillis(now + 10 * 60_000),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: snapshot.exists
+          ? snapshot.get("createdAt") ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+};
 
 const normalizeEmail = (value: unknown): string =>
   String(value ?? "").trim().toLowerCase();
@@ -2069,6 +3604,123 @@ const isAdminRole = (role: unknown): boolean => {
   return normalized === "admin" || normalized === "owner";
 };
 
+const toBoolean = (value: unknown): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return value.trim().toLowerCase() === "true";
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  return false;
+};
+
+const writeTenantAuditLog = async (
+  tenantId: string,
+  payload: {
+    eventType: "backup" | "restore";
+    action: string;
+    actorUid?: string;
+    scope?: RestoreScope | "full";
+    runId?: string;
+    restoreRequestId?: string;
+    status: string;
+    dryRun?: boolean;
+    diffEstimate?: Record<string, unknown>;
+    result?: Record<string, unknown>;
+    ip?: string;
+    userAgent?: string;
+  }
+): Promise<void> => {
+  const eventRef = db.collection("tenants").doc(tenantId).collection("audit_logs").doc();
+  const piiSafeFields = sanitizePiiForLog({
+    domain: "logs",
+    role: "auditor",
+    fields: {
+      actorUid: payload.actorUid ?? null,
+      requesterIp: normalizeString(payload.ip) || null,
+    },
+  });
+
+  await eventRef.set({
+    eventType: payload.eventType,
+    action: payload.action,
+    tenantId,
+    actorUid: piiSafeFields.actorUid,
+    scope: payload.scope ?? "full",
+    runId: payload.runId ?? null,
+    restoreRequestId: payload.restoreRequestId ?? null,
+    status: payload.status,
+    dryRun: payload.dryRun === true,
+    diffEstimate: payload.diffEstimate ?? null,
+    result: payload.result ?? null,
+    ip: piiSafeFields.requesterIp,
+    userAgent: normalizeString(payload.userAgent) || null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
+const estimateRestoreDiff = async (
+  tenantId: string,
+  runId: string,
+  scope: RestoreScope
+): Promise<Record<string, unknown>> => {
+  const runRef = db.collection("tenant_backups").doc(tenantId).collection("runs").doc(runId);
+  const runDoc = await runRef.get();
+  if (!runDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "runId no existe para el tenant");
+  }
+
+  const chunkPreview = await runRef.collection("chunks").limit(1).get();
+  const previewPaths = chunkPreview.docs.flatMap((doc) => {
+    const documents = Array.isArray(doc.get("documents"))
+      ? (doc.get("documents") as TenantBackupDocument[])
+      : [];
+    return documents
+      .slice(0, 3)
+      .map((backupDoc) => normalizeString(backupDoc.path))
+      .filter(Boolean);
+  });
+
+  const backupDocCount = Number(runDoc.get("docCount") ?? 0);
+  const chunkCount = Number(runDoc.get("chunkCount") ?? 0);
+
+  return {
+    scope,
+    backupDocCount,
+    chunkCount,
+    previewPaths,
+    estimatedRisk:
+      scope === "full" ? "high" : scope === "collection" ? "medium" : "low",
+    note: "Estimación de bajo costo basada en metadata del backup (sin escaneo completo del tenant actual).",
+  };
+};
+
+const hasModuleAccess = (
+  userData: admin.firestore.DocumentData,
+  module: "maintenanceRead" | "maintenanceWrite" | "backupsRead" | "backupsWrite"
+): boolean => {
+  const role = normalizeString(userData.role).toLowerCase();
+  if (
+    hasRoleForModule(role, module) ||
+    userData.isAdmin === true ||
+    userData.isSuperAdmin === true
+  ) {
+    return true;
+  }
+
+  const permissions = new Set(normalizeStringList(userData.permissions));
+  if (module === "maintenanceRead") {
+    return permissions.has(MAINTENANCE_READ) || permissions.has(MAINTENANCE_WRITE);
+  }
+  if (module === "maintenanceWrite") {
+    return permissions.has(MAINTENANCE_WRITE);
+  }
+
+  return false;
+};
 
 const MAINTENANCE_READ = "MAINTENANCE_READ";
 const MAINTENANCE_WRITE = "MAINTENANCE_WRITE";
@@ -2090,28 +3742,11 @@ const normalizeStringList = (value: unknown): string[] => {
     .filter(Boolean);
 };
 
-const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean => {
-  const role = normalizeString(userData.role).toLowerCase();
-  const permissions = new Set(normalizeStringList(userData.permissions));
-  return (
-    isAdminRole(role) ||
-    userData.isAdmin === true ||
-    userData.isSuperAdmin === true ||
-    permissions.has(MAINTENANCE_READ) ||
-    permissions.has(MAINTENANCE_WRITE)
-  );
-};
+const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean =>
+  hasModuleAccess(userData, "maintenanceRead");
 
-const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean => {
-  const role = normalizeString(userData.role).toLowerCase();
-  const permissions = new Set(normalizeStringList(userData.permissions));
-  return (
-    isAdminRole(role) ||
-    userData.isAdmin === true ||
-    userData.isSuperAdmin === true ||
-    permissions.has(MAINTENANCE_WRITE)
-  );
-};
+const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean =>
+  hasModuleAccess(userData, "maintenanceWrite");
 
 const sanitizeMaintenanceTaskPayload = (
   payload: Record<string, unknown>,
@@ -2164,6 +3799,39 @@ const sanitizeMaintenanceTaskPayload = (
       source: "cloud_function",
     },
   };
+};
+
+const writeMaintenanceAuditLog = async ({
+  tenantId,
+  taskId,
+  actorUid,
+  action,
+  before,
+  after,
+}: {
+  tenantId: string;
+  taskId: string;
+  actorUid: string;
+  action: "create" | "update" | "delete";
+  before?: admin.firestore.DocumentData | null;
+  after: admin.firestore.DocumentData;
+}): Promise<void> => {
+  await db.collection("tenants").doc(tenantId).collection("maintenance_audit").add({
+    tenantId,
+    taskId,
+    action,
+    actor: {
+      uid: actorUid,
+      tenantId,
+    },
+    actorUid,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    change: {
+      before: before ?? null,
+      after,
+    },
+    source: "cloud_function",
+  });
 };
 
 const resolveTargetUserId = async (
@@ -2271,6 +3939,19 @@ export const manageTenantOwnership = functions
       );
     }
 
+    await assertAppCheckForInternalCallable({
+      operation: "manageTenantOwnership",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "manageTenantOwnership",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
     const allowedActions: TenantOwnershipAction[] = [
       "ASSOCIATE_OWNER",
       "TRANSFER_PRIMARY_OWNER",
@@ -2297,8 +3978,12 @@ export const manageTenantOwnership = functions
 
     const callerRole = normalizeString(callerUserDoc.get("role")).toLowerCase();
     const callerTenantId = normalizeString(callerUserDoc.get("tenantId"));
-    const hasAdminClaim =
+    const isGlobalAdminActor =
       context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true ||
+      callerRole === "superadmin";
+    const hasAdminClaim =
+      isGlobalAdminActor ||
       context.auth.token.admin === true ||
       context.auth.token.role === "admin";
 
@@ -2391,13 +4076,20 @@ export const manageTenantOwnership = functions
       await upsertTenantUserMembership(tenantId, targetUid, "owner");
     }
 
+    const visibility = buildRoleScopedOwnershipResponse(
+      {
+        tenantId,
+        action,
+        targetUid,
+        ownerUids: result.ownerUids,
+        delegatedStoreUids: result.delegatedStoreUids,
+      },
+      isGlobalAdminActor
+    );
+
     return {
       ok: true,
-      tenantId,
-      action,
-      targetUid,
-      ownerUids: result.ownerUids,
-      delegatedStoreUids: result.delegatedStoreUids,
+      ...visibility,
       note:
         "Cambio aplicado sin mover datos operativos del tenant. Inventario, ventas e histórico permanecen intactos.",
     };
@@ -2420,14 +4112,6 @@ const listTenantDocumentsRecursively = async (
       await listTenantDocumentsRecursively(nestedDoc.ref, docs);
     }
   }
-};
-
-const splitIntoChunks = <T>(items: T[], size: number): T[][] => {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
 };
 
 const loadPurgedProductIds = async (tenantId: string): Promise<Set<string>> => {
@@ -2462,42 +4146,182 @@ const shouldKeepBackupDocument = (
   return true;
 };
 
-const deleteRunWithChunks = async (
-  runRef: admin.firestore.DocumentReference
-): Promise<void> => {
-  const chunkSnap = await runRef.collection("chunks").get();
-  let batch = db.batch();
-  let counter = 0;
+const resolveBackupStorageLocation = (
+  runData: admin.firestore.DocumentData
+): { storageBucket: string; storagePath: string } | null => {
+  const storagePath = normalizeString(runData.storagePath);
+  if (!storagePath) {
+    return null;
+  }
+  const storageBucket = normalizeString(runData.storageBucket) || storage.bucket().name;
+  return { storageBucket, storagePath };
+};
 
-  for (const chunkDoc of chunkSnap.docs) {
-    batch.delete(chunkDoc.ref);
-    counter += 1;
-    if (counter === 450) {
-      await batch.commit();
-      batch = db.batch();
-      counter = 0;
+const deleteRunWithChunks = async (
+  runDoc: admin.firestore.QueryDocumentSnapshot
+): Promise<void> => {
+  const storageLocation = resolveBackupStorageLocation(runDoc.data());
+  if (storageLocation) {
+    try {
+      await storage
+        .bucket(storageLocation.storageBucket)
+        .file(storageLocation.storagePath)
+        .delete({ ignoreNotFound: true });
+    } catch (error) {
+      console.warn("Unable to delete backup artifact from storage", {
+        runPath: runDoc.ref.path,
+        ...storageLocation,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  batch.delete(runRef);
-  await batch.commit();
+  await runDoc.ref.delete();
 };
 
-const cleanupTenantBackupRetention = async (tenantId: string): Promise<void> => {
-  const runsRef = db.collection("tenant_backups").doc(tenantId).collection("runs");
-  const runsSnap = await runsRef.orderBy("createdAt", "desc").get();
+const resolveBackupCriticality = (tenantData: admin.firestore.DocumentData): BackupCriticality => {
+  const raw = normalizeString(tenantData.backupCriticality || tenantData?.config?.backupCriticality).toLowerCase();
+  if (raw === "hot" || raw === "warm" || raw === "cold") {
+    return raw;
+  }
+  return "warm";
+};
 
-  if (runsSnap.size <= BACKUP_RETENTION_COUNT) {
+const resolveTenantBackupPolicy = async (tenantId: string): Promise<TenantBackupPolicy> => {
+  const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+  const tenantData = tenantDoc.data() || {};
+  const criticality = resolveBackupCriticality(tenantData);
+  const basePolicy = BACKUP_POLICY_BY_CRITICALITY[criticality];
+
+  const customPolicy = tenantData.backupPolicy as Record<string, unknown> | undefined;
+  const customRetention = Number(customPolicy?.retentionCount);
+  const customArchiveDays = Number(customPolicy?.archiveAfterDays);
+  const customPurgeDays = Number(customPolicy?.purgeAfterDays);
+  const customStorageClass = normalizeString(customPolicy?.archiveStorageClass).toUpperCase();
+
+  return {
+    criticality,
+    retentionCount: Number.isFinite(customRetention)
+      ? Math.min(Math.max(Math.trunc(customRetention), 3), 120)
+      : basePolicy.retentionCount,
+    archiveAfterDays: Number.isFinite(customArchiveDays)
+      ? Math.min(Math.max(Math.trunc(customArchiveDays), 1), 365)
+      : basePolicy.archiveAfterDays,
+    purgeAfterDays: Number.isFinite(customPurgeDays)
+      ? Math.min(Math.max(Math.trunc(customPurgeDays), 7), 3650)
+      : basePolicy.purgeAfterDays,
+    archiveStorageClass:
+      customStorageClass === "NEARLINE" || customStorageClass === "COLDLINE" || customStorageClass === "ARCHIVE"
+        ? (customStorageClass as TenantBackupPolicy["archiveStorageClass"])
+        : basePolicy.archiveStorageClass,
+  };
+};
+
+const resolveRunTimestamp = (runData: admin.firestore.DocumentData): Date | null => {
+  const createdAt = runData.createdAt as admin.firestore.Timestamp | undefined;
+  if (createdAt?.toDate) {
+    return createdAt.toDate();
+  }
+
+  const completedAt = runData.completedAt as admin.firestore.Timestamp | undefined;
+  if (completedAt?.toDate) {
+    return completedAt.toDate();
+  }
+
+  const runId = normalizeString(runData.runId);
+  if (!runId) {
+    return null;
+  }
+  const parsed = new Date(runId.replace(/-/g, ":"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const maybeArchiveBackupRun = async (
+  runDoc: admin.firestore.QueryDocumentSnapshot,
+  policy: TenantBackupPolicy,
+  nowMs: number
+): Promise<void> => {
+  const runData = runDoc.data();
+  if (normalizeString(runData.status).toLowerCase() !== "completed") {
     return;
   }
 
-  const staleRuns = runsSnap.docs.slice(BACKUP_RETENTION_COUNT);
-  for (const staleRun of staleRuns) {
-    await deleteRunWithChunks(staleRun.ref);
+  if (runData.archivedAt) {
+    return;
+  }
+
+  const createdAt = resolveRunTimestamp(runData);
+  if (!createdAt) {
+    return;
+  }
+
+  const ageDays = (nowMs - createdAt.getTime()) / (24 * 60 * 60 * 1000);
+  if (ageDays < policy.archiveAfterDays) {
+    return;
+  }
+
+  const storageLocation = resolveBackupStorageLocation(runData);
+  if (!storageLocation) {
+    return;
+  }
+
+  try {
+    await storage
+      .bucket(storageLocation.storageBucket)
+      .file(storageLocation.storagePath)
+      .setMetadata({ storageClass: policy.archiveStorageClass });
+
+    await runDoc.ref.set(
+      {
+        archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        archivedStorageClass: policy.archiveStorageClass,
+        archiveAgeDays: Math.floor(ageDays),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.warn("Unable to archive backup artifact", {
+      runPath: runDoc.ref.path,
+      storagePath: storageLocation.storagePath,
+      archiveStorageClass: policy.archiveStorageClass,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 
-const backupTenant = async (tenantId: string): Promise<void> => {
+const shouldPurgeRunByAge = (
+  runData: admin.firestore.DocumentData,
+  policy: TenantBackupPolicy,
+  nowMs: number
+): boolean => {
+  const createdAt = resolveRunTimestamp(runData);
+  if (!createdAt) {
+    return false;
+  }
+
+  const ageDays = (nowMs - createdAt.getTime()) / (24 * 60 * 60 * 1000);
+  return ageDays >= policy.purgeAfterDays;
+};
+
+const cleanupTenantBackupRetention = async (
+  tenantId: string,
+  policy: TenantBackupPolicy
+): Promise<void> => {
+  const runsRef = db.collection("tenant_backups").doc(tenantId).collection("runs");
+  const runsSnap = await runsRef.orderBy("createdAt", "desc").get();
+
+  const staleRuns = runsSnap.docs.slice(policy.retentionCount);
+  for (const staleRun of staleRuns) {
+    await deleteRunWithChunks(staleRun);
+  }
+};
+
+const backupTenant = async (
+  tenantId: string,
+  actor = "system:createDailyTenantBackups"
+): Promise<TenantBackupRunResult> => {
+  const policy = await resolveTenantBackupPolicy(tenantId);
   const tenantRef = db.collection("tenants").doc(tenantId);
   const documents: TenantBackupDocument[] = [];
   await listTenantDocumentsRecursively(tenantRef, documents);
@@ -2507,49 +4331,383 @@ const backupTenant = async (tenantId: string): Promise<void> => {
   );
 
   const runId = new Date().toISOString().replace(/[.:]/g, "-");
+  const bucket = storage.bucket();
+  const storagePath = `tenant-backups/${tenantId}/${runId}.json.gz`;
   const runRef = db
     .collection("tenant_backups")
     .doc(tenantId)
     .collection("runs")
     .doc(runId);
 
-  const chunks = splitIntoChunks(filteredDocuments, BACKUP_CHUNK_SIZE);
-
   await runRef.set({
     tenantId,
     runId,
-    docCount: filteredDocuments.length,
-    chunkCount: chunks.length,
-    retentionLimit: BACKUP_RETENTION_COUNT,
-    status: "completed",
+    actor,
+    status: "in_progress",
+    retentionLimit: policy.retentionCount,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  let batch = db.batch();
-  let counter = 0;
-  for (let index = 0; index < chunks.length; index += 1) {
-    const chunk = chunks[index];
-    const chunkRef = runRef.collection("chunks").doc(String(index + 1).padStart(4, "0"));
-    batch.set(chunkRef, {
-      tenantId,
-      runId,
-      chunkIndex: index,
-      documents: chunk,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    counter += 1;
-    if (counter === 450) {
-      await batch.commit();
-      batch = db.batch();
-      counter = 0;
-    }
-  }
-  if (counter > 0) {
-    await batch.commit();
+  const chunks: TenantBackupDocument[][] = [];
+  for (let index = 0; index < filteredDocuments.length; index += BACKUP_CHUNK_SIZE) {
+    chunks.push(filteredDocuments.slice(index, index + BACKUP_CHUNK_SIZE));
   }
 
-  await cleanupTenantBackupRetention(tenantId);
+  const backupFile = bucket.file(storagePath);
+  let backupUploaded = false;
+
+  try {
+    const serializedPayload = {
+      tenantId,
+      runId,
+      actor,
+      exportedAt: new Date().toISOString(),
+      docCount: filteredDocuments.length,
+      chunkCount: chunks.length,
+      documents: filteredDocuments,
+    };
+
+    const jsonBuffer = Buffer.from(JSON.stringify(serializedPayload));
+    const gzippedBuffer = gzipSync(jsonBuffer);
+    const payloadHash = createHash("sha256").update(gzippedBuffer).digest("hex");
+
+    const recentRunsSnap = await runRef.parent
+      .where("status", "==", "completed")
+      .orderBy("createdAt", "desc")
+      .limit(BACKUP_DEDUP_LOOKBACK)
+      .get();
+
+    const deduplicatedRun = recentRunsSnap.docs.find((doc) => {
+      if (doc.id === runId) return false;
+      return normalizeString(doc.get("payloadHash")) === payloadHash;
+    });
+
+    if (deduplicatedRun) {
+      await runRef.set(
+        {
+          status: "deduplicated",
+          docCount: filteredDocuments.length,
+          chunkCount: 0,
+          payloadBytes: jsonBuffer.length,
+          compressedBytes: gzippedBuffer.length,
+          payloadHash,
+          deduplicated: true,
+          deduplicatedFromRunId: deduplicatedRun.id,
+          deduplicatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await writeTenantAuditLog(tenantId, {
+        eventType: "backup",
+        action: "BACKUP_DEDUPLICATED",
+        scope: "full",
+        runId,
+        status: "deduplicated",
+        result: {
+          deduplicatedFromRunId: deduplicatedRun.id,
+          retentionLimit: policy.retentionCount,
+        },
+      });
+
+      await cleanupTenantBackupRetention(tenantId, policy);
+      return {
+        runId,
+        docCount: filteredDocuments.length,
+      };
+    }
+
+    let batch = db.batch();
+    let batchCount = 0;
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
+      const chunkRef = runRef.collection("chunks").doc(String(index + 1).padStart(4, "0"));
+      batch.set(chunkRef, {
+        tenantId,
+        runId,
+        chunkIndex: index,
+        exportedAt: new Date().toISOString(),
+        documents: chunk,
+      });
+      batchCount += 1;
+
+      if (batchCount >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+
+    await backupFile.save(gzippedBuffer, {
+      resumable: false,
+      contentType: "application/json",
+      metadata: {
+        contentEncoding: "gzip",
+        metadata: {
+          tenantId,
+          runId,
+          payloadHash,
+        },
+      },
+    });
+    backupUploaded = true;
+
+    await runRef.set(
+      {
+        status: "completed",
+        docCount: filteredDocuments.length,
+        chunkCount: chunks.length,
+        payloadBytes: jsonBuffer.length,
+        compressedBytes: gzippedBuffer.length,
+        payloadHash,
+        criticality: policy.criticality,
+        archiveAfterDays: policy.archiveAfterDays,
+        purgeAfterDays: policy.purgeAfterDays,
+        archiveStorageClass: policy.archiveStorageClass,
+        storageBucket: bucket.name,
+        storagePath,
+        storageUri: `gs://${bucket.name}/${storagePath}`,
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await writeTenantAuditLog(tenantId, {
+      eventType: "backup",
+      action: "BACKUP_COMPLETED",
+      scope: "full",
+      runId,
+      status: "completed",
+      result: {
+        docCount: filteredDocuments.length,
+        chunkCount: chunks.length,
+        retentionLimit: policy.retentionCount,
+      },
+    });
+
+    await cleanupTenantBackupRetention(tenantId, policy);
+  } catch (error) {
+    if (backupUploaded) {
+      try {
+        await backupFile.delete({ ignoreNotFound: true });
+      } catch (cleanupError) {
+        console.warn("Unable to rollback failed backup artifact", {
+          tenantId,
+          runId,
+          storagePath,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      }
+    }
+
+    await runRef.set(
+      {
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    throw error;
+  }
+
+  return {
+    runId,
+    docCount: filteredDocuments.length,
+  };
 };
+
+const logBoSecurityEvent = async (payload: { operation: string; result: string; reason: string; uid?: string; tenantId?: string }): Promise<void> => {
+  await db.collection(APP_CHECK_REJECT_COLLECTION).doc("bo_callable_guards").collection("events").add({
+    ...payload,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
+const userCanRequestTenantBackup = (
+  context: functions.https.CallableContext,
+  userData: admin.firestore.DocumentData
+): boolean => {
+  if (context.auth?.token?.superAdmin === true) {
+    return true;
+  }
+
+  const userRole = normalizeString(userData.role).toLowerCase();
+  return userRole === "owner" || userRole === "admin";
+};
+
+const _tenantBackupHandlersDeps = {
+  db,
+  normalizeString,
+  toBoolean,
+  userCanRequestTenantBackup,
+  estimateRestoreDiff,
+  writeTenantAuditLog,
+  backupRequestWindowMs: BACKUP_REQUEST_WINDOW_MS,
+  enforceAdminRateLimit,
+  logSecurityEvent: async (payload: { operation: string; guard?: string; result: string; reason?: string; uid?: string; tenantId?: string }) =>
+    logBoSecurityEvent({ operation: payload.operation, result: payload.result, reason: payload.reason ?? "", uid: payload.uid, tenantId: payload.tenantId }),
+};
+
+const requestTenantBackupHandler = createRequestTenantBackupHandler(_tenantBackupHandlersDeps);
+
+const requestTenantRestoreHandler = createRequestTenantRestoreHandler(_tenantBackupHandlersDeps);
+
+const approveTenantRestoreRequestHandler = createApproveTenantRestoreRequestHandler(_tenantBackupHandlersDeps);
+
+export const requestTenantBackup = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    const tenantId = normalizeString((data as Record<string, unknown> | null)?.tenantId) || undefined;
+    await assertAppCheckForInternalCallable({ operation: "requestTenantBackup", context, tenantId });
+    return requestTenantBackupHandler(data, context);
+  });
+
+export const requestTenantRestore = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: RestoreRequestPayload, context) => {
+    const tenantId = normalizeString(data?.tenantId) || undefined;
+    await assertAppCheckForInternalCallable({ operation: "requestTenantRestore", context, tenantId });
+    return requestTenantRestoreHandler(data, context);
+  });
+
+export const approveTenantRestoreRequest = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: ApproveRestoreRequestPayload, context) => {
+    const tenantId = normalizeString(data?.tenantId) || undefined;
+    await assertAppCheckForInternalCallable({ operation: "approveTenantRestoreRequest", context, tenantId });
+    return approveTenantRestoreRequestHandler(data, context);
+  });
+
+export const processTenantBackupRequest = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .firestore
+  .document("tenant_backups/{tenantId}/requests/{requestId}")
+  .onCreate(async (snapshot, context) => {
+    const tenantId = normalizeString(context.params.tenantId);
+    const requestId = normalizeString(context.params.requestId);
+    if (!tenantId || !requestId) {
+      return;
+    }
+
+    await snapshot.ref.set(
+      {
+        status: "running",
+        startedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    try {
+      const backupResult = await backupTenant(tenantId);
+      await snapshot.ref.set(
+        {
+          status: "completed",
+          runId: backupResult.runId,
+          docCount: backupResult.docCount,
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          errorMessage: null,
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      await snapshot.ref.set(
+        {
+          status: "failed",
+          errorMessage: error instanceof Error ? error.message : String(error),
+          failedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  });
+
+export const getTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (_data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true ||
+      callerUserDoc.get("isAdmin") === true;
+
+    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+      throw new functions.https.HttpsError("permission-denied", "Acceso restringido");
+    }
+
+    const policyDoc = await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .get();
+
+    const tenantActivationMode = normalizeTenantActivationMode(policyDoc.get("tenantActivationMode"));
+
+    return {
+      tenantActivationMode,
+      updatedAt: policyDoc.get("updatedAt") ?? null,
+      updatedBy: normalizeString(policyDoc.get("updatedBy")) || null,
+    };
+  });
+
+export const setTenantOnboardingPolicy = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "Requiere sesión autenticada");
+    }
+
+    const mode = normalizeTenantActivationMode((data as Record<string, unknown> | null)?.tenantActivationMode);
+    const callerUserDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerUserDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Perfil de usuario no encontrado");
+    }
+
+    const role = normalizeString(callerUserDoc.get("role")).toLowerCase();
+    const isSuperAdmin =
+      context.auth.token.superAdmin === true ||
+      callerUserDoc.get("isSuperAdmin") === true;
+
+    if (!isSuperAdmin && role !== "owner") {
+      throw new functions.https.HttpsError("permission-denied", "Solo owner/superAdmin puede cambiar política");
+    }
+
+    await db
+      .collection(TENANT_ONBOARDING_POLICY_COLLECTION)
+      .doc(TENANT_ONBOARDING_POLICY_DOC)
+      .set(
+        {
+          schemaVersion: 1,
+          tenantActivationMode: mode,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: context.auth.uid,
+        },
+        { merge: true }
+      );
+
+    return {
+      ok: true,
+      tenantActivationMode: mode,
+    };
+  });
 
 export const createDailyTenantBackups = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
@@ -2561,7 +4719,7 @@ export const createDailyTenantBackups = functions
     for (const tenantDoc of tenantsSnapshot.docs) {
       const tenantId = tenantDoc.id;
       try {
-        await backupTenant(tenantId);
+        await backupTenant(tenantId, "system:createDailyTenantBackups");
         console.info("Tenant backup completed", { tenantId });
       } catch (error) {
         console.error("Tenant backup failed", {
@@ -2592,37 +4750,47 @@ export const purgeDeletedProductFromBackups = functions
       return;
     }
 
-    const productRoot = `tenants/${tenantId}/products/${productId}`;
-    const runsSnap = await db
-      .collection("tenant_backups")
-      .doc(tenantId)
-      .collection("runs")
-      .get();
-
-    for (const runDoc of runsSnap.docs) {
-      const chunkSnap = await runDoc.ref.collection("chunks").get();
-      for (const chunkDoc of chunkSnap.docs) {
-        const documents = Array.isArray(chunkDoc.get("documents"))
-          ? (chunkDoc.get("documents") as TenantBackupDocument[])
-          : [];
-        const sanitizedDocuments = documents.filter((doc) => {
-          const path = normalizeString(doc?.path);
-          return !(path === productRoot || path.startsWith(`${productRoot}/`));
-        });
-        if (sanitizedDocuments.length === documents.length) {
-          continue;
-        }
-        await chunkDoc.ref.update({
-          documents: sanitizedDocuments,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
+    const wasPurgeBackup = change.before.exists && change.before.get("purgeBackup") === true;
+    if (wasPurgeBackup) {
+      return;
     }
+
+    await backupTenant(tenantId, "system:purgeDeletedProductFromBackups");
   });
 
 
-export const createMaintenanceTask = functions
-  .runWith({ enforceAppCheck: false })
+export const archiveAndPurgeTenantBackups = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .pubsub
+  .schedule("every 24 hours")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const tenantsSnapshot = await db.collection("tenants").get();
+    const nowMs = Date.now();
+
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantId = tenantDoc.id;
+      const policy = await resolveTenantBackupPolicy(tenantId);
+      const runsRef = db.collection("tenant_backups").doc(tenantId).collection("runs");
+      const runsSnap = await runsRef.orderBy("createdAt", "desc").limit(200).get();
+
+      for (const runDoc of runsSnap.docs) {
+        const runData = runDoc.data();
+
+        if (shouldPurgeRunByAge(runData, policy, nowMs)) {
+          await deleteRunWithChunks(runDoc);
+          continue;
+        }
+
+        await maybeArchiveBackupRun(runDoc, policy, nowMs);
+      }
+    }
+
+    return null;
+  });
+
+export const getTenantCostDashboard = functions
+  .runWith({ enforceAppCheck: true })
   .https.onCall(async (data: unknown, context) => {
     if (!context.auth?.uid) {
       throw new functions.https.HttpsError("unauthenticated", "auth requerido");
@@ -2638,6 +4806,153 @@ export const createMaintenanceTask = functions
     if (!userDoc.exists) {
       throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
     }
+
+    const userData = userDoc.data() || {};
+    const userRole = normalizeString(userData.role).toLowerCase();
+    const isSuperAdmin = context.auth.token.superAdmin === true || userRole === "superadmin";
+    if (!isSuperAdmin && normalizeString(userData.tenantId) !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "tenant inválido para el usuario");
+    }
+
+    if (!isSuperAdmin && !["owner", "admin", "manager"].includes(userRole)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos para ver costos");
+    }
+
+    const [monthlySnap, budgetDoc, usageCurrent] = await Promise.all([
+      db.collection("tenants").doc(tenantId).collection(USAGE_COLLECTION).orderBy("monthKey", "desc").limit(6).get(),
+      db.collection("tenants").doc(tenantId).collection("cost_budgets").doc("monthly").get(),
+      db.collection("tenants").doc(tenantId).collection("usageSnapshots").doc("current").get(),
+    ]);
+
+    const monthly = monthlySnap.docs.map((monthDoc) => {
+      const row = monthDoc.data() as Record<string, unknown>;
+      return {
+        monthKey: normalizeString(row.monthKey) || monthDoc.id,
+        overview: (row.overview as Record<string, Record<string, number>> | undefined) ?? {},
+        sourceStatus: normalizeString(row.sourceStatus) || "success",
+        period: (row.period as Record<string, unknown> | undefined) ?? null,
+      };
+    });
+
+    const budgetData = (budgetDoc.data() || {}) as Record<string, unknown>;
+    const budgetByService = toNumberMap(budgetData.budgetByService);
+    const budgetTotal = Number(budgetData.totalBudget) || 0;
+
+    const usageData = (usageCurrent.data() || {}) as Record<string, unknown>;
+    const costByService = toNumberMap(usageData.costByService);
+    const currentTotalCost = Object.values(costByService).reduce((acc, v) => acc + v, 0);
+
+    return {
+      tenantId,
+      generatedAt: new Date().toISOString(),
+      budget: {
+        total: budgetTotal,
+        byService: budgetByService,
+      },
+      currentCost: {
+        total: currentTotalCost,
+        byService: costByService,
+      },
+      monthly,
+    };
+  });
+
+export const evaluateTenantBudgetAlerts = functions
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
+  .pubsub
+  .schedule("every 24 hours")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const tenantsSnapshot = await db.collection("tenants").get();
+
+    for (const tenantDoc of tenantsSnapshot.docs) {
+      const tenantId = tenantDoc.id;
+      const [budgetDoc, usageCurrent] = await Promise.all([
+        db.collection("tenants").doc(tenantId).collection("cost_budgets").doc("monthly").get(),
+        db.collection("tenants").doc(tenantId).collection("usageSnapshots").doc("current").get(),
+      ]);
+
+      if (!budgetDoc.exists || !usageCurrent.exists) {
+        continue;
+      }
+
+      const budgetData = budgetDoc.data() || {};
+      const usageData = usageCurrent.data() || {};
+      const budgetTotal = Number(budgetData.totalBudget);
+      const costByService = toNumberMap(usageData.costByService);
+      const totalCost = Object.values(costByService).reduce((acc, value) => acc + value, 0);
+
+      if (!Number.isFinite(budgetTotal) || budgetTotal <= 0 || totalCost <= 0) {
+        continue;
+      }
+
+      const percent = Math.round((totalCost / budgetTotal) * 100);
+      if (percent < 80) {
+        continue;
+      }
+
+      const now = new Date();
+      const monthKey = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const alertId = `budget_${monthKey}_${percent >= 100 ? "100" : "80"}`;
+
+      await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("budget_alerts")
+        .doc(alertId)
+        .set(
+          {
+            tenantId,
+            monthKey,
+            threshold: percent >= 100 ? 100 : 80,
+            percent,
+            totalCost,
+            budgetTotal,
+            status: percent >= 100 ? "critical" : "warning",
+            message:
+              percent >= 100
+                ? `Costo mensual excedido (${totalCost}/${budgetTotal}).`
+                : `Costo mensual en ${percent}% del presupuesto (${totalCost}/${budgetTotal}).`,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+    }
+
+    return null;
+  });
+
+export const createMaintenanceTask = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "createMaintenanceTask",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "createMaintenanceTask",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
     const userData = userDoc.data() || {};
     if (normalizeString(userData.tenantId) !== tenantId || !canWriteMaintenance(userData)) {
       throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
@@ -2646,6 +4961,13 @@ export const createMaintenanceTask = functions
     const taskRef = db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc();
     const taskData = sanitizeMaintenanceTaskPayload(payload, tenantId, context.auth.uid);
     await taskRef.set(taskData, { merge: false });
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId: taskRef.id,
+      actorUid: context.auth.uid,
+      action: "create",
+      after: taskData,
+    });
     return { ok: true, taskId: taskRef.id };
   });
 
@@ -2663,6 +4985,19 @@ export const updateMaintenanceTask = functions
       throw new functions.https.HttpsError("invalid-argument", "tenantId y taskId requeridos");
     }
 
+    await assertAppCheckForInternalCallable({
+      operation: "updateMaintenanceTask",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "updateMaintenanceTask",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
     const [userDoc, taskDoc] = await Promise.all([
       db.collection("users").doc(context.auth.uid).get(),
       db.collection("tenants").doc(tenantId).collection("maintenance_tasks").doc(taskId).get(),
@@ -2679,13 +5014,660 @@ export const updateMaintenanceTask = functions
       throw new functions.https.HttpsError("permission-denied", "sin permisos de mantenimiento");
     }
 
+    const previousData = taskDoc.data() || null;
     const nextData = sanitizeMaintenanceTaskPayload(
-      { ...taskDoc.data(), ...payload },
+      { ...previousData, ...payload },
       tenantId,
       context.auth.uid,
-      taskDoc.data()
+      previousData || undefined
     );
 
     await taskDoc.ref.set(nextData, { merge: false });
+    await writeMaintenanceAuditLog({
+      tenantId,
+      taskId,
+      actorUid: context.auth.uid,
+      action: "update",
+      before: previousData,
+      after: nextData,
+    });
     return { ok: true, taskId };
+  });
+
+type SetMercadoPagoTogglePayload = {
+  tenantId: unknown;
+  scope: unknown;
+  enabled: unknown;
+  reason: unknown;
+};
+
+export const setMercadoPagoToggle = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: SetMercadoPagoTogglePayload, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const scope = normalizeString(payload.scope).toLowerCase();
+    const reason = normalizeString(payload.reason);
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+    if (scope !== "global" && scope !== "tenant") {
+      throw new functions.https.HttpsError("invalid-argument", "scope debe ser global o tenant");
+    }
+    if (reason.length < 8) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "reason debe tener al menos 8 caracteres"
+      );
+    }
+
+    const enabled = parseBooleanFlagValue(payload.enabled, true);
+
+    await assertAppCheckForInternalCallable({
+      operation: "setMercadoPagoToggle",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "setMercadoPagoToggle",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const callerDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!callerDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const callerData = callerDoc.data() || {};
+    const callerTenantId = normalizeString(callerData.tenantId);
+    const callerRole = normalizeString(callerData.role).toLowerCase();
+    const hasAdminClaim =
+      context.auth.token.superAdmin === true ||
+      context.auth.token.admin === true ||
+      context.auth.token.role === "admin";
+
+    if (scope === "global" && !hasAdminClaim) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "solo super admin puede cambiar flag global"
+      );
+    }
+
+    if (scope === "tenant" && !hasAdminClaim) {
+      if (!isAdminRole(callerRole) || callerTenantId !== tenantId) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "solo admin/owner del tenant puede cambiar el flag"
+        );
+      }
+    }
+
+    const writeTarget =
+      scope === "global"
+        ? db.collection(GLOBAL_FLAGS_COLLECTION).doc(GLOBAL_FLAGS_DOC_ID)
+        : db.collection("tenants").doc(tenantId).collection(TENANT_FLAGS_SUBCOLLECTION).doc(TENANT_FLAGS_DOC_ID);
+
+    const fieldPath = scope === "global" ? MP_GLOBAL_FLAG_PATH : MP_TENANT_FLAG_PATH;
+    await writeTarget.set(
+      {
+        [fieldPath]: enabled,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: context.auth.uid,
+      },
+      { merge: true }
+    );
+
+    await db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("audit_logs")
+      .add({
+        eventType: "payments",
+        action: "toggle_mercadopago",
+        tenantId,
+        scope,
+        flagPath: fieldPath,
+        enabled,
+        reason,
+        actorUid: context.auth.uid,
+        ip: getRequestIp(context) || null,
+        userAgent: normalizeString(context.rawRequest?.get("user-agent")) || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    const toggleState = await getPaymentToggleState(tenantId);
+    return {
+      ok: true,
+      tenantId,
+      scope,
+      enabled,
+      paymentToggleState: toggleState,
+    };
+  });
+
+export const reconcilePendingPayment = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const paymentId = normalizeString(payload.paymentId);
+    const reason = normalizeString(payload.reason);
+
+    if (!tenantId || !paymentId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId y paymentId requeridos");
+    }
+
+    await assertAppCheckForInternalCallable({
+      operation: "reconcilePendingPayment",
+      context,
+      tenantId,
+    });
+
+    await enforceAdminRateLimit({
+      operation: "reconcilePendingPayment",
+      uid: context.auth.uid,
+      tenantId,
+      ip: getRequestIp(context),
+    });
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+
+    const userData = userDoc.data() || {};
+    if (normalizeString(userData.tenantId) !== tenantId || !canWriteMaintenance(userData)) {
+      throw new functions.https.HttpsError("permission-denied", "sin permisos de conciliación manual");
+    }
+
+    let config: MpConfig;
+    try {
+      config = getMpConfig();
+    } catch {
+      throw new functions.https.HttpsError("failed-precondition", "Credenciales de Mercado Pago no configuradas");
+    }
+
+    const paymentRef = db.collection("tenants").doc(tenantId).collection("payments").doc(paymentId);
+    const paymentSnap = await paymentRef.get();
+    const currentStatus = parseStoredPaymentStatus(paymentSnap.get("status"));
+
+    let paymentData: Record<string, unknown>;
+    try {
+      const paymentResponse = await axios.get(`${MERCADOPAGO_API}/v1/payments/${paymentId}`, {
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+        },
+      });
+      paymentData = (paymentResponse.data ?? {}) as Record<string, unknown>;
+    } catch (error) {
+      const mpError = summarizeMercadoPagoError(error);
+      throw new functions.https.HttpsError(
+        mapMercadoPagoStatusToHttpsCode(mpError.status),
+        `Mercado Pago error: ${mpError.message}`,
+        {
+          provider: "mercado_pago",
+          status: mpError.status,
+          response: mpError.data,
+        }
+      );
+    }
+
+    const providerStatus = mapPaymentStatus(paymentData.status);
+    const recommendation = recommendPaymentAction({
+      providerStatus,
+      lastKnownStatus: currentStatus,
+      statusDetail: paymentData.status_detail,
+    });
+
+    const mergedPayment = {
+      orderId: normalizeString(paymentData.external_reference) || paymentSnap.get("orderId") || "",
+      provider: "mercado_pago",
+      status: providerStatus,
+      raw: {
+        id: paymentData.id ?? paymentId,
+        status: paymentData.status ?? null,
+        statusDetail: paymentData.status_detail ?? null,
+        transactionAmount: paymentData.transaction_amount ?? null,
+        currencyId: paymentData.currency_id ?? null,
+        paymentMethodId: paymentData.payment_method_id ?? null,
+        payerEmail: (paymentData.payer as Record<string, unknown> | undefined)?.email ?? null,
+        approvedAt: paymentData.date_approved ?? null,
+        createdAt: paymentData.date_created ?? null,
+      },
+      manualReconciliation: {
+        lastExecutedByUid: context.auth.uid,
+        lastExecutedAt: admin.firestore.FieldValue.serverTimestamp(),
+        reason: reason || null,
+        previousStatus: currentStatus,
+        providerStatus,
+        recommendation,
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await paymentRef.set(mergedPayment, { merge: true });
+
+    const historyRef = db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("payment_manual_reconciliations")
+      .doc();
+
+    await historyRef.set({
+      tenantId,
+      paymentId,
+      actorUid: context.auth.uid,
+      previousStatus: currentStatus,
+      providerStatus,
+      recommendation,
+      reason: reason || null,
+      providerResponse: mergedPayment.raw,
+      result: providerStatus === "APPROVED" ? "aligned" : "requires_action",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      source: "backoffice_web",
+    });
+
+    await syncCashClosureReconciliation({
+      tenantId,
+      paymentId,
+      recommendation,
+      providerStatus,
+      actorUid: context.auth.uid,
+    });
+
+    return {
+      ok: true,
+      paymentId,
+      providerStatus,
+      recommendation,
+      result: providerStatus === "APPROVED" ? "aligned" : "requires_action",
+      manualReconciliationId: historyRef.id,
+    };
+  });
+
+// ---------------------------------------------------------------------------
+// Custom domain management for stores
+// ---------------------------------------------------------------------------
+
+const isValidHostname = (hostname: string): boolean => {
+  if (!hostname || hostname.length > 253) return false;
+  if (!hostname.includes(".")) return false;
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
+    hostname
+  );
+};
+
+/**
+ * Registra o actualiza el dominio personalizado de una tienda.
+ * - Escribe en domain_to_tenant/{domain} para que config.js resuelva el tenant.
+ * - Activa publicEnabled en tenants/{tenantId}/config/public_store.
+ * - Actualiza public_tenant_directory/{tenantId} con el dominio.
+ * El dominio en Firebase Hosting debe agregarse manualmente en Firebase Console.
+ */
+export const setStoreDomain = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    const rawDomain = normalizeString(payload.domain)
+      .toLowerCase()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/.*$/, "")
+      .replace(/^www\./, "");
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+    if (!isValidHostname(rawDomain)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "dominio inválido: debe ser un hostname sin esquema ni ruta (ej: mitienda.com)"
+      );
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    const userData = userDoc.data() || {};
+    const isSuperAdmin =
+      context.auth.token?.superAdmin === true || userData.isSuperAdmin === true;
+    const userTenantId = normalizeString(userData.tenantId);
+    const userRole = normalizeString(userData.role).toLowerCase();
+
+    if (
+      !isSuperAdmin &&
+      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "sin permisos sobre este tenant"
+      );
+    }
+
+    // Verificar que el dominio no esté en uso por otra tienda
+    const existingMappingDoc = await db
+      .collection("domain_to_tenant")
+      .doc(rawDomain)
+      .get();
+    if (existingMappingDoc.exists) {
+      const existingTenantId = normalizeString(existingMappingDoc.data()?.tenantId);
+      if (existingTenantId && existingTenantId !== tenantId) {
+        throw new functions.https.HttpsError(
+          "already-exists",
+          "el dominio ya está registrado por otra tienda"
+        );
+      }
+    }
+
+    // Limpiar mapping anterior si se está cambiando de dominio
+    const publicStoreRef = db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("config")
+      .doc("public_store");
+    const publicStoreSnap = await publicStoreRef.get();
+    const previousDomain = normalizeString(publicStoreSnap.data()?.publicDomain)
+      .toLowerCase()
+      .replace(/^www\./, "");
+    if (previousDomain && previousDomain !== rawDomain) {
+      // Solo borrar el mapping anterior si efectivamente pertenece a este tenant,
+      // evitando que un admin con config manipulada borre el dominio de otro tenant.
+      const prevMappingDoc = await db.collection("domain_to_tenant").doc(previousDomain).get();
+      if (prevMappingDoc.exists && normalizeString(prevMappingDoc.data()?.tenantId) === tenantId) {
+        await db.collection("domain_to_tenant").doc(previousDomain).delete();
+      }
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const publicStoreUrl = `https://${rawDomain}/catalog.html`;
+
+    const batch = db.batch();
+
+    batch.set(
+      db.collection("domain_to_tenant").doc(rawDomain),
+      { tenantId, updatedAt: now },
+      { merge: true }
+    );
+
+    batch.set(
+      publicStoreRef,
+      {
+        publicDomain: rawDomain,
+        publicStoreUrl,
+        publicEnabled: true,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    batch.set(
+      db.collection("public_tenant_directory").doc(tenantId),
+      { publicDomain: rawDomain, publicStoreUrl, updatedAt: now },
+      { merge: true }
+    );
+
+    await batch.commit();
+
+    return { ok: true, tenantId, domain: rawDomain, publicStoreUrl };
+  });
+
+/**
+ * Elimina el dominio personalizado de una tienda.
+ * Borra el mapping en domain_to_tenant y limpia publicDomain en los configs.
+ */
+export const removeStoreDomain = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    const userData = userDoc.data() || {};
+    const isSuperAdmin =
+      context.auth.token?.superAdmin === true || userData.isSuperAdmin === true;
+    const userTenantId = normalizeString(userData.tenantId);
+    const userRole = normalizeString(userData.role).toLowerCase();
+
+    if (
+      !isSuperAdmin &&
+      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "sin permisos sobre este tenant"
+      );
+    }
+
+    const publicStoreRef = db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("config")
+      .doc("public_store");
+    const publicStoreSnap = await publicStoreRef.get();
+    const publicDomain = normalizeString(publicStoreSnap.data()?.publicDomain)
+      .toLowerCase()
+      .replace(/^www\./, "");
+
+    if (!publicDomain) {
+      return { ok: true, tenantId, removed: false };
+    }
+
+    // Verificar que el mapping domain_to_tenant pertenece a este tenant antes de borrarlo.
+    const mappingDoc = await db.collection("domain_to_tenant").doc(publicDomain).get();
+    if (mappingDoc.exists && normalizeString(mappingDoc.data()?.tenantId) !== tenantId) {
+      // El mapping apunta a otro tenant; solo limpiar el config local sin tocar el mapping.
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const cleanupBatch = db.batch();
+      cleanupBatch.set(
+        publicStoreRef,
+        {
+          publicDomain: admin.firestore.FieldValue.delete(),
+          publicStoreUrl: admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      cleanupBatch.set(
+        db.collection("public_tenant_directory").doc(tenantId),
+        {
+          publicDomain: admin.firestore.FieldValue.delete(),
+          publicStoreUrl: admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      await cleanupBatch.commit();
+      return { ok: true, tenantId, domain: publicDomain, removed: false };
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+
+    batch.delete(db.collection("domain_to_tenant").doc(publicDomain));
+
+    batch.set(
+      publicStoreRef,
+      {
+        publicDomain: admin.firestore.FieldValue.delete(),
+        publicStoreUrl: admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    batch.set(
+      db.collection("public_tenant_directory").doc(tenantId),
+      {
+        publicDomain: admin.firestore.FieldValue.delete(),
+        publicStoreUrl: admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+
+    return { ok: true, tenantId, domain: publicDomain, removed: true };
+  });
+
+// ---------------------------------------------------------------------------
+// Sincronización forzada de productos públicos
+// ---------------------------------------------------------------------------
+
+/**
+ * Fuerza la sincronización inmediata de productos publicados al catálogo público.
+ * Necesario para tiendas con productos cargados antes del trigger automático,
+ * o cuando publicEnabled se habilita por primera vez.
+ * También establece publicEnabled=true si no estaba activo.
+ */
+export const triggerStoreProductsSync = functions
+  .runWith({ enforceAppCheck: false, timeoutSeconds: 120, memory: "512MB" })
+  .https.onCall(async (data: unknown, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+
+    const userDoc = await db.collection("users").doc(context.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+    }
+    const userData = userDoc.data() || {};
+    const isSuperAdmin =
+      context.auth.token?.superAdmin === true || userData.isSuperAdmin === true;
+    const userTenantId = normalizeString(userData.tenantId);
+    const userRole = normalizeString(userData.role).toLowerCase();
+
+    if (
+      !isSuperAdmin &&
+      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "sin permisos sobre este tenant"
+      );
+    }
+
+    const [publishedSnap, legacySnap, existingPublicSnap] = await Promise.all([
+      db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("products")
+        .where("publicStatus", "==", "published")
+        .get(),
+      db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("products")
+        .where("isPublic", "==", true)
+        .get(),
+      db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("public_products")
+        .get(),
+    ]);
+
+    const publishedProducts = new Map<string, admin.firestore.QueryDocumentSnapshot>();
+    for (const doc of publishedSnap.docs) {
+      publishedProducts.set(doc.id, doc);
+    }
+    for (const doc of legacySnap.docs) {
+      if (!publishedProducts.has(doc.id)) {
+        publishedProducts.set(doc.id, doc);
+      }
+    }
+
+    // Solo incluir en publishedIds los productos que efectivamente pasan la validación,
+    // para que la limpieza posterior elimine los que tienen marcadores contradictorios
+    // (ej: publicStatus: "draft" + legacy isPublic: true).
+    const publishedIds = new Set<string>();
+
+    let syncBatch = db.batch();
+    let batchCount = 0;
+    let syncedCount = 0;
+
+    for (const productDoc of publishedProducts.values()) {
+      const productData = productDoc.data();
+      if (!productData || !isProductPublished(productData)) continue;
+      publishedIds.add(productDoc.id);
+      const productPayload = buildPublicProductPayload(tenantId, productDoc.id, productData);
+      const publicRef = db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("public_products")
+        .doc(productDoc.id);
+      syncBatch.set(publicRef, productPayload, { merge: true });
+      batchCount += 1;
+      syncedCount += 1;
+      if (batchCount === 450) {
+        await syncBatch.commit();
+        syncBatch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    for (const publicDoc of existingPublicSnap.docs) {
+      if (publishedIds.has(publicDoc.id)) continue;
+      syncBatch.delete(publicDoc.ref);
+      batchCount += 1;
+      if (batchCount === 450) {
+        await syncBatch.commit();
+        syncBatch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    if (batchCount > 0) {
+      await syncBatch.commit();
+    }
+
+    await db
+      .collection("tenants")
+      .doc(tenantId)
+      .collection("config")
+      .doc("public_store")
+      .set(
+        {
+          publicEnabled: true,
+          lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    return { ok: true, tenantId, syncedCount };
   });

@@ -14,6 +14,8 @@ import com.example.selliaapp.data.csv.TotalCsvBundle
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.model.ImportResult
 import com.example.selliaapp.di.IoDispatcher
+import com.example.selliaapp.domain.security.Permission
+import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.repository.ProductRepository
@@ -35,6 +37,7 @@ class BulkDataViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val invoiceDao: InvoiceDao,
     private val expenseRepository: ExpenseRepository,
+    private val accessControlRepository: AccessControlRepository,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -94,11 +97,13 @@ class BulkDataViewModel @Inject constructor(
     fun exportCustomers(onCompleted: (Result<ExportPayload>) -> Unit) {
         viewModelScope.launch(io) {
             val result = runCatching {
+                val canExportPii = accessControlRepository.getAccessState()
+                    .permissions.contains(Permission.EXPORT_PII_DATA)
                 val customers = customerRepository.getAllOnce()
                 ExportPayload(
                     fileName = CustomerCsvExporter.exportFileName(timestamp()),
                     mimeType = CustomerCsvExporter.mimeType(),
-                    content = CustomerCsvExporter.export(customers)
+                    content = CustomerCsvExporter.export(customers, maskPii = !canExportPii)
                 )
             }
             withContext(Dispatchers.Main) {
@@ -142,13 +147,15 @@ class BulkDataViewModel @Inject constructor(
     fun exportAll(onCompleted: (Result<ExportPayload>) -> Unit) {
         viewModelScope.launch(io) {
             val result = runCatching {
+                val canExportPii = accessControlRepository.getAccessState()
+                    .permissions.contains(Permission.EXPORT_PII_DATA)
                 val products = productRepository.getAllForExport()
                 val customers = customerRepository.getAllOnce()
                 val invoices = invoiceDao.getAllInvoicesOnce()
                 val expenses = expenseRepository.getAllRecordsOnce()
                 val bundled = TotalCsvBundle.bundle(
                     productsCsv = ProductCsvExporter.export(products),
-                    customersCsv = CustomerCsvExporter.export(customers),
+                    customersCsv = CustomerCsvExporter.export(customers, maskPii = !canExportPii),
                     salesCsv = SalesCsvExporter.export(invoices),
                     expensesCsv = ExpenseCsvExporter.export(expenses)
                 )
@@ -174,7 +181,8 @@ class BulkDataViewModel @Inject constructor(
                 val content = context.contentResolver.openInputStream(uri)?.use { stream ->
                     String(stream.readBytes())
                 } ?: ""
-                val sections = TotalCsvBundle.splitSections(content)
+                val parseResult = TotalCsvBundle.splitSections(content)
+                val sections = parseResult.sections
                 val errors = mutableListOf<String>()
                 var productsResult: ImportResult? = null
                 var customersResult: ImportResult? = null

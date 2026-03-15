@@ -18,6 +18,7 @@ import com.example.selliaapp.data.model.InvoiceItem
 import com.example.selliaapp.data.model.InvoiceStatus
 import com.example.selliaapp.data.model.OrderStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
+import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDraft
@@ -25,6 +26,7 @@ import com.example.selliaapp.data.model.sales.InvoiceItemRow
 import com.example.selliaapp.data.model.sales.InvoiceProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceResult
 import com.example.selliaapp.data.model.sales.InvoiceSummary
+import com.example.selliaapp.data.model.sales.SaleBreakdown
 import com.example.selliaapp.data.model.sales.SyncStatus
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
@@ -41,6 +43,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -84,7 +87,14 @@ class InvoiceRepositoryImpl @Inject constructor(
                 surchargeAmount = draft.surchargeAmount,
                 total = draft.total,
                 paymentMethod = draft.paymentMethod.ifBlank { "EFECTIVO" },
-                paymentNotes = draft.paymentNotes
+                paymentNotes = draft.paymentNotes,
+                bdGrossAmount = draft.breakdown?.grossAmount,
+                bdPosnetFee = draft.breakdown?.posnetFeeAmount,
+                bdPosnetFeePercent = draft.breakdown?.posnetFeePercent,
+                bdPurchaseCost = draft.breakdown?.purchaseCostTotal,
+                bdOperativosFee = draft.breakdown?.operativosFeeAmount,
+                bdOperativosFeePercent = draft.breakdown?.operativosFeePercent,
+                bdNetGain = draft.breakdown?.estimatedNetGain
             )
             val invId = invoiceDao.insertInvoice(baseInvoice)
 
@@ -151,7 +161,7 @@ class InvoiceRepositoryImpl @Inject constructor(
 
         val productIdsForOutbox = touchedProducts.map(Int::toLong)
         try {
-            syncInvoiceWithFirestore(invoice, invoiceNumber, persistedItems, productsToSync)
+            syncInvoiceWithFirestore(invoice, invoiceNumber, persistedItems, productsToSync, draft.breakdown)
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.INVOICE.storageKey,
                 listOf(invoice.id)
@@ -501,6 +511,17 @@ class InvoiceRepositoryImpl @Inject constructor(
             )
         }
         val ld = Instant.ofEpochMilli(inv.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        val breakdown = if (inv.bdGrossAmount != null) {
+            SaleBreakdown(
+                grossAmount = inv.bdGrossAmount,
+                posnetFeeAmount = inv.bdPosnetFee ?: 0.0,
+                posnetFeePercent = inv.bdPosnetFeePercent ?: 0.0,
+                purchaseCostTotal = inv.bdPurchaseCost ?: 0.0,
+                operativosFeeAmount = inv.bdOperativosFee ?: 0.0,
+                operativosFeePercent = inv.bdOperativosFeePercent ?: 0.0,
+                estimatedNetGain = inv.bdNetGain ?: 0.0
+            )
+        } else null
         return InvoiceDetail(
             id = inv.id,
             number = formatNumber(inv.id),
@@ -519,7 +540,8 @@ class InvoiceRepositoryImpl @Inject constructor(
             canceledReason = inv.canceledReason,
             items = itemsUi,
             notes = inv.paymentNotes,
-            syncStatus = syncStatusFor(outbox)
+            syncStatus = syncStatusFor(outbox),
+            breakdown = breakdown
         )
     }
 
@@ -533,7 +555,8 @@ class InvoiceRepositoryImpl @Inject constructor(
         invoice: Invoice,
         number: String,
         items: List<InvoiceItem>,
-        products: List<ProductEntity>
+        products: List<ProductEntity>,
+        breakdown: SaleBreakdown? = null
     ) {
         val tenantId = tenantProvider.requireTenantId()
         val invoicesCollection = firestore.collection("tenants")
@@ -541,7 +564,7 @@ class InvoiceRepositoryImpl @Inject constructor(
             .collection("invoices")
         invoicesCollection
             .document(invoice.id.toString())
-            .set(InvoiceFirestoreMappers.toMap(invoice, number, items, tenantId))
+            .set(InvoiceFirestoreMappers.toMap(invoice, number, items, tenantId, breakdown))
             .await()
 
         if (products.isEmpty()) return
@@ -621,6 +644,70 @@ class InvoiceRepositoryImpl @Inject constructor(
      // Búsqueda por cliente
      override fun observeInvoicesByCustomerQuery(q: String) =
          invoiceDao.observeInvoicesWithItemsByCustomerQuery(q)
+
+     // ----------------------------
+     // Reporte de ganancias
+     // ----------------------------
+     override suspend fun getProfitReport(from: Long, to: Long): List<InvoiceProfitSummary> = withContext(io) {
+         val zona = ZoneId.systemDefault()
+         invoiceDao.getProfitRows(from, to).map { row ->
+             val date = Instant.ofEpochMilli(row.dateMillis).atZone(zona).toLocalDate()
+             val cost = row.bdPurchaseCost
+             val gross = row.bdGrossAmount
+             val net = row.bdNetGain
+             InvoiceProfitSummary(
+                 id = row.id,
+                 number = formatNumber(row.id),
+                 customerName = row.customerName ?: "Consumidor Final",
+                 date = date,
+                 total = row.total,
+                 purchaseCost = cost,
+                 grossProfit = if (gross != null && cost != null) gross - cost else null,
+                 netGain = net,
+                 paymentMethod = row.paymentMethod
+             )
+         }
+     }
+
+     override suspend fun getDailyProfitSummary(from: Long, to: Long): List<DailyProfitSummary> = withContext(io) {
+         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+         invoiceDao.getDailyProfitRows(from, to).map { row ->
+             val date = LocalDate.parse(row.bucket, formatter)
+             DailyProfitSummary(
+                 date = date,
+                 saleCount = row.saleCount,
+                 totalRevenue = row.totalRevenue,
+                 totalPurchaseCost = row.totalPurchaseCost,
+                 totalGrossProfit = if (row.totalPurchaseCost != null) row.totalRevenue - row.totalPurchaseCost else null,
+                 totalNetGain = row.totalNetGain
+             )
+         }
+     }
+
+     override fun observeProfitSummaries(): Flow<List<InvoiceProfitSummary>> {
+         val zona = ZoneId.systemDefault()
+         return invoiceDao.observeProfitRows()
+             .map { rows ->
+                 rows.map { row ->
+                     val date = Instant.ofEpochMilli(row.dateMillis).atZone(zona).toLocalDate()
+                     val cost = row.bdPurchaseCost
+                     val gross = row.bdGrossAmount
+                     val net = row.bdNetGain
+                     InvoiceProfitSummary(
+                         id = row.id,
+                         number = formatNumber(row.id),
+                         customerName = row.customerName ?: "Consumidor Final",
+                         date = date,
+                         total = row.total,
+                         purchaseCost = cost,
+                         grossProfit = if (gross != null && cost != null) gross - cost else null,
+                         netGain = net,
+                         paymentMethod = row.paymentMethod
+                     )
+                 }
+             }
+             .flowOn(io)
+     }
 
     private fun syncStatusFor(outbox: SyncOutboxEntity?): SyncStatus =
         when {

@@ -37,7 +37,20 @@ const server = http.createServer((req, res) => {
   fs.stat(targetPath, (statErr, stats) => {
     if (!statErr && stats.isFile()) {
       const ext = path.extname(targetPath).toLowerCase();
+      const fileName = path.basename(targetPath);
       res.setHeader('Content-Type', contentTypes[ext] || 'application/octet-stream');
+
+      const isVersionedAsset = /\.v\d+\./.test(fileName) || /[?&]v=\d+/.test(req.url || '');
+      const isStaticAsset = ['.css', '.js', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.ico', '.json'].includes(ext);
+
+      if (isStaticAsset && isVersionedAsset) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (ext === '.html') {
+        res.setHeader('Cache-Control', 'no-store');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+      }
+
       fs.createReadStream(targetPath).pipe(res);
       return;
     }

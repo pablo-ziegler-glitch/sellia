@@ -5,6 +5,7 @@ import com.example.selliaapp.data.model.Invoice
 import com.example.selliaapp.data.model.InvoiceItem
 import com.example.selliaapp.data.model.OrderStatus
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
+import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDetail
 import com.example.selliaapp.data.model.sales.DailyProfitSummary
 import com.example.selliaapp.data.model.sales.InvoiceDraft

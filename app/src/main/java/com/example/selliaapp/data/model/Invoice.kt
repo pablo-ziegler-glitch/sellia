@@ -36,7 +36,15 @@ data class Invoice(
     val paymentNotes: String?,
     val status: InvoiceStatus = InvoiceStatus.EMITIDA,
     val canceledAt: Long? = null,
-    val canceledReason: String? = null
+    val canceledReason: String? = null,
+    // Desglose interno de ganancia (solo visible para ADMIN/OWNER)
+    val bdGrossAmount: Double? = null,
+    val bdPosnetFee: Double? = null,
+    val bdPosnetFeePercent: Double? = null,
+    val bdPurchaseCost: Double? = null,
+    val bdOperativosFee: Double? = null,
+    val bdOperativosFeePercent: Double? = null,
+    val bdNetGain: Double? = null
 )
 
 enum class InvoiceStatus {

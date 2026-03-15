@@ -5,6 +5,9 @@ Este proyecto consume credenciales de Mercado Pago desde **variables de entorno*
 ## ✅ Secretos requeridos
 - `MP_ACCESS_TOKEN`: Access token privado de Mercado Pago.
 - `MP_WEBHOOK_SECRET`: Secret para validar firmas de webhooks.
+- `MP_RECONCILIATION_PENDING_MINUTES` (opcional): minutos mínimos para considerar un pago `PENDING` en cola de conciliación (default `15`).
+- `MP_RECONCILIATION_BATCH_SIZE` (opcional): tamaño de lote por ejecución del scheduler de conciliación (default `100`).
+- `MP_AGED_PENDING_ALERT_MINUTES` (opcional): umbral de alerta operacional para pendientes envejecidos (default `120`).
 
 > ℹ️ **Sobre keys públicas:** para este flujo actual (Checkout Pro vía `createPaymentPreference` en Cloud Functions) **no** hace falta `PUBLIC_KEY` en la app Android. La `PUBLIC_KEY` solo es necesaria si integrás SDK cliente de Mercado Pago (CardForm/Bricks) directamente en frontend.
 
@@ -40,6 +43,12 @@ MP_WEBHOOK_SECRET=TU_WEBHOOK_SECRET
    - `createPaymentPreference` devuelve `init_point`.
    - Mercado Pago envía callback a `mpWebhook`.
    - Se persiste estado en Firestore (`tenants/{tenantId}/payments/{paymentId}`).
+
+5. **Conciliación automática habilitada**:
+   - Scheduler `reconcilePendingPayments` consulta pagos `PENDING` envejecidos, contrasta estado oficial en MP y actualiza estado interno.
+   - Discrepancias se encolan en `tenants/{tenantId}/payment_disputes/{disputeId}`.
+   - Se emiten alertas operacionales (`PAYMENT_PENDING_AGED`) para pagos pendientes por encima del umbral.
+   - Evidencia de corrida en `payment_reconciliation_runs/{runId}` con timestamp y resumen.
 
 ## Validación rápida
 Si al crear una preferencia recibís errores de configuración, revisá:

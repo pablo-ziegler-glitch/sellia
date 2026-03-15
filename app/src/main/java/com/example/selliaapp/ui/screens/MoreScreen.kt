@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
@@ -30,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.ui.components.AccountAvatarMenu
 import com.example.selliaapp.ui.components.AccountSummary
 
@@ -37,7 +37,6 @@ import com.example.selliaapp.ui.components.AccountSummary
 @Composable
 fun MoreScreen(
     onStockHistory: () -> Unit,
-    onCustomers: () -> Unit,
     onProviders: () -> Unit,
     onExpenses: () -> Unit,
     onReports: () -> Unit,
@@ -45,7 +44,7 @@ fun MoreScreen(
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
     accountSummary: AccountSummary,
-    isClientFinal: Boolean
+    role: AppRole
 ) {
     Surface {
         val scrollState = rememberScrollState()
@@ -69,7 +68,7 @@ fun MoreScreen(
             }
 
 
-            if (isClientFinal) {
+            if (role == AppRole.VIEWER) {
                 SectionTitle("Cuenta")
                 ListItem(
                     headlineContent = { Text("Configuración de perfil") },
@@ -95,17 +94,56 @@ fun MoreScreen(
                 return@Surface
             }
 
+            if (role == AppRole.CASHIER) {
+                SectionTitle("Operación diaria")
+                ListItem(
+                    headlineContent = { Text("Historial de stock") },
+                    leadingContent = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onStockHistory),
+                    supportingContent = { Text("Entradas y salidas") },
+                    trailingContent = null,
+                    overlineContent = null
+                )
+
+                HorizontalDivider()
+                SectionTitle("Sistema")
+                ListItem(
+                    headlineContent = { Text("Reportes") },
+                    leadingContent = { Icon(Icons.Default.Assessment, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onReports),
+                    supportingContent = { Text("Ventas, márgenes y KPIs") },
+                    trailingContent = null,
+                    overlineContent = null
+                )
+                ListItem(
+                    headlineContent = { Text("Configuración") },
+                    leadingContent = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onSettings),
+                    supportingContent = { Text("Perfil y ajustes operativos") },
+                    trailingContent = null,
+                    overlineContent = null
+                )
+                ListItem(
+                    headlineContent = { Text("Cerrar sesión") },
+                    leadingContent = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onSignOut),
+                    supportingContent = { Text("Salir para ingresar con otra cuenta") },
+                    trailingContent = null,
+                    overlineContent = null
+                )
+                Spacer(Modifier.height(8.dp))
+                return@Surface
+            }
+
             SectionTitle("Operación diaria")
-            ListItem(
-                headlineContent = { Text("Clientes") },
-                leadingContent = { Icon(Icons.Default.People, contentDescription = null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onCustomers),
-                supportingContent = { Text("Ventas por cliente") },
-                trailingContent = null,
-                overlineContent = null
-            )
             ListItem(
                 headlineContent = { Text("Proveedores") },
                 leadingContent = { Icon(Icons.Default.Store, contentDescription = null) },

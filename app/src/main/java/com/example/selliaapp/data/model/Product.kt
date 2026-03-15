@@ -44,5 +44,6 @@ data class Product(
     val color: String? = null,
     val sizes: List<String> = emptyList(),
     val minStock: Int? = null,
+    val gainTargetPercent: Double? = null,
     val updatedAt: LocalDate? = null
 )

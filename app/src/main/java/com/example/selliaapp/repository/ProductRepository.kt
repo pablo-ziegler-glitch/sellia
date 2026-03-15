@@ -175,7 +175,7 @@ class ProductRepository(
             else -> true
         }
         if (!shouldAuto) {
-            return incoming.copy(autoPricing = false, manualGainPercent = incoming.manualGainPercent ?: existing?.manualGainPercent)
+            return incoming.copy(autoPricing = false)
         }
         val settings = pricingConfigRepository.getSettings()
         val fixedCosts = pricingConfigRepository.getFixedCosts()
@@ -187,7 +187,7 @@ class ProductRepository(
             fixedCosts = fixedCosts,
             mlFixedCostTiers = mlFixedCostTiers,
             mlShippingTiers = mlShippingTiers,
-            manualGainPercent = incoming.manualGainPercent ?: existing?.manualGainPercent
+            gainTargetOverridePercent = incoming.gainTargetPercent
         )
         return incoming.copy(
             listPrice = result.listPrice,
@@ -197,7 +197,6 @@ class ProductRepository(
             mlPrice = result.mlPrice,
             ml3cPrice = result.ml3cPrice,
             ml6cPrice = result.ml6cPrice,
-            manualGainPercent = incoming.manualGainPercent ?: existing?.manualGainPercent,
             autoPricing = true
         )
     }
@@ -214,10 +213,11 @@ class ProductRepository(
         db.withTransaction {
             rows.forEach { r ->
                 val updated = r.updatedAt ?: LocalDate.now()
+                val rBarcode = r.barcode
                 val existing = when {
-                    !r.barcode.isNullOrBlank() -> productDao.getByBarcodeOnce(r.barcode!!)
-                    !r.name.isNullOrBlank() -> productDao.getByNameOnce(r.name)
-                    else -> null
+                    !rBarcode.isNullOrBlank() -> productDao.getByBarcodeOnce(rBarcode)
+                    !r.name.isNullOrBlank()   -> productDao.getByNameOnce(r.name)
+                    else                      -> null
                 }
                 val beforeQty = existing?.quantity ?: 0
                 val incoming = ProductEntity(
@@ -422,8 +422,9 @@ class ProductRepository(
                         errors += "Línea $lineNumber: el código \"$normalizedCode\" está duplicado en el archivo."
                         return@forEachIndexed
                     }
+                    val rBarcode2 = r.barcode
                     val existing = when {
-                        !r.barcode.isNullOrBlank() -> productDao.getByBarcodeOnce(r.barcode!!)
+                        !rBarcode2.isNullOrBlank() -> productDao.getByBarcodeOnce(rBarcode2)
                         else                       -> productDao.getByNameOnce(r.name)
                     }
                     if (normalizedCode != null) {

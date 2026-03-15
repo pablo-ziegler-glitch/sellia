@@ -24,7 +24,7 @@ Checklist mínimo antes de pasar a producción:
 
 ## Contrato de payload: frontend/app → Cloud Function `createPaymentPreference`
 
-> ⚠️ Alias legado: `createPreference` se mantiene temporalmente por compatibilidad, pero está **deprecated** y su retiro está programado para **2026-03-31**. Todos los clientes deben migrar al endpoint canónico `createPaymentPreference`.
+> ✅ Alias legado `createPreference` **retirado** el 2026-03-31. El endpoint canónico es `createPaymentPreference`.
 
 A partir de esta versión, el payload de creación de preferencia debe cumplir este contrato mínimo:
 

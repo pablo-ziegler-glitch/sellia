@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
@@ -25,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -46,7 +48,6 @@ import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.security.DeepLinkSecurity
 import com.example.selliaapp.ui.components.AppScaffold
 import com.example.selliaapp.ui.components.BottomNavItem
-import com.example.selliaapp.ui.screens.ClientHomeScreen
 import com.example.selliaapp.ui.screens.HomeScreen
 import com.example.selliaapp.ui.screens.MoreScreen
 import com.example.selliaapp.ui.screens.alerts.UsageAlertsScreen
@@ -62,10 +63,15 @@ import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.CrossCatalogAdminScreen
 import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
 import com.example.selliaapp.ui.screens.config.AppVersionScreen
+import com.example.selliaapp.ui.screens.config.BackofficeModule
+import com.example.selliaapp.ui.screens.config.ConfigAdminFeatureFlags
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
+import com.example.selliaapp.ui.screens.config.PublicCatalogConfigScreen
+import com.example.selliaapp.ui.screens.config.StoreSettingsScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
+import com.example.selliaapp.ui.screens.config.PricingSimulatorScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseTemplatesScreen
 import com.example.selliaapp.ui.screens.expenses.ExpensesCashflowScreen
@@ -95,6 +101,7 @@ import com.example.selliaapp.ui.screens.reports.PriceSummaryScreen
 import com.example.selliaapp.ui.screens.reports.ReportsScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
+import com.example.selliaapp.ui.screens.sales.SalesProfitReportScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
 import com.example.selliaapp.ui.screens.admin.UsageDashboardScreen
@@ -112,6 +119,7 @@ import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
+import com.example.selliaapp.viewmodel.PublicCatalogConfigViewModel
 import com.example.selliaapp.viewmodel.TenantManagementViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.ProductPriceAuditViewModel
@@ -131,6 +139,7 @@ import com.example.selliaapp.viewmodel.TenantOwnershipViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
+import com.example.selliaapp.viewmodel.sales.SalesProfitReportViewModel
 import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
 import com.example.selliaapp.viewmodel.admin.AccountRequestsViewModel
 import com.example.selliaapp.domain.security.AppRole
@@ -157,23 +166,33 @@ fun SelliaApp(
     val accountSummary = remember(authState, accessState) {
         buildAccountSummary(authState, accessState)
     }
-    val isClientFinal = accessState.role == AppRole.VIEWER
-    val navigationItems = remember(isClientFinal) {
-        if (isClientFinal) {
-            listOf(
-                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
-                BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront),
-                BottomNavItem(Routes.More.route, "Cuenta", Icons.Default.Menu)
-            )
-        } else {
-            listOf(
-                BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home),
-                BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true),
-                BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2),
-                BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney),
-                BottomNavItem(Routes.More.route, "Más", Icons.Default.Menu)
-            )
-        }
+    val role = accessState.role
+    val isClientFinal = role == AppRole.VIEWER
+    val navigationUsageStore = remember(context) { NavigationUsageStore(context.applicationContext) }
+    val routeCounts by navigationUsageStore.observeRouteCounts().collectAsStateWithLifecycle()
+    val roleRouteCounts = remember(role, routeCounts) {
+        navigationUsageStore.routeCountsFor(role)
+    }
+    val primaryRoutes = remember(role, roleRouteCounts) {
+        RoleNavigationPolicy.primaryRoutesForRole(role, roleRouteCounts)
+    }
+    val navigationItems = remember(primaryRoutes) {
+        primaryRoutes.map { routeItem ->
+            when (routeItem) {
+                Routes.Home.route -> BottomNavItem(Routes.Home.route, "Inicio", Icons.Default.Home)
+                Routes.Pos.route -> BottomNavItem(Routes.Pos.route, "Vender", Icons.Default.PointOfSale, highlighted = true)
+                Routes.Stock.route -> BottomNavItem(Routes.Stock.route, "Stock", Icons.Default.Inventory2)
+                Routes.Cash.route -> BottomNavItem(Routes.Cash.route, "Caja", Icons.Default.AttachMoney)
+                Routes.ClientsHub.route -> BottomNavItem(Routes.ClientsHub.route, "Clientes", Icons.Default.ShoppingCart)
+                Routes.PublicProductCatalog.route -> BottomNavItem(Routes.PublicProductCatalog.route, "Catálogo", Icons.Default.Storefront)
+                Routes.Notifications.route -> BottomNavItem(Routes.Notifications.route, "Avisos", Icons.Default.Notifications)
+                else -> BottomNavItem(routeItem, routeItem, Icons.Default.Home)
+            }
+        } + BottomNavItem(
+            route = Routes.More.route,
+            label = if (isClientFinal) "Cuenta" else "Más",
+            icon = Icons.Default.Menu
+        )
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -185,6 +204,12 @@ fun SelliaApp(
         currentRoute == Routes.PosCheckout.route ||
         currentRoute == Routes.ScannerForSell.route
 
+    LaunchedEffect(currentRoute, role) {
+        if (currentRoute.isNotBlank()) {
+            navigationUsageStore.onRouteVisible(role, currentRoute)
+        }
+    }
+
     AppScaffold(
         currentDestination = currentDestination,
         onNavigate = { route ->
@@ -193,11 +218,15 @@ fun SelliaApp(
                     Routes.PublicProductCatalog.route,
                     Routes.More.route,
                     Routes.Config.route,
-                    Routes.PublicProductScan.route
+                    Routes.PublicProductScan.route,
+                    Routes.Notifications.route,
+                    Routes.StoreRequestForm.route
                 )
             ) {
+                navigationUsageStore.recordNavigationDenied(role, route)
                 return@AppScaffold
             }
+            navigationUsageStore.markNavigationRequested(role, route)
             navController.navigate(route) {
                 launchSingleTop = true
                 restoreState = false
@@ -215,11 +244,16 @@ fun SelliaApp(
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {
                 if (isClientFinal) {
-                    ClientHomeScreen(
+                    com.example.selliaapp.ui.screens.customer.CustomerHomeScreen(
                         accountSummary = accountSummary,
                         onOpenPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
                         onScanPublicProduct = { navController.navigate(Routes.PublicProductScan.route) },
-                        onOpenProfile = { navController.navigate(Routes.Config.route) }
+                        onOpenProfile = { navController.navigate(Routes.Config.route) },
+                        onOpenStore = { store ->
+                            navController.navigate(Routes.StoreDetail.build(store.id, store.name))
+                        },
+                        onRequestStore = { navController.navigate(Routes.StoreRequestForm.route) },
+                        onOpenNotifications = { navController.navigate(Routes.Notifications.route) }
                     )
                 } else {
                     val homeVm: HomeViewModel = hiltViewModel()
@@ -246,6 +280,7 @@ fun SelliaApp(
 
                     HomeScreen(
                         onNewSale = { navController.navigate(Routes.Pos.route) },
+                        onPricingSimulator = { navController.navigate(Routes.PricingSimulator.route) },
                         onClientes = { navController.navigate(Routes.ClientsHub.route) },
                         onConfig = { navController.navigate(Routes.Config.route) },
                         onReports = { navController.navigate(Routes.Reports.route) },
@@ -253,7 +288,7 @@ fun SelliaApp(
                         onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                         onPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
                         onPublicProductScan = { navController.navigate(Routes.PublicProductScan.route) },
-                        onSyncNow = { SyncScheduler.enqueueNow(context, false) },
+                        onSyncNow = { SyncScheduler.enqueueNow(context) },
                         onAlertAdjustStock = { productId ->
                             navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
                         },
@@ -330,7 +365,6 @@ fun SelliaApp(
             composable(Routes.More.route) {
                 MoreScreen(
                     onStockHistory = { navController.navigate(Routes.StockMovements.route) },
-                    onCustomers = { navController.navigate(Routes.ClientsHub.route) },
                     onProviders = { navController.navigate(Routes.ProvidersHub.route) },
                     onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
                     onReports = { navController.navigate(Routes.Reports.route) },
@@ -338,7 +372,7 @@ fun SelliaApp(
                     onSettings = { navController.navigate(Routes.Config.route) },
                     onSignOut = { authViewModel.signOut() },
                     accountSummary = accountSummary,
-                    isClientFinal = isClientFinal
+                    role = role
                 )
             }
 
@@ -741,6 +775,7 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
+                val uriHandler = LocalUriHandler.current
                 val tenantManagementVm: TenantManagementViewModel = hiltViewModel()
                 val tenantManagementState by tenantManagementVm.uiState.collectAsStateWithLifecycle()
                 val userProfile = remember(authState, accessState) {
@@ -773,9 +808,17 @@ fun SelliaApp(
                     onTenantDelete = tenantManagementVm::deleteTenant,
                     tenantActionFeedback = tenantManagementState.message,
                     tenantActionError = tenantManagementState.error,
+                    onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
+                    onStoreSettings = { navController.navigate(Routes.StoreSettings.route) },
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = accessState.role == AppRole.ADMIN,
+                    onSupport = { navController.navigate(Routes.AppVersion.route) },
+                    onOpenBackofficeWeb = { module ->
+                        uriHandler.openUri("https://sellia1993.web.app/backoffice/${module.slug}")
+                    },
+                    adminFeatureFlags = ConfigAdminFeatureFlags.MobileFieldOnly,
                     isClientFinal = isClientFinal,
+                    onStorefront = { navController.navigate(Routes.Storefront.route) },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -795,6 +838,13 @@ fun SelliaApp(
 
             composable(Routes.PricingConfig.route) {
                 PricingConfigScreen(
+                    onBack = { navController.popBackStack() },
+                    onSimulator = { navController.navigate(Routes.PricingSimulator.route) }
+                )
+            }
+
+            composable(Routes.PricingSimulator.route) {
+                PricingSimulatorScreen(
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -804,6 +854,23 @@ fun SelliaApp(
                 MarketingConfigScreen(
                     vm = vm,
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.PublicCatalogConfig.route) {
+                val vm: PublicCatalogConfigViewModel = hiltViewModel()
+                PublicCatalogConfigScreen(
+                    vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.StoreSettings.route) {
+                StoreSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
+                    onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
+                    onStorefront = { navController.navigate(Routes.Storefront.route) }
                 )
             }
 
@@ -868,7 +935,8 @@ fun SelliaApp(
                     onBack = { navController.popBackStack() },
                     vm = vm,
                     navController =  navController,
-                    canAccessPriceSummary = accessState.role == AppRole.OWNER
+                    canAccessPriceSummary = accessState.role == AppRole.OWNER,
+                    canAccessProfitReport = accessState.permissions.contains(Permission.VIEW_PROFIT_BREAKDOWN)
                 )
 
             }
@@ -925,6 +993,16 @@ fun SelliaApp(
                 val vm: SalesInvoiceDetailViewModel = hiltViewModel()
                 SalesInvoiceDetailScreen(
                     vm = vm,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // -------------------- REPORTE DE GANANCIAS (solo ADMIN/OWNER) ----------
+            composable(Routes.SalesProfitReport.route) {
+                val vm: SalesProfitReportViewModel = hiltViewModel()
+                SalesProfitReportScreen(
+                    vm = vm,
+                    onOpenDetail = { id -> navController.navigate(Routes.SalesInvoiceDetail.withId(id)) },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -1045,7 +1123,38 @@ fun SelliaApp(
                 ExpensesCashflowScreen(repo = repo, onBack = { navController.popBackStack() })
             }
 
+            // ---------- VISTA CLIENTE: Tienda, Solicitud, Notificaciones ----------
+            composable(
+                route = Routes.StoreDetail.route,
+                arguments = Routes.StoreDetail.arguments
+            ) { backStackEntry ->
+                val tenantId = backStackEntry.arguments?.getString(Routes.StoreDetail.ARG_TENANT_ID).orEmpty()
+                val tenantName = backStackEntry.arguments?.getString(Routes.StoreDetail.ARG_NAME).orEmpty()
+                com.example.selliaapp.ui.screens.customer.StoreDetailScreen(
+                    tenantId = tenantId,
+                    tenantName = tenantName,
+                    onBack = { navController.popBackStack() }
+                )
+            }
 
+            composable(Routes.StoreRequestForm.route) {
+                com.example.selliaapp.ui.screens.customer.StoreRequestScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.Notifications.route) {
+                com.example.selliaapp.ui.screens.notifications.NotificationListScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // ---------- DUEÑO: Vidriera Pública ----------
+            composable(Routes.Storefront.route) {
+                com.example.selliaapp.ui.screens.storefront.StorefrontScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
 
             }
 

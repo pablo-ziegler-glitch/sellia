@@ -11,9 +11,21 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <header id="catalogHeader" class="catalog-header" hidden>
+      <div class="catalog-header-inner">
+        <img id="catalogLogo" class="catalog-logo" src="" alt="" hidden />
+        <span id="catalogStoreName" class="catalog-store-name"></span>
+      </div>
+    </header>
+
     <main id="contenido" class="catalog-page">
+      <section id="catalogHero" class="catalog-hero" hidden>
+        <h1 id="catalogHeroTitle"></h1>
+        <p id="catalogHeroSubtitle"></p>
+      </section>
+
       <section class="section" aria-labelledby="catalog-title">
-        <div class="section-header">
+        <div class="section-header" id="catalogDefaultHeader">
           <h1 id="catalog-title">Catálogo por tiendas</h1>
           <p>Productos públicos cargados desde Firestore Firebase.</p>
           <p><a class="text-link" href="/index.html">← Volver a la landing</a></p>
@@ -33,8 +45,8 @@
               <tr>
                 <th scope="col">Nombre</th>
                 <th scope="col">SKU</th>
-                <th scope="col">Precio lista</th>
-                <th scope="col">Precio efectivo</th>
+                <th scope="col" id="colHeaderListPrice">Precio lista</th>
+                <th scope="col" id="colHeaderCashPrice">Precio efectivo</th>
               </tr>
             </thead>
             <tbody id="catalogRows"></tbody>
@@ -42,10 +54,14 @@
           <p id="catalogStatus" class="muted"></p>
         </div>
       </section>
+
+      <footer id="catalogFooter" class="catalog-footer" hidden>
+        <p id="catalogFooterText"></p>
+      </footer>
     </main>
 
     <script src="/config.js"></script>
-    <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" defer></script>
+    <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous" defer></script>
     <script src="/safe-dom.js" defer></script>
     <script src="/catalog.js" defer></script>
   </body>

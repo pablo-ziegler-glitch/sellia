@@ -53,6 +53,7 @@ fun ReportsScreen(
     onBack: () -> Boolean,
     navController: NavController,
     canAccessPriceSummary: Boolean,
+    canAccessProfitReport: Boolean = false,
 ) {
     val state by vm.state.collectAsState()
     val localeEsAr = Locale("es", "AR")
@@ -140,6 +141,15 @@ fun ReportsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Resumen de precios (solo dueño)")
+                }
+            }
+            if (canAccessProfitReport) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { navController.navigate(Routes.SalesProfitReport.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Reporte de ganancias (solo dueño)")
                 }
             }
         }

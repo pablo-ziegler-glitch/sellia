@@ -17,7 +17,7 @@ object SyncScheduler {
     private const val DEFAULT_INTERVAL_MINUTES = 60
     const val PERIODIC_UNIQUE_NAME: String = "sync_periodic_work"
 
-    fun enqueueNow(context: Context, includeBackup: Boolean) {
+    fun enqueueNow(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -25,7 +25,6 @@ object SyncScheduler {
         val req = OneTimeWorkRequestBuilder<SyncWorker>()
             .setConstraints(constraints)
             .addTag(SyncWorker.TAG)
-            .setInputData(SyncWorker.inputData(includeBackup))
             .build()
 
         WorkManager.getInstance(context)

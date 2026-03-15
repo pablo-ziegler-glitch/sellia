@@ -77,6 +77,7 @@ fun ManageProductsScreen(
     val state by vm.state.collectAsState()
     val message by vm.message.collectAsState()
     val products by vm.filteredProducts.collectAsState(initial = emptyList())
+    val pricingSettings by vm.pricingSettings.collectAsState()
 
     var showEditor by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ProductEntity?>(null) }
@@ -250,8 +251,10 @@ fun ManageProductsScreen(
     if (showEditor) {
         ProductEditorDialog(
             initial = editing,
+            posnetPercent = pricingSettings?.posnet3CuotasPercent ?: 0.0,
+            operativosPercent = pricingSettings?.operativosLocalPercent ?: 0.0,
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, purchasePrice, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls ->
+            onSave = { name, barcode, purchasePrice, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls, gainTargetPercent ->
                 scope.launch {
                     val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
                     val base: ProductEntity = editing ?: ProductEntity(
@@ -272,6 +275,7 @@ fun ManageProductsScreen(
                         imageUrls = normalizedImages,
                         category = null,
                         minStock = minStock,
+                        gainTargetPercent = gainTargetPercent,
                         updatedAt = LocalDate.now()
                     )
 
@@ -290,6 +294,7 @@ fun ManageProductsScreen(
                         imageUrl = normalizedImages.firstOrNull(),
                         imageUrls = normalizedImages,
                         minStock = minStock,
+                        gainTargetPercent = gainTargetPercent,
                         updatedAt = LocalDate.now()
                     )
 

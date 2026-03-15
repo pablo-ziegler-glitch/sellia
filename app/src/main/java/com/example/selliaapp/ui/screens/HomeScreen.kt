@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
@@ -71,6 +72,7 @@ fun HomeScreen(
     onReports: () -> Unit,
     onProviders: () -> Unit,
     onExpenses: () -> Unit,
+    onPricingSimulator: () -> Unit,
     onPublicCatalog: () -> Unit,
     onPublicProductScan: () -> Unit,
     onSyncNow: () -> Unit = {},
@@ -348,7 +350,8 @@ fun HomeScreen(
                     onNewSale = onNewSale,
                     onStock = onStock,
                     onClientes = onClientes,
-                    onReports = onReports
+                    onReports = onReports,
+                    onPricingSimulator = onPricingSimulator
                 )
             }
         }
@@ -388,31 +391,22 @@ private fun ShortcutsSection(
     onNewSale: () -> Unit,
     onStock: () -> Unit,
     onClientes: () -> Unit,
-    onReports: () -> Unit
+    onReports: () -> Unit,
+    onPricingSimulator: () -> Unit
 ) {
     val shortcuts = listOf(
         ShortcutItem("Vender", Icons.Default.PointOfSale, onNewSale),
         ShortcutItem("Stock", Icons.Default.Inventory2, onStock),
         ShortcutItem("Clientes", Icons.Default.People, onClientes),
-        ShortcutItem("Reportes", Icons.Default.QueryStats, onReports)
+        ShortcutItem("Reportes", Icons.Default.QueryStats, onReports),
+        ShortcutItem("Sim. costos", Icons.Default.Calculate, onPricingSimulator)
     )
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Atajos", style = MaterialTheme.typography.titleMedium)
-        if (isCompactWidth) {
+        shortcuts.chunked(3).forEach { rowItems ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                shortcuts.take(2).forEach { item ->
-                    ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                shortcuts.drop(2).forEach { item ->
-                    ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
-                }
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                shortcuts.forEach { item ->
+                rowItems.forEach { item ->
                     ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
                 }
             }

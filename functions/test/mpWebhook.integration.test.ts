@@ -54,12 +54,23 @@ vi.mock("firebase-admin", () => {
     },
   });
 
+  const storage = vi.fn(() => ({
+    bucket: vi.fn(() => ({
+      file: vi.fn(() => ({
+        save: vi.fn(),
+        delete: vi.fn(),
+      })),
+    })),
+  }));
+
   return {
     initializeApp: vi.fn(),
     firestore,
+    storage,
     default: {
       initializeApp: vi.fn(),
       firestore,
+      storage,
     },
   };
 });
@@ -86,6 +97,19 @@ vi.mock("firebase-functions", () => {
       https: {
         onCall: (handler: any) => handler,
       },
+      pubsub: {
+        schedule: () => ({
+          timeZone: () => ({
+            onRun: (handler: any) => handler,
+          }),
+        }),
+      },
+      firestore: {
+        document: () => ({
+          onWrite: (handler: any) => handler,
+          onCreate: (handler: any) => handler,
+        }),
+      },
     }),
     https: {
       onRequest: (handler: any) => handler,
@@ -103,6 +127,7 @@ vi.mock("firebase-functions", () => {
     firestore: {
       document: () => ({
         onWrite: (handler: any) => handler,
+        onCreate: (handler: any) => handler,
       }),
     },
   };
@@ -146,6 +171,7 @@ describe("mpWebhook", () => {
 
     const req: any = {
       method: "POST",
+      ip: "34.195.82.184",
       query: { "data.id": paymentId },
       body: {},
       get: (headerName: string) => {

@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,6 +40,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -99,6 +101,12 @@ fun CheckoutScreen(
     var customerDiscountInput by remember { mutableStateOf("") }
     var showCustomerValidationDialog by remember { mutableStateOf(false) }
     var pendingCheckoutAction by remember { mutableStateOf(PendingCheckoutAction.CONFIRM_SALE) }
+    var showBreakdown by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        // Recargo fue eliminado como feature; garantizamos que nunca infle el total silenciosamente
+        vm.setSurchargePercent(0)
+    }
 
     LaunchedEffect(state.customerDiscountPercent) {
         customerDiscountInput = if (state.customerDiscountPercent == 0) "" else state.customerDiscountPercent.toString()
@@ -120,6 +128,25 @@ fun CheckoutScreen(
         if (!message.isNullOrBlank()) {
             snackbarHostState.showSnackbar(message)
             paymentVm.clearPaymentError()
+        }
+    }
+
+
+    LaunchedEffect(paymentState.fallbackPaymentMethod) {
+        when (paymentState.fallbackPaymentMethod?.trim()?.uppercase()) {
+            "TRANSFERENCIA" -> {
+                vm.updatePaymentMethod(PaymentMethod.TRANSFERENCIA)
+                paymentVm.consumeFallbackPaymentMethod()
+            }
+            "EFECTIVO" -> {
+                vm.updatePaymentMethod(PaymentMethod.EFECTIVO)
+                paymentVm.consumeFallbackPaymentMethod()
+            }
+            "LISTA" -> {
+                vm.updatePaymentMethod(PaymentMethod.LISTA)
+                paymentVm.consumeFallbackPaymentMethod()
+            }
+            else -> Unit
         }
     }
 
@@ -326,13 +353,6 @@ fun CheckoutScreen(
                                         colorValor = Color(0xFF2E7D32)
                                     )
                                 }
-                                if (state.surchargePercent > 0) {
-                                    ResumenCheckoutFila(
-                                        etiqueta = "Recargo (${state.surchargePercent}%)",
-                                        valor = "+${moneda.format(state.surchargeAmount)}",
-                                        colorValor = Color(0xFFB71C1C)
-                                    )
-                                }
                                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
                                 ResumenCheckoutFila(
                                     etiqueta = "Total a cobrar",
@@ -350,16 +370,39 @@ fun CheckoutScreen(
                             }
                         }
                     }
+
+                    // Desglose interno de ganancia (oculto por default — info confidencial)
+                    val breakdown = state.breakdown
+                    if (breakdown != null) {
+                        item {
+                            Card(
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Desglose",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Checkbox(
+                                            checked = showBreakdown,
+                                            onCheckedChange = { showBreakdown = it }
+                                        )
+                                    }
+                                    if (showBreakdown) {
+                                        Spacer(Modifier.height(8.dp))
+                                        DesgloseListaCard(breakdown = breakdown, moneda = moneda)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-
-                Spacer(Modifier.height(16.dp))
-
-                Text("Tipo de pedido", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                TipoPedidoSelector(
-                    seleccionado = state.orderType,
-                    onSeleccion = { vm.updateOrderType(it) }
-                )
 
                 Spacer(Modifier.height(16.dp))
 
@@ -403,7 +446,7 @@ fun CheckoutScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = state.canCheckout && !paymentState.isLoading && !isProcessing,
+                enabled = state.canCheckout && !paymentState.isLoading && !isProcessing && !paymentState.isAwaitingConfirmation,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondary,
                     disabledContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
@@ -416,7 +459,44 @@ fun CheckoutScreen(
                         color = MaterialTheme.colorScheme.onSecondary
                     )
                 } else {
-                    Text("Pagar con Mercado Pago")
+                    Text("Cobrar con Mercado Pago")
+                }
+            }
+
+            if (paymentState.isAwaitingConfirmation || paymentState.paymentStatus == "pending_confirmation") {
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Esperando confirmación del pago",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "No cierres la venta hasta recibir confirmación server-side.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (!paymentState.orderId.isNullOrBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Orden: ${paymentState.orderId}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (paymentState.canRetry) {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(onClick = { paymentVm.retryPendingConfirmation() }) {
+                                Text("Reintentar confirmación")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -434,7 +514,11 @@ fun CheckoutScreen(
                 }
                 Button(
                     onClick = {
-                        if (!state.canCheckout) {
+                        if (paymentState.isAwaitingConfirmation || paymentState.paymentStatus == "pending_confirmation") {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Esperá la confirmación del pago antes de cerrar la venta.")
+                            }
+                        } else if (!state.canCheckout) {
                             scope.launch {
                                 snackbarHostState.showSnackbar("No podés cobrar hasta corregir el stock.")
                             }
@@ -472,7 +556,7 @@ fun CheckoutScreen(
                             )
                         }
                     },
-                    enabled = state.items.isNotEmpty() && !isProcessing,
+                    enabled = state.items.isNotEmpty() && !isProcessing && !paymentState.isAwaitingConfirmation,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -709,4 +793,56 @@ private fun PaymentMethod.nombreLegible(): String = when (this) {
     PaymentMethod.LISTA -> "Lista"
     PaymentMethod.EFECTIVO -> "Efectivo"
     PaymentMethod.TRANSFERENCIA -> "Transferencia"
+}
+
+@Composable
+private fun DesgloseListaCard(
+    breakdown: com.example.selliaapp.data.model.sales.SaleBreakdown,
+    moneda: java.text.NumberFormat
+) {
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                text = "Desglose interno (precio lista)",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            ResumenCheckoutFila(
+                etiqueta = "Precio lista cobrado",
+                valor = moneda.format(breakdown.grossAmount)
+            )
+            ResumenCheckoutFila(
+                etiqueta = "(-) Comisión terminal (${String.format("%.1f", breakdown.posnetFeePercent)}%)",
+                valor = "-${moneda.format(breakdown.posnetFeeAmount)}",
+                colorValor = Color(0xFFB71C1C)
+            )
+            ResumenCheckoutFila(
+                etiqueta = "(-) Costo de mercadería",
+                valor = "-${moneda.format(breakdown.purchaseCostTotal)}",
+                colorValor = Color(0xFFB71C1C)
+            )
+            ResumenCheckoutFila(
+                etiqueta = "(-) Costos operativos (${String.format("%.1f", breakdown.operativosFeePercent)}%)",
+                valor = "-${moneda.format(breakdown.operativosFeeAmount)}",
+                colorValor = Color(0xFFB71C1C)
+            )
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            ResumenCheckoutFila(
+                etiqueta = "Ganancia neta estimada",
+                valor = moneda.format(breakdown.estimatedNetGain),
+                resaltar = true,
+                colorValor = if (breakdown.estimatedNetGain >= 0) Color(0xFF2E7D32) else Color(0xFFB71C1C)
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "* No incluye costos fijos mensuales imputados por unidad.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }

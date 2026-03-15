@@ -64,8 +64,8 @@ class SyncRepositoryImpl @Inject constructor(
 
     override suspend fun pullRemote() {
         withContext(io) {
-            sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
-                productRepository.syncDown()
+        sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
+            productRepository.syncDown()
 
         val invoicesCollection = firestore.collection("tenants")
             .document(tenantProvider.requireTenantId())
@@ -93,9 +93,8 @@ class SyncRepositoryImpl @Inject constructor(
             }
         }
 
-                syncCustomersFromRemote()
-                pricingConfigRepository.pullPricingConfigFromCloud()
-            }
+            syncCustomersFromRemote()
+            pricingConfigRepository.pullPricingConfigFromCloud()
         }
     }
 

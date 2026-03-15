@@ -3,6 +3,7 @@ package com.example.selliaapp.ui.screens.config
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -24,6 +26,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,10 +63,11 @@ private enum class PricingSection(val label: String) {
     COSTS("Costos y tramos")
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PricingConfigScreen(
     onBack: () -> Unit,
+    onSimulator: () -> Unit = {},
     viewModel: PricingConfigViewModel = hiltViewModel()
 ) {
     val settings by viewModel.settings.collectAsState()
@@ -81,6 +85,7 @@ fun PricingConfigScreen(
     var editingMlShipping by remember { mutableStateOf<PricingMlShippingTierEntity?>(null) }
 
     var ivaTerminalText by remember { mutableStateOf("") }
+    var ivaProductText by remember { mutableStateOf("") }
     var ventasMensualesText by remember { mutableStateOf("") }
     var operativosLocalText by remember { mutableStateOf("") }
     var posnetText by remember { mutableStateOf("") }
@@ -99,12 +104,15 @@ fun PricingConfigScreen(
     var coef7501To10000Text by remember { mutableStateOf("") }
     var coef10001PlusText by remember { mutableStateOf("") }
     var recalcIntervalText by remember { mutableStateOf("") }
+    var posnetListaCostText by remember { mutableStateOf("") }
+    var cobroEnMomentoText by remember { mutableStateOf("") }
     var fixedCostImputationMode by remember { mutableStateOf(PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS) }
     var showFixedCostModeHelp by remember { mutableStateOf(false) }
 
     LaunchedEffect(settings) {
         settings?.let {
             ivaTerminalText = it.ivaTerminalPercent.toString()
+            ivaProductText = it.ivaProductPercent.toString()
             ventasMensualesText = it.monthlySalesEstimate.toString()
             operativosLocalText = it.operativosLocalPercent.toString()
             posnetText = it.posnet3CuotasPercent.toString()
@@ -123,6 +131,8 @@ fun PricingConfigScreen(
             coef7501To10000Text = it.coefficient7501To10000Percent.toString()
             coef10001PlusText = it.coefficient10001PlusPercent.toString()
             recalcIntervalText = it.recalcIntervalMinutes.toString()
+            posnetListaCostText = it.posnetListaCostPercent.toString()
+            cobroEnMomentoText = it.cobroEnMomentoCostPercent.toString()
             fixedCostImputationMode = it.fixedCostImputationMode
         }
     }
@@ -131,9 +141,12 @@ fun PricingConfigScreen(
         val current = settings ?: return@onSaveSettings
         val updated = current.copy(
             ivaTerminalPercent = ivaTerminalText.parseDecimal(current.ivaTerminalPercent),
+            ivaProductPercent = ivaProductText.parseDecimal(current.ivaProductPercent),
             monthlySalesEstimate = ventasMensualesText.toIntOrNull() ?: current.monthlySalesEstimate,
             operativosLocalPercent = operativosLocalText.parseDecimal(current.operativosLocalPercent),
             posnet3CuotasPercent = posnetText.parseDecimal(current.posnet3CuotasPercent),
+            posnetListaCostPercent = posnetListaCostText.parseDecimal(current.posnetListaCostPercent),
+            cobroEnMomentoCostPercent = cobroEnMomentoText.parseDecimal(current.cobroEnMomentoCostPercent),
             transferenciaRetencionPercent = transferenciaText.parseDecimal(current.transferenciaRetencionPercent),
             gainTargetPercent = gananciaText.parseDecimal(current.gainTargetPercent),
             mlCommissionPercent = mlCommissionText.parseDecimal(current.mlCommissionPercent),
@@ -203,6 +216,18 @@ fun PricingConfigScreen(
                         )
                     }
                 }
+                Spacer(Modifier.height(4.dp))
+                FilledTonalButton(
+                    onClick = onSimulator,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Default.Calculate,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text("Simulador de precios")
+                }
             }
 
             when (activeSection) {
@@ -210,6 +235,7 @@ fun PricingConfigScreen(
                     item {
                         SettingsCard("Parámetros base") {
                             DecimalField("IVA terminal (%)", ivaTerminalText) { ivaTerminalText = it.cleanNumeric() }
+                            DecimalField("IVA producto / venta (%) — ej: 21", ivaProductText) { ivaProductText = it.cleanNumeric() }
                             IntegerField("Ventas mensuales estimadas", ventasMensualesText) { ventasMensualesText = it.cleanInteger() }
                             FixedCostImputationModeSelector(
                                 selectedMode = fixedCostImputationMode,
@@ -217,7 +243,9 @@ fun PricingConfigScreen(
                                 onHelpClick = { showFixedCostModeHelp = true }
                             )
                             DecimalField("Operativos local (%)", operativosLocalText) { operativosLocalText = it.cleanNumeric() }
-                            DecimalField("Posnet 3 cuotas (%)", posnetText) { posnetText = it.cleanNumeric() }
+                            DecimalField("Posnet 3 cuotas - recargo precio lista (%)", posnetText) { posnetText = it.cleanNumeric() }
+                            DecimalField("Costo cobro lista 3 cuotas s/IVA (%) — ej: 12.99", posnetListaCostText) { posnetListaCostText = it.cleanNumeric() }
+                            DecimalField("Costo cobro al momento s/IVA (%) — ej: 6.60", cobroEnMomentoText) { cobroEnMomentoText = it.cleanNumeric() }
                             DecimalField("Retención transferencia (%)", transferenciaText) { transferenciaText = it.cleanNumeric() }
                             DecimalField("Ganancia objetivo (%)", gananciaText) { gananciaText = it.cleanNumeric() }
                         }

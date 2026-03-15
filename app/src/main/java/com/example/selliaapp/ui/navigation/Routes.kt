@@ -41,7 +41,9 @@ sealed class Routes(val route: String) {
 
     object Config : Routes("config")
     object PricingConfig : Routes("pricing_config")
+    object PricingSimulator : Routes("pricing_simulator")
     object MarketingConfig : Routes("marketing_config")
+    object PublicCatalogConfig : Routes("public_catalog_config")
     object BulkData : Routes("bulk_data")
     object CloudServicesAdmin : Routes("cloud_services_admin")
     object DevelopmentOptions : Routes("development_options")
@@ -119,6 +121,27 @@ sealed class Routes(val route: String) {
         fun fromProviders() = "provider_invoice_reader?source=$SOURCE_PROVIDERS"
     }
 
+    // ---------- NUEVO: Vista Cliente + Vidriera ----------
+    object CustomerHome : Routes("customer_home")
+    object StoreDetail : Routes("store_detail/{tenantId}?name={name}") {
+        const val ARG_TENANT_ID = "tenantId"
+        const val ARG_NAME = "name"
+        fun build(tenantId: String, name: String) =
+            "store_detail/$tenantId?name=${URLEncoder.encode(name, StandardCharsets.UTF_8.name())}"
+        val arguments = listOf(
+            navArgument(ARG_TENANT_ID) { type = NavType.StringType },
+            navArgument(ARG_NAME) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = ""
+            }
+        )
+    }
+    object StoreRequestForm : Routes("store_request_form")
+    object Storefront : Routes("storefront")
+    object Notifications : Routes("notifications")
+    object StoreSettings : Routes("store_settings_hub")
+
     // ---------- NUEVO: Gastos ----------
     object ExpensesHub : Routes("expenses_hub")
     object ExpenseTemplates : Routes("expense_templates")
@@ -133,6 +156,9 @@ sealed class Routes(val route: String) {
         const val ARG_ID = "invoiceId"
         fun withId(id: Long) = "sales_invoice_detail/$id"
     }
+
+    /** Reporte interno de ganancias por venta (solo ADMIN/OWNER) */
+    object SalesProfitReport : Routes("sales_profit_report")
 
     /**
      * [NUEVO] Rutas claras para el flujo de venta con nested graph:

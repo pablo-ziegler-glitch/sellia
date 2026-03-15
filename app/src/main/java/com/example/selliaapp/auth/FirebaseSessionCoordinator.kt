@@ -106,7 +106,11 @@ class FirebaseSessionCoordinator @Inject constructor(
                 }
 
                 FirebaseFirestoreException.Code.PERMISSION_DENIED -> {
-                    "Tu sesión está activa, pero no tenés permisos para esta acción."
+                    if (isAppCheckFailure(error)) {
+                        "Firebase App Check rechazó la solicitud. Verificá la configuración de App Check (debug token / Play Integrity)."
+                    } else {
+                        "Tu sesión está activa, pero no tenés permisos para esta acción."
+                    }
                 }
 
                 FirebaseFirestoreException.Code.UNAVAILABLE -> {
@@ -178,12 +182,23 @@ class FirebaseSessionCoordinator @Inject constructor(
         }
 
         is FirebaseFirestoreException -> {
-            "Permiso de escritura/lectura en Firestore según reglas del tenant y rol activo."
+            if (isAppCheckFailure(error)) {
+                "Token válido de Firebase App Check para Firestore (debug token registrado o Play Integrity configurado)."
+            } else {
+                "Permiso de escritura/lectura en Firestore según reglas del tenant y rol activo."
+            }
         }
 
         else -> {
             "Permiso del módulo solicitado para tu rol actual."
         }
+    }
+
+    private fun isAppCheckFailure(error: FirebaseFirestoreException): Boolean {
+        val message = error.message?.lowercase().orEmpty()
+        return message.contains("app check") ||
+            message.contains("appcheck") ||
+            message.contains("app attestation")
     }
 
     private fun shouldForceSignOut(error: Throwable): Boolean = when (error) {

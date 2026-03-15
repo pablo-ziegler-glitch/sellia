@@ -25,8 +25,6 @@ interface AuthOnboardingRepository {
     ): Result<OnboardingResult>
 
     suspend fun registerViewerWithGoogle(
-        idToken: String,
-        tenantId: String,
-        tenantName: String
+        idToken: String
     ): Result<OnboardingResult>
 }

@@ -4,6 +4,7 @@ import java.text.Normalizer
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 
 /** Parser heurístico para facturas heterogéneas de proveedores. */
 import javax.inject.Inject
@@ -13,9 +14,10 @@ class ProviderInvoiceTextParser @Inject constructor() {
     fun parse(rawText: String): ParsedProviderInvoiceDraft {
         val lines = rawText.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
 
-        val items = extractItems(lines)
+        val extractedItems = extractItems(lines)
+        val items = extractedItems.items
         val consumedLines = items.map { it.sourceLine }.toSet()
-        val warnings = mutableListOf<String>()
+        val warnings = extractedItems.warnings.toMutableList()
 
         val invoiceNumber = extractInvoiceNumber(lines)
         val issueDateMillis = extractIssueDateMillis(lines)
@@ -79,35 +81,77 @@ class ProviderInvoiceTextParser @Inject constructor() {
         }
     }
 
-    private fun extractItems(lines: List<String>): List<ParsedProviderInvoiceItem> =
-        lines.mapNotNull { parseItemLine(it) }
+    private fun extractItems(lines: List<String>): ItemExtractionResult {
+        val items = mutableListOf<ParsedProviderInvoiceItem>()
+        val warnings = mutableListOf<String>()
+        lines.forEach { line ->
+            when (val parsedLine = parseItemLine(line)) {
+                null -> Unit
+                is ItemLineParseResult.Discarded -> warnings += parsedLine.warning
+                is ItemLineParseResult.Parsed -> items += parsedLine.item
+            }
+        }
+        return ItemExtractionResult(items = items, warnings = warnings)
+    }
 
-    private fun parseItemLine(line: String): ParsedProviderInvoiceItem? {
+    private fun parseItemLine(line: String): ItemLineParseResult? {
         if (normalize(line).contains("total")) return null
 
-        val numericTokens = Regex("""\d+[\d.,]*""").findAll(line).map { it.value }.toList()
-        if (numericTokens.size < 3) return null
+        val numericMatches = Regex("""\d+[\d.,]*""").findAll(line)
+            .filterNot { line.getOrNull(it.range.last + 1) == '%' }
+            .toList()
+        if (numericMatches.size < 3) return null
 
-        val quantity = parseFlexibleNumber(numericTokens[0]) ?: return null
-        val unitPrice = parseFlexibleNumber(numericTokens[numericTokens.size - 2]) ?: return null
-        val lineTotal = parseFlexibleNumber(numericTokens.last()) ?: return null
+        val unitMatch = numericMatches[numericMatches.size - 2]
+        val totalMatch = numericMatches.last()
+        val unitPrice = parseFlexibleNumber(unitMatch.value) ?: return null
+        val lineTotal = parseFlexibleNumber(totalMatch.value) ?: return null
+
+        val candidatesBeforeUnit = numericMatches.filter { it.range.last < unitMatch.range.first }
+        if (candidatesBeforeUnit.isEmpty()) return null
+
+        val firstNumeric = candidatesBeforeUnit.first()
+        val maybeCode = firstNumeric.value.takeIf(::looksLikeSkuCode)
+        val quantityMatch = if (maybeCode != null) {
+            candidatesBeforeUnit.firstOrNull { it.range.first > firstNumeric.range.last }
+        } else {
+            candidatesBeforeUnit.lastOrNull()
+        } ?: return null
+
+        val quantity = parseFlexibleNumber(quantityMatch.value) ?: return null
         if (quantity <= 0.0 || unitPrice <= 0.0 || lineTotal <= 0.0) return null
 
-        val prefix = line.substringBefore(numericTokens[0]).trim().replace("  ", " ")
-        val firstToken = prefix.split(" ").firstOrNull().orEmpty()
-        val code = firstToken.takeIf { it.isNotBlank() && it.any(Char::isDigit) }
-        val name = prefix.removePrefix(code ?: "").trim().ifBlank { "Ítem sin descripción" }
+        val tolerance = maxOf(0.05, lineTotal * 0.02)
+        if (abs((quantity * unitPrice) - lineTotal) > tolerance) {
+            return ItemLineParseResult.Discarded(
+                "Renglón descartado por incoherencia cantidad/precio/total: '$line'"
+            )
+        }
+
+        val nameStart = maybeCode?.let { firstNumeric.range.last + 1 } ?: 0
+        val nameEnd = quantityMatch.range.first
+        val name = line.substring(nameStart, nameEnd)
+            .trim()
+            .replace(Regex("""\s{2,}"""), " ")
+            .ifBlank { "Ítem sin descripción" }
         val vatPercent = Regex("""(\d{1,2}(?:[.,]\d+)?)\s*%""").find(line)?.groupValues?.get(1)?.let(::parseFlexibleNumber)
 
-        return ParsedProviderInvoiceItem(
-            code = code,
-            name = name,
-            quantity = quantity,
-            unitPrice = unitPrice,
-            lineTotal = lineTotal,
-            vatPercent = vatPercent,
-            sourceLine = line
+        return ItemLineParseResult.Parsed(
+            ParsedProviderInvoiceItem(
+                code = maybeCode,
+                name = name,
+                quantity = quantity,
+                unitPrice = unitPrice,
+                lineTotal = lineTotal,
+                vatPercent = vatPercent,
+                sourceLine = line
+            )
         )
+    }
+
+    private fun looksLikeSkuCode(token: String): Boolean {
+        val clean = token.filter(Char::isDigit)
+        return clean.length in setOf(8, 12, 13) && clean == token
     }
 
     private fun detectCurrency(lines: List<String>): String {
@@ -141,6 +185,16 @@ class ProviderInvoiceTextParser @Inject constructor() {
         }
         return normalized.toDoubleOrNull()
     }
+}
+
+private data class ItemExtractionResult(
+    val items: List<ParsedProviderInvoiceItem>,
+    val warnings: List<String>
+)
+
+private sealed interface ItemLineParseResult {
+    data class Parsed(val item: ParsedProviderInvoiceItem) : ItemLineParseResult
+    data class Discarded(val warning: String) : ItemLineParseResult
 }
 
 data class ParsedProviderInvoiceDraft(

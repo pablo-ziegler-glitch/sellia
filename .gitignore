@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+functions/lib/
+
+# Web (Next.js)
+web/node_modules/
+web/.next/
+web/out/

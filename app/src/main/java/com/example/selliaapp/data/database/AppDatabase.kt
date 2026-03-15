@@ -104,7 +104,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 44,
+    version = 47,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -522,20 +522,43 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-
-
         val MIGRATION_43_44 = object : Migration(43, 44) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                if (!db.hasColumn(tableName = "products", columnName = "manualGainPercent")) {
-                    db.execSQL(
-                        """
-                        ALTER TABLE `products`
-                        ADD COLUMN `manualGainPercent` REAL
-                        """.trimIndent()
-                    )
-                }
+                db.execSQL("ALTER TABLE `products` ADD COLUMN `gainTargetPercent` REAL")
             }
         }
+
+        val MIGRATION_44_45 = object : Migration(44, 45) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdGrossAmount` REAL")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdPosnetFee` REAL")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdPosnetFeePercent` REAL")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdPurchaseCost` REAL")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdOperativosFee` REAL")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdOperativosFeePercent` REAL")
+                db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdNetGain` REAL")
+            }
+        }
+
+        val MIGRATION_45_46 = object : Migration(45, 46) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `pricing_settings` ADD COLUMN `posnetListaCostPercent` REAL NOT NULL DEFAULT 12.99"
+                )
+                db.execSQL(
+                    "ALTER TABLE `pricing_settings` ADD COLUMN `cobroEnMomentoCostPercent` REAL NOT NULL DEFAULT 6.60"
+                )
+            }
+        }
+
+        val MIGRATION_46_47 = object : Migration(46, 47) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `pricing_settings` ADD COLUMN `ivaProductPercent` REAL NOT NULL DEFAULT 21.0"
+                )
+            }
+        }
+
         private fun SupportSQLiteDatabase.hasColumn(tableName: String, columnName: String): Boolean {
             query("PRAGMA table_info(`$tableName`)").use { cursor ->
                 val nameColumnIndex = cursor.getColumnIndex("name")

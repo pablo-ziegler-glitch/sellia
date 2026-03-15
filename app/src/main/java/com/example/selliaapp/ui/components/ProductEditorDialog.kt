@@ -21,10 +21,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.ui.components.ImageUrlListEditor
+import com.example.selliaapp.ui.components.NetGainChannel
+import com.example.selliaapp.ui.components.ProductNetGainPanel
 
 @Composable
 fun ProductEditorDialog(
     initial: ProductEntity?,
+    posnetPercent: Double = 0.0,
+    operativosPercent: Double = 0.0,
     onDismiss: () -> Unit,
     onSave: (
         name: String,
@@ -39,12 +43,14 @@ fun ProductEditorDialog(
         stock: Int,
         minStock: Int?,
         description: String?,
-        imageUrls: List<String>
+        imageUrls: List<String>,
+        gainTargetPercent: Double?
     ) -> Unit
 ) {
     var name by remember { mutableStateOf(TextFieldValue(initial?.name.orEmpty())) }
     var barcode by remember { mutableStateOf(TextFieldValue(initial?.barcode.orEmpty())) }
     var purchasePrice by remember { mutableStateOf(TextFieldValue(initial?.purchasePrice?.toString() ?: "")) }
+    var gainTargetPercent by remember { mutableStateOf(TextFieldValue(initial?.gainTargetPercent?.toString() ?: "")) }
     var listPrice by remember { mutableStateOf(TextFieldValue(initial?.listPrice?.toString() ?: "")) }
     var cashPrice by remember { mutableStateOf(TextFieldValue(initial?.cashPrice?.toString() ?: "")) }
     var transferPrice by remember { mutableStateOf(TextFieldValue(initial?.transferPrice?.toString() ?: "")) }
@@ -105,6 +111,13 @@ fun ProductEditorDialog(
                         }
                     }
                 )
+                OutlinedTextField(
+                    gainTargetPercent,
+                    { gainTargetPercent = it },
+                    label = { Text("Ganancia individual (%)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = { Text("Vacío = usa la ganancia general de pricing.") }
+                )
                 OutlinedTextField(barcode, { barcode = it }, label = { Text("Código QR público") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(listPrice, { listPrice = it }, label = { Text("Precio lista") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(cashPrice, { cashPrice = it }, label = { Text("Precio efectivo") }, modifier = Modifier.fillMaxWidth())
@@ -112,6 +125,22 @@ fun ProductEditorDialog(
                 OutlinedTextField(mlPrice, { mlPrice = it }, label = { Text("Precio ML") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(ml3cPrice, { ml3cPrice = it }, label = { Text("Precio ML 3C") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(ml6cPrice, { ml6cPrice = it }, label = { Text("Precio ML 6C") }, modifier = Modifier.fillMaxWidth())
+                val purchaseVal = purchasePrice.text.toDoubleOrNull()
+                if (purchaseVal != null && purchaseVal > 0) {
+                    ProductNetGainPanel(
+                        purchasePrice = purchaseVal,
+                        posnetPercent = posnetPercent,
+                        operativosPercent = operativosPercent,
+                        channels = listOfNotNull(
+                            listPrice.text.toDoubleOrNull()?.let { NetGainChannel("Lista", it, applyPosnet = true) },
+                            cashPrice.text.toDoubleOrNull()?.let { NetGainChannel("Efectivo", it, applyPosnet = false) },
+                            transferPrice.text.toDoubleOrNull()?.let { NetGainChannel("Transferencia", it, applyPosnet = false) },
+                            mlPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (0C)", it, applyPosnet = false) },
+                            ml3cPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (3C)", it, applyPosnet = false) },
+                            ml6cPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (6C)", it, applyPosnet = false) }
+                        )
+                    )
+                }
                 OutlinedTextField(
                     minStock,
                     {
@@ -146,6 +175,7 @@ fun ProductEditorDialog(
                 val ml = mlPrice.text.toDoubleOrNull()
                 val ml3c = ml3cPrice.text.toDoubleOrNull()
                 val ml6c = ml6cPrice.text.toDoubleOrNull()
+                val gainTarget = gainTargetPercent.text.toDoubleOrNull()
                 val s = stock.text.toIntOrNull() ?: 0
                 val minStockValue = minStock.text.toIntOrNull()
                 if (minStock.text.isNotBlank() && minStockValue == null) {
@@ -166,7 +196,8 @@ fun ProductEditorDialog(
                     s,
                     minStockValue,
                     description.text.trim().ifBlank { null },
-                    normalizedImages
+                    normalizedImages,
+                    gainTarget
                 )
             }) { Text("Guardar") }
         },

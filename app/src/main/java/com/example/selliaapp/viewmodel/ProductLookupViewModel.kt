@@ -21,7 +21,7 @@ class ProductLookupViewModel @Inject constructor(
 
     fun findByBarcode(barcode: String) {
         viewModelScope.launch {
-            _result.value = repo.getByBarcodeOrNull(barcode)
+            _result.value = runCatching { repo.getByBarcodeOrNull(barcode) }.getOrNull()
         }
     }
 }

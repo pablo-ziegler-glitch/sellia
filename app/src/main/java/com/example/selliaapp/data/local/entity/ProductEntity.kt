@@ -72,6 +72,9 @@ data class ProductEntity(
     // Estado de publicación en catálogo público
     val publicStatus: String = "draft",
 
+    // Pricing individual: si se configura, sobreescribe el gainTargetPercent de la configuración general
+    val gainTargetPercent: Double? = null,
+
     // Auditoría simple
     val updatedAt: LocalDate = LocalDate.now()
 )
