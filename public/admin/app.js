@@ -893,9 +893,15 @@ function parseAuthError(error) {
     "auth/network-request-failed": "Sin conexión de red.",
     "functions/permission-denied": "No tenés permisos para ejecutar esta acción.",
     "functions/invalid-argument": "Faltan datos obligatorios para ejecutar la acción.",
-    "functions/unauthenticated": "Tu sesión expiró. Iniciá sesión nuevamente."
+    "functions/unauthenticated": "Tu sesión expiró. Iniciá sesión nuevamente.",
+    "functions/internal": "Error interno del servidor. Intentá de nuevo más tarde.",
+    "functions/unavailable": "Servicio temporalmente no disponible. Intentá de nuevo.",
+    "functions/deadline-exceeded": "La operación tardó demasiado. Intentá de nuevo.",
+    "functions/not-found": "Recurso no encontrado.",
+    "functions/already-exists": "El recurso ya existe.",
+    "functions/resource-exhausted": "Límite de operaciones alcanzado. Intentá más tarde."
   };
-  return map[error.code] || error.message || "No se pudo iniciar sesión.";
+  return map[error.code] || (error.message && error.message !== "internal" ? error.message : "Ocurrió un error inesperado. Intentá de nuevo.");
 }
 
 function formatNumber(value) {
