@@ -279,6 +279,7 @@ fun SelliaApp(
 
                     HomeScreen(
                         onNewSale = { navController.navigate(Routes.Pos.route) },
+                        onPricingSimulator = { navController.navigate(Routes.PricingSimulator.route) },
                         onClientes = { navController.navigate(Routes.ClientsHub.route) },
                         onConfig = { navController.navigate(Routes.Config.route) },
                         onReports = { navController.navigate(Routes.Reports.route) },

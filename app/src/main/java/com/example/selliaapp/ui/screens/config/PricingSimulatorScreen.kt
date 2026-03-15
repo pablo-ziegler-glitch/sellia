@@ -63,7 +63,7 @@ fun PricingSimulatorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Simulador de precios") },
+                title = { Text("Simulador de costos") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Volver") } },
                 actions = {
                     IconButton(onClick = {
@@ -181,6 +181,15 @@ private fun ResultBreakdownCard(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+        SectionHeader("IVA sobre costos fijos")
+        ResultRow("IVA terminal aplicado", "${settings.ivaTerminalPercent}%", isPercent = true)
+        IvaInfoRow(
+            "Aplica solo a costos fijos con IVA habilitado (ej.: comisiones, servicios). " +
+                "El costo fijo imputado ya incluye este ajuste."
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
         SectionHeader("Fórmula de cálculo")
         val base = purchasePrice + result.fixedCostImputed
         ResultRow("Base (compra + costo fijo)", base)
@@ -196,24 +205,38 @@ private fun ResultBreakdownCard(
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         SectionHeader("Precios finales (Local)")
+        IvaInfoRow("Estos precios son al consumidor final. No se suma IVA adicional al momento de cobrar.")
         val posnetPct = settings.posnet3CuotasPercent
-        ResultRow("Recargo Posnet 3 cuotas", "${posnetPct}%", isPercent = true)
-        HighlightRow("Precio LISTA", result.listPrice)
-        HighlightRow("Precio EFECTIVO", result.cashPrice)
-        HighlightRow("Precio TRANSFERENCIA", result.transferPrice)
+        ResultRow("Recargo Posnet 3 cuotas (+${posnetPct}%)", result.listPrice - withOperatives)
+        HighlightRow(
+            label = "Precio LISTA",
+            value = result.listPrice,
+            badge = "Sin recargo IVA"
+        )
+        HighlightRow(
+            label = "Precio EFECTIVO",
+            value = result.cashPrice,
+            badge = "Sin recargo IVA"
+        )
+        HighlightRow(
+            label = "Precio TRANSFERENCIA",
+            value = result.transferPrice,
+            badge = "Sin recargo IVA"
+        )
         val retencion = settings.transferenciaRetencionPercent
         ResultRow("Retención transf. (${retencion}%)", result.transferPrice - result.transferNetPrice)
-        ResultRow("Neto transferencia", result.transferNetPrice)
+        ResultRow("Neto transferencia (lo que ingresa)", result.transferNetPrice)
 
         if (result.mlPrice != null) {
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             SectionHeader("Precios Mercado Libre / Pago")
-            HighlightRow("ML sin cuotas", result.mlPrice)
+            IvaInfoRow("Precio publicado en ML. Incluye comisión, cuotas y envío. No suma IVA extra al comprador.")
+            HighlightRow("ML sin cuotas", result.mlPrice, badge = "Sin recargo IVA")
             if (result.ml3cPrice != null) {
-                HighlightRow("ML 3 cuotas", result.ml3cPrice)
+                HighlightRow("ML 3 cuotas", result.ml3cPrice, badge = "Sin recargo IVA")
             }
             if (result.ml6cPrice != null) {
-                HighlightRow("ML 6 cuotas", result.ml6cPrice)
+                HighlightRow("ML 6 cuotas", result.ml6cPrice, badge = "Sin recargo IVA")
             }
         }
 
@@ -266,13 +289,22 @@ private fun ResultRow(label: String, value: String, isPercent: Boolean = false) 
 }
 
 @Composable
-private fun HighlightRow(label: String, value: Double) {
+private fun HighlightRow(label: String, value: Double, badge: String? = null) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            if (badge != null) {
+                Text(
+                    badge,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+        }
         Text(
             currencyFormat.format(value),
             style = MaterialTheme.typography.bodyMedium,
@@ -280,6 +312,16 @@ private fun HighlightRow(label: String, value: Double) {
             color = MaterialTheme.colorScheme.primary
         )
     }
+}
+
+@Composable
+private fun IvaInfoRow(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
 }
 
 @Composable
