@@ -85,6 +85,7 @@ fun PricingConfigScreen(
     var editingMlShipping by remember { mutableStateOf<PricingMlShippingTierEntity?>(null) }
 
     var ivaTerminalText by remember { mutableStateOf("") }
+    var ivaProductText by remember { mutableStateOf("") }
     var ventasMensualesText by remember { mutableStateOf("") }
     var operativosLocalText by remember { mutableStateOf("") }
     var posnetText by remember { mutableStateOf("") }
@@ -103,12 +104,15 @@ fun PricingConfigScreen(
     var coef7501To10000Text by remember { mutableStateOf("") }
     var coef10001PlusText by remember { mutableStateOf("") }
     var recalcIntervalText by remember { mutableStateOf("") }
+    var posnetListaCostText by remember { mutableStateOf("") }
+    var cobroEnMomentoText by remember { mutableStateOf("") }
     var fixedCostImputationMode by remember { mutableStateOf(PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS) }
     var showFixedCostModeHelp by remember { mutableStateOf(false) }
 
     LaunchedEffect(settings) {
         settings?.let {
             ivaTerminalText = it.ivaTerminalPercent.toString()
+            ivaProductText = it.ivaProductPercent.toString()
             ventasMensualesText = it.monthlySalesEstimate.toString()
             operativosLocalText = it.operativosLocalPercent.toString()
             posnetText = it.posnet3CuotasPercent.toString()
@@ -127,6 +131,8 @@ fun PricingConfigScreen(
             coef7501To10000Text = it.coefficient7501To10000Percent.toString()
             coef10001PlusText = it.coefficient10001PlusPercent.toString()
             recalcIntervalText = it.recalcIntervalMinutes.toString()
+            posnetListaCostText = it.posnetListaCostPercent.toString()
+            cobroEnMomentoText = it.cobroEnMomentoCostPercent.toString()
             fixedCostImputationMode = it.fixedCostImputationMode
         }
     }
@@ -135,9 +141,12 @@ fun PricingConfigScreen(
         val current = settings ?: return@onSaveSettings
         val updated = current.copy(
             ivaTerminalPercent = ivaTerminalText.parseDecimal(current.ivaTerminalPercent),
+            ivaProductPercent = ivaProductText.parseDecimal(current.ivaProductPercent),
             monthlySalesEstimate = ventasMensualesText.toIntOrNull() ?: current.monthlySalesEstimate,
             operativosLocalPercent = operativosLocalText.parseDecimal(current.operativosLocalPercent),
             posnet3CuotasPercent = posnetText.parseDecimal(current.posnet3CuotasPercent),
+            posnetListaCostPercent = posnetListaCostText.parseDecimal(current.posnetListaCostPercent),
+            cobroEnMomentoCostPercent = cobroEnMomentoText.parseDecimal(current.cobroEnMomentoCostPercent),
             transferenciaRetencionPercent = transferenciaText.parseDecimal(current.transferenciaRetencionPercent),
             gainTargetPercent = gananciaText.parseDecimal(current.gainTargetPercent),
             mlCommissionPercent = mlCommissionText.parseDecimal(current.mlCommissionPercent),
@@ -226,6 +235,7 @@ fun PricingConfigScreen(
                     item {
                         SettingsCard("Parámetros base") {
                             DecimalField("IVA terminal (%)", ivaTerminalText) { ivaTerminalText = it.cleanNumeric() }
+                            DecimalField("IVA producto / venta (%) — ej: 21", ivaProductText) { ivaProductText = it.cleanNumeric() }
                             IntegerField("Ventas mensuales estimadas", ventasMensualesText) { ventasMensualesText = it.cleanInteger() }
                             FixedCostImputationModeSelector(
                                 selectedMode = fixedCostImputationMode,
@@ -233,7 +243,9 @@ fun PricingConfigScreen(
                                 onHelpClick = { showFixedCostModeHelp = true }
                             )
                             DecimalField("Operativos local (%)", operativosLocalText) { operativosLocalText = it.cleanNumeric() }
-                            DecimalField("Posnet 3 cuotas (%)", posnetText) { posnetText = it.cleanNumeric() }
+                            DecimalField("Posnet 3 cuotas - recargo precio lista (%)", posnetText) { posnetText = it.cleanNumeric() }
+                            DecimalField("Costo cobro lista 3 cuotas s/IVA (%) — ej: 12.99", posnetListaCostText) { posnetListaCostText = it.cleanNumeric() }
+                            DecimalField("Costo cobro al momento s/IVA (%) — ej: 6.60", cobroEnMomentoText) { cobroEnMomentoText = it.cleanNumeric() }
                             DecimalField("Retención transferencia (%)", transferenciaText) { transferenciaText = it.cleanNumeric() }
                             DecimalField("Ganancia objetivo (%)", gananciaText) { gananciaText = it.cleanNumeric() }
                         }

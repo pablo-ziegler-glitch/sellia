@@ -174,15 +174,16 @@ private fun ResultBreakdownCard(
     result: PricingResult
 ) {
     SimCard("Desglose del cálculo") {
-        // ── Variables intermedias (espejo exacto del PricingCalculator) ───────
-        val operativos = purchasePrice * (settings.operativosLocalPercent / 100.0)
-        val base = purchasePrice + result.fixedCostImputed
+        // ── Variables locales para el desglose (espejo del PricingCalculator) ──
         val targetMargin = settings.gainTargetPercent
-        val baseWithProfit = base * (1 + targetMargin / 100.0)
-        val withOperatives = baseWithProfit + operativos
         val posnetPct = settings.posnet3CuotasPercent
         val retencion = settings.transferenciaRetencionPercent
-        // ────────────────────────────────────────────────────────────────────
+        // Nueva fórmula: margen sobre (compra + operativos), costo fijo se suma después, luego IVA producto
+        val baseForMargin = purchasePrice + result.operativosAmount
+        val baseWithProfit = baseForMargin * (1 + targetMargin / 100.0)
+        val withFixed = baseWithProfit + result.fixedCostImputed
+        val withIva = withFixed * (1 + settings.ivaProductPercent / 100.0)
+        // ──────────────────────────────────────────────────────────────────────
 
         SectionHeader("Datos de entrada")
         ResultRow("Precio de compra", purchasePrice)
@@ -198,46 +199,63 @@ private fun ResultBreakdownCard(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("IVA sobre costos fijos")
-        ResultRow("IVA terminal (%)", "${settings.ivaTerminalPercent}%", isPercent = true)
-        IvaInfoRow(
-            "Aplica solo a costos fijos con IVA habilitado (ej.: comisiones de terminal). " +
-                "El costo fijo imputado ya incluye este ajuste. " +
-                "Los precios de venta al público NO agregan IVA extra al consumidor."
-        )
+        SectionHeader("IVA y costos de terminal")
+        ResultRow("IVA terminal sobre costos fijos (%)", "${settings.ivaTerminalPercent}%", isPercent = true)
+        IvaInfoRow("Solo aplica a costos fijos con IVA habilitado (ej: comisión de terminal). Ya incluido en el costo fijo imputado.")
+        ResultRow("IVA producto / venta (%)", "${settings.ivaProductPercent}%", isPercent = true)
+        IvaInfoRow("Se aplica al subtotal (③+④) antes del recargo de cuotas. Es el IVA que el consumidor paga sobre el precio de venta.")
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         SectionHeader("Fórmula paso a paso")
-        ResultRow("① Base (compra + costo fijo imputado)", base)
-        ResultRow("② Margen objetivo (${targetMargin}%)", base * (targetMargin / 100.0))
-        ResultRow("③ Base + margen", baseWithProfit)
-        ResultRow("④ Operativos local (${settings.operativosLocalPercent}% s/compra)", operativos)
-        ResultRow("⑤ Subtotal operativo (③+④)", withOperatives)
-        ResultRow("⑥ Recargo Posnet 3 cuotas (${posnetPct}% s/⑤)", withOperatives * (posnetPct / 100.0))
-        IvaInfoRow("Los precios finales se redondean al escalón más cercano (≤1500→50, ≤3000→100, ≤5000→200, +5000→500)")
+        ResultRow("① Compra", purchasePrice)
+        ResultRow("② Operativos (${settings.operativosLocalPercent}% s/compra)", result.operativosAmount)
+        ResultRow("③ (①+②) × (1+${targetMargin}%) = base con margen", baseWithProfit)
+        ResultRow("④ + Costo fijo imputado", result.fixedCostImputed)
+        ResultRow("⑤ Subtotal (③+④)", withFixed)
+        ResultRow("⑥ + IVA producto (${settings.ivaProductPercent}%)", withFixed * (settings.ivaProductPercent / 100.0))
+        ResultRow("⑦ Subtotal con IVA (⑤×(1+IVA))", withIva)
+        ResultRow("⑧ + Recargo Posnet 3 cuotas (${posnetPct}% s/⑦)", withIva * (posnetPct / 100.0))
+        IvaInfoRow("Precios finales se redondean al escalón (≤1500→50, ≤3000→100, ≤5000→200, +5000→500)")
+        ResultRow("Base de costo total (compra + costo fijo + operativos)", result.costBase)
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Precios finales (Local)")
-        IvaInfoRow("Precios al consumidor final. NO incluyen IVA adicional. La retención de transferencia es interna.")
+        SectionHeader("Precio Lista (3 cuotas sin interés)")
+        IvaInfoRow("Precio al consumidor. Incluye IVA producto y recargo Posnet.")
         HighlightRow(
-            label = "Precio LISTA  (⑤+⑥, redondeado)",
+            label = "Precio LISTA  (⑦+⑧, redondeado)",
             value = result.listPrice,
-            badge = "Incluye recargo Posnet · Sin IVA extra"
+            badge = "IVA producto incluido · Incluye recargo Posnet"
         )
+        ResultRow("  Costo cobro posnet (${settings.posnetListaCostPercent}% + IVA ${settings.ivaTerminalPercent}%)", result.listPaymentCost)
+        NetGainRow("  Ganancia neta LISTA", result.listNetGain)
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        SectionHeader("Precio Efectivo")
+        IvaInfoRow("Precio al consumidor. Incluye IVA producto, sin recargo de cuotas.")
         HighlightRow(
-            label = "Precio EFECTIVO  (⑤, redondeado)",
+            label = "Precio EFECTIVO  (⑦, redondeado)",
             value = result.cashPrice,
-            badge = "Sin recargo Posnet · Sin IVA extra"
+            badge = "IVA producto incluido · Sin recargo Posnet"
         )
+        ResultRow("  Costo cobro al momento (${settings.cobroEnMomentoCostPercent}% + IVA ${settings.ivaTerminalPercent}%)", result.cashPaymentCost)
+        NetGainRow("  Ganancia neta EFECTIVO", result.cashNetGain)
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        SectionHeader("Precio Transferencia")
+        IvaInfoRow("Precio al consumidor. Incluye IVA producto, sin recargo de cuotas.")
         HighlightRow(
-            label = "Precio TRANSFERENCIA  (⑤, redondeado)",
+            label = "Precio TRANSFERENCIA  (⑦, redondeado)",
             value = result.transferPrice,
-            badge = "Sin recargo Posnet · Sin IVA extra"
+            badge = "IVA producto incluido · Sin recargo Posnet"
         )
         ResultRow("  ↳ Retención transf. (${retencion}%)", result.transferPrice - result.transferNetPrice)
         ResultRow("  ↳ Neto que ingresa a tu cuenta", result.transferNetPrice)
+        ResultRow("  Costo cobro al momento (${settings.cobroEnMomentoCostPercent}% + IVA ${settings.ivaTerminalPercent}%)", result.transferPaymentCost)
+        NetGainRow("  Ganancia neta TRANSFERENCIA", result.transferNetGain)
 
         if (result.mlPrice != null) {
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -254,16 +272,15 @@ private fun ResultBreakdownCard(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Márgenes estimados")
+        SectionHeader("Resumen de ganancias netas")
         IvaInfoRow("Base de costo = compra + costo fijo imputado + operativos")
-        val costBase = purchasePrice + result.fixedCostImputed + operativos
-        MarginRow("Margen LISTA", result.listPrice, costBase)
-        MarginRow("Margen EFECTIVO", result.cashPrice, costBase)
-        MarginRow("Margen TRANSF. (neto)", result.transferNetPrice, costBase)
+        NetGainRow("Ganancia neta LISTA", result.listNetGain)
+        NetGainRow("Ganancia neta EFECTIVO", result.cashNetGain)
+        NetGainRow("Ganancia neta TRANSFERENCIA", result.transferNetGain)
         if (result.mlPrice != null) {
             val mlComm = result.mlPrice * (settings.mlCommissionPercent / 100.0)
             val mlNet = result.mlPrice - mlComm
-            MarginRow("Margen ML (aprox., sin envío)", mlNet, costBase)
+            MarginRow("Margen ML sin cuotas (aprox.)", mlNet, result.costBase)
         }
     }
 }
@@ -356,6 +373,23 @@ private fun MarginRow(label: String, salePrice: Double, costBase: Double) {
 }
 
 @Composable
+private fun NetGainRow(label: String, netGain: Double) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+        Text(
+            currencyFormat.format(netGain),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = if (netGain >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+        )
+    }
+}
+
+@Composable
 private fun SettingsOverrideCard(
     settings: PricingSettingsEntity,
     onUpdate: (PricingSettingsEntity) -> Unit
@@ -374,14 +408,23 @@ private fun SettingsOverrideCard(
         SimDecimalField("Operativos local (%)", settings.operativosLocalPercent) {
             onUpdate(settings.copy(operativosLocalPercent = it))
         }
-        SimDecimalField("Posnet 3 cuotas (%)", settings.posnet3CuotasPercent) {
+        SimDecimalField("Posnet 3 cuotas - recargo (%)", settings.posnet3CuotasPercent) {
             onUpdate(settings.copy(posnet3CuotasPercent = it))
+        }
+        SimDecimalField("Costo cobro lista 3 cuotas s/IVA (%)", settings.posnetListaCostPercent) {
+            onUpdate(settings.copy(posnetListaCostPercent = it))
+        }
+        SimDecimalField("Costo cobro al momento s/IVA (%)", settings.cobroEnMomentoCostPercent) {
+            onUpdate(settings.copy(cobroEnMomentoCostPercent = it))
         }
         SimDecimalField("Retención transferencia (%)", settings.transferenciaRetencionPercent) {
             onUpdate(settings.copy(transferenciaRetencionPercent = it))
         }
-        SimDecimalField("IVA terminal (%)", settings.ivaTerminalPercent) {
+        SimDecimalField("IVA terminal sobre costos fijos (%)", settings.ivaTerminalPercent) {
             onUpdate(settings.copy(ivaTerminalPercent = it))
+        }
+        SimDecimalField("IVA producto / venta (%)", settings.ivaProductPercent) {
+            onUpdate(settings.copy(ivaProductPercent = it))
         }
         SimIntField("Ventas mensuales estimadas", settings.monthlySalesEstimate) {
             onUpdate(settings.copy(monthlySalesEstimate = it))

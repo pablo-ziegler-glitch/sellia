@@ -8,6 +8,8 @@ import java.time.Instant
 data class PricingSettingsEntity(
     @PrimaryKey val id: Int = 1,
     val ivaTerminalPercent: Double,
+    /** IVA sobre el precio de venta final (21 % por defecto). Se multiplica sobre el total después de cubrir costos y ganancia objetivo. */
+    val ivaProductPercent: Double = 21.0,
     val monthlySalesEstimate: Int,
     val operativosLocalPercent: Double,
     val posnet3CuotasPercent: Double,
@@ -27,6 +29,10 @@ data class PricingSettingsEntity(
     val coefficient10001PlusPercent: Double,
     val fixedCostImputationMode: String = FixedCostImputationMode.FULL_TO_ALL_PRODUCTS,
     val recalcIntervalMinutes: Int,
+    /** Costo que cobra el procesador al vender con Precio de Lista (3 cuotas sin interés), sin IVA. Ej: 12.99 */
+    val posnetListaCostPercent: Double = 12.99,
+    /** Costo que cobra el procesador al cobrar en el momento (efectivo/transferencia), sin IVA. Ej: 6.60 */
+    val cobroEnMomentoCostPercent: Double = 6.60,
     val updatedAt: Instant,
     val updatedBy: String
 ) {
