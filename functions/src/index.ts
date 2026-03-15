@@ -1057,6 +1057,27 @@ type UsageAlertPayload = {
 const ALERT_THRESHOLDS = [70, 90, 100];
 const ADMIN_ROLES = new Set(["admin", "owner"]);
 
+const METRIC_FLAT_KEY_MAP: Record<string, string> = {
+  "firestore.googleapis.com/document/read_count": "firestore_reads",
+  "firestore.googleapis.com/document/write_count": "firestore_writes",
+  "firestore.googleapis.com/document/delete_count": "firestore_deletes",
+  "storage.googleapis.com/storage/total_bytes": "storage_bytes",
+  "cloudfunctions.googleapis.com/function/execution_count": "functions_invocations",
+  "firebasehosting.googleapis.com/request_count": "hosting_request_count",
+  "identitytoolkit.googleapis.com/usage_count": "auth_monthly_active_users",
+};
+
+const DEFAULT_FREE_TIER_LIMITS: FreeTierLimit = {
+  metrics: {
+    firestore_reads: 50_000,
+    firestore_writes: 20_000,
+    firestore_deletes: 20_000,
+    storage_bytes: 5_368_709_120,
+    auth_monthly_active_users: 10_000,
+    hosting_request_count: 10_000_000,
+  },
+};
+
 const toNumberMap = (value: unknown): Record<string, number> => {
   if (!value || typeof value !== "object") {
     return {};
@@ -1168,6 +1189,23 @@ const fetchUsageSnapshot = async (tenantId: string): Promise<UsageSnapshot | nul
   if (!latest.empty) {
     return latest.docs[0].data() as UsageSnapshot;
   }
+  // Fall back to global metrics snapshot collected by collectUsageMetrics
+  const globalDoc = await db
+    .collection(USAGE_CURRENT_COLLECTION)
+    .doc(USAGE_CURRENT_DOC_ID)
+    .get();
+  if (globalDoc.exists) {
+    const globalData = globalDoc.data();
+    const metrics = globalData?.metrics as Record<string, number> | undefined;
+    if (metrics && Object.keys(metrics).length > 0) {
+      return {
+        metrics,
+        periodKey: globalData?.monthKey,
+        sourceStatus: globalData?.sourceStatus,
+        errors: globalData?.errors,
+      } as UsageSnapshot;
+    }
+  }
   return null;
 };
 
@@ -1183,7 +1221,10 @@ const fetchFreeTierLimit = async (tenantId: string): Promise<FreeTierLimit | nul
   }
   const tenantDoc = await db.collection("tenants").doc(tenantId).get();
   const fallback = tenantDoc.get("freeTierLimits");
-  return fallback ? (fallback as FreeTierLimit) : null;
+  if (fallback) {
+    return fallback as FreeTierLimit;
+  }
+  return DEFAULT_FREE_TIER_LIMITS;
 };
 
 const upsertUsageAlert = async (
@@ -1435,6 +1476,15 @@ export const collectUsageMetrics = functions.pubsub
     };
 
     const usageOverview = buildUsageOverview(usageCollection.services);
+    const flatMetrics: Record<string, number> = {};
+    Object.values(usageCollection.services).forEach((serviceMetrics) => {
+      serviceMetrics.metrics.forEach((metric) => {
+        const flatKey = METRIC_FLAT_KEY_MAP[metric.metricType];
+        if (flatKey) {
+          flatMetrics[flatKey] = metric.value;
+        }
+      });
+    });
     const monthDocRef = db.collection(USAGE_COLLECTION).doc(monthKey);
 
     await monthDocRef.set(
@@ -1473,6 +1523,7 @@ export const collectUsageMetrics = functions.pubsub
               nextResetAt,
             },
             overview: usageOverview,
+            metrics: flatMetrics,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -1785,7 +1836,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
 });
 
 export const evaluateUsageAlerts = functions.pubsub
-  .schedule("every 1 hours")
+  .schedule("every 6 hours")
   .onRun(async () => {
     const tenantsSnapshot = await db.collection("tenants").get();
     for (const tenantDoc of tenantsSnapshot.docs) {
@@ -1885,7 +1936,7 @@ export const syncPublicProductOnWrite = functions.firestore
   });
 
 export const refreshPublicProducts = functions.pubsub
-  .schedule("every 15 minutes")
+  .schedule("every 2 hours")
   .onRun(async () => {
     const tenantsSnapshot = await db.collection("tenants").get();
     const now = Date.now();

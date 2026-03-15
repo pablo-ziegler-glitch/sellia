@@ -91,7 +91,7 @@ class ProductRemoteDataSource(
     }
 
     suspend fun listAll(): List<ProductFirestoreMappers.RemoteProduct> {
-        val snap = collection().get().await()
+        val snap = collection().limit(500).get().await()
         val deletedIds = deletionsCollection().get().await().documents.mapNotNull { it.id.toIntOrNull() }.toSet()
         return snap.documents.mapNotNull { doc ->
             if (doc.id.toIntOrNull() in deletedIds) {

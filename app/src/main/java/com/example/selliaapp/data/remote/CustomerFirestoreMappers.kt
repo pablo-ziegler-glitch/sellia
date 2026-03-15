@@ -15,6 +15,7 @@ object CustomerFirestoreMappers {
         "rubrosCsv" to customer.rubrosCsv,
         "paymentTerm" to customer.paymentTerm,
         "paymentMethod" to customer.paymentMethod,
-        "createdAtMillis" to customer.createdAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        "createdAtMillis" to customer.createdAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+        "updatedAtMillis" to System.currentTimeMillis()
     )
 }

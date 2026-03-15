@@ -70,7 +70,10 @@ class SyncRepositoryImpl @Inject constructor(
         val invoicesCollection = firestore.collection("tenants")
             .document(tenantProvider.requireTenantId())
             .collection("invoices")
-        val snapshot = invoicesCollection.get().await()
+        val cutoffMillis = System.currentTimeMillis() - 180L * 24 * 60 * 60 * 1000
+        val snapshot = invoicesCollection
+            .whereGreaterThanOrEqualTo("dateMillis", cutoffMillis)
+            .get().await()
         if (!snapshot.isEmpty) {
             val remoteInvoices = snapshot.documents.mapNotNull { doc ->
                 InvoiceFirestoreMappers.fromDocument(doc)
@@ -351,7 +354,10 @@ class SyncRepositoryImpl @Inject constructor(
         val customersCollection = firestore.collection("tenants")
             .document(tenantId)
             .collection("customers")
-        val snapshot = customersCollection.get().await()
+        val cutoffMillis = System.currentTimeMillis() - 180L * 24 * 60 * 60 * 1000
+        val snapshot = customersCollection
+            .whereGreaterThanOrEqualTo("updatedAtMillis", cutoffMillis)
+            .get().await()
         if (snapshot.isEmpty) return
 
         snapshot.documents
