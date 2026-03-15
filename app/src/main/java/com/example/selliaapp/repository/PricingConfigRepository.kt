@@ -472,7 +472,7 @@ class PricingConfigRepository(
 
     private fun defaultSettings(): PricingSettingsEntity = PricingSettingsEntity(
         ivaTerminalPercent = 21.0,
-        monthlySalesEstimate = 1000,
+        monthlySalesEstimate = 500,
         operativosLocalPercent = 3.0,
         posnet3CuotasPercent = 12.22,
         transferenciaRetencionPercent = 5.0,
