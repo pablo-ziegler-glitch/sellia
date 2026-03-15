@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -796,8 +797,8 @@ private fun persistPreviewBitmap(context: android.content.Context, bitmap: Bitma
 }
 
 /**
- * Panel que muestra la ganancia neta (monto y porcentaje) por cada canal de precio,
- * comparado contra el costo de adquisición.
+ * Panel que muestra la ganancia bruta por canal de precio comparada contra el costo
+ * de adquisición, con un ícono de ayuda que explica la diferencia entre bruta y neta.
  */
 @Composable
 private fun NetGainPanel(
@@ -805,23 +806,74 @@ private fun NetGainPanel(
     channels: List<Pair<String, Double>>
 ) {
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
+    var showGainHelp by remember { mutableStateOf(false) }
+
+    if (showGainHelp) {
+        AlertDialog(
+            onDismissRequest = { showGainHelp = false },
+            confirmButton = { TextButton(onClick = { showGainHelp = false }) { Text("Entendido") } },
+            title = { Text("Ganancia bruta vs. neta") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Ganancia bruta", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Es la diferencia entre el precio de venta y el costo de adquisición del producto. " +
+                            "No descuenta costos fijos (alquiler, servicios, sueldos, etc.).\n" +
+                            "Fórmula: precio de venta − costo de adquisición."
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Ganancia neta", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Es la ganancia real que queda luego de descontar el costo de adquisición " +
+                            "y todos los costos fijos y variables del negocio (comisiones, impuestos, " +
+                            "logística, gastos operativos, etc.).\n" +
+                            "Fórmula: ganancia bruta − todos los costos y gastos."
+                        )
+                    }
+                    Text(
+                        "Este panel muestra la ganancia BRUTA por canal.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    "Ganancia bruta por canal",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { showGainHelp = true },
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = "¿Qué es ganancia bruta vs neta?",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Text(
-                "Ganancia neta por canal",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Costo: ${currency.format(purchasePrice)}",
+                "Costo de adquisición: ${currency.format(purchasePrice)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -837,7 +889,7 @@ private fun NetGainPanel(
                     val gain = price - purchasePrice
                     val gainPct = if (purchasePrice > 0) (gain / purchasePrice) * 100.0 else 0.0
                     val isPositive = gain >= 0
-                    val color = if (isPositive) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                    val gainColor = if (isPositive) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -858,14 +910,14 @@ private fun NetGainPanel(
                             "${if (isPositive) "+" else ""}${currency.format(gain)}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = color,
+                            color = gainColor,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             "${if (isPositive) "+" else ""}${String.format("%.1f", gainPct)}%",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = color
+                            color = gainColor
                         )
                     }
                 }
