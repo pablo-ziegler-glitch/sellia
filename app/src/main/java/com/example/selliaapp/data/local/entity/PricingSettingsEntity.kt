@@ -27,6 +27,10 @@ data class PricingSettingsEntity(
     val coefficient10001PlusPercent: Double,
     val fixedCostImputationMode: String = FixedCostImputationMode.FULL_TO_ALL_PRODUCTS,
     val recalcIntervalMinutes: Int,
+    /** Costo que cobra el procesador al vender con Precio de Lista (3 cuotas sin interés), sin IVA. Ej: 12.99 */
+    val posnetListaCostPercent: Double = 12.99,
+    /** Costo que cobra el procesador al cobrar en el momento (efectivo/transferencia), sin IVA. Ej: 6.60 */
+    val cobroEnMomentoCostPercent: Double = 6.60,
     val updatedAt: Instant,
     val updatedBy: String
 ) {

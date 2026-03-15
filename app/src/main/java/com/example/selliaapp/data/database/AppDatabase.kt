@@ -104,7 +104,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 45,
+    version = 46,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -537,6 +537,17 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdOperativosFee` REAL")
                 db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdOperativosFeePercent` REAL")
                 db.execSQL("ALTER TABLE `invoices` ADD COLUMN `bdNetGain` REAL")
+            }
+        }
+
+        val MIGRATION_45_46 = object : Migration(45, 46) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `pricing_settings` ADD COLUMN `posnetListaCostPercent` REAL NOT NULL DEFAULT 12.99"
+                )
+                db.execSQL(
+                    "ALTER TABLE `pricing_settings` ADD COLUMN `cobroEnMomentoCostPercent` REAL NOT NULL DEFAULT 6.60"
+                )
             }
         }
 

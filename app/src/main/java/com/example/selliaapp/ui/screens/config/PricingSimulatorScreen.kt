@@ -188,22 +188,40 @@ private fun ResultBreakdownCard(
         ResultRow("Margen objetivo", "${targetMargin}%", isPercent = true)
         val baseWithProfit = base * (1 + targetMargin / 100.0)
         ResultRow("Base + margen", baseWithProfit)
-        val operativos = purchasePrice * (settings.operativosLocalPercent / 100.0)
-        ResultRow("Operativos (${settings.operativosLocalPercent}% s/compra)", operativos)
-        val withOperatives = baseWithProfit + operativos
+        ResultRow("Operativos (${settings.operativosLocalPercent}% s/compra)", result.operativosAmount)
+        val withOperatives = baseWithProfit + result.operativosAmount
         ResultRow("Subtotal operativo", withOperatives)
+        ResultRow("Base de costo total", result.costBase)
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Precios finales (Local)")
+        SectionHeader("Precio Lista (3 cuotas sin interés)")
         val posnetPct = settings.posnet3CuotasPercent
         ResultRow("Recargo Posnet 3 cuotas", "${posnetPct}%", isPercent = true)
         HighlightRow("Precio LISTA", result.listPrice)
+        ResultRow("Costo cobro posnet (${settings.posnetListaCostPercent}% + IVA ${settings.ivaTerminalPercent}%)", result.listPaymentCost)
+        NetGainRow("Ganancia neta LISTA", result.listNetGain)
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        SectionHeader("Precio Efectivo")
+        ResultRow("Costo fijo imputado (logística/insumos)", result.fixedCostImputed)
+        ResultRow("Operativos local (${settings.operativosLocalPercent}%)", result.operativosAmount)
         HighlightRow("Precio EFECTIVO", result.cashPrice)
+        ResultRow("Costo cobro al momento (${settings.cobroEnMomentoCostPercent}% + IVA ${settings.ivaTerminalPercent}%)", result.cashPaymentCost)
+        NetGainRow("Ganancia neta EFECTIVO", result.cashNetGain)
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        SectionHeader("Precio Transferencia")
+        ResultRow("Costo fijo imputado (logística/insumos)", result.fixedCostImputed)
+        ResultRow("Operativos local (${settings.operativosLocalPercent}%)", result.operativosAmount)
         HighlightRow("Precio TRANSFERENCIA", result.transferPrice)
         val retencion = settings.transferenciaRetencionPercent
         ResultRow("Retención transf. (${retencion}%)", result.transferPrice - result.transferNetPrice)
         ResultRow("Neto transferencia", result.transferNetPrice)
+        ResultRow("Costo cobro al momento (${settings.cobroEnMomentoCostPercent}% + IVA ${settings.ivaTerminalPercent}%)", result.transferPaymentCost)
+        NetGainRow("Ganancia neta TRANSFERENCIA", result.transferNetGain)
 
         if (result.mlPrice != null) {
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -219,15 +237,15 @@ private fun ResultBreakdownCard(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Márgenes estimados")
-        val costBase = purchasePrice + result.fixedCostImputed + operativos
-        MarginRow("Margen LISTA", result.listPrice, costBase)
-        MarginRow("Margen EFECTIVO", result.cashPrice, costBase)
-        MarginRow("Margen TRANSF. (neto)", result.transferNetPrice, costBase)
+        SectionHeader("Resumen de ganancias netas")
+        NetGainRow("Ganancia neta LISTA", result.listNetGain)
+        NetGainRow("Ganancia neta EFECTIVO", result.cashNetGain)
+        NetGainRow("Ganancia neta TRANSFERENCIA", result.transferNetGain)
         if (result.mlPrice != null) {
             val mlComm = result.mlPrice * (settings.mlCommissionPercent / 100.0)
             val mlNet = result.mlPrice - mlComm
-            MarginRow("Margen ML (aprox.)", mlNet, costBase)
+            val costBase = result.costBase
+            MarginRow("Margen ML sin cuotas (aprox.)", mlNet, costBase)
         }
     }
 }
@@ -301,6 +319,23 @@ private fun MarginRow(label: String, salePrice: Double, costBase: Double) {
 }
 
 @Composable
+private fun NetGainRow(label: String, netGain: Double) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+        Text(
+            currencyFormat.format(netGain),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = if (netGain >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+        )
+    }
+}
+
+@Composable
 private fun SettingsOverrideCard(
     settings: PricingSettingsEntity,
     onUpdate: (PricingSettingsEntity) -> Unit
@@ -319,8 +354,14 @@ private fun SettingsOverrideCard(
         SimDecimalField("Operativos local (%)", settings.operativosLocalPercent) {
             onUpdate(settings.copy(operativosLocalPercent = it))
         }
-        SimDecimalField("Posnet 3 cuotas (%)", settings.posnet3CuotasPercent) {
+        SimDecimalField("Posnet 3 cuotas - recargo (%)", settings.posnet3CuotasPercent) {
             onUpdate(settings.copy(posnet3CuotasPercent = it))
+        }
+        SimDecimalField("Costo cobro lista 3 cuotas s/IVA (%)", settings.posnetListaCostPercent) {
+            onUpdate(settings.copy(posnetListaCostPercent = it))
+        }
+        SimDecimalField("Costo cobro al momento s/IVA (%)", settings.cobroEnMomentoCostPercent) {
+            onUpdate(settings.copy(cobroEnMomentoCostPercent = it))
         }
         SimDecimalField("Retención transferencia (%)", settings.transferenciaRetencionPercent) {
             onUpdate(settings.copy(transferenciaRetencionPercent = it))

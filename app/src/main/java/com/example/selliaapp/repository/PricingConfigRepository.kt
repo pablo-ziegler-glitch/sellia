@@ -313,6 +313,8 @@ class PricingConfigRepository(
             auditField("coefficient10001PlusPercent", existing.coefficient10001PlusPercent, candidate.coefficient10001PlusPercent, now, changedBy)
             auditField("fixedCostImputationMode", existing.fixedCostImputationMode, candidate.fixedCostImputationMode, now, changedBy)
             auditField("recalcIntervalMinutes", existing.recalcIntervalMinutes, candidate.recalcIntervalMinutes, now, changedBy)
+            auditField("posnetListaCostPercent", existing.posnetListaCostPercent, candidate.posnetListaCostPercent, now, changedBy)
+            auditField("cobroEnMomentoCostPercent", existing.cobroEnMomentoCostPercent, candidate.cobroEnMomentoCostPercent, now, changedBy)
         }
         schedulePricingConfigSync()
     }
@@ -355,6 +357,8 @@ class PricingConfigRepository(
                     "coefficient10001PlusPercent" to settings.coefficient10001PlusPercent,
                     "fixedCostImputationMode" to settings.fixedCostImputationMode,
                     "recalcIntervalMinutes" to settings.recalcIntervalMinutes,
+                    "posnetListaCostPercent" to settings.posnetListaCostPercent,
+                    "cobroEnMomentoCostPercent" to settings.cobroEnMomentoCostPercent,
                     "updatedBy" to settings.updatedBy
                 ),
                 "fixedCosts" to fixedCosts.map {
@@ -487,6 +491,8 @@ class PricingConfigRepository(
         coefficient10001PlusPercent = 100.0,
         fixedCostImputationMode = PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS,
         recalcIntervalMinutes = 30,
+        posnetListaCostPercent = 12.99,
+        cobroEnMomentoCostPercent = 6.60,
         updatedAt = Instant.now(),
         updatedBy = "System"
     )
@@ -545,6 +551,8 @@ class PricingConfigRepository(
             coefficient10001PlusPercent = source["coefficient10001PlusPercent"].asDouble() ?: 100.0,
             fixedCostImputationMode = (source["fixedCostImputationMode"] as? String)?.trim().orEmpty().ifBlank { PricingSettingsEntity.FixedCostImputationMode.FULL_TO_ALL_PRODUCTS },
             recalcIntervalMinutes = source["recalcIntervalMinutes"].asInt() ?: 30,
+            posnetListaCostPercent = source["posnetListaCostPercent"].asDouble() ?: 12.99,
+            cobroEnMomentoCostPercent = source["cobroEnMomentoCostPercent"].asDouble() ?: 6.60,
             updatedAt = Instant.now(),
             updatedBy = (source["updatedBy"] as? String)?.trim().orEmpty().ifBlank { "Cloud Sync" }
         )

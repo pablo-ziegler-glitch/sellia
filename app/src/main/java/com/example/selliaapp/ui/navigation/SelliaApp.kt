@@ -69,6 +69,7 @@ import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
 import com.example.selliaapp.ui.screens.config.PublicCatalogConfigScreen
+import com.example.selliaapp.ui.screens.config.StoreSettingsScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
 import com.example.selliaapp.ui.screens.config.PricingSimulatorScreen
 import com.example.selliaapp.ui.screens.expenses.ExpenseEntriesScreen
@@ -807,6 +808,7 @@ fun SelliaApp(
                     tenantActionFeedback = tenantManagementState.message,
                     tenantActionError = tenantManagementState.error,
                     onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
+                    onStoreSettings = { navController.navigate(Routes.StoreSettings.route) },
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = accessState.role == AppRole.ADMIN,
                     onSupport = { navController.navigate(Routes.AppVersion.route) },
@@ -859,6 +861,15 @@ fun SelliaApp(
                 PublicCatalogConfigScreen(
                     vm = vm,
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.StoreSettings.route) {
+                StoreSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
+                    onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
+                    onStorefront = { navController.navigate(Routes.Storefront.route) }
                 )
             }
 

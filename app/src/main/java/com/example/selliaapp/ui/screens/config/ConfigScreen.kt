@@ -75,6 +75,7 @@ fun ConfigScreen(
     tenantActionFeedback: String?,
     tenantActionError: String?,
     onPublicCatalogConfig: () -> Unit,
+    onStoreSettings: () -> Unit = {},
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
     onSupport: () -> Unit,
@@ -217,11 +218,18 @@ fun ConfigScreen(
                     onMobileClick = onBulkData,
                     onWebClick = onOpenBackofficeWeb
                 )
+                AdminActionItem(
+                    title = "Configuraciones de tienda",
+                    module = BackofficeModule.STORE_SETTINGS,
+                    mobileEnabled = adminFeatureFlags.storeSettingsEnabled,
+                    onMobileClick = onStoreSettings,
+                    onWebClick = onOpenBackofficeWeb
+                )
 
                 if (adminFeatureFlags.marketingConfigEnabled) {
                     SettingsItem(
                         icon = Icons.Filled.Campaign,
-                        title = "Configuraciones de tienda",
+                        title = "Configuraciones de tienda (legacy)",
                         onClick = onMarketingConfig
                     )
                 }
@@ -352,7 +360,8 @@ enum class BackofficeModule(val slug: String) {
     CLOUD_SERVICES("cloud_services"),
     GLOBAL_PRICING("global_pricing"),
     TENANT_LIFECYCLE("tenant_lifecycle"),
-    BULK_ABM("bulk_abm")
+    BULK_ABM("bulk_abm"),
+    STORE_SETTINGS("store")
 }
 
 data class ConfigAdminFeatureFlags(
@@ -364,13 +373,15 @@ data class ConfigAdminFeatureFlags(
     val marketingConfigEnabled: Boolean,
     val productQrsEnabled: Boolean,
     val securitySettingsEnabled: Boolean,
-    val publicCatalogConfigEnabled: Boolean
+    val publicCatalogConfigEnabled: Boolean,
+    val storeSettingsEnabled: Boolean = true
 ) {
     companion object {
         /**
          * Estado objetivo: mobile sólo para operación de campo.
          * Dejar flags en false permite apagar módulos admin sin romper navegación
          * porque cada acción conserva fallback "Abrir en Backoffice Web".
+         * storeSettingsEnabled siempre activo para espejo de configuraciones de tienda.
          */
         val MobileFieldOnly = ConfigAdminFeatureFlags(
             usersAndRolesEnabled = false,
@@ -381,7 +392,8 @@ data class ConfigAdminFeatureFlags(
             marketingConfigEnabled = false,
             productQrsEnabled = false,
             securitySettingsEnabled = false,
-            publicCatalogConfigEnabled = false
+            publicCatalogConfigEnabled = false,
+            storeSettingsEnabled = true
         )
     }
 }
