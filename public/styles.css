@@ -183,6 +183,12 @@ main {
   color: var(--muted);
 }
 
+.section-footer {
+  margin-top: 1.8rem;
+  display: flex;
+  justify-content: center;
+}
+
 .video {
   margin-top: 1.5rem;
 }
