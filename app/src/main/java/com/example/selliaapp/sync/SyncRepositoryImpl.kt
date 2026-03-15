@@ -97,6 +97,7 @@ class SyncRepositoryImpl @Inject constructor(
             pricingConfigRepository.pullPricingConfigFromCloud()
         }
     }
+    }
 
     override suspend fun runSync(includeBackup: Boolean) = withContext(io) {
         pushPending()
