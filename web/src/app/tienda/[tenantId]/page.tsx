@@ -39,8 +39,29 @@ export default async function StorePage({ params }: Props) {
 
   if (!storefront) notFound();
 
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://sellia1993.web.app";
+  const storeUrl = `${baseUrl}/tienda/${tenantId}`;
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Store",
+    name: storefront.storeName,
+    ...(storefront.tagline ? { description: storefront.tagline } : {}),
+    url: storeUrl,
+    ...(storefront.bannerImageUrl ? { image: storefront.bannerImageUrl } : {}),
+    ...(storefront.contactAddress ? { address: storefront.contactAddress } : {}),
+    ...(storefront.contactWhatsapp
+      ? { telephone: storefront.contactWhatsapp }
+      : {}),
+  };
+
   return (
-    <div>
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div>
       {/* Store header */}
       <div className="mb-8">
         {storefront.bannerImageUrl && (
@@ -100,5 +121,6 @@ export default async function StorePage({ params }: Props) {
         <ProductGrid tenantId={tenantId} products={products} />
       )}
     </div>
+    </>
   );
 }
