@@ -62,14 +62,13 @@ object PricingCalculator {
         val posnet3Cuotas = settings.posnet3CuotasPercent / 100.0
         val transferenciaRetencion = settings.transferenciaRetencionPercent / 100.0
 
-        // El margen se aplica sólo sobre el precio de compra + operativos.
+        // El margen se aplica sobre compra + operativos (ambos son costos que deben generar ganancia).
         // El costo fijo imputado se suma al final, ya que sólo debe recuperarse (sin markup).
         // Excepción: las cuotas (precio lista) y la comisión de MP sí se calculan sobre el
         // total final que ya incluye el costo fijo, dado que el procesador cobra sobre ese monto.
-        val baseWithProfit = purchasePrice * (1 + targetMargin)
         val operativosAmount = purchasePrice * operativosLocal
-        val withOperatives = baseWithProfit + operativosAmount
-        val withFixed = withOperatives + fixedCostImputed
+        val baseWithProfit = (purchasePrice + operativosAmount) * (1 + targetMargin)
+        val withFixed = baseWithProfit + fixedCostImputed
         val listPriceRaw = withFixed * (1 + posnet3Cuotas)
         val cashPriceRaw = withFixed
         val transferPriceRaw = withFixed
