@@ -1,11 +1,22 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPublicProduct, getStorefront } from "@/lib/catalog";
+import { listStores, getPublicProducts, getPublicProduct, getStorefront } from "@/lib/catalog";
 import { formatPrice } from "@/lib/format";
 import type { Metadata } from "next";
 
 export const revalidate = 300;
+
+export async function generateStaticParams() {
+  const stores = await listStores();
+  const results = await Promise.all(
+    stores.map(async (s) => {
+      const products = await getPublicProducts(s.id);
+      return products.map((p) => ({ tenantId: s.id, productId: String(p.id) }));
+    })
+  );
+  return results.flat();
+}
 
 type Props = { params: Promise<{ tenantId: string; productId: string }> };
 

@@ -8,3 +8,5 @@ runConfig:
 env:
   - variable: NEXT_TELEMETRY_DISABLED
     value: "1"
+  - variable: NEXT_PUBLIC_BASE_URL
+    value: "https://floki-backend--sellia1993.us-central1.hosted.app"
