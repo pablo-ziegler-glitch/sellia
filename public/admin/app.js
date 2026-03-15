@@ -349,6 +349,9 @@ async function syncRouteWithPermissions() {
   if (currentRoute === "#/settings/store") {
     await loadStoreConfig();
   }
+  if (currentRoute === "#/settings/cloud-services") {
+    await loadTenantOnboardingPolicy();
+  }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
   const canViewCosts = ["owner", "admin", "manager"].includes(appState.profile.role);
