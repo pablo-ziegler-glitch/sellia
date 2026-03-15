@@ -249,7 +249,7 @@ class SellViewModel @Inject constructor(
         val baseConDescuento = (subtotal - totalDiscount).coerceAtLeast(0.0)
         val recargo = baseConDescuento * base.surchargePercent / 100.0
         val total = baseConDescuento + recargo
-        val breakdown = computeBreakdown(items, base.paymentMethod)
+        val breakdown = computeBreakdown(items, base.paymentMethod, total)
 
         return base.copy(
             items = items,
@@ -264,22 +264,39 @@ class SellViewModel @Inject constructor(
         )
     }
 
-    private fun computeBreakdown(items: List<CartItemUi>, method: PaymentMethod): SaleBreakdown? {
-        if (method != PaymentMethod.LISTA) return null
+    private fun computeBreakdown(items: List<CartItemUi>, method: PaymentMethod, actualTotal: Double): SaleBreakdown? {
         val settings = pricingSettings ?: return null
-        val posnetRate = settings.posnet3CuotasPercent / 100.0
+        if (actualTotal <= 0.0) return null
         val operativosRate = settings.operativosLocalPercent / 100.0
-        val grossAmount = items.sumOf { it.listPrice * it.qty }
-        if (grossAmount <= 0.0) return null
-        // La comisión de terminal está embebida en el precio lista: lista = neto * (1 + posnet)
-        val posnetFeeAmount = grossAmount * posnetRate / (1.0 + posnetRate)
+
+        val (feeRate, feePercent) = when (method) {
+            PaymentMethod.LISTA -> {
+                val rate = settings.posnet3CuotasPercent / 100.0
+                rate to settings.posnet3CuotasPercent
+            }
+            PaymentMethod.EFECTIVO -> {
+                val rate = settings.cobroEnMomentoCostPercent / 100.0
+                rate to settings.cobroEnMomentoCostPercent
+            }
+            PaymentMethod.TRANSFERENCIA -> {
+                val rate = settings.transferenciaRetencionPercent / 100.0
+                rate to settings.transferenciaRetencionPercent
+            }
+        }
+
+        val grossAmount = actualTotal
+        // Para LISTA la comisión está embebida en el precio; para otros se aplica sobre el monto
+        val feeAmount = when (method) {
+            PaymentMethod.LISTA -> grossAmount * feeRate / (1.0 + feeRate)
+            else -> grossAmount * feeRate
+        }
         val purchaseCostTotal = items.sumOf { it.purchasePrice * it.qty }
         val operativosFeeAmount = purchaseCostTotal * operativosRate
-        val estimatedNetGain = grossAmount - posnetFeeAmount - purchaseCostTotal - operativosFeeAmount
+        val estimatedNetGain = grossAmount - feeAmount - purchaseCostTotal - operativosFeeAmount
         return SaleBreakdown(
             grossAmount = grossAmount,
-            posnetFeeAmount = posnetFeeAmount,
-            posnetFeePercent = settings.posnet3CuotasPercent,
+            posnetFeeAmount = feeAmount,
+            posnetFeePercent = feePercent,
             purchaseCostTotal = purchaseCostTotal,
             operativosFeeAmount = operativosFeeAmount,
             operativosFeePercent = settings.operativosLocalPercent,

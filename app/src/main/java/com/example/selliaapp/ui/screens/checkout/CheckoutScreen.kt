@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -100,6 +101,7 @@ fun CheckoutScreen(
     var customerDiscountInput by remember { mutableStateOf("") }
     var showCustomerValidationDialog by remember { mutableStateOf(false) }
     var pendingCheckoutAction by remember { mutableStateOf(PendingCheckoutAction.CONFIRM_SALE) }
+    var showBreakdown by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.customerDiscountPercent) {
         customerDiscountInput = if (state.customerDiscountPercent == 0) "" else state.customerDiscountPercent.toString()
@@ -346,13 +348,6 @@ fun CheckoutScreen(
                                         colorValor = Color(0xFF2E7D32)
                                     )
                                 }
-                                if (state.surchargePercent > 0) {
-                                    ResumenCheckoutFila(
-                                        etiqueta = "Recargo (${state.surchargePercent}%)",
-                                        valor = "+${moneda.format(state.surchargeAmount)}",
-                                        colorValor = Color(0xFFB71C1C)
-                                    )
-                                }
                                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
                                 ResumenCheckoutFila(
                                     etiqueta = "Total a cobrar",
@@ -371,23 +366,38 @@ fun CheckoutScreen(
                         }
                     }
 
-                    // Desglose interno para precio lista
+                    // Desglose interno de ganancia (oculto por default — info confidencial)
                     val breakdown = state.breakdown
-                    if (state.paymentMethod == PaymentMethod.LISTA && breakdown != null) {
+                    if (breakdown != null) {
                         item {
-                            DesgloseListaCard(breakdown = breakdown, moneda = moneda)
+                            Card(
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Mostrar desglose de ganancia",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Checkbox(
+                                            checked = showBreakdown,
+                                            onCheckedChange = { showBreakdown = it }
+                                        )
+                                    }
+                                    if (showBreakdown) {
+                                        Spacer(Modifier.height(8.dp))
+                                        DesgloseListaCard(breakdown = breakdown, moneda = moneda)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-
-                Spacer(Modifier.height(16.dp))
-
-                Text("Tipo de pedido", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                TipoPedidoSelector(
-                    seleccionado = state.orderType,
-                    onSeleccion = { vm.updateOrderType(it) }
-                )
 
                 Spacer(Modifier.height(16.dp))
 
@@ -444,7 +454,7 @@ fun CheckoutScreen(
                         color = MaterialTheme.colorScheme.onSecondary
                     )
                 } else {
-                    Text("Pagar con Mercado Pago")
+                    Text("Cobrar con Mercado Pago")
                 }
             }
 
