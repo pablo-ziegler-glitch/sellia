@@ -21,10 +21,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.ui.components.ImageUrlListEditor
+import com.example.selliaapp.ui.components.NetGainChannel
+import com.example.selliaapp.ui.components.ProductNetGainPanel
 
 @Composable
 fun ProductEditorDialog(
     initial: ProductEntity?,
+    posnetPercent: Double = 0.0,
+    operativosPercent: Double = 0.0,
     onDismiss: () -> Unit,
     onSave: (
         name: String,
@@ -121,6 +125,22 @@ fun ProductEditorDialog(
                 OutlinedTextField(mlPrice, { mlPrice = it }, label = { Text("Precio ML") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(ml3cPrice, { ml3cPrice = it }, label = { Text("Precio ML 3C") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(ml6cPrice, { ml6cPrice = it }, label = { Text("Precio ML 6C") }, modifier = Modifier.fillMaxWidth())
+                val purchaseVal = purchasePrice.text.toDoubleOrNull()
+                if (purchaseVal != null && purchaseVal > 0) {
+                    ProductNetGainPanel(
+                        purchasePrice = purchaseVal,
+                        posnetPercent = posnetPercent,
+                        operativosPercent = operativosPercent,
+                        channels = listOfNotNull(
+                            listPrice.text.toDoubleOrNull()?.let { NetGainChannel("Lista", it, applyPosnet = true) },
+                            cashPrice.text.toDoubleOrNull()?.let { NetGainChannel("Efectivo", it, applyPosnet = false) },
+                            transferPrice.text.toDoubleOrNull()?.let { NetGainChannel("Transferencia", it, applyPosnet = false) },
+                            mlPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (0C)", it, applyPosnet = false) },
+                            ml3cPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (3C)", it, applyPosnet = false) },
+                            ml6cPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (6C)", it, applyPosnet = false) }
+                        )
+                    )
+                }
                 OutlinedTextField(
                     minStock,
                     {
