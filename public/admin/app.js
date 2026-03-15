@@ -320,6 +320,9 @@ async function syncRouteWithPermissions() {
   el.viewTitle.textContent = view.title;
   el.viewDescription.textContent = view.description;
   toggleModulePanels(currentRoute);
+  document.querySelectorAll(".nav-item[data-route]").forEach((link) => {
+    link.classList.toggle("active", link.dataset.route === currentRoute);
+  });
 
   if (currentRoute === "#/dashboard") {
     await loadDashboard();
