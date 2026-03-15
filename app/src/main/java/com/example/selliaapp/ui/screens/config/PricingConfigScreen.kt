@@ -85,6 +85,7 @@ fun PricingConfigScreen(
     var editingMlShipping by remember { mutableStateOf<PricingMlShippingTierEntity?>(null) }
 
     var ivaTerminalText by remember { mutableStateOf("") }
+    var ivaProductText by remember { mutableStateOf("") }
     var ventasMensualesText by remember { mutableStateOf("") }
     var operativosLocalText by remember { mutableStateOf("") }
     var posnetText by remember { mutableStateOf("") }
@@ -111,6 +112,7 @@ fun PricingConfigScreen(
     LaunchedEffect(settings) {
         settings?.let {
             ivaTerminalText = it.ivaTerminalPercent.toString()
+            ivaProductText = it.ivaProductPercent.toString()
             ventasMensualesText = it.monthlySalesEstimate.toString()
             operativosLocalText = it.operativosLocalPercent.toString()
             posnetText = it.posnet3CuotasPercent.toString()
@@ -139,6 +141,7 @@ fun PricingConfigScreen(
         val current = settings ?: return@onSaveSettings
         val updated = current.copy(
             ivaTerminalPercent = ivaTerminalText.parseDecimal(current.ivaTerminalPercent),
+            ivaProductPercent = ivaProductText.parseDecimal(current.ivaProductPercent),
             monthlySalesEstimate = ventasMensualesText.toIntOrNull() ?: current.monthlySalesEstimate,
             operativosLocalPercent = operativosLocalText.parseDecimal(current.operativosLocalPercent),
             posnet3CuotasPercent = posnetText.parseDecimal(current.posnet3CuotasPercent),
@@ -232,6 +235,7 @@ fun PricingConfigScreen(
                     item {
                         SettingsCard("Parámetros base") {
                             DecimalField("IVA terminal (%)", ivaTerminalText) { ivaTerminalText = it.cleanNumeric() }
+                            DecimalField("IVA producto / venta (%) — ej: 21", ivaProductText) { ivaProductText = it.cleanNumeric() }
                             IntegerField("Ventas mensuales estimadas", ventasMensualesText) { ventasMensualesText = it.cleanInteger() }
                             FixedCostImputationModeSelector(
                                 selectedMode = fixedCostImputationMode,

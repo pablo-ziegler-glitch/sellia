@@ -8,6 +8,8 @@ import java.time.Instant
 data class PricingSettingsEntity(
     @PrimaryKey val id: Int = 1,
     val ivaTerminalPercent: Double,
+    /** IVA sobre el precio de venta final (21 % por defecto). Se multiplica sobre el total después de cubrir costos y ganancia objetivo. */
+    val ivaProductPercent: Double = 21.0,
     val monthlySalesEstimate: Int,
     val operativosLocalPercent: Double,
     val posnet3CuotasPercent: Double,

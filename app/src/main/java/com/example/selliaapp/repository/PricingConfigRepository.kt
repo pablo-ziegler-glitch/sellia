@@ -294,6 +294,7 @@ class PricingConfigRepository(
             val candidate = updated.copy(updatedAt = now, updatedBy = changedBy)
             pricingSettingsDao.update(candidate)
             auditField("ivaTerminalPercent", existing.ivaTerminalPercent, candidate.ivaTerminalPercent, now, changedBy)
+            auditField("ivaProductPercent", existing.ivaProductPercent, candidate.ivaProductPercent, now, changedBy)
             auditField("monthlySalesEstimate", existing.monthlySalesEstimate, candidate.monthlySalesEstimate, now, changedBy)
             auditField("operativosLocalPercent", existing.operativosLocalPercent, candidate.operativosLocalPercent, now, changedBy)
             auditField("posnet3CuotasPercent", existing.posnet3CuotasPercent, candidate.posnet3CuotasPercent, now, changedBy)
@@ -338,6 +339,7 @@ class PricingConfigRepository(
                 "tenantId" to tenantId,
                 "settings" to mapOf(
                     "ivaTerminalPercent" to settings.ivaTerminalPercent,
+                    "ivaProductPercent" to settings.ivaProductPercent,
                     "monthlySalesEstimate" to settings.monthlySalesEstimate,
                     "operativosLocalPercent" to settings.operativosLocalPercent,
                     "posnet3CuotasPercent" to settings.posnet3CuotasPercent,
@@ -472,6 +474,7 @@ class PricingConfigRepository(
 
     private fun defaultSettings(): PricingSettingsEntity = PricingSettingsEntity(
         ivaTerminalPercent = 21.0,
+        ivaProductPercent = 21.0,
         monthlySalesEstimate = 500,
         operativosLocalPercent = 3.0,
         posnet3CuotasPercent = 12.22,
@@ -532,6 +535,7 @@ class PricingConfigRepository(
         return PricingSettingsEntity(
             id = 1,
             ivaTerminalPercent = source["ivaTerminalPercent"].asDouble() ?: 21.0,
+            ivaProductPercent = source["ivaProductPercent"].asDouble() ?: 21.0,
             monthlySalesEstimate = monthlySalesEstimate,
             operativosLocalPercent = source["operativosLocalPercent"].asDouble() ?: 3.0,
             posnet3CuotasPercent = source["posnet3CuotasPercent"].asDouble() ?: 12.22,
