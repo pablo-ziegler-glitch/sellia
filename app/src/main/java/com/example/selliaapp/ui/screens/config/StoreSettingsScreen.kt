@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,7 +44,8 @@ fun StoreSettingsScreen(
     onBack: () -> Unit,
     onMarketingConfig: () -> Unit,
     onPublicCatalogConfig: () -> Unit,
-    onStorefront: () -> Unit
+    onStorefront: () -> Unit,
+    onLocationConfig: () -> Unit
 ) {
     Scaffold(
         topBar = { BackTopAppBar(title = "Configuraciones de tienda", onBack = onBack) }
@@ -92,6 +94,13 @@ fun StoreSettingsScreen(
                         title = "Vidriera pública",
                         description = "Vista previa de la vidriera pública de productos.",
                         onClick = onStorefront
+                    )
+                    HorizontalDivider()
+                    StoreSettingsItem(
+                        icon = Icons.Filled.LocationOn,
+                        title = "Ubicación y tipo de tienda",
+                        description = "Configurá si tu tienda es física, online o ambas.",
+                        onClick = onLocationConfig
                     )
                 }
             }
