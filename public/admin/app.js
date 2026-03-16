@@ -16,11 +16,14 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
   limit,
   onSnapshot,
   orderBy,
-  query
+  query,
+  startAt,
+  endAt
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { hasRouteAccess, isInternalRole, normalizeInternalRole, rolePermissions } from "./permissions.js";
@@ -114,18 +117,32 @@ const el = {
   syncProductsMessage: document.getElementById("syncProductsMessage"),
   // POS — Punto de Venta
   posSalesPanel: document.getElementById("posSalesPanel"),
+  posLoadingMessage: document.getElementById("posLoadingMessage"),
   posDisabledMessage: document.getElementById("posDisabledMessage"),
   posContent: document.getElementById("posContent"),
   posSearchInput: document.getElementById("posSearchInput"),
   posProductList: document.getElementById("posProductList"),
+  posCustomerInput: document.getElementById("posCustomerInput"),
+  posCustomerSuggestions: document.getElementById("posCustomerSuggestions"),
+  posCustomerSelected: document.getElementById("posCustomerSelected"),
+  posCustomerName: document.getElementById("posCustomerName"),
+  posCustomerBadge: document.getElementById("posCustomerBadge"),
+  posCustomerSearchWrap: document.getElementById("posCustomerSearchWrap"),
+  posClearCustomer: document.getElementById("posClearCustomer"),
   posCartItems: document.getElementById("posCartItems"),
   posSubtotal: document.getElementById("posSubtotal"),
+  posCustomerDiscountRow: document.getElementById("posCustomerDiscountRow"),
+  posCustomerDiscountLabel: document.getElementById("posCustomerDiscountLabel"),
+  posCustomerDiscountAmount: document.getElementById("posCustomerDiscountAmount"),
   posDiscountRow: document.getElementById("posDiscountRow"),
   posDiscountAmount: document.getElementById("posDiscountAmount"),
   posSurchargeRow: document.getElementById("posSurchargeRow"),
+  posSurchargeLabel: document.getElementById("posSurchargeLabel"),
   posSurchargeAmount: document.getElementById("posSurchargeAmount"),
   posTotal: document.getElementById("posTotal"),
   posDiscountInput: document.getElementById("posDiscountInput"),
+  posSurchargeInput: document.getElementById("posSurchargeInput"),
+  posPaymentNotes: document.getElementById("posPaymentNotes"),
   posChargeBtn: document.getElementById("posChargeBtn"),
   posRight: document.getElementById("posRight"),
   posCartHandle: document.getElementById("posCartHandle"),
@@ -1140,11 +1157,17 @@ const posState = {
   cart: [],
   paymentMethod: "LISTA",
   discountPercent: 0,
+  surchargePercent: 0,
+  customerId: null,
+  customerName: null,
+  customerDiscountPercent: 0,
+  paymentNotes: "",
   lastAddedProductId: null,
   productsUnsubscribe: null,
 };
 
 let posEventsWired = false;
+let posCustomerSearchTimer = null;
 
 function getPosStorageKey() {
   return `sellia_pos_draft_${appState.profile?.tenantId || "unknown"}`;
@@ -1158,6 +1181,11 @@ function savePosCart() {
         cart: posState.cart,
         paymentMethod: posState.paymentMethod,
         discountPercent: posState.discountPercent,
+        surchargePercent: posState.surchargePercent,
+        customerId: posState.customerId,
+        customerName: posState.customerName,
+        customerDiscountPercent: posState.customerDiscountPercent,
+        paymentNotes: posState.paymentNotes,
       })
     );
   } catch { /* silent */ }
@@ -1175,19 +1203,37 @@ function loadPosCart() {
     if (typeof data.discountPercent === "number") {
       posState.discountPercent = Math.min(100, Math.max(0, data.discountPercent));
     }
+    if (typeof data.surchargePercent === "number") {
+      posState.surchargePercent = Math.min(100, Math.max(0, data.surchargePercent));
+    }
+    if (data.customerId) posState.customerId = data.customerId;
+    if (data.customerName) posState.customerName = data.customerName;
+    if (typeof data.customerDiscountPercent === "number") {
+      posState.customerDiscountPercent = data.customerDiscountPercent;
+    }
+    if (typeof data.paymentNotes === "string") posState.paymentNotes = data.paymentNotes;
   } catch { /* silent */ }
 }
 
 function clearPosCart() {
   posState.cart = [];
   posState.discountPercent = 0;
+  posState.surchargePercent = 0;
+  posState.customerId = null;
+  posState.customerName = null;
+  posState.customerDiscountPercent = 0;
+  posState.paymentNotes = "";
   try { localStorage.removeItem(getPosStorageKey()); } catch { /* silent */ }
 }
 
 async function initPosPanel() {
   if (!el.posSalesPanel || !appState.profile) return;
 
-  // Check feature.pos flag from runtime_flags
+  // Show loading while checking feature flag
+  if (el.posLoadingMessage) el.posLoadingMessage.hidden = false;
+  if (el.posDisabledMessage) el.posDisabledMessage.hidden = true;
+  if (el.posContent) el.posContent.hidden = true;
+
   let posEnabled = true;
   try {
     const flagsRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "runtime_flags");
@@ -1195,30 +1241,33 @@ async function initPosPanel() {
     if (snap.exists() && snap.data()?.["feature.pos"] === false) posEnabled = false;
   } catch { /* assume enabled if unreachable */ }
 
+  if (el.posLoadingMessage) el.posLoadingMessage.hidden = true;
+
   if (!posEnabled) {
     if (el.posDisabledMessage) el.posDisabledMessage.hidden = false;
-    if (el.posContent) el.posContent.hidden = true;
     return;
   }
 
-  if (el.posDisabledMessage) el.posDisabledMessage.hidden = true;
   if (el.posContent) el.posContent.hidden = false;
 
   loadPosCart();
   wirePosEvents();
   startPosProductsListener();
 
-  // Sync payment method pills to current state
+  // Sync UI to loaded state
   document.querySelectorAll(".pos-pill[data-method]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.method === posState.paymentMethod);
   });
-
-  // Sync discount input
   if (el.posDiscountInput) el.posDiscountInput.value = posState.discountPercent;
+  if (el.posSurchargeInput) el.posSurchargeInput.value = posState.surchargePercent;
+  if (el.posPaymentNotes) el.posPaymentNotes.value = posState.paymentNotes;
+
+  // Restore customer if previously selected
+  if (posState.customerId && posState.customerName) {
+    renderPosCustomerSelected();
+  }
 
   renderPosCart();
-
-  // Autofocus search
   setTimeout(() => el.posSearchInput?.focus(), 60);
 }
 
@@ -1245,7 +1294,6 @@ function wirePosEvents() {
       document.querySelectorAll(".pos-pill[data-method]").forEach((b) => {
         b.classList.toggle("active", b === btn);
       });
-      // Recalculate unit prices in cart for new payment method
       posState.cart = posState.cart.map((item) => ({
         ...item,
         unitPrice: posProductPrice(item, posState.paymentMethod),
@@ -1255,7 +1303,7 @@ function wirePosEvents() {
     });
   });
 
-  // Discount input
+  // Manual discount input
   el.posDiscountInput?.addEventListener("input", () => {
     const val = parseFloat(el.posDiscountInput.value) || 0;
     posState.discountPercent = Math.min(100, Math.max(0, val));
@@ -1263,20 +1311,81 @@ function wirePosEvents() {
     renderPosTotals();
   });
 
+  // Surcharge input
+  el.posSurchargeInput?.addEventListener("input", () => {
+    const val = parseFloat(el.posSurchargeInput.value) || 0;
+    posState.surchargePercent = Math.min(100, Math.max(0, val));
+    savePosCart();
+    renderPosTotals();
+  });
+
+  // Payment notes
+  el.posPaymentNotes?.addEventListener("input", () => {
+    posState.paymentNotes = el.posPaymentNotes.value;
+    savePosCart();
+  });
+
+  // Customer search — debounced
+  el.posCustomerInput?.addEventListener("input", () => {
+    clearTimeout(posCustomerSearchTimer);
+    const term = (el.posCustomerInput.value || "").trim();
+    if (!term) {
+      if (el.posCustomerSuggestions) el.posCustomerSuggestions.hidden = true;
+      return;
+    }
+    posCustomerSearchTimer = setTimeout(() => searchPosCustomers(term), 280);
+  });
+
+  // Close suggestions on outside click
+  document.addEventListener("click", (e) => {
+    if (
+      el.posCustomerSuggestions &&
+      !el.posCustomerSuggestions.contains(e.target) &&
+      e.target !== el.posCustomerInput
+    ) {
+      el.posCustomerSuggestions.hidden = true;
+    }
+  });
+
+  // Clear customer button
+  el.posClearCustomer?.addEventListener("click", clearPosCustomer);
+
   // Charge button
   el.posChargeBtn?.addEventListener("click", openPosModal);
 
-  // Modal close on backdrop or cancel
+  // Modal
   el.posModalOverlay?.addEventListener("click", closePosModal);
   el.posModalCancelBtn?.addEventListener("click", closePosModal);
-
-  // Modal confirm
   el.posModalConfirmBtn?.addEventListener("click", confirmPosSale);
 
-  // Mobile cart toggle handle
+  // Mobile cart handle — click toggle + swipe gesture
   el.posCartHandle?.addEventListener("click", () => {
     el.posRight?.classList.toggle("cart-expanded");
   });
+
+  initPosSwipeGesture();
+}
+
+function initPosSwipeGesture() {
+  const handle = el.posCartHandle;
+  const cartEl = el.posRight;
+  if (!handle || !cartEl) return;
+
+  let startY = 0;
+
+  handle.addEventListener("touchstart", (e) => {
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+
+  handle.addEventListener("touchend", (e) => {
+    const deltaY = e.changedTouches[0].clientY - startY;
+    if (Math.abs(deltaY) < 30) return; // ignore taps
+    if (deltaY < 0) {
+      cartEl.classList.add("cart-expanded");    // swipe up → expand
+    } else {
+      cartEl.classList.remove("cart-expanded"); // swipe down → collapse
+    }
+  }, { passive: true });
 }
 
 function posProductPrice(productOrItem, method) {
@@ -1291,7 +1400,7 @@ function startPosProductsListener() {
   posState.productsUnsubscribe = onSnapshot(ref, (snapshot) => {
     posState.products = snapshot.docs
       .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((p) => !Number.isFinite(p.stock) || p.stock > 0);
+      .filter((p) => p.stock == null || Number(p.stock) > 0); // exclude stock <= 0
     renderPosProductList((el.posSearchInput?.value || "").trim().toLowerCase());
   });
 }
@@ -1354,13 +1463,97 @@ function addToPos(product) {
   renderPosCart();
   posState.lastAddedProductId = null;
 
-  // Clear search and return focus for next scan
   if (el.posSearchInput) {
     el.posSearchInput.value = "";
     renderPosProductList("");
     el.posSearchInput.focus();
   }
 }
+
+// ── Customer search ──────────────────────────────────────────
+
+async function searchPosCustomers(term) {
+  if (!appState.profile || term.length < 2) return;
+  try {
+    const customersRef = collection(appState.firestore, "tenants", appState.profile.tenantId, "customers");
+    const qRef = query(
+      customersRef,
+      orderBy("name"),
+      startAt(term),
+      endAt(term + "\uf8ff"),
+      limit(8)
+    );
+    const snap = await getDocs(qRef);
+    renderPosCustomerSuggestions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  } catch {
+    renderPosCustomerSuggestions([]);
+  }
+}
+
+function renderPosCustomerSuggestions(customers) {
+  if (!el.posCustomerSuggestions) return;
+  if (!customers.length) {
+    el.posCustomerSuggestions.innerHTML = '<div class="pos-customer-suggestion-empty">Sin resultados</div>';
+    el.posCustomerSuggestions.hidden = false;
+    return;
+  }
+  el.posCustomerSuggestions.innerHTML = customers
+    .map(
+      (c) =>
+        `<div class="pos-customer-suggestion"
+              data-id="${escapeHtml(c.id)}"
+              data-name="${escapeHtml(c.name || "")}"
+              data-discount="${Number(c.discountPercent || 0)}">
+          <span class="pos-customer-suggestion-name">${escapeHtml(c.name || c.id)}</span>
+          ${c.discountPercent > 0 ? `<span class="pos-customer-badge">${c.discountPercent}% dto</span>` : ""}
+        </div>`
+    )
+    .join("");
+  el.posCustomerSuggestions.hidden = false;
+  el.posCustomerSuggestions.querySelectorAll(".pos-customer-suggestion").forEach((row) => {
+    row.addEventListener("click", () => {
+      selectPosCustomer({
+        id: row.dataset.id,
+        name: row.dataset.name,
+        discountPercent: parseFloat(row.dataset.discount) || 0,
+      });
+    });
+  });
+}
+
+function selectPosCustomer(customer) {
+  posState.customerId = customer.id;
+  posState.customerName = customer.name;
+  posState.customerDiscountPercent = customer.discountPercent;
+  if (el.posCustomerInput) el.posCustomerInput.value = "";
+  if (el.posCustomerSuggestions) el.posCustomerSuggestions.hidden = true;
+  renderPosCustomerSelected();
+  savePosCart();
+  renderPosTotals();
+}
+
+function renderPosCustomerSelected() {
+  if (el.posCustomerName) el.posCustomerName.textContent = posState.customerName || "";
+  if (el.posCustomerBadge) {
+    const pct = posState.customerDiscountPercent;
+    el.posCustomerBadge.textContent = pct > 0 ? `${pct}% dto` : "";
+    el.posCustomerBadge.hidden = pct === 0;
+  }
+  if (el.posCustomerSelected) el.posCustomerSelected.hidden = false;
+  if (el.posCustomerSearchWrap) el.posCustomerSearchWrap.hidden = true;
+}
+
+function clearPosCustomer() {
+  posState.customerId = null;
+  posState.customerName = null;
+  posState.customerDiscountPercent = 0;
+  if (el.posCustomerSelected) el.posCustomerSelected.hidden = true;
+  if (el.posCustomerSearchWrap) el.posCustomerSearchWrap.hidden = false;
+  savePosCart();
+  renderPosTotals();
+}
+
+// ── Cart rendering ───────────────────────────────────────────
 
 function renderPosCart() {
   if (!el.posCartItems) return;
@@ -1425,21 +1618,39 @@ function renderPosCart() {
   renderPosTotals();
 }
 
+// ── Totals calculation ────────────────────────────────────────
+
 function calcPosTotals() {
   const subtotal = posState.cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-  const discountAmount = subtotal * (posState.discountPercent / 100);
-  const surchargeAmount = 0;
-  const total = subtotal - discountAmount + surchargeAmount;
-  return { subtotal, discountAmount, surchargeAmount, total };
+  const customerDiscountAmount = subtotal * (posState.customerDiscountPercent / 100);
+  const manualDiscountAmount = subtotal * (posState.discountPercent / 100);
+  const discountTotal = customerDiscountAmount + manualDiscountAmount;
+  const surchargeAmount = (subtotal - discountTotal) * (posState.surchargePercent / 100);
+  const total = subtotal - discountTotal + surchargeAmount;
+  return { subtotal, customerDiscountAmount, manualDiscountAmount, discountTotal, surchargeAmount, total };
 }
 
 function renderPosTotals() {
-  const { subtotal, discountAmount, surchargeAmount, total } = calcPosTotals();
+  const { subtotal, customerDiscountAmount, manualDiscountAmount, surchargeAmount, total } = calcPosTotals();
+
   if (el.posSubtotal) el.posSubtotal.textContent = formatPosPrice(subtotal);
   if (el.posTotal) el.posTotal.textContent = formatPosPrice(total);
-  if (el.posDiscountRow) el.posDiscountRow.hidden = discountAmount === 0;
-  if (el.posDiscountAmount) el.posDiscountAmount.textContent = `−${formatPosPrice(discountAmount)}`;
+
+  if (el.posCustomerDiscountRow) el.posCustomerDiscountRow.hidden = customerDiscountAmount === 0;
+  if (el.posCustomerDiscountLabel && posState.customerDiscountPercent > 0) {
+    el.posCustomerDiscountLabel.textContent = `Desc. cliente (${posState.customerDiscountPercent}%)`;
+  }
+  if (el.posCustomerDiscountAmount) {
+    el.posCustomerDiscountAmount.textContent = `−${formatPosPrice(customerDiscountAmount)}`;
+  }
+
+  if (el.posDiscountRow) el.posDiscountRow.hidden = manualDiscountAmount === 0;
+  if (el.posDiscountAmount) el.posDiscountAmount.textContent = `−${formatPosPrice(manualDiscountAmount)}`;
+
   if (el.posSurchargeRow) el.posSurchargeRow.hidden = surchargeAmount === 0;
+  if (el.posSurchargeLabel && posState.surchargePercent > 0) {
+    el.posSurchargeLabel.textContent = `Recargo (${posState.surchargePercent}%)`;
+  }
   if (el.posSurchargeAmount) el.posSurchargeAmount.textContent = formatPosPrice(surchargeAmount);
 }
 
@@ -1449,6 +1660,8 @@ function formatPosPrice(value) {
     maximumFractionDigits: 2,
   })}`;
 }
+
+// ── Modal ─────────────────────────────────────────────────────
 
 function openPosModal() {
   if (!posState.cart.length || !el.posModal) return;
@@ -1486,7 +1699,7 @@ function closePosModal() {
 async function confirmPosSale() {
   if (!appState.profile || !posState.cart.length) return;
 
-  const { subtotal, discountAmount, surchargeAmount, total } = calcPosTotals();
+  const { subtotal, customerDiscountAmount, manualDiscountAmount, discountTotal, surchargeAmount, total } = calcPosTotals();
 
   const draft = {
     items: posState.cart.map((item) => ({
@@ -1498,14 +1711,16 @@ async function confirmPosSale() {
     subtotal,
     taxes: 0,
     total,
+    customerDiscountPercent: posState.customerDiscountPercent,
+    customerDiscountAmount,
     discountPercent: posState.discountPercent,
-    discountAmount,
-    surchargePercent: 0,
+    discountAmount: manualDiscountAmount,
+    surchargePercent: posState.surchargePercent,
     surchargeAmount,
     paymentMethod: posState.paymentMethod,
-    paymentNotes: "",
-    customerId: null,
-    customerName: null,
+    paymentNotes: posState.paymentNotes,
+    customerId: posState.customerId,
+    customerName: posState.customerName,
     tenantId: appState.profile.tenantId,
   };
 
@@ -1519,6 +1734,13 @@ async function confirmPosSale() {
 
     clearPosCart();
     if (el.posDiscountInput) el.posDiscountInput.value = "0";
+    if (el.posSurchargeInput) el.posSurchargeInput.value = "0";
+    if (el.posPaymentNotes) el.posPaymentNotes.value = "";
+
+    // Reset customer UI
+    if (el.posCustomerSelected) el.posCustomerSelected.hidden = true;
+    if (el.posCustomerSearchWrap) el.posCustomerSearchWrap.hidden = false;
+    if (el.posCustomerInput) el.posCustomerInput.value = "";
 
     closePosModal();
     renderPosCart();

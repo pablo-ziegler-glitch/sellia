@@ -311,6 +311,9 @@
                 <!-- ── POS — Punto de Venta ── -->
                 <section id="posSalesPanel" class="module-panel pos-panel" hidden>
 
+                  <!-- Loading while checking feature flag -->
+                  <p id="posLoadingMessage" class="muted" style="padding:20px">Cargando módulo POS...</p>
+
                   <!-- Feature flag disabled -->
                   <div id="posDisabledMessage" class="state warning" hidden>
                     <strong>El módulo POS no está habilitado para esta cuenta.</strong>
@@ -350,6 +353,25 @@
                         <button class="pos-pill" data-method="TRANSFERENCIA" type="button">TRANSFERENCIA</button>
                       </div>
 
+                      <!-- Customer search -->
+                      <div class="pos-customer-section">
+                        <div id="posCustomerSelected" class="pos-customer-selected" hidden>
+                          <span id="posCustomerName" class="pos-customer-name"></span>
+                          <span id="posCustomerBadge" class="pos-customer-badge" hidden></span>
+                          <button id="posClearCustomer" class="pos-remove-btn" type="button" title="Quitar cliente">×</button>
+                        </div>
+                        <div id="posCustomerSearchWrap" class="pos-customer-search-wrap">
+                          <input
+                            id="posCustomerInput"
+                            type="search"
+                            class="pos-customer-input"
+                            placeholder="Cliente (opcional)..."
+                            autocomplete="off"
+                          />
+                          <div id="posCustomerSuggestions" class="pos-customer-suggestions" hidden></div>
+                        </div>
+                      </div>
+
                       <!-- Cart items -->
                       <div id="posCartItems" class="pos-cart-items"></div>
 
@@ -359,12 +381,16 @@
                           <span>Subtotal</span>
                           <span id="posSubtotal">$0,00</span>
                         </div>
+                        <div class="pos-totals-row" id="posCustomerDiscountRow" hidden>
+                          <span id="posCustomerDiscountLabel">Desc. cliente</span>
+                          <span id="posCustomerDiscountAmount">−$0,00</span>
+                        </div>
                         <div class="pos-totals-row" id="posDiscountRow" hidden>
-                          <span>Descuento</span>
+                          <span>Desc. manual</span>
                           <span id="posDiscountAmount">−$0,00</span>
                         </div>
                         <div class="pos-totals-row" id="posSurchargeRow" hidden>
-                          <span>Recargo</span>
+                          <span id="posSurchargeLabel">Recargo</span>
                           <span id="posSurchargeAmount">$0,00</span>
                         </div>
                         <div class="pos-totals-row pos-total-highlight">
@@ -389,6 +415,33 @@
                           <span class="pos-discount-suffix">%</span>
                         </div>
                       </details>
+
+                      <!-- Recargo (collapsed by default) -->
+                      <details class="pos-manual-discount">
+                        <summary>Recargo</summary>
+                        <div class="pos-discount-field">
+                          <input
+                            id="posSurchargeInput"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value="0"
+                            placeholder="0"
+                          />
+                          <span class="pos-discount-suffix">%</span>
+                        </div>
+                      </details>
+
+                      <!-- Payment notes -->
+                      <input
+                        id="posPaymentNotes"
+                        type="text"
+                        class="pos-payment-notes"
+                        placeholder="Nota de pago (opcional)"
+                        maxlength="200"
+                        autocomplete="off"
+                      />
 
                       <!-- Charge button -->
                       <button id="posChargeBtn" class="pos-charge-btn" type="button" disabled>

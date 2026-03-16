@@ -988,6 +988,127 @@ code {
   color: var(--accent);
 }
 
+/* Customer search */
+.pos-customer-section {
+  position: relative;
+}
+
+.pos-customer-selected {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--accent-light);
+}
+
+.pos-customer-name {
+  flex: 1;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-customer-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.pos-customer-search-wrap {
+  position: relative;
+}
+
+.pos-customer-input {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  outline: none;
+  transition: border-color 0.12s;
+  box-sizing: border-box;
+  background: var(--surface);
+}
+
+.pos-customer-input:focus {
+  border-color: var(--accent);
+}
+
+.pos-customer-suggestions {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  z-index: 300;
+  overflow: hidden;
+}
+
+.pos-customer-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--border);
+}
+
+.pos-customer-suggestion:last-child {
+  border-bottom: none;
+}
+
+.pos-customer-suggestion:hover {
+  background: var(--accent-light);
+}
+
+.pos-customer-suggestion-name {
+  flex: 1;
+}
+
+.pos-customer-suggestion-empty {
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Payment notes */
+.pos-payment-notes {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  outline: none;
+  transition: border-color 0.12s;
+  box-sizing: border-box;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.pos-payment-notes:focus {
+  border-color: var(--accent);
+  color: inherit;
+}
+
+.pos-payment-notes::placeholder {
+  font-style: italic;
+}
+
 .pos-discount-field {
   display: flex;
   align-items: center;
