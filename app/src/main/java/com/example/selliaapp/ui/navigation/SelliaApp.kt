@@ -68,6 +68,7 @@ import com.example.selliaapp.ui.screens.config.ConfigAdminFeatureFlags
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
 import com.example.selliaapp.ui.screens.config.MarketingConfigScreen
+import com.example.selliaapp.ui.screens.config.LocationSettingsScreen
 import com.example.selliaapp.ui.screens.config.PublicCatalogConfigScreen
 import com.example.selliaapp.ui.screens.config.StoreSettingsScreen
 import com.example.selliaapp.ui.screens.config.PricingConfigScreen
@@ -209,6 +210,8 @@ fun SelliaApp(
             navigationUsageStore.onRouteVisible(role, currentRoute)
         }
     }
+
+    val locationSettingsRoute = "location_settings"
 
     AppScaffold(
         currentDestination = currentDestination,
@@ -870,8 +873,13 @@ fun SelliaApp(
                     onBack = { navController.popBackStack() },
                     onMarketingConfig = { navController.navigate(Routes.MarketingConfig.route) },
                     onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
-                    onStorefront = { navController.navigate(Routes.Storefront.route) }
+                    onStorefront = { navController.navigate(Routes.Storefront.route) },
+                    onLocationConfig = { navController.navigate(locationSettingsRoute) }
                 )
+            }
+
+            composable(locationSettingsRoute) {
+                LocationSettingsScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.SecuritySettings.route) {

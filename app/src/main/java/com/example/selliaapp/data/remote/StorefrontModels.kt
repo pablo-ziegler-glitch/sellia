@@ -14,6 +14,13 @@ data class StorefrontConfig(
     val contactInstagram: String = "",
     val contactAddress: String = "",
     val bannerMessages: List<BannerMessageLocal> = emptyList(),
+    val storeType: StoreType = StoreType.PHYSICAL,
+    val locationLat: Double? = null,
+    val locationLng: Double? = null,
+    val locationAddress: String? = null,
+    val locationCity: String? = null,
+    val locationCountry: String? = null,
+    val hasDelivery: Boolean = false,
     val updatedAt: Timestamp? = null
 ) {
     fun toFirestoreMap(): Map<String, Any?> = mapOf(
@@ -29,12 +36,24 @@ data class StorefrontConfig(
             "instagram" to contactInstagram,
             "address" to contactAddress
         ),
-        "bannerMessages" to bannerMessages.map { it.toMap() }
+        "bannerMessages" to bannerMessages.map { it.toMap() },
+        "storeType" to storeType.raw,
+        "location" to buildMap {
+            if (locationLat != null && locationLng != null) {
+                put("lat", locationLat)
+                put("lng", locationLng)
+                put("address", locationAddress ?: "")
+            }
+            if (!locationCity.isNullOrBlank()) put("city", locationCity)
+            if (!locationCountry.isNullOrBlank()) put("country", locationCountry)
+        }.ifEmpty { null },
+        "hasDelivery" to hasDelivery
     )
 
     companion object {
         fun fromFirestore(data: Map<String, Any?>): StorefrontConfig {
             val contact = data["contact"] as? Map<*, *> ?: emptyMap<String, Any>()
+            val loc = data["location"] as? Map<*, *>
             val messages = (data["bannerMessages"] as? List<*>)?.mapNotNull { item ->
                 (item as? Map<*, *>)?.let { BannerMessageLocal.fromMap(it) }
             } ?: emptyList()
@@ -50,6 +69,13 @@ data class StorefrontConfig(
                 contactInstagram = (contact["instagram"] as? String).orEmpty(),
                 contactAddress = (contact["address"] as? String).orEmpty(),
                 bannerMessages = messages,
+                storeType = StoreType.fromRaw(data["storeType"] as? String),
+                locationLat = (loc?.get("lat") as? Number)?.toDouble(),
+                locationLng = (loc?.get("lng") as? Number)?.toDouble(),
+                locationAddress = loc?.get("address") as? String,
+                locationCity = loc?.get("city") as? String,
+                locationCountry = loc?.get("country") as? String,
+                hasDelivery = (data["hasDelivery"] as? Boolean) ?: false,
                 updatedAt = data["updatedAt"] as? Timestamp
             )
         }

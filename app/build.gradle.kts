@@ -30,6 +30,8 @@ android {
         buildConfigField("String", "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID", "\"\"")
         buildConfigField("String", "MERGED_PRS", "\"${mergedPrs.replace("\"", "\\\"")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["MAPS_API_KEY"] = project.findProperty("MAPS_API_KEY") ?: ""
+        buildConfigField("String", "MAPS_API_KEY", "\"${project.findProperty("MAPS_API_KEY") ?: ""}\"")
     }
 
     val appCheckDebugOverride = (project.findProperty("appCheckDebug") as String?)
@@ -139,6 +141,7 @@ dependencies {
     implementation(libs.play.services.auth)
     implementation(libs.play.services.mlkit.barcode.scanning)
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.android.libraries.places:places:3.3.0")
 
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)

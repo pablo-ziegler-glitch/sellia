@@ -58,6 +58,22 @@ class StorefrontRepositoryImpl @Inject constructor(
                 .document(DOC_STOREFRONT)
                 .set(payload, SetOptions.merge())
                 .await()
+
+            firestore.collection("public_tenant_directory")
+                .document(tenantId)
+                .set(buildMap {
+                    put("name", config.storeName.ifBlank { "" })
+                    put("storeType", config.storeType.raw)
+                    put("hasDelivery", config.hasDelivery)
+                    if (config.locationLat != null && config.locationLng != null) {
+                        put("lat", config.locationLat)
+                        put("lng", config.locationLng)
+                        put("address", config.locationAddress ?: "")
+                    }
+                    if (!config.locationCity.isNullOrBlank()) put("city", config.locationCity)
+                    if (!config.locationCountry.isNullOrBlank()) put("country", config.locationCountry)
+                }, SetOptions.merge())
+                .await()
             Unit
         }
     }

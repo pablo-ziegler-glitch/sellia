@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.BannerMessageLocal
 import com.example.selliaapp.data.remote.StorefrontConfig
+import com.example.selliaapp.data.remote.StoreType
 import com.example.selliaapp.repository.StorefrontRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -124,6 +125,23 @@ class StorefrontViewModel @Inject constructor(
             return
         }
         _uiState.update { it.copy(config = current.copy(bannerMessages = updated)) }
+    }
+
+
+    fun clearPhysicalLocation() {
+        updateConfig(_uiState.value.config.copy(
+            locationLat = null,
+            locationLng = null,
+            locationAddress = null
+        ))
+    }
+
+    fun updateStoreType(type: StoreType) {
+        updateConfig(_uiState.value.config.copy(storeType = type))
+    }
+
+    fun updateDelivery(hasDelivery: Boolean) {
+        updateConfig(_uiState.value.config.copy(hasDelivery = hasDelivery))
     }
 
     fun clearMessages() {
