@@ -61,6 +61,13 @@
                 Dashboard
               </a>
 
+              <div class="nav-section-label">Tienda</div>
+
+              <a href="#/store/sales" class="nav-item" data-route="#/store/sales">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                Punto de Venta
+              </a>
+
               <div class="nav-section-label">Configuración</div>
 
               <a href="#/settings/pricing" class="nav-item" data-route="#/settings/pricing">
@@ -301,6 +308,151 @@
                   </fieldset>
                 </section>
 
+                <!-- ── POS — Punto de Venta ── -->
+                <section id="posSalesPanel" class="module-panel pos-panel" hidden>
+
+                  <!-- Loading while checking feature flag -->
+                  <p id="posLoadingMessage" class="muted" style="padding:20px">Cargando módulo POS...</p>
+
+                  <!-- Feature flag disabled -->
+                  <div id="posDisabledMessage" class="state warning" hidden>
+                    <strong>El módulo POS no está habilitado para esta cuenta.</strong>
+                  </div>
+
+                  <!-- POS layout: search + cart -->
+                  <div id="posContent" class="pos-layout" hidden>
+
+                    <!-- LEFT: product search -->
+                    <div class="pos-left">
+                      <input
+                        id="posSearchInput"
+                        type="search"
+                        class="pos-search"
+                        placeholder="Buscar producto o código de barras..."
+                        autocomplete="off"
+                        inputmode="search"
+                      />
+                      <div id="posProductList" class="pos-product-list">
+                        <p class="pos-empty-hint">Escribí para buscar productos</p>
+                      </div>
+                    </div>
+
+                    <!-- RIGHT: cart -->
+                    <div class="pos-right" id="posRight">
+
+                      <!-- Mobile collapse handle -->
+                      <div class="pos-cart-handle" id="posCartHandle">
+                        <span class="pos-cart-handle-bar"></span>
+                        <span id="posCartSummary" class="pos-cart-summary">Carrito vacío</span>
+                      </div>
+
+                      <!-- Payment method pills -->
+                      <div class="pos-payment-methods">
+                        <button class="pos-pill active" data-method="LISTA" type="button">LISTA</button>
+                        <button class="pos-pill" data-method="EFECTIVO" type="button">EFECTIVO</button>
+                        <button class="pos-pill" data-method="TRANSFERENCIA" type="button">TRANSFERENCIA</button>
+                      </div>
+
+                      <!-- Customer search -->
+                      <div class="pos-customer-section">
+                        <div id="posCustomerSelected" class="pos-customer-selected" hidden>
+                          <span id="posCustomerName" class="pos-customer-name"></span>
+                          <span id="posCustomerBadge" class="pos-customer-badge" hidden></span>
+                          <button id="posClearCustomer" class="pos-remove-btn" type="button" title="Quitar cliente">×</button>
+                        </div>
+                        <div id="posCustomerSearchWrap" class="pos-customer-search-wrap">
+                          <input
+                            id="posCustomerInput"
+                            type="search"
+                            class="pos-customer-input"
+                            placeholder="Cliente (opcional)..."
+                            autocomplete="off"
+                          />
+                          <div id="posCustomerSuggestions" class="pos-customer-suggestions" hidden></div>
+                        </div>
+                      </div>
+
+                      <!-- Cart items -->
+                      <div id="posCartItems" class="pos-cart-items"></div>
+
+                      <!-- Totals -->
+                      <div class="pos-totals">
+                        <div class="pos-totals-row">
+                          <span>Subtotal</span>
+                          <span id="posSubtotal">$0,00</span>
+                        </div>
+                        <div class="pos-totals-row" id="posCustomerDiscountRow" hidden>
+                          <span id="posCustomerDiscountLabel">Desc. cliente</span>
+                          <span id="posCustomerDiscountAmount">−$0,00</span>
+                        </div>
+                        <div class="pos-totals-row" id="posDiscountRow" hidden>
+                          <span>Desc. manual</span>
+                          <span id="posDiscountAmount">−$0,00</span>
+                        </div>
+                        <div class="pos-totals-row" id="posSurchargeRow" hidden>
+                          <span id="posSurchargeLabel">Recargo</span>
+                          <span id="posSurchargeAmount">$0,00</span>
+                        </div>
+                        <div class="pos-totals-row pos-total-highlight">
+                          <span>TOTAL</span>
+                          <strong id="posTotal">$0,00</strong>
+                        </div>
+                      </div>
+
+                      <!-- Manual discount (collapsed by default) -->
+                      <details class="pos-manual-discount">
+                        <summary>Descuento manual</summary>
+                        <div class="pos-discount-field">
+                          <input
+                            id="posDiscountInput"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value="0"
+                            placeholder="0"
+                          />
+                          <span class="pos-discount-suffix">%</span>
+                        </div>
+                      </details>
+
+                      <!-- Recargo (collapsed by default) -->
+                      <details class="pos-manual-discount">
+                        <summary>Recargo</summary>
+                        <div class="pos-discount-field">
+                          <input
+                            id="posSurchargeInput"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value="0"
+                            placeholder="0"
+                          />
+                          <span class="pos-discount-suffix">%</span>
+                        </div>
+                      </details>
+
+                      <!-- Payment notes -->
+                      <input
+                        id="posPaymentNotes"
+                        type="text"
+                        class="pos-payment-notes"
+                        placeholder="Nota de pago (opcional)"
+                        maxlength="200"
+                        autocomplete="off"
+                      />
+
+                      <!-- Charge button -->
+                      <button id="posChargeBtn" class="pos-charge-btn" type="button" disabled>
+                        Cobrar
+                      </button>
+
+                    </div><!-- /.pos-right -->
+                  </div><!-- /.pos-layout -->
+
+                </section><!-- /#posSalesPanel -->
+
                 <section id="paymentsControlPanel" class="module-panel" hidden>
                   <h4>Control de contingencia Mercado Pago</h4>
                   <p class="muted">Permite apagar/encender MP a nivel global o tenant, con motivo obligatorio y auditoría.</p>
@@ -397,8 +549,34 @@
                 <p>Solicitá al owner del proyecto asignación correcta.</p>
               </section>
 
+            </div><!-- /.main-inner -->
+
+            <!-- POS confirmation modal (position:fixed, outside flow) -->
+            <div id="posModal" class="pos-modal" hidden role="dialog" aria-modal="true" aria-labelledby="posModalTitle">
+              <div class="pos-modal-backdrop" id="posModalOverlay"></div>
+              <div class="pos-modal-box">
+                <h3 id="posModalTitle">Confirmar venta</h3>
+                <div id="posModalItems" class="pos-modal-items"></div>
+                <div class="pos-modal-meta">
+                  <span class="muted">Método de pago</span>
+                  <strong id="posModalMethod">LISTA</strong>
+                </div>
+                <div class="pos-modal-total-row">
+                  <span>Total</span>
+                  <strong id="posModalTotal">$0,00</strong>
+                </div>
+                <p id="posModalError" class="error" hidden></p>
+                <div class="pos-modal-actions">
+                  <button id="posModalConfirmBtn" class="pos-charge-btn" type="button">Confirmar venta</button>
+                  <button id="posModalCancelBtn" class="pos-btn-secondary" type="button">Cancelar</button>
+                </div>
+              </div>
             </div>
-          </div>
+
+            <!-- POS toast notification -->
+            <div id="posToast" class="pos-toast" hidden></div>
+
+          </div><!-- /.main-content -->
 
         </div>
       </section>

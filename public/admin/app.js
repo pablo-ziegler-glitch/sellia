@@ -16,11 +16,14 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
   limit,
   onSnapshot,
   orderBy,
-  query
+  query,
+  startAt,
+  endAt
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { hasRouteAccess, isInternalRole, normalizeInternalRole, rolePermissions } from "./permissions.js";
@@ -111,7 +114,48 @@ const el = {
   removeStoreDomainButton: document.getElementById("removeStoreDomainButton"),
   storeDomainMessage: document.getElementById("storeDomainMessage"),
   syncProductsButton: document.getElementById("syncProductsButton"),
-  syncProductsMessage: document.getElementById("syncProductsMessage")
+  syncProductsMessage: document.getElementById("syncProductsMessage"),
+  // POS — Punto de Venta
+  posSalesPanel: document.getElementById("posSalesPanel"),
+  posLoadingMessage: document.getElementById("posLoadingMessage"),
+  posDisabledMessage: document.getElementById("posDisabledMessage"),
+  posContent: document.getElementById("posContent"),
+  posSearchInput: document.getElementById("posSearchInput"),
+  posProductList: document.getElementById("posProductList"),
+  posCustomerInput: document.getElementById("posCustomerInput"),
+  posCustomerSuggestions: document.getElementById("posCustomerSuggestions"),
+  posCustomerSelected: document.getElementById("posCustomerSelected"),
+  posCustomerName: document.getElementById("posCustomerName"),
+  posCustomerBadge: document.getElementById("posCustomerBadge"),
+  posCustomerSearchWrap: document.getElementById("posCustomerSearchWrap"),
+  posClearCustomer: document.getElementById("posClearCustomer"),
+  posCartItems: document.getElementById("posCartItems"),
+  posSubtotal: document.getElementById("posSubtotal"),
+  posCustomerDiscountRow: document.getElementById("posCustomerDiscountRow"),
+  posCustomerDiscountLabel: document.getElementById("posCustomerDiscountLabel"),
+  posCustomerDiscountAmount: document.getElementById("posCustomerDiscountAmount"),
+  posDiscountRow: document.getElementById("posDiscountRow"),
+  posDiscountAmount: document.getElementById("posDiscountAmount"),
+  posSurchargeRow: document.getElementById("posSurchargeRow"),
+  posSurchargeLabel: document.getElementById("posSurchargeLabel"),
+  posSurchargeAmount: document.getElementById("posSurchargeAmount"),
+  posTotal: document.getElementById("posTotal"),
+  posDiscountInput: document.getElementById("posDiscountInput"),
+  posSurchargeInput: document.getElementById("posSurchargeInput"),
+  posPaymentNotes: document.getElementById("posPaymentNotes"),
+  posChargeBtn: document.getElementById("posChargeBtn"),
+  posRight: document.getElementById("posRight"),
+  posCartHandle: document.getElementById("posCartHandle"),
+  posCartSummary: document.getElementById("posCartSummary"),
+  posModal: document.getElementById("posModal"),
+  posModalOverlay: document.getElementById("posModalOverlay"),
+  posModalItems: document.getElementById("posModalItems"),
+  posModalMethod: document.getElementById("posModalMethod"),
+  posModalTotal: document.getElementById("posModalTotal"),
+  posModalError: document.getElementById("posModalError"),
+  posModalConfirmBtn: document.getElementById("posModalConfirmBtn"),
+  posModalCancelBtn: document.getElementById("posModalCancelBtn"),
+  posToast: document.getElementById("posToast")
 };
 
 const routeViews = {
@@ -137,6 +181,10 @@ const routeViews = {
   "#/permissions": {
     title: "Mis permisos",
     description: "Permisos activos asignados a tu perfil."
+  },
+  "#/store/sales": {
+    title: "Punto de Venta",
+    description: "Registrá ventas con búsqueda de productos en tiempo real."
   }
 };
 
@@ -340,6 +388,10 @@ async function syncRouteWithPermissions() {
     stopMaintenanceTasksListener();
   }
 
+  if (currentRoute !== "#/store/sales") {
+    stopPosListener();
+  }
+
   if (currentRoute === "#/dashboard") {
     await loadDashboard();
   }
@@ -351,6 +403,9 @@ async function syncRouteWithPermissions() {
   }
   if (currentRoute === "#/settings/cloud-services") {
     await loadTenantOnboardingPolicy();
+  }
+  if (currentRoute === "#/store/sales") {
+    await initPosPanel();
   }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
@@ -767,6 +822,7 @@ function toggleModulePanels(currentRoute) {
   if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = currentRoute !== "#/settings/cloud-services";
   if (el.storeConfigPanel) el.storeConfigPanel.hidden = currentRoute !== "#/settings/store";
   if (el.permissionsPanel) el.permissionsPanel.hidden = currentRoute !== "#/permissions";
+  if (el.posSalesPanel) el.posSalesPanel.hidden = currentRoute !== "#/store/sales";
 }
 
 async function loadTenantOnboardingPolicy() {
@@ -1090,4 +1146,618 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+// ══════════════════════════════════════════════════════════════
+// POS — Punto de Venta
+// ══════════════════════════════════════════════════════════════
+
+const posState = {
+  products: [],
+  cart: [],
+  paymentMethod: "LISTA",
+  discountPercent: 0,
+  surchargePercent: 0,
+  customerId: null,
+  customerName: null,
+  customerDiscountPercent: 0,
+  paymentNotes: "",
+  lastAddedProductId: null,
+  productsUnsubscribe: null,
+};
+
+let posEventsWired = false;
+let posCustomerSearchTimer = null;
+
+function getPosStorageKey() {
+  return `sellia_pos_draft_${appState.profile?.tenantId || "unknown"}`;
+}
+
+function savePosCart() {
+  try {
+    localStorage.setItem(
+      getPosStorageKey(),
+      JSON.stringify({
+        cart: posState.cart,
+        paymentMethod: posState.paymentMethod,
+        discountPercent: posState.discountPercent,
+        surchargePercent: posState.surchargePercent,
+        customerId: posState.customerId,
+        customerName: posState.customerName,
+        customerDiscountPercent: posState.customerDiscountPercent,
+        paymentNotes: posState.paymentNotes,
+      })
+    );
+  } catch { /* silent */ }
+}
+
+function loadPosCart() {
+  try {
+    const raw = localStorage.getItem(getPosStorageKey());
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.cart)) posState.cart = data.cart;
+    if (["LISTA", "EFECTIVO", "TRANSFERENCIA"].includes(data.paymentMethod)) {
+      posState.paymentMethod = data.paymentMethod;
+    }
+    if (typeof data.discountPercent === "number") {
+      posState.discountPercent = Math.min(100, Math.max(0, data.discountPercent));
+    }
+    if (typeof data.surchargePercent === "number") {
+      posState.surchargePercent = Math.min(100, Math.max(0, data.surchargePercent));
+    }
+    if (data.customerId) posState.customerId = data.customerId;
+    if (data.customerName) posState.customerName = data.customerName;
+    if (typeof data.customerDiscountPercent === "number") {
+      posState.customerDiscountPercent = data.customerDiscountPercent;
+    }
+    if (typeof data.paymentNotes === "string") posState.paymentNotes = data.paymentNotes;
+  } catch { /* silent */ }
+}
+
+function clearPosCart() {
+  posState.cart = [];
+  posState.discountPercent = 0;
+  posState.surchargePercent = 0;
+  posState.customerId = null;
+  posState.customerName = null;
+  posState.customerDiscountPercent = 0;
+  posState.paymentNotes = "";
+  try { localStorage.removeItem(getPosStorageKey()); } catch { /* silent */ }
+}
+
+async function initPosPanel() {
+  if (!el.posSalesPanel || !appState.profile) return;
+
+  // Show loading while checking feature flag
+  if (el.posLoadingMessage) el.posLoadingMessage.hidden = false;
+  if (el.posDisabledMessage) el.posDisabledMessage.hidden = true;
+  if (el.posContent) el.posContent.hidden = true;
+
+  let posEnabled = true;
+  try {
+    const flagsRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "runtime_flags");
+    const snap = await getDoc(flagsRef);
+    if (snap.exists() && snap.data()?.["feature.pos"] === false) posEnabled = false;
+  } catch { /* assume enabled if unreachable */ }
+
+  if (el.posLoadingMessage) el.posLoadingMessage.hidden = true;
+
+  if (!posEnabled) {
+    if (el.posDisabledMessage) el.posDisabledMessage.hidden = false;
+    return;
+  }
+
+  if (el.posContent) el.posContent.hidden = false;
+
+  loadPosCart();
+  wirePosEvents();
+  startPosProductsListener();
+
+  // Sync UI to loaded state
+  document.querySelectorAll(".pos-pill[data-method]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.method === posState.paymentMethod);
+  });
+  if (el.posDiscountInput) el.posDiscountInput.value = posState.discountPercent;
+  if (el.posSurchargeInput) el.posSurchargeInput.value = posState.surchargePercent;
+  if (el.posPaymentNotes) el.posPaymentNotes.value = posState.paymentNotes;
+
+  // Restore customer if previously selected
+  if (posState.customerId && posState.customerName) {
+    renderPosCustomerSelected();
+  }
+
+  renderPosCart();
+  setTimeout(() => el.posSearchInput?.focus(), 60);
+}
+
+function stopPosListener() {
+  if (posState.productsUnsubscribe) {
+    posState.productsUnsubscribe();
+    posState.productsUnsubscribe = null;
+  }
+}
+
+function wirePosEvents() {
+  if (posEventsWired) return;
+  posEventsWired = true;
+
+  // Product search
+  el.posSearchInput?.addEventListener("input", () => {
+    renderPosProductList((el.posSearchInput.value || "").trim().toLowerCase());
+  });
+
+  // Payment method pills
+  document.querySelectorAll(".pos-pill[data-method]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      posState.paymentMethod = btn.dataset.method;
+      document.querySelectorAll(".pos-pill[data-method]").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
+      posState.cart = posState.cart.map((item) => ({
+        ...item,
+        unitPrice: posProductPrice(item, posState.paymentMethod),
+      }));
+      savePosCart();
+      renderPosCart();
+    });
+  });
+
+  // Manual discount input
+  el.posDiscountInput?.addEventListener("input", () => {
+    const val = parseFloat(el.posDiscountInput.value) || 0;
+    posState.discountPercent = Math.min(100, Math.max(0, val));
+    savePosCart();
+    renderPosTotals();
+  });
+
+  // Surcharge input
+  el.posSurchargeInput?.addEventListener("input", () => {
+    const val = parseFloat(el.posSurchargeInput.value) || 0;
+    posState.surchargePercent = Math.min(100, Math.max(0, val));
+    savePosCart();
+    renderPosTotals();
+  });
+
+  // Payment notes
+  el.posPaymentNotes?.addEventListener("input", () => {
+    posState.paymentNotes = el.posPaymentNotes.value;
+    savePosCart();
+  });
+
+  // Customer search — debounced
+  el.posCustomerInput?.addEventListener("input", () => {
+    clearTimeout(posCustomerSearchTimer);
+    const term = (el.posCustomerInput.value || "").trim();
+    if (!term) {
+      if (el.posCustomerSuggestions) el.posCustomerSuggestions.hidden = true;
+      return;
+    }
+    posCustomerSearchTimer = setTimeout(() => searchPosCustomers(term), 280);
+  });
+
+  // Close suggestions on outside click
+  document.addEventListener("click", (e) => {
+    if (
+      el.posCustomerSuggestions &&
+      !el.posCustomerSuggestions.contains(e.target) &&
+      e.target !== el.posCustomerInput
+    ) {
+      el.posCustomerSuggestions.hidden = true;
+    }
+  });
+
+  // Clear customer button
+  el.posClearCustomer?.addEventListener("click", clearPosCustomer);
+
+  // Charge button
+  el.posChargeBtn?.addEventListener("click", openPosModal);
+
+  // Modal
+  el.posModalOverlay?.addEventListener("click", closePosModal);
+  el.posModalCancelBtn?.addEventListener("click", closePosModal);
+  el.posModalConfirmBtn?.addEventListener("click", confirmPosSale);
+
+  // Mobile cart handle — click toggle + swipe gesture
+  el.posCartHandle?.addEventListener("click", () => {
+    el.posRight?.classList.toggle("cart-expanded");
+  });
+
+  initPosSwipeGesture();
+}
+
+function initPosSwipeGesture() {
+  const handle = el.posCartHandle;
+  const cartEl = el.posRight;
+  if (!handle || !cartEl) return;
+
+  let startY = 0;
+
+  handle.addEventListener("touchstart", (e) => {
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+
+  handle.addEventListener("touchend", (e) => {
+    const deltaY = e.changedTouches[0].clientY - startY;
+    if (Math.abs(deltaY) < 30) return; // ignore taps
+    if (deltaY < 0) {
+      cartEl.classList.add("cart-expanded");    // swipe up → expand
+    } else {
+      cartEl.classList.remove("cart-expanded"); // swipe down → collapse
+    }
+  }, { passive: true });
+}
+
+function posProductPrice(productOrItem, method) {
+  if (method === "EFECTIVO") return productOrItem.cashPrice ?? productOrItem.listPrice ?? 0;
+  if (method === "TRANSFERENCIA") return productOrItem.transferPrice ?? productOrItem.listPrice ?? 0;
+  return productOrItem.listPrice ?? 0;
+}
+
+function startPosProductsListener() {
+  if (posState.productsUnsubscribe || !appState.profile) return;
+  const ref = collection(appState.firestore, "tenants", appState.profile.tenantId, "products");
+  posState.productsUnsubscribe = onSnapshot(ref, (snapshot) => {
+    posState.products = snapshot.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((p) => p.stock == null || Number(p.stock) > 0); // exclude stock <= 0
+    renderPosProductList((el.posSearchInput?.value || "").trim().toLowerCase());
+  });
+}
+
+function renderPosProductList(searchQuery) {
+  if (!el.posProductList) return;
+
+  const filtered = searchQuery
+    ? posState.products.filter((p) => {
+        const name = (p.name || "").toLowerCase();
+        const code = (p.barcode || p.sku || p.code || "").toLowerCase();
+        return name.includes(searchQuery) || code.includes(searchQuery);
+      })
+    : posState.products;
+
+  if (!filtered.length) {
+    el.posProductList.innerHTML = `<p class="pos-empty-hint">${
+      searchQuery ? "Sin resultados para esa búsqueda" : "Escribí para buscar productos"
+    }</p>`;
+    return;
+  }
+
+  el.posProductList.innerHTML = filtered
+    .slice(0, 80)
+    .map(
+      (p) =>
+        `<div class="pos-product-card" data-product-id="${escapeHtml(p.id)}">
+          <span class="pos-product-name">${escapeHtml(p.name || p.id)}</span>
+          <span class="pos-product-price">${formatPosPrice(posProductPrice(p, posState.paymentMethod))}</span>
+        </div>`
+    )
+    .join("");
+
+  el.posProductList.querySelectorAll(".pos-product-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const product = posState.products.find((p) => p.id === card.dataset.productId);
+      if (product) addToPos(product);
+    });
+  });
+}
+
+function addToPos(product) {
+  const idx = posState.cart.findIndex((item) => item.productId === product.id);
+  if (idx >= 0) {
+    posState.cart[idx].quantity += 1;
+    posState.lastAddedProductId = null;
+  } else {
+    posState.lastAddedProductId = product.id;
+    posState.cart.push({
+      productId: product.id,
+      name: product.name || product.id,
+      quantity: 1,
+      unitPrice: posProductPrice(product, posState.paymentMethod),
+      listPrice: product.listPrice ?? 0,
+      cashPrice: product.cashPrice ?? product.listPrice ?? 0,
+      transferPrice: product.transferPrice ?? product.listPrice ?? 0,
+    });
+  }
+  savePosCart();
+  renderPosCart();
+  posState.lastAddedProductId = null;
+
+  if (el.posSearchInput) {
+    el.posSearchInput.value = "";
+    renderPosProductList("");
+    el.posSearchInput.focus();
+  }
+}
+
+// ── Customer search ──────────────────────────────────────────
+
+async function searchPosCustomers(term) {
+  if (!appState.profile || term.length < 2) return;
+  try {
+    const customersRef = collection(appState.firestore, "tenants", appState.profile.tenantId, "customers");
+    const qRef = query(
+      customersRef,
+      orderBy("name"),
+      startAt(term),
+      endAt(term + "\uf8ff"),
+      limit(8)
+    );
+    const snap = await getDocs(qRef);
+    renderPosCustomerSuggestions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  } catch {
+    renderPosCustomerSuggestions([]);
+  }
+}
+
+function renderPosCustomerSuggestions(customers) {
+  if (!el.posCustomerSuggestions) return;
+  if (!customers.length) {
+    el.posCustomerSuggestions.innerHTML = '<div class="pos-customer-suggestion-empty">Sin resultados</div>';
+    el.posCustomerSuggestions.hidden = false;
+    return;
+  }
+  el.posCustomerSuggestions.innerHTML = customers
+    .map(
+      (c) =>
+        `<div class="pos-customer-suggestion"
+              data-id="${escapeHtml(c.id)}"
+              data-name="${escapeHtml(c.name || "")}"
+              data-discount="${Number(c.discountPercent || 0)}">
+          <span class="pos-customer-suggestion-name">${escapeHtml(c.name || c.id)}</span>
+          ${c.discountPercent > 0 ? `<span class="pos-customer-badge">${c.discountPercent}% dto</span>` : ""}
+        </div>`
+    )
+    .join("");
+  el.posCustomerSuggestions.hidden = false;
+  el.posCustomerSuggestions.querySelectorAll(".pos-customer-suggestion").forEach((row) => {
+    row.addEventListener("click", () => {
+      selectPosCustomer({
+        id: row.dataset.id,
+        name: row.dataset.name,
+        discountPercent: parseFloat(row.dataset.discount) || 0,
+      });
+    });
+  });
+}
+
+function selectPosCustomer(customer) {
+  posState.customerId = customer.id;
+  posState.customerName = customer.name;
+  posState.customerDiscountPercent = customer.discountPercent;
+  if (el.posCustomerInput) el.posCustomerInput.value = "";
+  if (el.posCustomerSuggestions) el.posCustomerSuggestions.hidden = true;
+  renderPosCustomerSelected();
+  savePosCart();
+  renderPosTotals();
+}
+
+function renderPosCustomerSelected() {
+  if (el.posCustomerName) el.posCustomerName.textContent = posState.customerName || "";
+  if (el.posCustomerBadge) {
+    const pct = posState.customerDiscountPercent;
+    el.posCustomerBadge.textContent = pct > 0 ? `${pct}% dto` : "";
+    el.posCustomerBadge.hidden = pct === 0;
+  }
+  if (el.posCustomerSelected) el.posCustomerSelected.hidden = false;
+  if (el.posCustomerSearchWrap) el.posCustomerSearchWrap.hidden = true;
+}
+
+function clearPosCustomer() {
+  posState.customerId = null;
+  posState.customerName = null;
+  posState.customerDiscountPercent = 0;
+  if (el.posCustomerSelected) el.posCustomerSelected.hidden = true;
+  if (el.posCustomerSearchWrap) el.posCustomerSearchWrap.hidden = false;
+  savePosCart();
+  renderPosTotals();
+}
+
+// ── Cart rendering ───────────────────────────────────────────
+
+function renderPosCart() {
+  if (!el.posCartItems) return;
+
+  if (!posState.cart.length) {
+    el.posCartItems.innerHTML = '<p class="pos-cart-empty">Sin productos en el carrito</p>';
+    if (el.posChargeBtn) el.posChargeBtn.disabled = true;
+    if (el.posCartSummary) el.posCartSummary.textContent = "Carrito vacío";
+    renderPosTotals();
+    return;
+  }
+
+  el.posCartItems.innerHTML = posState.cart
+    .map(
+      (item, idx) =>
+        `<div class="pos-cart-item${item.productId === posState.lastAddedProductId ? " pos-entering" : ""}" data-idx="${idx}">
+          <div class="pos-cart-item-info">
+            <span class="pos-cart-item-name">${escapeHtml(item.name)}</span>
+            <span class="pos-cart-item-line">${formatPosPrice(item.unitPrice * item.quantity)}</span>
+          </div>
+          <div class="pos-cart-item-controls">
+            <button class="pos-qty-btn" data-action="dec" data-idx="${idx}" type="button">−</button>
+            <span class="pos-qty-val">${item.quantity}</span>
+            <button class="pos-qty-btn" data-action="inc" data-idx="${idx}" type="button">+</button>
+            <span class="pos-cart-unit-price">${formatPosPrice(item.unitPrice)} c/u</span>
+            <button class="pos-remove-btn" data-idx="${idx}" type="button" title="Quitar">×</button>
+          </div>
+        </div>`
+    )
+    .join("");
+
+  el.posCartItems.querySelectorAll("[data-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      if (btn.dataset.action === "inc") {
+        posState.cart[idx].quantity += 1;
+      } else {
+        posState.cart[idx].quantity -= 1;
+        if (posState.cart[idx].quantity <= 0) posState.cart.splice(idx, 1);
+      }
+      savePosCart();
+      renderPosCart();
+    });
+  });
+
+  el.posCartItems.querySelectorAll(".pos-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      posState.cart.splice(idx, 1);
+      savePosCart();
+      renderPosCart();
+    });
+  });
+
+  const itemCount = posState.cart.reduce((s, i) => s + i.quantity, 0);
+  if (el.posCartSummary) {
+    const { total } = calcPosTotals();
+    el.posCartSummary.textContent = `${itemCount} producto${itemCount !== 1 ? "s" : ""} · ${formatPosPrice(total)}`;
+  }
+
+  if (el.posChargeBtn) el.posChargeBtn.disabled = false;
+  renderPosTotals();
+}
+
+// ── Totals calculation ────────────────────────────────────────
+
+function calcPosTotals() {
+  const subtotal = posState.cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+  const customerDiscountAmount = subtotal * (posState.customerDiscountPercent / 100);
+  const manualDiscountAmount = subtotal * (posState.discountPercent / 100);
+  const discountTotal = customerDiscountAmount + manualDiscountAmount;
+  const surchargeAmount = (subtotal - discountTotal) * (posState.surchargePercent / 100);
+  const total = subtotal - discountTotal + surchargeAmount;
+  return { subtotal, customerDiscountAmount, manualDiscountAmount, discountTotal, surchargeAmount, total };
+}
+
+function renderPosTotals() {
+  const { subtotal, customerDiscountAmount, manualDiscountAmount, surchargeAmount, total } = calcPosTotals();
+
+  if (el.posSubtotal) el.posSubtotal.textContent = formatPosPrice(subtotal);
+  if (el.posTotal) el.posTotal.textContent = formatPosPrice(total);
+
+  if (el.posCustomerDiscountRow) el.posCustomerDiscountRow.hidden = customerDiscountAmount === 0;
+  if (el.posCustomerDiscountLabel && posState.customerDiscountPercent > 0) {
+    el.posCustomerDiscountLabel.textContent = `Desc. cliente (${posState.customerDiscountPercent}%)`;
+  }
+  if (el.posCustomerDiscountAmount) {
+    el.posCustomerDiscountAmount.textContent = `−${formatPosPrice(customerDiscountAmount)}`;
+  }
+
+  if (el.posDiscountRow) el.posDiscountRow.hidden = manualDiscountAmount === 0;
+  if (el.posDiscountAmount) el.posDiscountAmount.textContent = `−${formatPosPrice(manualDiscountAmount)}`;
+
+  if (el.posSurchargeRow) el.posSurchargeRow.hidden = surchargeAmount === 0;
+  if (el.posSurchargeLabel && posState.surchargePercent > 0) {
+    el.posSurchargeLabel.textContent = `Recargo (${posState.surchargePercent}%)`;
+  }
+  if (el.posSurchargeAmount) el.posSurchargeAmount.textContent = formatPosPrice(surchargeAmount);
+}
+
+function formatPosPrice(value) {
+  return `$${Number(value || 0).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+// ── Modal ─────────────────────────────────────────────────────
+
+function openPosModal() {
+  if (!posState.cart.length || !el.posModal) return;
+  const { total } = calcPosTotals();
+
+  if (el.posModalItems) {
+    el.posModalItems.innerHTML = posState.cart
+      .map(
+        (item) =>
+          `<div class="pos-modal-item">
+            <span>${escapeHtml(item.name)} × ${item.quantity}</span>
+            <span>${formatPosPrice(item.unitPrice * item.quantity)}</span>
+          </div>`
+      )
+      .join("");
+  }
+
+  if (el.posModalMethod) el.posModalMethod.textContent = posState.paymentMethod;
+  if (el.posModalTotal) el.posModalTotal.textContent = formatPosPrice(total);
+  if (el.posModalError) {
+    el.posModalError.hidden = true;
+    el.posModalError.textContent = "";
+  }
+
+  el.posModal.hidden = false;
+  setTimeout(() => el.posModalConfirmBtn?.focus(), 50);
+}
+
+function closePosModal() {
+  if (!el.posModal) return;
+  el.posModal.hidden = true;
+  setTimeout(() => el.posSearchInput?.focus(), 50);
+}
+
+async function confirmPosSale() {
+  if (!appState.profile || !posState.cart.length) return;
+
+  const { subtotal, customerDiscountAmount, manualDiscountAmount, discountTotal, surchargeAmount, total } = calcPosTotals();
+
+  const draft = {
+    items: posState.cart.map((item) => ({
+      productId: item.productId,
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    })),
+    subtotal,
+    taxes: 0,
+    total,
+    customerDiscountPercent: posState.customerDiscountPercent,
+    customerDiscountAmount,
+    discountPercent: posState.discountPercent,
+    discountAmount: manualDiscountAmount,
+    surchargePercent: posState.surchargePercent,
+    surchargeAmount,
+    paymentMethod: posState.paymentMethod,
+    paymentNotes: posState.paymentNotes,
+    customerId: posState.customerId,
+    customerName: posState.customerName,
+    tenantId: appState.profile.tenantId,
+  };
+
+  if (el.posModalConfirmBtn) el.posModalConfirmBtn.disabled = true;
+  if (el.posModalError) el.posModalError.hidden = true;
+
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "confirmInvoice");
+    const response = await callable(draft);
+    const invoiceNumber = response?.data?.invoiceNumber || response?.data?.id || "";
+
+    clearPosCart();
+    if (el.posDiscountInput) el.posDiscountInput.value = "0";
+    if (el.posSurchargeInput) el.posSurchargeInput.value = "0";
+    if (el.posPaymentNotes) el.posPaymentNotes.value = "";
+
+    // Reset customer UI
+    if (el.posCustomerSelected) el.posCustomerSelected.hidden = true;
+    if (el.posCustomerSearchWrap) el.posCustomerSearchWrap.hidden = false;
+    if (el.posCustomerInput) el.posCustomerInput.value = "";
+
+    closePosModal();
+    renderPosCart();
+    showPosToast(`Venta registrada${invoiceNumber ? ` — #${invoiceNumber}` : ""}`);
+  } catch (error) {
+    if (el.posModalError) {
+      el.posModalError.textContent = parseAuthError(error);
+      el.posModalError.hidden = false;
+    }
+  } finally {
+    if (el.posModalConfirmBtn) el.posModalConfirmBtn.disabled = false;
+  }
+}
+
+function showPosToast(message) {
+  if (!el.posToast) return;
+  el.posToast.textContent = message;
+  el.posToast.hidden = false;
+  setTimeout(() => { if (el.posToast) el.posToast.hidden = true; }, 3000);
 }
