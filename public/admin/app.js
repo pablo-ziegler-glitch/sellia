@@ -111,7 +111,34 @@ const el = {
   removeStoreDomainButton: document.getElementById("removeStoreDomainButton"),
   storeDomainMessage: document.getElementById("storeDomainMessage"),
   syncProductsButton: document.getElementById("syncProductsButton"),
-  syncProductsMessage: document.getElementById("syncProductsMessage")
+  syncProductsMessage: document.getElementById("syncProductsMessage"),
+  // POS — Punto de Venta
+  posSalesPanel: document.getElementById("posSalesPanel"),
+  posDisabledMessage: document.getElementById("posDisabledMessage"),
+  posContent: document.getElementById("posContent"),
+  posSearchInput: document.getElementById("posSearchInput"),
+  posProductList: document.getElementById("posProductList"),
+  posCartItems: document.getElementById("posCartItems"),
+  posSubtotal: document.getElementById("posSubtotal"),
+  posDiscountRow: document.getElementById("posDiscountRow"),
+  posDiscountAmount: document.getElementById("posDiscountAmount"),
+  posSurchargeRow: document.getElementById("posSurchargeRow"),
+  posSurchargeAmount: document.getElementById("posSurchargeAmount"),
+  posTotal: document.getElementById("posTotal"),
+  posDiscountInput: document.getElementById("posDiscountInput"),
+  posChargeBtn: document.getElementById("posChargeBtn"),
+  posRight: document.getElementById("posRight"),
+  posCartHandle: document.getElementById("posCartHandle"),
+  posCartSummary: document.getElementById("posCartSummary"),
+  posModal: document.getElementById("posModal"),
+  posModalOverlay: document.getElementById("posModalOverlay"),
+  posModalItems: document.getElementById("posModalItems"),
+  posModalMethod: document.getElementById("posModalMethod"),
+  posModalTotal: document.getElementById("posModalTotal"),
+  posModalError: document.getElementById("posModalError"),
+  posModalConfirmBtn: document.getElementById("posModalConfirmBtn"),
+  posModalCancelBtn: document.getElementById("posModalCancelBtn"),
+  posToast: document.getElementById("posToast")
 };
 
 const routeViews = {
@@ -137,6 +164,10 @@ const routeViews = {
   "#/permissions": {
     title: "Mis permisos",
     description: "Permisos activos asignados a tu perfil."
+  },
+  "#/store/sales": {
+    title: "Punto de Venta",
+    description: "Registrá ventas con búsqueda de productos en tiempo real."
   }
 };
 
@@ -340,6 +371,10 @@ async function syncRouteWithPermissions() {
     stopMaintenanceTasksListener();
   }
 
+  if (currentRoute !== "#/store/sales") {
+    stopPosListener();
+  }
+
   if (currentRoute === "#/dashboard") {
     await loadDashboard();
   }
@@ -351,6 +386,9 @@ async function syncRouteWithPermissions() {
   }
   if (currentRoute === "#/settings/cloud-services") {
     await loadTenantOnboardingPolicy();
+  }
+  if (currentRoute === "#/store/sales") {
+    await initPosPanel();
   }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
@@ -767,6 +805,7 @@ function toggleModulePanels(currentRoute) {
   if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = currentRoute !== "#/settings/cloud-services";
   if (el.storeConfigPanel) el.storeConfigPanel.hidden = currentRoute !== "#/settings/store";
   if (el.permissionsPanel) el.permissionsPanel.hidden = currentRoute !== "#/permissions";
+  if (el.posSalesPanel) el.posSalesPanel.hidden = currentRoute !== "#/store/sales";
 }
 
 async function loadTenantOnboardingPolicy() {
@@ -1090,4 +1129,413 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+// ══════════════════════════════════════════════════════════════
+// POS — Punto de Venta
+// ══════════════════════════════════════════════════════════════
+
+const posState = {
+  products: [],
+  cart: [],
+  paymentMethod: "LISTA",
+  discountPercent: 0,
+  lastAddedProductId: null,
+  productsUnsubscribe: null,
+};
+
+let posEventsWired = false;
+
+function getPosStorageKey() {
+  return `sellia_pos_draft_${appState.profile?.tenantId || "unknown"}`;
+}
+
+function savePosCart() {
+  try {
+    localStorage.setItem(
+      getPosStorageKey(),
+      JSON.stringify({
+        cart: posState.cart,
+        paymentMethod: posState.paymentMethod,
+        discountPercent: posState.discountPercent,
+      })
+    );
+  } catch { /* silent */ }
+}
+
+function loadPosCart() {
+  try {
+    const raw = localStorage.getItem(getPosStorageKey());
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.cart)) posState.cart = data.cart;
+    if (["LISTA", "EFECTIVO", "TRANSFERENCIA"].includes(data.paymentMethod)) {
+      posState.paymentMethod = data.paymentMethod;
+    }
+    if (typeof data.discountPercent === "number") {
+      posState.discountPercent = Math.min(100, Math.max(0, data.discountPercent));
+    }
+  } catch { /* silent */ }
+}
+
+function clearPosCart() {
+  posState.cart = [];
+  posState.discountPercent = 0;
+  try { localStorage.removeItem(getPosStorageKey()); } catch { /* silent */ }
+}
+
+async function initPosPanel() {
+  if (!el.posSalesPanel || !appState.profile) return;
+
+  // Check feature.pos flag from runtime_flags
+  let posEnabled = true;
+  try {
+    const flagsRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "runtime_flags");
+    const snap = await getDoc(flagsRef);
+    if (snap.exists() && snap.data()?.["feature.pos"] === false) posEnabled = false;
+  } catch { /* assume enabled if unreachable */ }
+
+  if (!posEnabled) {
+    if (el.posDisabledMessage) el.posDisabledMessage.hidden = false;
+    if (el.posContent) el.posContent.hidden = true;
+    return;
+  }
+
+  if (el.posDisabledMessage) el.posDisabledMessage.hidden = true;
+  if (el.posContent) el.posContent.hidden = false;
+
+  loadPosCart();
+  wirePosEvents();
+  startPosProductsListener();
+
+  // Sync payment method pills to current state
+  document.querySelectorAll(".pos-pill[data-method]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.method === posState.paymentMethod);
+  });
+
+  // Sync discount input
+  if (el.posDiscountInput) el.posDiscountInput.value = posState.discountPercent;
+
+  renderPosCart();
+
+  // Autofocus search
+  setTimeout(() => el.posSearchInput?.focus(), 60);
+}
+
+function stopPosListener() {
+  if (posState.productsUnsubscribe) {
+    posState.productsUnsubscribe();
+    posState.productsUnsubscribe = null;
+  }
+}
+
+function wirePosEvents() {
+  if (posEventsWired) return;
+  posEventsWired = true;
+
+  // Product search
+  el.posSearchInput?.addEventListener("input", () => {
+    renderPosProductList((el.posSearchInput.value || "").trim().toLowerCase());
+  });
+
+  // Payment method pills
+  document.querySelectorAll(".pos-pill[data-method]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      posState.paymentMethod = btn.dataset.method;
+      document.querySelectorAll(".pos-pill[data-method]").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
+      // Recalculate unit prices in cart for new payment method
+      posState.cart = posState.cart.map((item) => ({
+        ...item,
+        unitPrice: posProductPrice(item, posState.paymentMethod),
+      }));
+      savePosCart();
+      renderPosCart();
+    });
+  });
+
+  // Discount input
+  el.posDiscountInput?.addEventListener("input", () => {
+    const val = parseFloat(el.posDiscountInput.value) || 0;
+    posState.discountPercent = Math.min(100, Math.max(0, val));
+    savePosCart();
+    renderPosTotals();
+  });
+
+  // Charge button
+  el.posChargeBtn?.addEventListener("click", openPosModal);
+
+  // Modal close on backdrop or cancel
+  el.posModalOverlay?.addEventListener("click", closePosModal);
+  el.posModalCancelBtn?.addEventListener("click", closePosModal);
+
+  // Modal confirm
+  el.posModalConfirmBtn?.addEventListener("click", confirmPosSale);
+
+  // Mobile cart toggle handle
+  el.posCartHandle?.addEventListener("click", () => {
+    el.posRight?.classList.toggle("cart-expanded");
+  });
+}
+
+function posProductPrice(productOrItem, method) {
+  if (method === "EFECTIVO") return productOrItem.cashPrice ?? productOrItem.listPrice ?? 0;
+  if (method === "TRANSFERENCIA") return productOrItem.transferPrice ?? productOrItem.listPrice ?? 0;
+  return productOrItem.listPrice ?? 0;
+}
+
+function startPosProductsListener() {
+  if (posState.productsUnsubscribe || !appState.profile) return;
+  const ref = collection(appState.firestore, "tenants", appState.profile.tenantId, "products");
+  posState.productsUnsubscribe = onSnapshot(ref, (snapshot) => {
+    posState.products = snapshot.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((p) => !Number.isFinite(p.stock) || p.stock > 0);
+    renderPosProductList((el.posSearchInput?.value || "").trim().toLowerCase());
+  });
+}
+
+function renderPosProductList(searchQuery) {
+  if (!el.posProductList) return;
+
+  const filtered = searchQuery
+    ? posState.products.filter((p) => {
+        const name = (p.name || "").toLowerCase();
+        const code = (p.barcode || p.sku || p.code || "").toLowerCase();
+        return name.includes(searchQuery) || code.includes(searchQuery);
+      })
+    : posState.products;
+
+  if (!filtered.length) {
+    el.posProductList.innerHTML = `<p class="pos-empty-hint">${
+      searchQuery ? "Sin resultados para esa búsqueda" : "Escribí para buscar productos"
+    }</p>`;
+    return;
+  }
+
+  el.posProductList.innerHTML = filtered
+    .slice(0, 80)
+    .map(
+      (p) =>
+        `<div class="pos-product-card" data-product-id="${escapeHtml(p.id)}">
+          <span class="pos-product-name">${escapeHtml(p.name || p.id)}</span>
+          <span class="pos-product-price">${formatPosPrice(posProductPrice(p, posState.paymentMethod))}</span>
+        </div>`
+    )
+    .join("");
+
+  el.posProductList.querySelectorAll(".pos-product-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const product = posState.products.find((p) => p.id === card.dataset.productId);
+      if (product) addToPos(product);
+    });
+  });
+}
+
+function addToPos(product) {
+  const idx = posState.cart.findIndex((item) => item.productId === product.id);
+  if (idx >= 0) {
+    posState.cart[idx].quantity += 1;
+    posState.lastAddedProductId = null;
+  } else {
+    posState.lastAddedProductId = product.id;
+    posState.cart.push({
+      productId: product.id,
+      name: product.name || product.id,
+      quantity: 1,
+      unitPrice: posProductPrice(product, posState.paymentMethod),
+      listPrice: product.listPrice ?? 0,
+      cashPrice: product.cashPrice ?? product.listPrice ?? 0,
+      transferPrice: product.transferPrice ?? product.listPrice ?? 0,
+    });
+  }
+  savePosCart();
+  renderPosCart();
+  posState.lastAddedProductId = null;
+
+  // Clear search and return focus for next scan
+  if (el.posSearchInput) {
+    el.posSearchInput.value = "";
+    renderPosProductList("");
+    el.posSearchInput.focus();
+  }
+}
+
+function renderPosCart() {
+  if (!el.posCartItems) return;
+
+  if (!posState.cart.length) {
+    el.posCartItems.innerHTML = '<p class="pos-cart-empty">Sin productos en el carrito</p>';
+    if (el.posChargeBtn) el.posChargeBtn.disabled = true;
+    if (el.posCartSummary) el.posCartSummary.textContent = "Carrito vacío";
+    renderPosTotals();
+    return;
+  }
+
+  el.posCartItems.innerHTML = posState.cart
+    .map(
+      (item, idx) =>
+        `<div class="pos-cart-item${item.productId === posState.lastAddedProductId ? " pos-entering" : ""}" data-idx="${idx}">
+          <div class="pos-cart-item-info">
+            <span class="pos-cart-item-name">${escapeHtml(item.name)}</span>
+            <span class="pos-cart-item-line">${formatPosPrice(item.unitPrice * item.quantity)}</span>
+          </div>
+          <div class="pos-cart-item-controls">
+            <button class="pos-qty-btn" data-action="dec" data-idx="${idx}" type="button">−</button>
+            <span class="pos-qty-val">${item.quantity}</span>
+            <button class="pos-qty-btn" data-action="inc" data-idx="${idx}" type="button">+</button>
+            <span class="pos-cart-unit-price">${formatPosPrice(item.unitPrice)} c/u</span>
+            <button class="pos-remove-btn" data-idx="${idx}" type="button" title="Quitar">×</button>
+          </div>
+        </div>`
+    )
+    .join("");
+
+  el.posCartItems.querySelectorAll("[data-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      if (btn.dataset.action === "inc") {
+        posState.cart[idx].quantity += 1;
+      } else {
+        posState.cart[idx].quantity -= 1;
+        if (posState.cart[idx].quantity <= 0) posState.cart.splice(idx, 1);
+      }
+      savePosCart();
+      renderPosCart();
+    });
+  });
+
+  el.posCartItems.querySelectorAll(".pos-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      posState.cart.splice(idx, 1);
+      savePosCart();
+      renderPosCart();
+    });
+  });
+
+  const itemCount = posState.cart.reduce((s, i) => s + i.quantity, 0);
+  if (el.posCartSummary) {
+    const { total } = calcPosTotals();
+    el.posCartSummary.textContent = `${itemCount} producto${itemCount !== 1 ? "s" : ""} · ${formatPosPrice(total)}`;
+  }
+
+  if (el.posChargeBtn) el.posChargeBtn.disabled = false;
+  renderPosTotals();
+}
+
+function calcPosTotals() {
+  const subtotal = posState.cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+  const discountAmount = subtotal * (posState.discountPercent / 100);
+  const surchargeAmount = 0;
+  const total = subtotal - discountAmount + surchargeAmount;
+  return { subtotal, discountAmount, surchargeAmount, total };
+}
+
+function renderPosTotals() {
+  const { subtotal, discountAmount, surchargeAmount, total } = calcPosTotals();
+  if (el.posSubtotal) el.posSubtotal.textContent = formatPosPrice(subtotal);
+  if (el.posTotal) el.posTotal.textContent = formatPosPrice(total);
+  if (el.posDiscountRow) el.posDiscountRow.hidden = discountAmount === 0;
+  if (el.posDiscountAmount) el.posDiscountAmount.textContent = `−${formatPosPrice(discountAmount)}`;
+  if (el.posSurchargeRow) el.posSurchargeRow.hidden = surchargeAmount === 0;
+  if (el.posSurchargeAmount) el.posSurchargeAmount.textContent = formatPosPrice(surchargeAmount);
+}
+
+function formatPosPrice(value) {
+  return `$${Number(value || 0).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function openPosModal() {
+  if (!posState.cart.length || !el.posModal) return;
+  const { total } = calcPosTotals();
+
+  if (el.posModalItems) {
+    el.posModalItems.innerHTML = posState.cart
+      .map(
+        (item) =>
+          `<div class="pos-modal-item">
+            <span>${escapeHtml(item.name)} × ${item.quantity}</span>
+            <span>${formatPosPrice(item.unitPrice * item.quantity)}</span>
+          </div>`
+      )
+      .join("");
+  }
+
+  if (el.posModalMethod) el.posModalMethod.textContent = posState.paymentMethod;
+  if (el.posModalTotal) el.posModalTotal.textContent = formatPosPrice(total);
+  if (el.posModalError) {
+    el.posModalError.hidden = true;
+    el.posModalError.textContent = "";
+  }
+
+  el.posModal.hidden = false;
+  setTimeout(() => el.posModalConfirmBtn?.focus(), 50);
+}
+
+function closePosModal() {
+  if (!el.posModal) return;
+  el.posModal.hidden = true;
+  setTimeout(() => el.posSearchInput?.focus(), 50);
+}
+
+async function confirmPosSale() {
+  if (!appState.profile || !posState.cart.length) return;
+
+  const { subtotal, discountAmount, surchargeAmount, total } = calcPosTotals();
+
+  const draft = {
+    items: posState.cart.map((item) => ({
+      productId: item.productId,
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    })),
+    subtotal,
+    taxes: 0,
+    total,
+    discountPercent: posState.discountPercent,
+    discountAmount,
+    surchargePercent: 0,
+    surchargeAmount,
+    paymentMethod: posState.paymentMethod,
+    paymentNotes: "",
+    customerId: null,
+    customerName: null,
+    tenantId: appState.profile.tenantId,
+  };
+
+  if (el.posModalConfirmBtn) el.posModalConfirmBtn.disabled = true;
+  if (el.posModalError) el.posModalError.hidden = true;
+
+  try {
+    const callable = httpsCallable(appState.cloudFunctions, "confirmInvoice");
+    const response = await callable(draft);
+    const invoiceNumber = response?.data?.invoiceNumber || response?.data?.id || "";
+
+    clearPosCart();
+    if (el.posDiscountInput) el.posDiscountInput.value = "0";
+
+    closePosModal();
+    renderPosCart();
+    showPosToast(`Venta registrada${invoiceNumber ? ` — #${invoiceNumber}` : ""}`);
+  } catch (error) {
+    if (el.posModalError) {
+      el.posModalError.textContent = parseAuthError(error);
+      el.posModalError.hidden = false;
+    }
+  } finally {
+    if (el.posModalConfirmBtn) el.posModalConfirmBtn.disabled = false;
+  }
+}
+
+function showPosToast(message) {
+  if (!el.posToast) return;
+  el.posToast.textContent = message;
+  el.posToast.hidden = false;
+  setTimeout(() => { if (el.posToast) el.posToast.hidden = true; }, 3000);
 }
