@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { listStores, getPublicProducts, getPublicProduct, getStorefront } from "@/lib/catalog";
 import { formatPrice } from "@/lib/format";
 import type { Metadata } from "next";
+import AddToCartButton from "../../AddToCartButton";
 
 export const revalidate = 300;
 
@@ -138,13 +139,24 @@ export default async function ProductPage({ params }: Props) {
             </div>
           )}
 
+          {/* Add to cart */}
+          {product.listPrice != null && (
+            <div className="mt-6">
+              <AddToCartButton
+                productId={product.id}
+                name={product.name}
+                price={product.listPrice}
+              />
+            </div>
+          )}
+
           {/* Contact CTA */}
           {storefront?.contactWhatsapp && (
             <a
               href={`https://wa.me/${storefront.contactWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola, me interesa: ${product.name}`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-6 inline-flex items-center justify-center w-full bg-green-600 text-white font-medium rounded-lg px-6 py-3 hover:bg-green-700 transition-colors"
+              className="mt-3 inline-flex items-center justify-center w-full bg-green-600 text-white font-medium rounded-lg px-6 py-3 hover:bg-green-700 transition-colors"
             >
               Consultar por WhatsApp
             </a>
