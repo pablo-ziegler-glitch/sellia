@@ -686,3 +686,65 @@ code {
   font-size: 0.875rem;
   color: var(--muted);
 }
+
+/* ── Filter tabs (pedidos) ── */
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.filter-tab {
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.filter-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Order status badges ── */
+.status-pending {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.status-confirmed {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.status-rejected {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.78rem;
+  font-weight: 600;
+}

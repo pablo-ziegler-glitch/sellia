@@ -61,6 +61,13 @@
                 Dashboard
               </a>
 
+              <div class="nav-section-label">Tienda</div>
+
+              <a href="#/store/orders" class="nav-item" data-route="#/store/orders">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                Pedidos
+              </a>
+
               <div class="nav-section-label">Configuración</div>
 
               <a href="#/settings/pricing" class="nav-item" data-route="#/settings/pricing">
@@ -299,6 +306,43 @@
                     <button id="syncProductsButton" type="button">Sincronizar productos ahora</button>
                     <p id="syncProductsMessage" class="banner"></p>
                   </fieldset>
+                </section>
+
+                <section id="ordersPanel" class="module-panel" hidden>
+                  <h4>Pedidos de clientes</h4>
+                  <p class="muted">Pedidos recibidos desde la tienda online. Confirmá o rechazá cada pedido.</p>
+
+                  <div id="ordersFilterTabs" class="filter-tabs">
+                    <button class="filter-tab active" data-status="pending_review">Pendientes</button>
+                    <button class="filter-tab" data-status="confirmed">Confirmados</button>
+                    <button class="filter-tab" data-status="dispatched">Despachados</button>
+                    <button class="filter-tab" data-status="rejected">Rechazados</button>
+                    <button class="filter-tab" data-status="all">Todos</button>
+                  </div>
+
+                  <p id="ordersLoading" class="muted" hidden>Cargando pedidos...</p>
+                  <p id="ordersFeedback" class="banner"></p>
+
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Cliente</th>
+                          <th>Contacto</th>
+                          <th>Productos</th>
+                          <th>Total</th>
+                          <th>Pago</th>
+                          <th>Notas</th>
+                          <th>Estado</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="ordersBody">
+                        <tr><td colspan="9">Sin pedidos.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </section>
 
                 <section id="paymentsControlPanel" class="module-panel" hidden>

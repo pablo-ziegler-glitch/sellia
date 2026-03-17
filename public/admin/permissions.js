@@ -192,6 +192,7 @@ export const ROUTE_POLICIES = Object.freeze({
   // Gestión de tienda (owner)
   "#/store/stock":              MODULE_ROLE_POLICIES.stock,
   "#/store/sales":              MODULE_ROLE_POLICIES.sales,
+  "#/store/orders":             MODULE_ROLE_POLICIES.sales,
   "#/store/customers":          MODULE_ROLE_POLICIES.customers,
   "#/store/suppliers":          MODULE_ROLE_POLICIES.suppliers,
   "#/store/config":             MODULE_ROLE_POLICIES.storeConfig,
@@ -245,6 +246,7 @@ export const STORE_FEATURE_FLAGS = Object.freeze({
 export const ADMIN_STORE_DATA_RESTRICTED_ROUTES = new Set([
   "#/store/stock",
   "#/store/sales",
+  "#/store/orders",
   "#/store/customers",
   "#/store/suppliers",
   "#/store/backups",

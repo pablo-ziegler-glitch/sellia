@@ -20,7 +20,9 @@ import {
   limit,
   onSnapshot,
   orderBy,
-  query
+  query,
+  serverTimestamp,
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { hasRouteAccess, isInternalRole, normalizeInternalRole, rolePermissions } from "./permissions.js";
@@ -111,7 +113,12 @@ const el = {
   removeStoreDomainButton: document.getElementById("removeStoreDomainButton"),
   storeDomainMessage: document.getElementById("storeDomainMessage"),
   syncProductsButton: document.getElementById("syncProductsButton"),
-  syncProductsMessage: document.getElementById("syncProductsMessage")
+  syncProductsMessage: document.getElementById("syncProductsMessage"),
+  ordersPanel: document.getElementById("ordersPanel"),
+  ordersBody: document.getElementById("ordersBody"),
+  ordersFeedback: document.getElementById("ordersFeedback"),
+  ordersLoading: document.getElementById("ordersLoading"),
+  ordersFilterTabs: document.getElementById("ordersFilterTabs")
 };
 
 const routeViews = {
@@ -137,6 +144,10 @@ const routeViews = {
   "#/permissions": {
     title: "Mis permisos",
     description: "Permisos activos asignados a tu perfil."
+  },
+  "#/store/orders": {
+    title: "Pedidos",
+    description: "Pedidos recibidos desde la tienda online."
   }
 };
 
@@ -156,7 +167,10 @@ const appState = {
   paymentsFlagsUnsubscribe: null,
   paymentsAuditUnsubscribe: null,
   maintenanceTasksUnsubscribe: null,
-  maintenanceTasks: []
+  maintenanceTasks: [],
+  ordersUnsubscribe: null,
+  ordersDocs: [],
+  ordersActiveFilter: "pending_review"
 };
 
 bootstrap();
@@ -248,6 +262,8 @@ function wireEvents() {
   el.maintenanceCreateForm?.addEventListener("submit", onCreateMaintenanceTask);
   window.addEventListener("hashchange", syncRouteWithPermissions);
   el.maintenanceBody?.addEventListener("click", onMaintenanceActions);
+  el.ordersFilterTabs?.addEventListener("click", onOrdersFilterChange);
+  el.ordersBody?.addEventListener("click", onOrderAction);
 
   ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) => {
     window.addEventListener(eventName, resetInactivityTimer, { passive: true });
@@ -339,6 +355,9 @@ async function syncRouteWithPermissions() {
   if (currentRoute !== "#/maintenance") {
     stopMaintenanceTasksListener();
   }
+  if (currentRoute !== "#/store/orders") {
+    stopOrdersListener();
+  }
 
   if (currentRoute === "#/dashboard") {
     await loadDashboard();
@@ -351,6 +370,9 @@ async function syncRouteWithPermissions() {
   }
   if (currentRoute === "#/settings/cloud-services") {
     await loadTenantOnboardingPolicy();
+  }
+  if (currentRoute === "#/store/orders") {
+    startOrdersListener();
   }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
@@ -459,7 +481,9 @@ function clearSessionState() {
   appState.profile = null;
   appState.sessionMaxMs = DEFAULT_SESSION_MAX_MS; // resetear al default
   appState.maintenanceTasks = [];
+  appState.ordersDocs = [];
   stopMaintenanceTasksListener();
+  stopOrdersListener();
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
   stopPaymentsListeners();
@@ -767,6 +791,7 @@ function toggleModulePanels(currentRoute) {
   if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = currentRoute !== "#/settings/cloud-services";
   if (el.storeConfigPanel) el.storeConfigPanel.hidden = currentRoute !== "#/settings/store";
   if (el.permissionsPanel) el.permissionsPanel.hidden = currentRoute !== "#/permissions";
+  if (el.ordersPanel) el.ordersPanel.hidden = currentRoute !== "#/store/orders";
 }
 
 async function loadTenantOnboardingPolicy() {
@@ -1090,4 +1115,147 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+// ---------------------------------------------------------------------------
+// Pedidos web (orders desde la tienda pública)
+// ---------------------------------------------------------------------------
+
+function startOrdersListener() {
+  if (appState.ordersUnsubscribe || !appState.profile) return;
+  if (el.ordersLoading) el.ordersLoading.hidden = false;
+
+  const q = query(
+    collection(appState.firestore, "tenants", appState.profile.tenantId, "orders"),
+    orderBy("createdAt", "desc"),
+    limit(50)
+  );
+
+  appState.ordersUnsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      if (el.ordersLoading) el.ordersLoading.hidden = true;
+      appState.ordersDocs = snapshot.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }));
+      renderOrders();
+    },
+    (error) => {
+      if (el.ordersLoading) el.ordersLoading.hidden = true;
+      setOrdersFeedback(`No se pudieron cargar los pedidos: ${error.message || error}`);
+    }
+  );
+}
+
+function stopOrdersListener() {
+  if (typeof appState.ordersUnsubscribe === "function") appState.ordersUnsubscribe();
+  appState.ordersUnsubscribe = null;
+  appState.ordersDocs = [];
+}
+
+function renderOrders() {
+  if (!el.ordersBody) return;
+  const filter = appState.ordersActiveFilter;
+  const docs = filter === "all"
+    ? appState.ordersDocs
+    : appState.ordersDocs.filter((o) => o.status === filter);
+
+  if (!docs.length) {
+    const label = filter === "all" ? "No hay pedidos todavía." : "No hay pedidos en este estado.";
+    el.ordersBody.innerHTML = `<tr><td colspan="9">${label}</td></tr>`;
+    return;
+  }
+
+  el.ordersBody.innerHTML = docs.map((order) => {
+    const createdAtMs = order.createdAt?.toMillis?.() || null;
+    const createdAt = createdAtMs ? new Date(createdAtMs).toLocaleString("es-AR") : "-";
+    const customerName = escapeHtml(order.customer?.name || "-");
+    const customerPhone = escapeHtml(order.customer?.phone || "-");
+    const whatsappLink = order.customer?.phone
+      ? `<a href="https://wa.me/${String(order.customer.phone).replace(/\D/g, "")}" target="_blank" rel="noopener noreferrer">${customerPhone}</a>`
+      : "-";
+
+    const itemCount = Array.isArray(order.items) ? order.items.length : 0;
+    const itemSummary = Array.isArray(order.items)
+      ? escapeHtml(order.items.slice(0, 2).map((i) => `${i.name} x${i.quantity}`).join(", ") + (order.items.length > 2 ? ` +${order.items.length - 2} más` : ""))
+      : "-";
+    const total = Number.isFinite(order.totalAmount)
+      ? new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(order.totalAmount)
+      : "-";
+
+    const paymentLabels = { efectivo: "Efectivo", transferencia: "Transferencia", mercado_pago: "MercadoPago" };
+    const paymentMethod = paymentLabels[order.paymentMethod] || escapeHtml(order.paymentMethod || "-");
+
+    const notes = order.notes ? escapeHtml(order.notes) : "-";
+
+    const statusLabels = { pending_review: "Pendiente", confirmed: "Confirmado", rejected: "Rechazado", dispatched: "Despachado" };
+    const statusLabel = statusLabels[order.status] || escapeHtml(order.status || "-");
+    const statusClass = order.status === "pending_review" ? "status-pending" : order.status === "confirmed" ? "status-confirmed" : order.status === "rejected" ? "status-rejected" : "";
+
+    let actions = "-";
+    if (order.status === "pending_review") {
+      actions = `
+        <button class="secondary" data-action="confirm" data-order-id="${order.id}">Confirmar</button>
+        <button class="secondary" data-action="reject" data-order-id="${order.id}">Rechazar</button>`;
+    } else if (order.status === "confirmed") {
+      actions = `<button class="secondary" data-action="dispatch" data-order-id="${order.id}">Despachar</button>`;
+    }
+
+    return `<tr>
+      <td style="white-space:nowrap">${createdAt}</td>
+      <td>${customerName}</td>
+      <td>${whatsappLink}</td>
+      <td title="${escapeHtml(order.items?.map((i) => `${i.name} x${i.quantity}`).join(", ") || "")}">${itemCount} producto${itemCount !== 1 ? "s" : ""}<br><span class="muted" style="font-size:.75em">${itemSummary}</span></td>
+      <td style="white-space:nowrap">${total}</td>
+      <td>${paymentMethod}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(order.notes || "")}">${notes}</td>
+      <td><span class="${statusClass}">${statusLabel}</span></td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  }).join("");
+}
+
+async function onOrderAction(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button || !appState.profile) return;
+  const action = button.dataset.action;
+  const orderId = button.dataset.orderId;
+  if (!orderId) return;
+
+  const canManage = ["owner", "manager"].includes(appState.profile.role);
+  if (!canManage) {
+    setOrdersFeedback("Solo owner o manager pueden actualizar pedidos.");
+    return;
+  }
+
+  const statusMap = { confirm: "confirmed", reject: "rejected", dispatch: "dispatched" };
+  const newStatus = statusMap[action];
+  if (!newStatus) return;
+
+  try {
+    button.disabled = true;
+    setOrdersFeedback("");
+    const orderRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "orders", orderId);
+    await updateDoc(orderRef, {
+      status: newStatus,
+      updatedAt: serverTimestamp(),
+      [`${action}At`]: serverTimestamp(),
+      [`${action}By`]: appState.currentUser.uid
+    });
+  } catch (error) {
+    setOrdersFeedback(`No se pudo actualizar el pedido: ${parseAuthError(error)}`);
+    button.disabled = false;
+  }
+}
+
+function onOrdersFilterChange(event) {
+  const button = event.target.closest("button[data-status]");
+  if (!button) return;
+  appState.ordersActiveFilter = button.dataset.status;
+  el.ordersFilterTabs.querySelectorAll(".filter-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.status === appState.ordersActiveFilter);
+  });
+  renderOrders();
+}
+
+function setOrdersFeedback(message) {
+  if (el.ordersFeedback) el.ordersFeedback.textContent = message || "";
 }
