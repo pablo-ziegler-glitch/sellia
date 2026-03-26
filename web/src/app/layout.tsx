@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import Link from "next/link";
+import NavLink from "./NavLink";
 import "./globals.css";
 
 const geist = Geist({
@@ -8,8 +10,11 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Sellia - Catálogo Público",
-  description: "Explorá productos de tiendas en Sellia",
+  title: "VALKIRJA - Tienda",
+  description: "Descubrí nuestra colección. Calidad y estilo en cada producto.",
+  openGraph: {
+    siteName: "VALKIRJA",
+  },
 };
 
 export default function RootLayout({
@@ -19,18 +24,48 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${geist.variable} font-sans antialiased bg-gray-50 text-gray-900`}>
-        <header className="bg-white border-b border-gray-200">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-            <a href="/" className="text-xl font-bold text-blue-600">
-              Sellia
-            </a>
-            <nav className="text-sm text-gray-500">Catálogo Público</nav>
+      <body
+        className={`${geist.variable} font-sans antialiased`}
+        style={{ background: "var(--background)", color: "var(--foreground)" }}
+      >
+        <header
+          style={{
+            background: "var(--surface)",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <Link
+              href="/"
+              className="text-xl font-bold tracking-[0.2em] uppercase"
+              style={{ color: "var(--gold)" }}
+            >
+              VALKIRJA
+            </Link>
+            <nav className="flex items-center gap-6">
+              <NavLink href="/catalogo">Catálogo</NavLink>
+            </nav>
           </div>
         </header>
-        <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
-        <footer className="border-t border-gray-200 mt-12 py-6 text-center text-sm text-gray-400">
-          Sellia &copy; {new Date().getFullYear()}
+
+        <main>{children}</main>
+
+        <footer
+          style={{
+            borderTop: "1px solid var(--border)",
+            background: "var(--surface)",
+          }}
+          className="mt-20 py-8"
+        >
+          <div className="max-w-6xl mx-auto px-4 text-center text-sm" style={{ color: "var(--muted)" }}>
+            <p
+              className="text-base font-bold tracking-widest mb-2"
+              style={{ color: "var(--gold)" }}
+            >
+              VALKIRJA
+            </p>
+            <p>&copy; {new Date().getFullYear()} — Todos los derechos reservados</p>
+          </div>
         </footer>
       </body>
     </html>

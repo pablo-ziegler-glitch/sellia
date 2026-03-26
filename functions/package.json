@@ -22,7 +22,9 @@
     "admin:diagnose": "node scripts/admin-integrity-helpers.js",
     "admin:health-check": "node scripts/admin-integrity-helpers.js --health-check",
     "check:permissions-drift": "node scripts/check-role-permissions-drift.js",
-    "test:security:bo": "vitest run test/backofficeSecurity.integration.test.ts"
+    "test:security:bo": "vitest run test/backofficeSecurity.integration.test.ts",
+    "catalog:backfill:dry": "node scripts/backfill-valkirja-catalog.js --dry-run",
+    "catalog:backfill:apply": "node scripts/backfill-valkirja-catalog.js --apply"
   },
   "dependencies": {
     "axios": "^1.6.7",
