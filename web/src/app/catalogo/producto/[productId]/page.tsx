@@ -15,7 +15,7 @@ export const revalidate = 300;
 
 export async function generateStaticParams() {
   const products = await getPublicProducts(VALKIRJA_TENANT_ID);
-  return products.map((p) => ({ productId: String(p.id) }));
+  return products.map((p) => ({ productId: p.id }));
 }
 
 type Props = { params: Promise<{ productId: string }> };

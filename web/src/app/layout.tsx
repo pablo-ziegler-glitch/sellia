@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import Link from "next/link";
+import NavLink from "./NavLink";
 import "./globals.css";
 
 const geist = Geist({
@@ -41,22 +42,8 @@ export default function RootLayout({
             >
               VALKIRJA
             </Link>
-            <nav className="flex items-center gap-6 text-sm">
-              <Link
-                href="/catalogo"
-                className="transition-colors"
-                style={{ color: "var(--muted)" }}
-                onMouseEnter={(e) =>
-                  ((e.currentTarget as HTMLAnchorElement).style.color =
-                    "var(--gold)")
-                }
-                onMouseLeave={(e) =>
-                  ((e.currentTarget as HTMLAnchorElement).style.color =
-                    "var(--muted)")
-                }
-              >
-                Catálogo
-              </Link>
+            <nav className="flex items-center gap-6">
+              <NavLink href="/catalogo">Catálogo</NavLink>
             </nav>
           </div>
         </header>
