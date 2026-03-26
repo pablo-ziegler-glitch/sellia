@@ -132,24 +132,8 @@ class InvoiceRepositoryImpl @Inject constructor(
                 touchedProducts += item.productId
             }
 
-            // Registrar movimiento de caja si el pago es en efectivo y hay sesión abierta
-            val resolvedPaymentMethod = draft.paymentMethod.ifBlank { "EFECTIVO" }
-            if (resolvedPaymentMethod.uppercase() == "EFECTIVO") {
-                val openSession = db.cashSessionDao().getOpenSession()
-                if (openSession != null) {
-                    db.cashMovementDao().insert(
-                        CashMovementEntity(
-                            id = UUID.randomUUID().toString(),
-                            sessionId = openSession.id,
-                            type = CashMovementType.SALE_CASH,
-                            amount = draft.total,
-                            note = "Venta",
-                            createdAt = Instant.ofEpochMilli(now),
-                            referenceId = invId.toString()
-                        )
-                    )
-                }
-            }
+            // Nota: el movimiento de caja SALE_CASH es registrado por el ViewModel
+            // llamante (SellViewModel.placeOrder) para evitar doble registro.
 
             persistedInvoice = baseInvoice.copy(id = invId)
             syncOutboxDao.upsert(
@@ -360,6 +344,24 @@ class InvoiceRepositoryImpl @Inject constructor(
                     )
                 )
                 touchedProducts += item.productId
+            }
+
+            // Revertir el movimiento de caja si la factura era pagada en efectivo
+            if (relation.invoice.paymentMethod.uppercase() == "EFECTIVO") {
+                val openSession = db.cashSessionDao().getOpenSession()
+                if (openSession != null) {
+                    db.cashMovementDao().insert(
+                        CashMovementEntity(
+                            id = UUID.randomUUID().toString(),
+                            sessionId = openSession.id,
+                            type = CashMovementType.SALE_CASH,
+                            amount = -relation.invoice.total,
+                            note = "Anulación: $cleanReason",
+                            createdAt = Instant.ofEpochMilli(now),
+                            referenceId = id.toString()
+                        )
+                    )
+                }
             }
 
             syncOutboxDao.upsert(
