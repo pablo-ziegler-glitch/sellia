@@ -17,7 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,7 +47,9 @@ fun ProductQuickDetailDialog(
     onDismiss: () -> Unit,
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
-    onPrintQr: (() -> Unit)? = null
+    onPrintQr: (() -> Unit)? = null,
+    onAdjustStock: (() -> Unit)? = null,
+    onViewMovements: (() -> Unit)? = null
 ) {
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
     val images: List<Any> = product.imageUrls.takeIf { it.isNotEmpty() }
@@ -158,7 +162,37 @@ fun ProductQuickDetailDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (onAdjustStock != null) {
+                        TextButton(onClick = { onDismiss(); onAdjustStock() }) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text("Ajustar")
+                        }
+                    }
+                    if (onViewMovements != null) {
+                        TextButton(onClick = { onDismiss(); onViewMovements() }) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text("Historial")
+                        }
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Cerrar") }
+            }
         }
     )
 }

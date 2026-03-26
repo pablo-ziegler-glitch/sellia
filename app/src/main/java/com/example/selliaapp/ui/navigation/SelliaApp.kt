@@ -611,13 +611,19 @@ fun SelliaApp(
                     vm = vm,
                     onAddProduct = { navController.navigate(Routes.AddProduct.route) },
                     onScan = { navController.navigate(Routes.ScannerForStock.route) },
-                    onImportCsv = { navController.navigate(Routes.Stock_import.route) }, // <-- ÚNICO callback para importar CSV
+                    onImportCsv = { navController.navigate(Routes.Stock_import.route) },
                     onPhotoIntake = { navController.navigate(Routes.StockPhotoIntake.route) },
                     onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
                     onEditProduct = { product ->
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
                     },
                     onOpenQrLabels = { navController.navigate(Routes.ProductQr.route) },
+                    onAdjustStock = { product ->
+                        navController.navigate(Routes.QuickAdjustStock.withProduct(product.id))
+                    },
+                    onViewMovements = {
+                        navController.navigate(Routes.StockMovements.route)
+                    },
                     onProductClick = { product ->
                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
                     },
