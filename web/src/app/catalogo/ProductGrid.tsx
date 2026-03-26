@@ -10,11 +10,10 @@ import { formatPrice } from "@/lib/format";
 const PAGE_SIZE = 24;
 
 interface Props {
-  tenantId: string;
   products: PublicProduct[];
 }
 
-export default function ProductGrid({ tenantId, products }: Props) {
+export default function ProductGrid({ products }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -22,7 +21,6 @@ export default function ProductGrid({ tenantId, products }: Props) {
   const activeCategory = searchParams.get("categoria") ?? "all";
   const [page, setPage] = useState(1);
 
-  // Reset page when category changes
   useEffect(() => {
     setPage(1);
   }, [activeCategory]);
@@ -58,14 +56,19 @@ export default function ProductGrid({ tenantId, products }: Props) {
   return (
     <div>
       {categories.length > 1 && (
-        <div className="flex flex-wrap gap-2 mb-5">
+        <div className="flex flex-wrap gap-2 mb-6">
           <button
             onClick={() => selectCategory("all")}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className="px-4 py-1.5 rounded-full text-xs font-medium tracking-wide uppercase transition-all"
+            style={
               activeCategory === "all"
-                ? "bg-blue-600 text-white"
-                : "bg-white border border-gray-200 text-gray-600 hover:border-blue-400"
-            }`}
+                ? { background: "var(--gold)", color: "#0a0a0a" }
+                : {
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                    border: "1px solid var(--border)",
+                  }
+            }
           >
             Todos ({products.length})
           </button>
@@ -75,11 +78,16 @@ export default function ProductGrid({ tenantId, products }: Props) {
               <button
                 key={cat}
                 onClick={() => selectCategory(cat)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                className="px-4 py-1.5 rounded-full text-xs font-medium tracking-wide uppercase transition-all"
+                style={
                   activeCategory === cat
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-blue-400"
-                }`}
+                    ? { background: "var(--gold)", color: "#0a0a0a" }
+                    : {
+                        background: "var(--surface-2)",
+                        color: "var(--muted)",
+                        border: "1px solid var(--border)",
+                      }
+                }
               >
                 {cat} ({count})
               </button>
@@ -89,49 +97,70 @@ export default function ProductGrid({ tenantId, products }: Props) {
       )}
 
       {visible.length === 0 ? (
-        <p className="text-gray-400">No hay productos en esta categoría.</p>
+        <p style={{ color: "var(--muted)" }}>
+          No hay productos en esta categoría.
+        </p>
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {visible.map((product) => (
               <Link
                 key={product.id}
-                href={`/tienda/${tenantId}/producto/${product.id}`}
-                className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                href={`/catalogo/producto/${product.id}`}
+                className="group rounded-xl overflow-hidden transition-all"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                }}
               >
                 {product.imageUrl ? (
-                  <div className="relative w-full aspect-square">
+                  <div className="relative w-full aspect-square overflow-hidden">
                     <Image
                       src={product.imageUrl}
                       alt={product.name}
                       fill
-                      className="object-cover"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                     />
                   </div>
                 ) : (
-                  <div className="w-full aspect-square bg-gray-100 flex items-center justify-center text-gray-300">
+                  <div
+                    className="w-full aspect-square flex items-center justify-center text-xs"
+                    style={{
+                      background: "var(--surface-2)",
+                      color: "var(--muted)",
+                    }}
+                  >
                     Sin imagen
                   </div>
                 )}
                 <div className="p-3">
-                  <h3 className="text-sm font-medium line-clamp-2">
+                  <h3
+                    className="text-sm font-medium line-clamp-2"
+                    style={{ color: "var(--foreground)" }}
+                  >
                     {product.name}
                   </h3>
                   {product.category && (
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p
+                      className="text-xs mt-0.5"
+                      style={{ color: "var(--muted)" }}
+                    >
                       {product.category}
                     </p>
                   )}
                   <div className="mt-2">
                     {product.listPrice != null && (
-                      <p className="text-base font-bold text-blue-600">
+                      <p
+                        className="text-base font-bold"
+                        style={{ color: "var(--gold)" }}
+                      >
                         {formatPrice(product.listPrice)}
                       </p>
                     )}
                     {product.cashPrice != null &&
                       product.cashPrice !== product.listPrice && (
-                        <p className="text-xs text-green-600">
+                        <p className="text-xs" style={{ color: "#4ade80" }}>
                           Efectivo: {formatPrice(product.cashPrice)}
                         </p>
                       )}
@@ -142,10 +171,15 @@ export default function ProductGrid({ tenantId, products }: Props) {
           </div>
 
           {hasMore && (
-            <div className="mt-8 text-center">
+            <div className="mt-10 text-center">
               <button
                 onClick={() => setPage((p) => p + 1)}
-                className="px-6 py-2.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                className="px-8 py-3 rounded text-sm font-medium tracking-widest uppercase transition-all border"
+                style={{
+                  borderColor: "var(--gold)",
+                  color: "var(--gold)",
+                  background: "transparent",
+                }}
               >
                 Ver más ({filtered.length - visible.length} restantes)
               </button>

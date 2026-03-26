@@ -20,7 +20,6 @@ export default function ShareButton({ url, title, text }: Props) {
       }
       return;
     }
-    // Fallback: copy to clipboard
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -33,7 +32,12 @@ export default function ShareButton({ url, title, text }: Props) {
   return (
     <button
       onClick={handleShare}
-      className="inline-flex items-center justify-center w-full border border-gray-300 text-gray-700 font-medium rounded-lg px-6 py-3 hover:border-blue-400 hover:text-blue-600 transition-colors"
+      className="inline-flex items-center justify-center w-full rounded py-3 px-6 text-sm font-medium transition-all border"
+      style={{
+        borderColor: "var(--border)",
+        color: "var(--muted)",
+        background: "transparent",
+      }}
     >
       {copied ? "¡Enlace copiado!" : "Compartir"}
     </button>

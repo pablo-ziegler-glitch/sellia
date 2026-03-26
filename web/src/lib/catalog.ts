@@ -1,5 +1,9 @@
 import { getDb } from "./firebase-admin";
 
+/** Único tenant de la tienda VALKIRJA. Configurable vía variable de entorno. */
+export const VALKIRJA_TENANT_ID =
+  process.env.VALKIRJA_TENANT_ID || "valkirja";
+
 export interface TenantSummary {
   id: string;
   name: string;
