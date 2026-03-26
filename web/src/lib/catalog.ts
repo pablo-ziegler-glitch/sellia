@@ -47,6 +47,33 @@ export interface PublicProduct {
   description: string | null;
 }
 
+export interface CatalogConfig {
+  showPrices: boolean;
+  showCashPrice: boolean;
+  heroTitle: string;
+  heroSubtitle: string;
+  footerText: string;
+}
+
+/** Get catalog display config for a tenant. Returns safe defaults if not configured. */
+export async function getCatalogConfig(tenantId: string): Promise<CatalogConfig> {
+  const db = getDb();
+  const doc = await db
+    .collection("tenants")
+    .doc(tenantId)
+    .collection("config")
+    .doc("public_catalog")
+    .get();
+  const raw = (doc.data()?.data as Record<string, unknown> | undefined) ?? {};
+  return {
+    showPrices: raw.showPrices !== false,
+    showCashPrice: raw.showCashPrice !== false,
+    heroTitle: (raw.heroTitle as string) || "",
+    heroSubtitle: (raw.heroSubtitle as string) || "",
+    footerText: (raw.footerText as string) || "",
+  };
+}
+
 /** List all stores in the public directory. */
 export async function listStores(): Promise<TenantSummary[]> {
   const db = getDb();
@@ -155,7 +182,7 @@ export async function getStorefront(
   };
 }
 
-/** Get all published products for a tenant. */
+/** Get all published products for a tenant, ordered by name. */
 export async function getPublicProducts(
   tenantId: string
 ): Promise<PublicProduct[]> {
@@ -164,6 +191,7 @@ export async function getPublicProducts(
     .collection("tenants")
     .doc(tenantId)
     .collection("public_products")
+    .orderBy("name")
     .get();
   return snap.docs.map((doc) => {
     const d = doc.data();
