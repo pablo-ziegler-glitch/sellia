@@ -9,6 +9,8 @@ import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.local.entity.ProductEntity
+import com.example.selliaapp.data.local.entity.CashMovementEntity
+import com.example.selliaapp.data.local.entity.CashMovementType
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.data.local.entity.SyncEntityType
@@ -130,6 +132,25 @@ class InvoiceRepositoryImpl @Inject constructor(
                 touchedProducts += item.productId
             }
 
+            // Registrar movimiento de caja si el pago es en efectivo y hay sesión abierta
+            val resolvedPaymentMethod = draft.paymentMethod.ifBlank { "EFECTIVO" }
+            if (resolvedPaymentMethod.uppercase() == "EFECTIVO") {
+                val openSession = db.cashSessionDao().getOpenSession()
+                if (openSession != null) {
+                    db.cashMovementDao().insert(
+                        CashMovementEntity(
+                            id = UUID.randomUUID().toString(),
+                            sessionId = openSession.id,
+                            type = CashMovementType.SALE_CASH,
+                            amount = draft.total,
+                            note = "Venta",
+                            createdAt = Instant.ofEpochMilli(now),
+                            referenceId = invId.toString()
+                        )
+                    )
+                }
+            }
+
             persistedInvoice = baseInvoice.copy(id = invId)
             syncOutboxDao.upsert(
                 SyncOutboxEntity(
@@ -220,6 +241,24 @@ class InvoiceRepositoryImpl @Inject constructor(
                         )
                     )
                 touchedProducts += item.productId
+            }
+
+            // Registrar movimiento de caja si el pago es en efectivo y hay sesión abierta
+            if (invoice.paymentMethod.uppercase() == "EFECTIVO") {
+                val openSession = db.cashSessionDao().getOpenSession()
+                if (openSession != null) {
+                    db.cashMovementDao().insert(
+                        CashMovementEntity(
+                            id = UUID.randomUUID().toString(),
+                            sessionId = openSession.id,
+                            type = CashMovementType.SALE_CASH,
+                            amount = invoice.total,
+                            note = "Venta",
+                            createdAt = Instant.ofEpochMilli(now),
+                            referenceId = invId.toString()
+                        )
+                    )
+                }
             }
 
             persistedInvoice = invoice.copy(id = invId)
@@ -634,7 +673,8 @@ class InvoiceRepositoryImpl @Inject constructor(
                  saleCount = row.saleCount,
                  totalRevenue = row.totalRevenue,
                  totalPurchaseCost = row.totalPurchaseCost,
-                 totalGrossProfit = if (row.totalPurchaseCost != null) row.totalRevenue - row.totalPurchaseCost else null,
+                 totalGrossProfit = if (row.totalGrossAmount != null && row.totalPurchaseCost != null)
+                     row.totalGrossAmount - row.totalPurchaseCost else null,
                  totalNetGain = row.totalNetGain
              )
          }

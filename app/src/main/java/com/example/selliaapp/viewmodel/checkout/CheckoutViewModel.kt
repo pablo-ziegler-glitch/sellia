@@ -242,6 +242,8 @@ class CheckoutViewModel @Inject constructor(
     fun confirmSale(
         customerId: Long? = null,
         customerName: String? = null,
+        paymentMethod: String = "EFECTIVO",
+        paymentNotes: String? = null,
         onSuccess: (invoiceId: Long, invoiceNumber: String) -> Unit = { _, _ -> },
         onError: (Throwable) -> Unit = {}
     ) {
@@ -256,7 +258,9 @@ class CheckoutViewModel @Inject constructor(
                     taxes = state.taxes,
                     total = state.total,
                     customerId = customerId,
-                    customerName = customerName
+                    customerName = customerName,
+                    paymentMethod = paymentMethod,
+                    paymentNotes = paymentNotes
                 )
 
                 val result = invoiceRepository.confirmInvoice(draft)
