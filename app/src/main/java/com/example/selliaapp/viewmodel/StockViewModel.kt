@@ -6,20 +6,54 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ImportResult
+import com.example.selliaapp.data.model.stock.StockMovementReasons
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.ProductRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+/** Filtros de stock disponibles en la pantalla principal de inventario. */
+enum class StockFilter { ALL, LOW_STOCK, OUT_OF_STOCK }
 
 @HiltViewModel
 class StockViewModel @Inject constructor(
     private val repo: IProductRepository
 ) : ViewModel() {
+
+    // ====== Persistencia de filtros ======
+
+    private val _stockFilter = MutableStateFlow(StockFilter.ALL)
+    val stockFilter: StateFlow<StockFilter> = _stockFilter.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    fun setStockFilter(filter: StockFilter) { _stockFilter.value = filter }
+    fun setSearchQuery(q: String) { _searchQuery.value = q }
+
+    // ====== Ajuste rápido desde swipe ======
+
+    /**
+     * Suma o resta [delta] unidades al producto con [productId].
+     * Registra el movimiento como MANUAL_ADJUST.
+     * No permite bajar de 0.
+     */
+    fun quickAdjust(productId: Int, delta: Int) {
+        viewModelScope.launch {
+            repo.adjustStock(
+                productId = productId,
+                delta = delta,
+                reason = StockMovementReasons.MANUAL_ADJUST
+            )
+        }
+    }
 
     // ====== Listados / Búsquedas ======
 

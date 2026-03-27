@@ -7,26 +7,33 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -37,6 +44,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -61,12 +69,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.data.local.entity.ProductEntity
@@ -75,26 +87,29 @@ import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.ui.components.BackTopAppBar
 import com.example.selliaapp.ui.components.ProductQuickDetailDialog
 import com.example.selliaapp.viewmodel.ProductViewModel
+import com.example.selliaapp.viewmodel.StockFilter
+import com.example.selliaapp.viewmodel.StockViewModel
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * Pantalla de Stock:
  * - Franja superior con buscador.
  * - Debajo, listado de productos.
- * - FAB redondo “+” con speed-dial (Importar archivo / Escanear / Agregar).
+ * - FAB redondo "+" con speed-dial (Importar archivo / Escanear / Agregar).
  *
- * [NUEVO] Mejores UX:
- *   - Snackbar para mensajes de importación.
- *   - Indicador lineal de progreso durante importación.
- *   - rememberSaveable en estados claves.
+ * Mejoras:
+ *   1. Filtros persistidos en StockViewModel (sobreviven navegación).
+ *   2. Color progresivo de stock: verde (ok), amarillo (bajo), rojo (crítico).
+ *   3. Swipe +1 / -1 en cada ítem sin abrir QuickStockAdjustScreen.
  */
-private enum class StockFilter { ALL, LOW_STOCK, OUT_OF_STOCK }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StockScreen(
     vm: ProductViewModel = hiltViewModel(),
+    stockVm: StockViewModel = hiltViewModel(),
     onAddProduct: () -> Unit,
     onScan: () -> Unit,
     onImportCsv: () -> Unit,
@@ -109,23 +124,15 @@ fun StockScreen(
 ) {
     val products by vm.products.collectAsState(initial = emptyList())
 
-    /* [ANTERIOR]
-    var query by remember { mutableStateOf("") }
-    */
-    var query by rememberSaveable { mutableStateOf("") } // [NUEVO] preserva al rotar
-    var stockFilter by rememberSaveable { mutableStateOf(StockFilter.ALL) }
+    // [MEJORA 1] query y filtro viven en el ViewModel → sobreviven a la navegación
+    val query by stockVm.searchQuery.collectAsState()
+    val stockFilter by stockVm.stockFilter.collectAsState()
 
     val context = LocalContext.current
 
-    // Estado de UI para feedback
-    /* [ANTERIOR]
-    var isImporting by remember { mutableStateOf(false) }
-    var importMessage by remember { mutableStateOf<String?>(null) }
-    var lastFileName by remember { mutableStateOf<String?>(null) }
-    */
-    var isImporting by rememberSaveable { mutableStateOf(false) }        // [NUEVO]
-    var importMessage by rememberSaveable { mutableStateOf<String?>(null) } // [NUEVO]
-    var lastFileName by rememberSaveable { mutableStateOf<String?>(null) }   // [NUEVO]
+    var isImporting by rememberSaveable { mutableStateOf(false) }
+    var importMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var importErrorSummary by remember { mutableStateOf<String?>(null) }
     var importErrorDetails by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectionModeEnabled by rememberSaveable { mutableStateOf(false) }
@@ -137,40 +144,31 @@ fun StockScreen(
     var deleteBackupConfirmationInput by rememberSaveable { mutableStateOf("") }
     var pendingDeleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
-    // Snackbar host para mostrar mensajes del import
-    val snackbarHostState = remember { SnackbarHostState() } // [NUEVO]
-    LaunchedEffect(importMessage) { // [NUEVO]
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(importMessage) {
         importMessage?.let { msg ->
             snackbarHostState.showSnackbar(message = msg)
         }
     }
 
-    // Launcher SAF para abrir documento (CSV/Excel/Sheets)
     val openImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
 
-        // (Opcional) permiso persistente
         try {
             context.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-        } catch (_: SecurityException) {
-            // Si el proveedor no soporta persistencia, no pasa nada.
-        }
+        } catch (_: SecurityException) {}
 
-        // Obtener nombre amigable (opcional)
         lastFileName = queryDisplayName(context.contentResolver, uri)
-
-        // Lanzar importación
         isImporting = true
         importMessage = null
         vm.importProductsFromFile(
             context = context,
             fileUri = uri,
-            // strategy: "append" suma al stock existente; "replace" pisa valores
             strategy = ProductRepository.ImportStrategy.Append
         ) { result ->
             isImporting = false
@@ -184,7 +182,7 @@ fun StockScreen(
         }
     }
 
-    // Filtro local (null-safe para barcode/code)
+    // Filtro local — usa los valores del ViewModel
     val filtered = remember(products, query, stockFilter) {
         val q = query.trim()
         products
@@ -206,7 +204,6 @@ fun StockScreen(
             }
     }
 
-    // Conteos para los chips
     val outOfStockCount = remember(products) { products.count { it.quantity == 0 } }
     val lowStockCount = remember(products) {
         products.count { p ->
@@ -217,11 +214,7 @@ fun StockScreen(
 
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
 
-    // Estado de “menú de funcionalidades” (speed dial)
-    /* [ANTERIOR]
-    var fabExpanded by remember { mutableStateOf(false) }
-    */
-    var fabExpanded by rememberSaveable { mutableStateOf(false) } // [NUEVO]
+    var fabExpanded by rememberSaveable { mutableStateOf(false) }
 
     val onForcePriceRefresh = {
         vm.forceRecalculateAutoPricing()
@@ -229,12 +222,8 @@ fun StockScreen(
     }
 
     Scaffold(
-        /* [ANTERIOR]
-        // sin snackbarHost
-        */
-        snackbarHost = { SnackbarHost(snackbarHostState) }, // [NUEVO]
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            // Barra superior con la franja de búsqueda
             Column(Modifier.fillMaxWidth()) {
                 BackTopAppBar(
                     title = if (selectionModeEnabled) "Seleccionados: ${selectedProductIds.size}" else "Stock",
@@ -282,24 +271,22 @@ fun StockScreen(
                         }
                     }
                 )
-                // Indicador de importación bajo la AppBar
-                if (isImporting) { // [NUEVO]
+                if (isImporting) {
                     LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                     )
                 }
-                // “Franja” de búsqueda ocupando el ancho
+                // [MEJORA 1] onValueChange delega al ViewModel
                 OutlinedTextField(
                     value = query,
-                    onValueChange = { query = it },
-                    label = { Text(“Buscar por nombre o código”) },
+                    onValueChange = { stockVm.setSearchQuery(it) },
+                    label = { Text("Buscar por nombre o código") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
-                // Chips de filtro de stock
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -309,28 +296,27 @@ fun StockScreen(
                 ) {
                     FilterChip(
                         selected = stockFilter == StockFilter.ALL,
-                        onClick = { stockFilter = StockFilter.ALL },
-                        label = { Text(“Todos (${products.size})”) }
+                        onClick = { stockVm.setStockFilter(StockFilter.ALL) },
+                        label = { Text("Todos (${products.size})") }
                     )
                     if (lowStockCount > 0) {
                         FilterChip(
                             selected = stockFilter == StockFilter.LOW_STOCK,
-                            onClick = { stockFilter = StockFilter.LOW_STOCK },
-                            label = { Text(“Stock bajo ($lowStockCount)”) }
+                            onClick = { stockVm.setStockFilter(StockFilter.LOW_STOCK) },
+                            label = { Text("Stock bajo ($lowStockCount)") }
                         )
                     }
                     if (outOfStockCount > 0) {
                         FilterChip(
                             selected = stockFilter == StockFilter.OUT_OF_STOCK,
-                            onClick = { stockFilter = StockFilter.OUT_OF_STOCK },
-                            label = { Text(“Sin stock ($outOfStockCount)”) }
+                            onClick = { stockVm.setStockFilter(StockFilter.OUT_OF_STOCK) },
+                            label = { Text("Sin stock ($outOfStockCount)") }
                         )
                     }
                 }
             }
         },
         floatingActionButton = {
-            // Columna con los mini-botones (aparecen encima del “+” cuando está expandido)
             Box(modifier = Modifier.padding(end = 24.dp, bottom = 28.dp)) {
                 Column(
                     horizontalAlignment = Alignment.End,
@@ -346,40 +332,25 @@ fun StockScreen(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Agregar producto manualmente
                             SmallFabWithLabel(
                                 label = "Agregar producto",
                                 icon = { Icon(Icons.Default.Add, contentDescription = "Agregar producto") },
-                                onClick = {
-                                    fabExpanded = false
-                                    onAddProduct()
-                                }
+                                onClick = { fabExpanded = false; onAddProduct() }
                             )
-                            // Escanear código
                             SmallFabWithLabel(
                                 label = "Escanear código",
                                 icon = { Icon(Icons.Default.CameraAlt, contentDescription = "Escanear") },
-                                onClick = {
-                                    fabExpanded = false
-                                    onScan()
-                                }
+                                onClick = { fabExpanded = false; onScan() }
                             )
-                            // Historial de movimientos
                             SmallFabWithLabel(
                                 label = "Historial de movimientos",
                                 icon = { Icon(Icons.Default.History, contentDescription = "Historial") },
-                                onClick = {
-                                    fabExpanded = false
-                                    onViewMovements()
-                                }
+                                onClick = { fabExpanded = false; onViewMovements() }
                             )
                             SmallFabWithLabel(
                                 label = "Cargar por foto (IA)",
                                 icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Cargar por foto") },
-                                onClick = {
-                                    fabExpanded = false
-                                    onPhotoIntake()
-                                }
+                                onClick = { fabExpanded = false; onPhotoIntake() }
                             )
                             SmallFabWithLabel(
                                 label = "Importar archivo",
@@ -399,20 +370,15 @@ fun StockScreen(
                             SmallFabWithLabel(
                                 label = "Seleccionar para eliminar",
                                 icon = { Icon(Icons.Default.Delete, contentDescription = "Seleccionar para eliminar") },
-                                onClick = {
-                                    fabExpanded = false
-                                    selectionModeEnabled = true
-                                }
+                                onClick = { fabExpanded = false; selectionModeEnabled = true }
                             )
                         }
                     }
 
-                    // FAB principal “+”, redondo y separado del borde
                     FloatingActionButton(
                         onClick = { fabExpanded = !fabExpanded },
                         shape = CircleShape,
-                        modifier = Modifier // margen extra para que quede “alejado” del extremo
-                            .align(Alignment.End)
+                        modifier = Modifier.align(Alignment.End)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Acciones")
                     }
@@ -420,14 +386,13 @@ fun StockScreen(
             }
         }
     ) { padding ->
-        // Contenido: solo lista (LazyColumn) debajo de la franja
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(
                 top = 8.dp,
-                bottom = 96.dp, // deja espacio extra para que el FAB no tape el último ítem
+                bottom = 96.dp,
                 start = 16.dp,
                 end = 16.dp
             ),
@@ -443,7 +408,8 @@ fun StockScreen(
                 }
             } else {
                 items(filtered, key = { it.id }) { p ->
-                    ProductRow(
+                    // [MEJORA 3] Swipe +1 / -1 wrappea el ProductRow
+                    SwipeableProductRow(
                         product = p,
                         currency = currency,
                         isSelectionMode = selectionModeEnabled,
@@ -463,7 +429,8 @@ fun StockScreen(
                             selectionModeEnabled = true
                             selectedProductIds = selectedProductIds + p.id
                         },
-                        onQuickAdjust = { onAdjustStock(p) }
+                        onQuickAdjust = { onAdjustStock(p) },
+                        onSwipeDelta = { delta -> stockVm.quickAdjust(p.id, delta) }
                     )
                 }
             }
@@ -526,14 +493,10 @@ fun StockScreen(
                         }
                     }
                     showDeleteBackupConfirmDialog = true
-                }) {
-                    Text("Eliminar")
-                }
+                }) { Text("Eliminar") }
             },
             dismissButton = {
-                Button(onClick = { showDeleteSelectedDialog = false }) {
-                    Text("Cancelar")
-                }
+                Button(onClick = { showDeleteSelectedDialog = false }) { Text("Cancelar") }
             }
         )
     }
@@ -559,14 +522,10 @@ fun StockScreen(
                         }
                     }
                     showDeleteBackupConfirmDialog = true
-                }) {
-                    Text("Eliminar todo")
-                }
+                }) { Text("Eliminar todo") }
             },
             dismissButton = {
-                Button(onClick = { showDeleteAllDialog = false }) {
-                    Text("Cancelar")
-                }
+                Button(onClick = { showDeleteAllDialog = false }) { Text("Cancelar") }
             }
         )
     }
@@ -603,18 +562,14 @@ fun StockScreen(
                         deleteBackupConfirmationInput = ""
                     },
                     enabled = deleteBackupConfirmationInput.trim().equals(confirmationPhrase, ignoreCase = true)
-                ) {
-                    Text("Confirmar eliminación")
-                }
+                ) { Text("Confirmar eliminación") }
             },
             dismissButton = {
                 Button(onClick = {
                     showDeleteBackupConfirmDialog = false
                     deleteBackupConfirmationInput = ""
                     pendingDeleteAction = null
-                }) {
-                    Text("Cancelar")
-                }
+                }) { Text("Cancelar") }
             }
         )
     }
@@ -629,43 +584,150 @@ fun StockScreen(
                     Text(importErrorSummary ?: "")
                     if (importErrorDetails.isNotEmpty()) {
                         Spacer(modifier = Modifier.size(8.dp))
-                        importErrorDetails.forEach { error ->
-                            Text("• $error")
-                        }
+                        importErrorDetails.forEach { error -> Text("• $error") }
                     }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        importErrorSummary = null
-                        importErrorDetails = emptyList()
-                    }
-                ) {
-                    Text("OK")
-                }
+                Button(onClick = {
+                    importErrorSummary = null
+                    importErrorDetails = emptyList()
+                }) { Text("OK") }
             }
         )
     }
 }
 
-/** Mini-FAB con etiqueta alineada a la derecha (para el speed-dial). */
+// ─────────────────────────────────────────────
+// [MEJORA 3] Swipe +1 / -1
+// ─────────────────────────────────────────────
+
+private val SwipeThreshold = 110f   // px para disparar la acción
+private val SwipeMaxOffset = 180f   // px máximo de arrastre visible
+
+/** Envuelve [ProductRow] con gestos de swipe izquierda (−1) y derecha (+1). */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SmallFabWithLabel(
-    label: String,
-    icon: @Composable () -> Unit,
-    onClick: () -> Unit
+private fun SwipeableProductRow(
+    product: ProductEntity,
+    currency: NumberFormat,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onQuickAdjust: () -> Unit,
+    onSwipeDelta: (Int) -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        SmallFloatingActionButton(onClick = onClick) { icon() }
+    val scope = rememberCoroutineScope()
+    val offsetX = remember { Animatable(0f) }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+
+        // — Fondo: acciones reveladas por el swipe —
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Swipe → derecha: +1 (verde)
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(72.dp)
+                    .background(
+                        color = Color(0xFF388E3C),
+                        shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "+1",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text("+1", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
+            // Swipe ← izquierda: -1 (rojo)
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(72.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.error,
+                        shape = RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Remove,
+                        contentDescription = "-1",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text("-1", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+
+        // — Frente: tarjeta del producto, desplazable —
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .pointerInput(isSelectionMode) {
+                    // En modo selección el swipe está deshabilitado
+                    if (isSelectionMode) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            scope.launch {
+                                when {
+                                    offsetX.value >= SwipeThreshold -> {
+                                        onSwipeDelta(+1)
+                                    }
+                                    offsetX.value <= -SwipeThreshold -> {
+                                        onSwipeDelta(-1)
+                                    }
+                                }
+                                offsetX.animateTo(0f)
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch { offsetX.animateTo(0f) }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            scope.launch {
+                                offsetX.snapTo(
+                                    (offsetX.value + dragAmount).coerceIn(-SwipeMaxOffset, SwipeMaxOffset)
+                                )
+                            }
+                        }
+                    )
+                }
+        ) {
+            ProductRow(
+                product = product,
+                currency = currency,
+                isSelectionMode = isSelectionMode,
+                isSelected = isSelected,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onQuickAdjust = onQuickAdjust
+            )
+        }
     }
 }
 
-/** Ítem de la lista de productos — diseño simplificado con badge de stock. */
+// ─────────────────────────────────────────────
+// ProductRow
+// ─────────────────────────────────────────────
+
+/** Ítem de la lista de productos con color de stock progresivo. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProductRow(
@@ -677,15 +739,8 @@ private fun ProductRow(
     onLongClick: () -> Unit,
     onQuickAdjust: () -> Unit
 ) {
-    val (stockLabel, stockColor) = when {
-        product.quantity == 0 ->
-            "Sin stock" to MaterialTheme.colorScheme.error
-        (product.minStock ?: 0) > 0 && product.quantity < (product.minStock ?: 0) ->
-            "Stock bajo" to MaterialTheme.colorScheme.tertiary
-        else ->
-            null to null
-    }
-    val cardBorderColor = if (isSelected) MaterialTheme.colorScheme.primary else null
+    // [MEJORA 2] Color progresivo según porcentaje sobre el mínimo
+    val (stockLabel, stockColor) = stockIndicator(product)
 
     ElevatedCard(
         modifier = Modifier
@@ -697,7 +752,6 @@ private fun ProductRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Contenido principal
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     product.name,
@@ -709,22 +763,18 @@ private fun ProductRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Cantidad con color de estado
-                    val qtyColor = stockColor ?: MaterialTheme.colorScheme.onSurface
                     Text(
                         text = "${product.quantity} uds.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = qtyColor
+                        color = stockColor
                     )
-                    // Badge de alerta solo si hay problema
-                    if (stockLabel != null && stockColor != null) {
+                    if (stockLabel != null) {
                         Text(
                             text = "· $stockLabel",
                             style = MaterialTheme.typography.labelSmall,
                             color = stockColor
                         )
                     }
-                    // Precio principal
                     product.listPrice?.let {
                         HorizontalDivider(
                             modifier = Modifier.size(width = 1.dp, height = 12.dp),
@@ -753,7 +803,6 @@ private fun ProductRow(
                     )
                 }
             }
-            // Botón de ajuste rápido (solo cuando NO está en selección)
             if (!isSelectionMode) {
                 IconButton(onClick = onQuickAdjust) {
                     Icon(
@@ -767,9 +816,55 @@ private fun ProductRow(
     }
 }
 
+// ─────────────────────────────────────────────
+// [MEJORA 2] Lógica de color progresivo
+// ─────────────────────────────────────────────
+
+private val StockColorOk       = Color(0xFF388E3C)  // verde
+private val StockColorLow      = Color(0xFFF9A825)  // amarillo/ámbar
+private val StockColorCritical = Color(0xFFD32F2F)  // rojo
+
 /**
- * Utilidad para mostrar el nombre del archivo seleccionado con SAF.
+ * Devuelve (etiqueta, color) según el nivel de stock relativo al mínimo:
+ * - OK      (≥ mínimo o sin mínimo): verde, sin etiqueta
+ * - Bajo    (entre 50 % y 100 % del mínimo): amarillo, "Stock bajo"
+ * - Crítico (< 50 % del mínimo o en 0): rojo, "Crítico" / "Sin stock"
  */
+@Composable
+private fun stockIndicator(product: ProductEntity): Pair<String?, Color> {
+    val min = product.minStock ?: 0
+    return when {
+        product.quantity == 0 ->
+            "Sin stock" to StockColorCritical
+        min > 0 && product.quantity.toFloat() / min.toFloat() < 0.5f ->
+            "Crítico" to StockColorCritical
+        min > 0 && product.quantity < min ->
+            "Stock bajo" to StockColorLow
+        else ->
+            null to StockColorOk
+    }
+}
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+/** Mini-FAB con etiqueta alineada a la derecha (para el speed-dial). */
+@Composable
+private fun SmallFabWithLabel(
+    label: String,
+    icon: @Composable () -> Unit,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        SmallFloatingActionButton(onClick = onClick) { icon() }
+    }
+}
+
 private fun queryDisplayName(cr: ContentResolver, uri: Uri): String? {
     return cr.query(uri, null, null, null, null)?.use { cursor ->
         val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -777,10 +872,6 @@ private fun queryDisplayName(cr: ContentResolver, uri: Uri): String? {
     }
 }
 
-/**
- * Convierte el resultado del import a un mensaje legible para UI.
- * Muestra archivo, insertados, actualizados y (si existen) hasta los primeros N errores.
- */
 private fun ImportResult.toUserMessage(
     fileName: String? = null,
     maxErrorsToShow: Int = 25,
@@ -817,7 +908,6 @@ private fun ProductList(
     onScan: () -> Unit,
     onClick: (ProductUi) -> Unit
 ) {
-    // Stub de ejemplo. Tu lista real está arriba con LazyColumn.
     if (products.isEmpty()) {
         Text("No hay productos cargados.")
     } else {
