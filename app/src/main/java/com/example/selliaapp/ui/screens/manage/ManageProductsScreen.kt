@@ -5,14 +5,19 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
@@ -24,6 +29,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -35,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -225,24 +232,78 @@ fun ManageProductsScreen(
                 Text("Resultados: ${products.size}")
             }
 
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(products, key = { it.id }) { p ->
-                    ListItem(
-                        headlineContent = { Text(p.name) },
-                        supportingContent = {
-                            val sizesInfo = if (p.sizes.isEmpty()) "Talles: sin info por el momento" else "Talles: ${p.sizes.joinToString()}"
-                            Text(
-                                "Lista: ${p.listPrice ?: 0.0} · " +
-                                    "Efectivo: ${p.cashPrice ?: p.listPrice ?: 0.0} · " +
-                                    "Transferencia: ${p.transferPrice ?: p.listPrice ?: 0.0} · " +
-                                    "Stock: ${p.quantity} · Código: ${p.barcode ?: "—"} · $sizesInfo"
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                            .clickable { selectedProduct = p }
+            if (products.isEmpty()) {
+                val hasActiveFilters = state.query.isNotBlank() ||
+                    state.parentCategory.isNotBlank() ||
+                    state.category.isNotBlank() ||
+                    state.color.isNotBlank() ||
+                    state.size.isNotBlank() ||
+                    state.minPrice.isNotBlank() ||
+                    state.maxPrice.isNotBlank() ||
+                    state.onlyLowStock ||
+                    state.onlyNoImage ||
+                    state.onlyNoBarcode
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Inventory2,
+                        contentDescription = null,
+                        modifier = Modifier.size(96.dp),
+                        tint = MaterialTheme.colorScheme.secondary
                     )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = if (hasActiveFilters) "Sin resultados para la búsqueda"
+                               else "Todavía no hay productos",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = if (hasActiveFilters)
+                                   "Intentá con otros filtros o limpiá la búsqueda."
+                               else "Cargá tu primer producto para comenzar a gestionar el stock.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    if (hasActiveFilters) {
+                        Button(onClick = vm::clearFilters) {
+                            Text("Limpiar filtros")
+                        }
+                    } else {
+                        Button(onClick = { editing = null; showEditor = true }) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Agregar producto")
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(products, key = { it.id }) { p ->
+                        ListItem(
+                            headlineContent = { Text(p.name) },
+                            supportingContent = {
+                                val sizesInfo = if (p.sizes.isEmpty()) "Talles: sin info por el momento" else "Talles: ${p.sizes.joinToString()}"
+                                Text(
+                                    "Lista: ${p.listPrice ?: 0.0} · " +
+                                        "Efectivo: ${p.cashPrice ?: p.listPrice ?: 0.0} · " +
+                                        "Transferencia: ${p.transferPrice ?: p.listPrice ?: 0.0} · " +
+                                        "Stock: ${p.quantity} · Código: ${p.barcode ?: "—"} · $sizesInfo"
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .clickable { selectedProduct = p }
+                        )
+                    }
                 }
             }
         }

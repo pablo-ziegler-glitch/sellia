@@ -32,6 +32,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -242,7 +247,23 @@ fun SelliaApp(
         Box(modifier = Modifier.padding(paddingValues)) {
             NavHost(
                 navController = navController,
-                startDestination = Routes.Home.route
+                startDestination = Routes.Home.route,
+                enterTransition = {
+                    slideInHorizontally(animationSpec = tween(300), initialOffsetX = { it }) +
+                        fadeIn(animationSpec = tween(300))
+                },
+                exitTransition = {
+                    slideOutHorizontally(animationSpec = tween(300), targetOffsetX = { -it / 3 }) +
+                        fadeOut(animationSpec = tween(300))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(animationSpec = tween(300), initialOffsetX = { -it / 3 }) +
+                        fadeIn(animationSpec = tween(300))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(animationSpec = tween(300), targetOffsetX = { it }) +
+                        fadeOut(animationSpec = tween(300))
+                }
             ) {
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {

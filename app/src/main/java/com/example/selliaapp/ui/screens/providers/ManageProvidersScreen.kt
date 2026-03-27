@@ -3,14 +3,22 @@ package com.example.selliaapp.ui.screens.providers
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -19,6 +27,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -31,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -125,31 +135,71 @@ fun ManageProvidersScreen(
             )
 
             // ----------- LISTA (YA FILTRADA) -----------
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filteredProviders) { p ->
-                    ElevatedCard(Modifier.fillMaxWidth()) {
-                        ListItem(
-                            headlineContent = { Text(p.name) },
-                            supportingContent = {
-                                // Render corto: tel + rubros + term/method
-                                val rubros = p.rubrosCsv?.takeIf { it.isNotBlank() } ?: ""
-                                Text(buildString {
-                                    append(p.phone ?: "-")
-                                    if (rubros.isNotEmpty()) append("  •  $rubros")
-                                    append("  •  ${p.paymentTerm} • ${p.paymentMethod}")
-                                })
-                            },
-                            trailingContent = {
-                                Row {
-                                    IconButton(onClick = { editing = p; showEditor = true }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Editar")
-                                    }
-                                    IconButton(onClick = { scope.launch { repo.delete(p) } }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Borrar")
+            if (filteredProviders.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Business,
+                        contentDescription = null,
+                        modifier = Modifier.size(96.dp),
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = if (rubrosFilter.isEmpty()) "Todavía no hay proveedores"
+                               else "Sin resultados para el filtro aplicado",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = if (rubrosFilter.isEmpty())
+                                   "Agregá tu primer proveedor para registrar compras y pagos."
+                               else "Probá seleccionando otros rubros o limpiando el filtro.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    if (rubrosFilter.isEmpty()) {
+                        Spacer(Modifier.height(24.dp))
+                        Button(onClick = { editing = null; showEditor = true }) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Agregar proveedor")
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(filteredProviders) { p ->
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = { Text(p.name) },
+                                supportingContent = {
+                                    // Render corto: tel + rubros + term/method
+                                    val rubros = p.rubrosCsv?.takeIf { it.isNotBlank() } ?: ""
+                                    Text(buildString {
+                                        append(p.phone ?: "-")
+                                        if (rubros.isNotEmpty()) append("  •  $rubros")
+                                        append("  •  ${p.paymentTerm} • ${p.paymentMethod}")
+                                    })
+                                },
+                                trailingContent = {
+                                    Row {
+                                        IconButton(onClick = { editing = p; showEditor = true }) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Editar")
+                                        }
+                                        IconButton(onClick = { scope.launch { repo.delete(p) } }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Borrar")
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
