@@ -49,7 +49,7 @@ class SelliaAppApplication : Application(), Configuration.Provider {
             onReady = {
                 // Evita spam mientras AppCheck está roto/no registrado
                 enqueuePeriodicSync()
-                PricingScheduler.enqueuePeriodic(this, 30)
+                PricingScheduler.enqueuePeriodic(this)
                 trackInstalledVersion()
             }
         )

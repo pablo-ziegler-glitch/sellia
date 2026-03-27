@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -49,7 +50,8 @@ fun ProductQuickDetailDialog(
     onDelete: (() -> Unit)? = null,
     onPrintQr: (() -> Unit)? = null,
     onAdjustStock: (() -> Unit)? = null,
-    onViewMovements: (() -> Unit)? = null
+    onViewMovements: (() -> Unit)? = null,
+    onOrderFromProvider: (() -> Unit)? = null
 ) {
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
     val images: List<Any> = product.imageUrls.takeIf { it.isNotEmpty() }
@@ -159,6 +161,32 @@ fun ProductQuickDetailDialog(
                         }
                     }
                 }
+
+                if (!product.providerName.isNullOrBlank()) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                "Proveedor: ${product.providerName}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            product.providerSku?.takeIf { it.isNotBlank() }?.let {
+                                Text(
+                                    "SKU proveedor: $it",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            product.purchasePrice?.let {
+                                Text(
+                                    "Costo: ${NumberFormat.getCurrencyInstance(java.util.Locale("es", "AR")).format(it)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -188,6 +216,17 @@ fun ProductQuickDetailDialog(
                             )
                             Spacer(modifier = Modifier.size(4.dp))
                             Text("Historial")
+                        }
+                    }
+                    if (onOrderFromProvider != null) {
+                        TextButton(onClick = { onDismiss(); onOrderFromProvider() }) {
+                            Icon(
+                                imageVector = Icons.Default.ShoppingCart,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text("Pedir")
                         }
                     }
                 }

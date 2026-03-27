@@ -12,6 +12,7 @@ import com.example.selliaapp.repository.CashSessionSummary
 import com.example.selliaapp.repository.InvoiceRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
+import com.example.selliaapp.repository.ProviderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,7 @@ data class HomeUiState(
     val isLoading: Boolean = false,
     val lowStockAlerts: List<LowStockProduct> = emptyList(),
     val overdueProviderInvoices: Int = 0,
+    val incompleteProviderNames: List<String> = emptyList(),
     val selectedKpis: List<HomeKpi> = listOf(
         HomeKpi.DAILY_SALES,
         HomeKpi.MARGIN,
@@ -59,7 +61,8 @@ class HomeViewModel @Inject constructor(
     private val invoiceRepo: InvoiceRepository,
     private val productRepo: ProductRepository,
     private val providerInvoiceRepo: ProviderInvoiceRepository,
-    private val cashRepository: CashRepository
+    private val cashRepository: CashRepository,
+    private val providerRepository: ProviderRepository
 ) : ViewModel() {
 
     companion object {
@@ -76,6 +79,7 @@ class HomeViewModel @Inject constructor(
         observePendingProviderInvoices()
         observeKpiMetrics()
         observeCashSession()
+        observeIncompleteProviders()
         refresh()
     }
 
@@ -136,6 +140,29 @@ class HomeViewModel @Inject constructor(
                     val overdueLimit = System.currentTimeMillis() - Duration.ofDays(OVERDUE_DAYS).toMillis()
                     val overdueCount = invoices.count { it.invoice.issueDateMillis < overdueLimit }
                     _state.update { it.copy(overdueProviderInvoices = overdueCount) }
+                }
+        }
+    }
+
+    private fun observeIncompleteProviders() {
+        viewModelScope.launch {
+            combine(
+                productRepo.observeAll(),
+                providerRepository.observeAllModels()
+            ) { products, providers ->
+                val linkedIds = products.mapNotNull { it.providerId }.toSet()
+                providers
+                    .filter { it.id in linkedIds }
+                    .filter { p ->
+                        p.phone.isNullOrBlank() ||
+                            p.paymentTerm.isNullOrBlank() ||
+                            p.paymentMethod.isNullOrBlank()
+                    }
+                    .map { it.name }
+            }
+                .catch { /* ignorar silenciosamente */ }
+                .collectLatest { names ->
+                    _state.update { it.copy(incompleteProviderNames = names) }
                 }
         }
     }

@@ -9,7 +9,9 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 object PricingScheduler {
-    fun enqueuePeriodic(context: Context, intervalMinutes: Int) {
+    private const val DEFAULT_INTERVAL_MINUTES = 1440 // 24 hs
+
+    fun enqueuePeriodic(context: Context, intervalMinutes: Int = DEFAULT_INTERVAL_MINUTES) {
         val safeInterval = intervalMinutes.coerceAtLeast(15)
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
