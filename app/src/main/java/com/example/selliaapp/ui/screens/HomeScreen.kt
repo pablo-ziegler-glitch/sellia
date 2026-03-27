@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Money
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
@@ -50,8 +51,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +65,7 @@ import coil.compose.AsyncImage
 import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.ui.components.AccountAvatarMenu
 import com.example.selliaapp.ui.components.AccountSummary
+import com.example.selliaapp.data.model.dashboard.DailySalesPoint
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import java.text.NumberFormat
@@ -194,6 +199,13 @@ fun HomeScreen(
                     efectivo = currency.format(state.cashSummary?.cashSalesTotal ?: 0.0),
                     ganancia = currency.format(state.dailyMargin)
                 )
+            }
+
+            // Mini sales chart
+            if (state.weekSales.isNotEmpty()) {
+                item {
+                    WeeklySalesCard(weekSales = state.weekSales)
+                }
             }
 
             // Primary action card
@@ -614,5 +626,75 @@ private fun ShortcutButton(
         Icon(icon, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(label)
+    }
+}
+
+@Composable
+private fun WeeklySalesCard(weekSales: List<DailySalesPoint>) {
+    val today = LocalDate.now()
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(
+                "Ventas últimos 7 días",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+            MiniSalesBarChart(weekSales = weekSales, today = today)
+        }
+    }
+}
+
+@Composable
+private fun MiniSalesBarChart(weekSales: List<DailySalesPoint>, today: LocalDate) {
+    val maxTotal = weekSales.maxOf { it.total }.coerceAtLeast(0.01)
+    val todayIndex = weekSales.indexOfFirst { it.fecha == today }
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    val dayLabels = weekSales.map { point ->
+        if (point.fecha == today) "Hoy" else point.fecha.dayOfMonth.toString()
+    }
+
+    Column {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+        ) {
+            val count = weekSales.size
+            val spacing = 4.dp.toPx()
+            val barWidth = (size.width - spacing * (count - 1)) / count
+
+            weekSales.forEachIndexed { i, point ->
+                val barHeight = (point.total / maxTotal * size.height).toFloat()
+                    .coerceAtLeast(2.dp.toPx())
+                val left = i * (barWidth + spacing)
+                val top = size.height - barHeight
+                drawRect(
+                    color = if (i == todayIndex) primaryColor else primaryColor.copy(alpha = 0.35f),
+                    topLeft = Offset(left, top),
+                    size = Size(barWidth, barHeight)
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            dayLabels.forEachIndexed { i, label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (i == todayIndex) FontWeight.Bold else FontWeight.Normal,
+                    color = if (i == todayIndex)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
 }

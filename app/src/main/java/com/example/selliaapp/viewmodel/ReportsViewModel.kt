@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
-enum class ReportsFilter { DAY, WEEK, MONTH }
+enum class ReportsFilter { DAY, WEEK, MONTH, CUSTOM }
 
 
 data class ReportsUiState(
@@ -22,8 +22,9 @@ data class ReportsUiState(
     val points: List<Pair<String, Double>> = emptyList(),
     val stockValuation: StockValuationReport? = null,
     val loading: Boolean = false,
-    val error: String? = null   // <-- AGREGADO: para poder hacer copy(error = ...)
-
+    val error: String? = null,
+    val customFrom: LocalDate = LocalDate.now(),
+    val customTo: LocalDate = LocalDate.now()
 )
 
 /**
@@ -48,15 +49,21 @@ class ReportsViewModel @Inject constructor(
     }
     fun onFilterChange(filterText: String) {
         val filter = when (filterText.lowercase()) {
-            "día", "dia", "day" -> ReportsFilter.DAY
-            "semana", "week"     -> ReportsFilter.WEEK
-            "mes", "month"       -> ReportsFilter.MONTH
-            else                 -> ReportsFilter.DAY
+            "día", "dia", "day"           -> ReportsFilter.DAY
+            "semana", "week"              -> ReportsFilter.WEEK
+            "mes", "month"               -> ReportsFilter.MONTH
+            "personalizado", "custom"    -> ReportsFilter.CUSTOM
+            else                          -> ReportsFilter.DAY
         }
         load(filter)
     }
 
     fun onFilterChange(filter: ReportsFilter) = load(filter)
+
+    fun loadCustomRange(from: LocalDate, to: LocalDate) {
+        _state.value = _state.value.copy(customFrom = from, customTo = to)
+        load(ReportsFilter.CUSTOM)
+    }
 
     private fun load(filter: ReportsFilter) {
         viewModelScope.launch {
@@ -64,9 +71,10 @@ class ReportsViewModel @Inject constructor(
             try {
                 val today = LocalDate.now()
                 val (from, to) = when (filter) {
-                    ReportsFilter.DAY   -> today to today
-                    ReportsFilter.WEEK  -> today.minusDays(6) to today
-                    ReportsFilter.MONTH -> today.minusDays(29) to today
+                    ReportsFilter.DAY    -> today to today
+                    ReportsFilter.WEEK   -> today.minusDays(6) to today
+                    ReportsFilter.MONTH  -> today.minusDays(29) to today
+                    ReportsFilter.CUSTOM -> _state.value.customFrom to _state.value.customTo
                 }
                 val series = reportsRepository.getSalesSeries(from, to, filter)
                 val total  = series.sumOf { it.amount }
