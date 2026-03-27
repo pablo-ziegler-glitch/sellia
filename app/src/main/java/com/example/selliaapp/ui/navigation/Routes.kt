@@ -13,12 +13,15 @@ sealed class Routes(val route: String) {
     object Cash : Routes("cash")
     object More : Routes("more")
     object PosCheckout : Routes("pos_checkout")
-    object PosSuccess : Routes("pos_success?invoiceId={invoiceId}&total={total}&method={method}") {
+    object PosSuccess : Routes("pos_success?invoiceId={invoiceId}&total={total}&method={method}&customer={customer}") {
         const val ARG_ID = "invoiceId"
         const val ARG_TOTAL = "total"
         const val ARG_METHOD = "method"
-        fun build(invoiceId: Long, total: Double, method: String): String =
-            "pos_success?invoiceId=$invoiceId&total=$total&method=${encode(method)}"
+        const val ARG_CUSTOMER = "customer"
+        fun build(invoiceId: Long, total: Double, method: String, customerName: String? = null): String {
+            val base = "pos_success?invoiceId=$invoiceId&total=$total&method=${encode(method)}"
+            return if (!customerName.isNullOrBlank()) "$base&customer=${encode(customerName)}" else base
+        }
 
         private fun encode(value: String): String =
             URLEncoder.encode(value, StandardCharsets.UTF_8.name())

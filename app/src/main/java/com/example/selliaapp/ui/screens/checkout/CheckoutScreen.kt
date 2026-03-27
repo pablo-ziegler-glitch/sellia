@@ -175,7 +175,8 @@ fun CheckoutScreen(
                     Routes.PosSuccess.build(
                         invoiceId = resultado.invoiceId,
                         total = resultado.total,
-                        method = resultado.paymentMethod.nombreLegible()
+                        method = resultado.paymentMethod.nombreLegible(),
+                        customerName = customerName
                     )
                 ) {
                     popUpTo(Routes.Pos.route) { inclusive = false }
@@ -539,7 +540,8 @@ fun CheckoutScreen(
                                         Routes.PosSuccess.build(
                                             invoiceId = resultado.invoiceId,
                                             total = resultado.total,
-                                            method = resultado.paymentMethod.nombreLegible()
+                                            method = resultado.paymentMethod.nombreLegible(),
+                                            customerName = state.selectedCustomerName
                                         )
                                     ) {
                                         popUpTo(Routes.Pos.route) { inclusive = false }

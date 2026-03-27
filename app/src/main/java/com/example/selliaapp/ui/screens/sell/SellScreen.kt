@@ -1,6 +1,9 @@
 package com.example.selliaapp.ui.screens.sell
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,8 +14,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -27,7 +35,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,8 +60,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -63,7 +75,6 @@ import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.ui.components.CustomerPickerSheet
 import com.example.selliaapp.ui.components.ProductDetailSheet
 import com.example.selliaapp.ui.components.ProductPickerSheet
-import com.example.selliaapp.ui.components.QuantityInputDialog
 import com.example.selliaapp.ui.navigation.Routes
 import com.example.selliaapp.viewmodel.CustomersViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
@@ -116,10 +127,9 @@ fun SellScreen(
         }
     }
 
-    // Selección de productos y diálogo de cantidad
+    // Selección de productos
     var showPicker by remember { mutableStateOf(false) }
     var showAddOptions by remember { mutableStateOf(false) }
-    var askFor by remember { mutableStateOf<ProductEntity?>(null) }
     var detailFor by remember { mutableStateOf<ProductEntity?>(null) }
     var showCustomerPicker by remember { mutableStateOf(false) }
     var showCancelPreSaleDialog by remember { mutableStateOf(false) }
@@ -258,25 +268,6 @@ fun SellScreen(
         )
     }
 
-    askFor?.let { product ->
-        val current = ui.items.firstOrNull { it.productId == product.id }?.qty ?: 0
-        val initial = if (current > 0) current else 1
-        val remaining = remainingById[product.id] ?: product.quantity
-
-        QuantityInputDialog(
-            title = if (current > 0) "Nueva cantidad" else "Cantidad a vender",
-            initialValue = initial,
-            maxValue = remaining,
-            confirmText = if (current > 0) "Actualizar" else "Agregar",
-            cancelText = "Cancelar",
-            onConfirm = { qty ->
-                if (current > 0) sellVm.updateQty(product.id, qty) else sellVm.addToCart(product, qty)
-                askFor = null
-            },
-            onCancel = { askFor = null }
-        )
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -365,7 +356,7 @@ fun SellScreen(
                             onIncrease = { sellVm.increment(item.productId) },
                             onDecrease = { sellVm.decrement(item.productId) },
                             onRemove = { sellVm.remove(item.productId) },
-                            onEdit = { askFor = allProducts.firstOrNull { it.id == item.productId } },
+                            onQtyChange = { qty -> sellVm.updateQty(item.productId, qty) },
                             currency = currency,
                             showAtMaxHint = atMax
                         )
@@ -519,7 +510,7 @@ fun SellScreen(
 }
 
 
-    /** Fila de ítem con +/− de a 1 y feedback visual inmediato. */
+/** Fila de ítem con +/− de a 1 y edición inline de cantidad (tap en el número). */
 @Composable
 fun CartItemRow(
     name: String,
@@ -532,10 +523,24 @@ fun CartItemRow(
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
     onRemove: () -> Unit,
-    onEdit: () -> Unit,
+    onQtyChange: (Int) -> Unit,
     currency: NumberFormat,
     showAtMaxHint: Boolean
 ) {
+    var isEditingQty by remember { mutableStateOf(false) }
+    var editQtyText by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+
+    fun applyEdit() {
+        val newQty = editQtyText.toIntOrNull()?.coerceIn(1, maxStock.coerceAtLeast(1)) ?: qty
+        if (newQty != qty) onQtyChange(newQty)
+        isEditingQty = false
+    }
+
+    LaunchedEffect(isEditingQty) {
+        if (isEditingQty) focusRequester.requestFocus()
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -566,16 +571,74 @@ fun CartItemRow(
                     IconButton(onClick = onDecrease, enabled = qty > 1) {
                         Icon(Icons.Default.Remove, contentDescription = "Menos")
                     }
+
                     val qtyColor = when {
-                        qty > maxStock  -> Color.Red
-                        showAtMaxHint   -> Color(0xFFCC7700)
-                        else            -> MaterialTheme.colorScheme.onSurface
+                        qty > maxStock -> Color.Red
+                        showAtMaxHint  -> Color(0xFFCC7700)
+                        else           -> MaterialTheme.colorScheme.onSurface
                     }
-                    Text("$qty", style = MaterialTheme.typography.titleSmall, color = qtyColor)
+
+                    if (isEditingQty) {
+                        BasicTextField(
+                            value = editQtyText,
+                            onValueChange = { editQtyText = it.filter { c -> c.isDigit() }.take(3) },
+                            modifier = Modifier
+                                .widthIn(min = 48.dp, max = 72.dp)
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { if (!it.isFocused && isEditingQty) applyEdit() },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { applyEdit() }),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.titleSmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            ),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier
+                                        .border(
+                                            width = 1.5.dp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) { innerTextField() }
+                            }
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .clickable {
+                                    editQtyText = qty.toString()
+                                    isEditingQty = true
+                                }
+                                .border(
+                                    width = 1.dp,
+                                    color = when {
+                                        qty > maxStock -> Color.Red
+                                        showAtMaxHint  -> Color(0xFFCC7700)
+                                        else           -> MaterialTheme.colorScheme.outlineVariant
+                                    },
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$qty",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = qtyColor
+                            )
+                        }
+                    }
+
                     IconButton(onClick = onIncrease, enabled = canIncrease) {
                         Icon(Icons.Default.Add, contentDescription = "Más")
                     }
-                    TextButton(onClick = onEdit, modifier = Modifier.padding(start = 8.dp)) { Text("Editar") }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(currency.format(unitPrice), modifier = Modifier.padding(end = 12.dp))
