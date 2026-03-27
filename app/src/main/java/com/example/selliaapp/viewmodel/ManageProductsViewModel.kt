@@ -9,8 +9,12 @@ import com.example.selliaapp.domain.product.ProductFilterParams
 import com.example.selliaapp.domain.product.ProductSortOption
 import com.example.selliaapp.domain.product.filterAndSortProducts
 import com.example.selliaapp.data.local.entity.PricingSettingsEntity
+import com.example.selliaapp.data.model.ProviderInvoice
+import com.example.selliaapp.data.model.ProviderInvoiceItem
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.PricingConfigRepository
+import com.example.selliaapp.repository.ProviderInvoiceRepository
+import com.example.selliaapp.repository.ProviderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +44,9 @@ data class ManageProductsUiState(
 class ManageProductsViewModel @Inject constructor(
     private val repo: IProductRepository,
     private val variantDao: VariantDao,
-    private val pricingConfigRepository: PricingConfigRepository
+    private val pricingConfigRepository: PricingConfigRepository,
+    private val providerRepository: ProviderRepository,
+    private val providerInvoiceRepository: ProviderInvoiceRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ManageProductsUiState())
@@ -94,15 +100,56 @@ class ManageProductsViewModel @Inject constructor(
     fun upsert(product: ProductEntity, onDone: (Int) -> Unit = {}) {
         viewModelScope.launch {
             runCatching {
-                if (product.id == 0) {
-                    repo.addProduct(product)
+                // Si tiene nombre de proveedor, buscar o crear el proveedor y asignar el ID
+                val resolved = if (!product.providerName.isNullOrBlank()) {
+                    val pid = providerRepository.findOrCreateByName(product.providerName)
+                    product.copy(providerId = pid)
                 } else {
-                    repo.updateProduct(product)
+                    product.copy(providerId = null)
+                }
+                if (resolved.id == 0) {
+                    repo.addProduct(resolved)
+                } else {
+                    repo.updateProduct(resolved)
                 }
             }.onSuccess { id ->
                 onDone(id)
             }.onFailure { error ->
                 _message.value = error.message ?: "No se pudo guardar el producto."
+            }
+        }
+    }
+
+    /** Crea un pedido de compra (PO) rápido al proveedor del producto. */
+    fun createQuickPurchaseOrder(product: ProductEntity, quantity: Double, unitPrice: Double) {
+        val providerId = product.providerId ?: return
+        viewModelScope.launch {
+            runCatching {
+                val now = System.currentTimeMillis()
+                val number = "PO-${now % 1_000_000}"
+                val total = quantity * unitPrice
+                val invoice = ProviderInvoice(
+                    providerId = providerId,
+                    number = number,
+                    issueDateMillis = now,
+                    total = total
+                )
+                val item = ProviderInvoiceItem(
+                    invoiceId = 0,
+                    name = product.name,
+                    code = product.barcode ?: product.code,
+                    quantity = quantity,
+                    priceUnit = unitPrice,
+                    vatPercent = 0.0,
+                    vatAmount = 0.0,
+                    total = total
+                )
+                providerInvoiceRepository.create(invoice, listOf(item))
+            }.onSuccess {
+                val provName = product.providerName ?: "Proveedor #${product.providerId}"
+                _message.value = "Pedido creado a $provName. Podés verlo en Pedidos pendientes."
+            }.onFailure { error ->
+                _message.value = error.message ?: "No se pudo crear el pedido."
             }
         }
     }

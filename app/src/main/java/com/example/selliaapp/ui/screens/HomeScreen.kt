@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Warning
@@ -312,7 +314,10 @@ fun HomeScreen(
                             Icon(Icons.Default.Warning, contentDescription = null)
                             Text("Alertas operativas", style = MaterialTheme.typography.titleMedium)
                         }
-                        if (state.lowStockAlerts.isEmpty() && state.overdueProviderInvoices == 0) {
+                        val hasAlerts = state.lowStockAlerts.isNotEmpty() ||
+                            state.overdueProviderInvoices > 0 ||
+                            state.incompleteProviderNames.isNotEmpty()
+                        if (!hasAlerts) {
                             Text(
                                 "Sin alertas por ahora.",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -338,6 +343,37 @@ fun HomeScreen(
                                     "Facturas vencidas: ${state.overdueProviderInvoices}",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
+                            }
+                            if (state.incompleteProviderNames.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(onClick = onProviders),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Proveedores sin datos (${state.incompleteProviderNames.size})",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        state.incompleteProviderNames.take(2).forEach { name ->
+                                            Text(
+                                                "• $name — falta teléfono, condición o medio de pago",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }

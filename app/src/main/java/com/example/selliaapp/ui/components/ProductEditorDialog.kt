@@ -44,7 +44,9 @@ fun ProductEditorDialog(
         minStock: Int?,
         description: String?,
         imageUrls: List<String>,
-        gainTargetPercent: Double?
+        gainTargetPercent: Double?,
+        providerName: String?,
+        providerSku: String?
     ) -> Unit
 ) {
     var name by remember { mutableStateOf(TextFieldValue(initial?.name.orEmpty())) }
@@ -60,6 +62,8 @@ fun ProductEditorDialog(
     var stock by remember { mutableStateOf(TextFieldValue(initial?.quantity?.toString() ?: "")) }
     var minStock by remember { mutableStateOf(TextFieldValue(initial?.minStock?.toString() ?: "")) }
     var description by remember { mutableStateOf(TextFieldValue(initial?.description ?: "")) }
+    var providerName by remember { mutableStateOf(TextFieldValue(initial?.providerName.orEmpty())) }
+    var providerSku by remember { mutableStateOf(TextFieldValue(initial?.providerSku.orEmpty())) }
     var minStockError by remember { mutableStateOf(false) }
     var purchasePriceError by remember { mutableStateOf(false) }
     val imageUrls: SnapshotStateList<String> = remember {
@@ -159,6 +163,19 @@ fun ProductEditorDialog(
                     }
                 )
                 OutlinedTextField(description, { description = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    providerName,
+                    { providerName = it },
+                    label = { Text("Proveedor") },
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = { Text("Se crea automáticamente si no existe.") }
+                )
+                OutlinedTextField(
+                    providerSku,
+                    { providerSku = it },
+                    label = { Text("SKU del proveedor") },
+                    modifier = Modifier.fillMaxWidth()
+                )
                 ImageUrlListEditor(imageUrls = imageUrls)
             }
         },
@@ -197,7 +214,9 @@ fun ProductEditorDialog(
                     minStockValue,
                     description.text.trim().ifBlank { null },
                     normalizedImages,
-                    gainTarget
+                    gainTarget,
+                    providerName.text.trim().ifBlank { null },
+                    providerSku.text.trim().ifBlank { null }
                 )
             }) { Text("Guardar") }
         },

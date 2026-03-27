@@ -31,6 +31,17 @@ class ProviderRepository @Inject constructor(
     suspend fun getModelById(id: Int): Provider? =
         dao.getById(id)?.toModel()
 
+    /**
+     * Busca un proveedor por nombre exacto (trim) o lo crea si no existe.
+     * Retorna el ID del proveedor encontrado o recién creado.
+     */
+    suspend fun findOrCreateByName(name: String): Int {
+        val trimmed = name.trim()
+        val existing = dao.getByName(trimmed)
+        if (existing != null) return existing.id
+        return dao.insert(ProviderEntity(name = trimmed)).toInt()
+    }
+
     // ===== API previa (por si hay código que la usa) =====
 
     fun observeAll(): Flow<List<ProviderEntity>> = dao.observeAll()

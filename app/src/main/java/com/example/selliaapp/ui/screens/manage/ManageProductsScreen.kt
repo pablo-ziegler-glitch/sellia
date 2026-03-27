@@ -93,6 +93,7 @@ fun ManageProductsScreen(
     var showSizeEditor by remember { mutableStateOf(false) }
     var editingSizeProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var sizeStocksDraft by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var quickPoProduct by remember { mutableStateOf<ProductEntity?>(null) }
     val currencyFormatter = remember {
         NumberFormat.getCurrencyInstance(Locale("es", "AR")).apply {
             maximumFractionDigits = 0
@@ -315,7 +316,7 @@ fun ManageProductsScreen(
             posnetPercent = pricingSettings?.posnet3CuotasPercent ?: 0.0,
             operativosPercent = pricingSettings?.operativosLocalPercent ?: 0.0,
             onDismiss = { showEditor = false },
-            onSave = { name, barcode, purchasePrice, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls, gainTargetPercent ->
+            onSave = { name, barcode, purchasePrice, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls, gainTargetPercent, providerName, providerSku ->
                 scope.launch {
                     val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
                     val base: ProductEntity = editing ?: ProductEntity(
@@ -337,6 +338,8 @@ fun ManageProductsScreen(
                         category = null,
                         minStock = minStock,
                         gainTargetPercent = gainTargetPercent,
+                        providerName = providerName,
+                        providerSku = providerSku,
                         updatedAt = LocalDate.now()
                     )
 
@@ -356,6 +359,8 @@ fun ManageProductsScreen(
                         imageUrls = normalizedImages,
                         minStock = minStock,
                         gainTargetPercent = gainTargetPercent,
+                        providerName = providerName,
+                        providerSku = providerSku,
                         updatedAt = LocalDate.now()
                     )
 
@@ -383,6 +388,23 @@ fun ManageProductsScreen(
             },
             onPrintQr = {
                 downloadProductQrFromDetail(product)
+            },
+            onOrderFromProvider = if (!product.providerName.isNullOrBlank() && product.providerId != null) {
+                {
+                    selectedProduct = null
+                    quickPoProduct = product
+                }
+            } else null
+        )
+    }
+
+    quickPoProduct?.let { product ->
+        QuickPurchaseOrderDialog(
+            product = product,
+            onDismiss = { quickPoProduct = null },
+            onCreate = { qty, price ->
+                vm.createQuickPurchaseOrder(product, qty, price)
+                quickPoProduct = null
             }
         )
     }
@@ -423,4 +445,57 @@ fun ManageProductsScreen(
             }
         )
     }
+}
+
+@Composable
+private fun QuickPurchaseOrderDialog(
+    product: ProductEntity,
+    onDismiss: () -> Unit,
+    onCreate: (quantity: Double, unitPrice: Double) -> Unit
+) {
+    var qty by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
+    var price by remember {
+        mutableStateOf(
+            androidx.compose.ui.text.input.TextFieldValue(
+                product.purchasePrice?.toString() ?: ""
+            )
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pedir a ${product.providerName}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Producto: ${product.name}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                OutlinedTextField(
+                    value = qty,
+                    onValueChange = { qty = it },
+                    label = { Text("Cantidad") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = price,
+                    onValueChange = { price = it },
+                    label = { Text("Precio unitario (costo)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    val q = qty.text.toDoubleOrNull() ?: return@TextButton
+                    val p = price.text.toDoubleOrNull() ?: return@TextButton
+                    if (q > 0 && p >= 0) onCreate(q, p)
+                }
+            ) { Text("Crear pedido") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
 }
