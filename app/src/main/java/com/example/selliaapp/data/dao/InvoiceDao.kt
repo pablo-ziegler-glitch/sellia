@@ -45,6 +45,7 @@ data class DailyProfitRow(
     val saleCount: Int,
     val totalRevenue: Double,
     val totalPurchaseCost: Double?,
+    val totalGrossAmount: Double?,
     val totalNetGain: Double?
 )
 
@@ -92,7 +93,8 @@ interface InvoiceDao {
         SELECT ((dateMillis / 86400000) * 86400000) AS day,
                SUM(total) AS total
         FROM Invoices
-        WHERE dateMillis BETWEEN :startMillis AND :endMillis
+        WHERE status = 'EMITIDA'
+          AND dateMillis BETWEEN :startMillis AND :endMillis
         GROUP BY day
         ORDER BY day
     """)
@@ -190,7 +192,8 @@ interface InvoiceDao {
      */
     @Query("""
         SELECT IFNULL(SUM(total), 0.0) FROM invoices
-        WHERE dateMillis BETWEEN :startMillis AND :endMillis
+        WHERE status = 'EMITIDA'
+          AND dateMillis BETWEEN :startMillis AND :endMillis
     """)
     suspend fun sumTotalBetween(startMillis: Long, endMillis: Long): Double
 
@@ -199,6 +202,7 @@ interface InvoiceDao {
                CAST(strftime('%m', (dateMillis/1000), 'unixepoch') AS INTEGER) AS month,
                SUM(total) AS total
         FROM invoices
+        WHERE status = 'EMITIDA'
         GROUP BY year, month
         ORDER BY year DESC, month DESC
     """)
@@ -236,6 +240,8 @@ interface InvoiceDao {
                SUM(total) AS totalRevenue,
                CASE WHEN SUM(CASE WHEN bdPurchaseCost IS NULL THEN 1 ELSE 0 END) > 0
                     THEN NULL ELSE SUM(bdPurchaseCost) END AS totalPurchaseCost,
+               CASE WHEN SUM(CASE WHEN bdGrossAmount IS NULL THEN 1 ELSE 0 END) > 0
+                    THEN NULL ELSE SUM(bdGrossAmount) END AS totalGrossAmount,
                CASE WHEN SUM(CASE WHEN bdNetGain IS NULL THEN 1 ELSE 0 END) > 0
                     THEN NULL ELSE SUM(bdNetGain) END AS totalNetGain
         FROM invoices

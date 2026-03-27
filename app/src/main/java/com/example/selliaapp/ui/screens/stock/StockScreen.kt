@@ -37,14 +37,16 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -87,6 +89,8 @@ import java.util.Locale
  *   - Indicador lineal de progreso durante importación.
  *   - rememberSaveable en estados claves.
  */
+private enum class StockFilter { ALL, LOW_STOCK, OUT_OF_STOCK }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StockScreen(
@@ -98,6 +102,8 @@ fun StockScreen(
     onOpenPriceAudit: () -> Unit,
     onEditProduct: (ProductEntity) -> Unit,
     onOpenQrLabels: () -> Unit,
+    onAdjustStock: (ProductEntity) -> Unit = {},
+    onViewMovements: () -> Unit = {},
     onProductClick: (ProductEntity) -> Unit,
     onBack: () -> Unit
 ) {
@@ -107,6 +113,7 @@ fun StockScreen(
     var query by remember { mutableStateOf("") }
     */
     var query by rememberSaveable { mutableStateOf("") } // [NUEVO] preserva al rotar
+    var stockFilter by rememberSaveable { mutableStateOf(StockFilter.ALL) }
 
     val context = LocalContext.current
 
@@ -178,13 +185,33 @@ fun StockScreen(
     }
 
     // Filtro local (null-safe para barcode/code)
-    val filtered = remember(products, query) {
+    val filtered = remember(products, query, stockFilter) {
         val q = query.trim()
-        if (q.isEmpty()) products
-        else products.filter { p ->
-            p.name.contains(q, ignoreCase = true) ||
+        products
+            .filter { p ->
+                q.isEmpty() ||
+                    p.name.contains(q, ignoreCase = true) ||
                     (p.barcode?.contains(q, ignoreCase = true) == true) ||
                     (p.code?.contains(q, ignoreCase = true) == true)
+            }
+            .filter { p ->
+                when (stockFilter) {
+                    StockFilter.ALL -> true
+                    StockFilter.OUT_OF_STOCK -> p.quantity == 0
+                    StockFilter.LOW_STOCK -> {
+                        val min = p.minStock ?: 0
+                        p.quantity > 0 && min > 0 && p.quantity < min
+                    }
+                }
+            }
+    }
+
+    // Conteos para los chips
+    val outOfStockCount = remember(products) { products.count { it.quantity == 0 } }
+    val lowStockCount = remember(products) {
+        products.count { p ->
+            val min = p.minStock ?: 0
+            p.quantity > 0 && min > 0 && p.quantity < min
         }
     }
 
@@ -267,11 +294,39 @@ fun StockScreen(
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Buscar por nombre o código") },
+                    label = { Text(“Buscar por nombre o código”) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+                // Chips de filtro de stock
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = stockFilter == StockFilter.ALL,
+                        onClick = { stockFilter = StockFilter.ALL },
+                        label = { Text(“Todos (${products.size})”) }
+                    )
+                    if (lowStockCount > 0) {
+                        FilterChip(
+                            selected = stockFilter == StockFilter.LOW_STOCK,
+                            onClick = { stockFilter = StockFilter.LOW_STOCK },
+                            label = { Text(“Stock bajo ($lowStockCount)”) }
+                        )
+                    }
+                    if (outOfStockCount > 0) {
+                        FilterChip(
+                            selected = stockFilter == StockFilter.OUT_OF_STOCK,
+                            onClick = { stockFilter = StockFilter.OUT_OF_STOCK },
+                            label = { Text(“Sin stock ($outOfStockCount)”) }
+                        )
+                    }
+                }
             }
         },
         floatingActionButton = {
@@ -291,7 +346,41 @@ fun StockScreen(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Importar archivo de productos
+                            // Agregar producto manualmente
+                            SmallFabWithLabel(
+                                label = "Agregar producto",
+                                icon = { Icon(Icons.Default.Add, contentDescription = "Agregar producto") },
+                                onClick = {
+                                    fabExpanded = false
+                                    onAddProduct()
+                                }
+                            )
+                            // Escanear código
+                            SmallFabWithLabel(
+                                label = "Escanear código",
+                                icon = { Icon(Icons.Default.CameraAlt, contentDescription = "Escanear") },
+                                onClick = {
+                                    fabExpanded = false
+                                    onScan()
+                                }
+                            )
+                            // Historial de movimientos
+                            SmallFabWithLabel(
+                                label = "Historial de movimientos",
+                                icon = { Icon(Icons.Default.History, contentDescription = "Historial") },
+                                onClick = {
+                                    fabExpanded = false
+                                    onViewMovements()
+                                }
+                            )
+                            SmallFabWithLabel(
+                                label = "Cargar por foto (IA)",
+                                icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Cargar por foto") },
+                                onClick = {
+                                    fabExpanded = false
+                                    onPhotoIntake()
+                                }
+                            )
                             SmallFabWithLabel(
                                 label = "Importar archivo",
                                 icon = { Icon(Icons.Default.Description, contentDescription = "Importar archivo") },
@@ -308,45 +397,11 @@ fun StockScreen(
                                 }
                             )
                             SmallFabWithLabel(
-                                label = "Cargar por foto (IA)",
-                                icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Cargar por foto") },
-                                onClick = {
-                                    fabExpanded = false
-                                    onPhotoIntake()
-                                }
-                            )
-                            // Escanear
-                            SmallFabWithLabel(
-                                label = "Escanear",
-                                icon = { Icon(Icons.Default.CameraAlt, contentDescription = "Escanear") },
-                                onClick = {
-                                    fabExpanded = false
-                                    onScan()
-                                }
-                            )
-                            SmallFabWithLabel(
-                                label = "Eliminar seleccionados",
-                                icon = { Icon(Icons.Default.Delete, contentDescription = "Eliminar seleccionados") },
+                                label = "Seleccionar para eliminar",
+                                icon = { Icon(Icons.Default.Delete, contentDescription = "Seleccionar para eliminar") },
                                 onClick = {
                                     fabExpanded = false
                                     selectionModeEnabled = true
-                                }
-                            )
-                            SmallFabWithLabel(
-                                label = "Eliminar todos",
-                                icon = { Icon(Icons.Default.Delete, contentDescription = "Eliminar todos") },
-                                onClick = {
-                                    fabExpanded = false
-                                    showDeleteAllDialog = true
-                                }
-                            )
-                            // Agregar producto
-                            SmallFabWithLabel(
-                                label = "Agregar producto",
-                                icon = { Icon(Icons.Default.Add, contentDescription = "Agregar producto") },
-                                onClick = {
-                                    fabExpanded = false
-                                    onAddProduct()
                                 }
                             )
                         }
@@ -407,7 +462,8 @@ fun StockScreen(
                         onLongClick = {
                             selectionModeEnabled = true
                             selectedProductIds = selectedProductIds + p.id
-                        }
+                        },
+                        onQuickAdjust = { onAdjustStock(p) }
                     )
                 }
             }
@@ -436,6 +492,14 @@ fun StockScreen(
                     }
                 }
                 showDeleteBackupConfirmDialog = true
+            },
+            onAdjustStock = {
+                detailProduct = null
+                onAdjustStock(product)
+            },
+            onViewMovements = {
+                detailProduct = null
+                onViewMovements()
             }
         )
     }
@@ -601,7 +665,7 @@ private fun SmallFabWithLabel(
     }
 }
 
-/** Ítem de la lista de productos (card simple). */
+/** Ítem de la lista de productos — diseño simplificado con badge de stock. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProductRow(
@@ -610,52 +674,94 @@ private fun ProductRow(
     isSelectionMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onQuickAdjust: () -> Unit
 ) {
-    val listPrice = product.listPrice ?: 0.0
-    val cashPrice = product.cashPrice ?: product.listPrice ?: 0.0
-    val transferPrice = product.transferPrice ?: product.listPrice ?: 0.0
-    val mlPriceLabel = product.mlPrice?.let { currency.format(it) } ?: "-"
-    val ml3cPriceLabel = product.ml3cPrice?.let { currency.format(it) } ?: "-"
-    val ml6cPriceLabel = product.ml6cPrice?.let { currency.format(it) } ?: "-"
+    val (stockLabel, stockColor) = when {
+        product.quantity == 0 ->
+            "Sin stock" to MaterialTheme.colorScheme.error
+        (product.minStock ?: 0) > 0 && product.quantity < (product.minStock ?: 0) ->
+            "Stock bajo" to MaterialTheme.colorScheme.tertiary
+        else ->
+            null to null
+    }
+    val cardBorderColor = if (isSelected) MaterialTheme.colorScheme.primary else null
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(
-                product.name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.size(4.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Stock: ${product.quantity}", style = MaterialTheme.typography.bodyMedium)
-                HorizontalDivider(Modifier.weight(1f))
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Contenido principal
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    "Lista: ${currency.format(listPrice)} · Efectivo: ${currency.format(cashPrice)} · Transferencia: ${currency.format(transferPrice)}",
-                    style = MaterialTheme.typography.bodySmall
+                    product.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Cantidad con color de estado
+                    val qtyColor = stockColor ?: MaterialTheme.colorScheme.onSurface
+                    Text(
+                        text = "${product.quantity} uds.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = qtyColor
+                    )
+                    // Badge de alerta solo si hay problema
+                    if (stockLabel != null && stockColor != null) {
+                        Text(
+                            text = "· $stockLabel",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = stockColor
+                        )
+                    }
+                    // Precio principal
+                    product.listPrice?.let {
+                        HorizontalDivider(
+                            modifier = Modifier.size(width = 1.dp, height = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+                        Text(
+                            text = currency.format(it),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                product.barcode?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (isSelectionMode) {
+                    Text(
+                        text = if (isSelected) "✓ Seleccionado" else "Toque largo para seleccionar",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Text(
-                text = "ML: $mlPriceLabel · ML 3C: $ml3cPriceLabel · ML 6C: $ml6cPriceLabel",
-                style = MaterialTheme.typography.bodySmall
-            )
-            if (isSelectionMode) {
-                Spacer(Modifier.size(2.dp))
-                Text(
-                    text = if (isSelected) "Seleccionado" else "Mantener presionado para seleccionar",
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-            product.barcode?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.size(2.dp))
-                Text("Barcode: $it", style = MaterialTheme.typography.bodySmall)
+            // Botón de ajuste rápido (solo cuando NO está en selección)
+            if (!isSelectionMode) {
+                IconButton(onClick = onQuickAdjust) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Ajustar stock",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

@@ -10,11 +10,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
@@ -77,17 +83,67 @@ fun QuickStockAdjustScreen(
                 )
             }
 
-            OutlinedTextField(
-                value = state.deltaText,
-                onValueChange = onDeltaChange,
-                label = { Text("Cantidad a ajustar") },
-                keyboardOptions = KeyboardOptions.Default,
-                singleLine = true,
+            // Stepper +/- con campo de texto central
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                supportingText = {
-                    Text("Valores positivos suman stock, negativos descuentan.")
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val currentDelta = state.deltaText.toIntOrNull() ?: 0
+                FilledTonalIconButton(
+                    onClick = { onDeltaChange((currentDelta - 1).toString()) },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Restar")
                 }
-            )
+                OutlinedTextField(
+                    value = state.deltaText,
+                    onValueChange = onDeltaChange,
+                    label = { Text("Cantidad a ajustar") },
+                    keyboardOptions = KeyboardOptions.Default,
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    supportingText = { Text("+ suma · − descuenta") }
+                )
+                FilledTonalIconButton(
+                    onClick = { onDeltaChange((currentDelta + 1).toString()) },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Sumar")
+                }
+            }
+
+            // Preview del stock resultante
+            if (product != null) {
+                val delta = state.deltaText.toIntOrNull() ?: 0
+                val newStock = product.quantity + delta
+                val minStock = product.minStock ?: 0
+                val previewColor = when {
+                    newStock < 0 -> MaterialTheme.colorScheme.error
+                    newStock == 0 -> MaterialTheme.colorScheme.error
+                    minStock > 0 && newStock < minStock -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.primary
+                }
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Stock actual: ${product.quantity}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("→", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = "Nuevo: $newStock",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = previewColor
+                        )
+                    }
+                }
+            }
 
             var expanded by remember { mutableStateOf(false) }
             val options = remember { StockAdjustmentReason.values().toList() }

@@ -100,7 +100,7 @@ class CashRepositoryImpl @Inject constructor(
         note: String?
     ): CashAuditEntity {
         val movements = cashMovementDao.listBySession(sessionId)
-        val session = cashSessionDao.getOpenSession()
+        val session = cashSessionDao.getById(sessionId)
         val openingAmount = session?.openingAmount ?: 0.0
         val expected = CashCalculations.expectedAmount(openingAmount, movements)
         val audit = CashAuditEntity(
@@ -121,7 +121,7 @@ class CashRepositoryImpl @Inject constructor(
         note: String?
     ) {
         val movements = cashMovementDao.listBySession(sessionId)
-        val session = cashSessionDao.getOpenSession()
+        val session = cashSessionDao.getById(sessionId)
         val openingAmount = session?.openingAmount ?: 0.0
         val expected = CashCalculations.expectedAmount(openingAmount, movements)
         cashSessionDao.closeSession(

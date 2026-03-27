@@ -16,6 +16,9 @@ interface CashSessionDao {
     @Query("SELECT * FROM cash_sessions WHERE status = 'OPEN' LIMIT 1")
     suspend fun getOpenSession(): CashSessionEntity?
 
+    @Query("SELECT * FROM cash_sessions WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): CashSessionEntity?
+
     @Query("SELECT * FROM cash_sessions WHERE id = :sessionId")
     fun observeSession(sessionId: String): Flow<CashSessionEntity?>
 
