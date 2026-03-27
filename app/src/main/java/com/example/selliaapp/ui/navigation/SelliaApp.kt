@@ -307,7 +307,8 @@ fun SelliaApp(
                         vm = homeVm,
                         accountSummary = accountSummary,
                         storeName = marketingSettings.storeName,
-                        storeLogoUrl = marketingSettings.storeLogoUrl
+                        storeLogoUrl = marketingSettings.storeLogoUrl,
+                        routeCounts = roleRouteCounts
                     )
                 }
             }

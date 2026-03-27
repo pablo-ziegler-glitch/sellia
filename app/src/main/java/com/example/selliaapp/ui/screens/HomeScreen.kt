@@ -1,7 +1,8 @@
 package com.example.selliaapp.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,8 +17,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Money
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.QueryStats
@@ -26,6 +29,7 @@ import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -61,7 +66,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val CashOpenColor = Color(0xFF2E7D32)
+private val CashClosedColor = Color(0xFFC62828)
+private val CashOnColor = Color.White
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     vm: HomeViewModel,
@@ -85,7 +94,8 @@ fun HomeScreen(
     onCashHub: () -> Unit,
     accountSummary: AccountSummary,
     storeName: String,
-    storeLogoUrl: String
+    storeLogoUrl: String,
+    routeCounts: Map<String, Int> = emptyMap()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
@@ -128,17 +138,16 @@ fun HomeScreen(
         )
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
     ) {
-        val isCompactWidth = maxWidth < 600.dp
-
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Store header
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -162,62 +171,30 @@ fun HomeScreen(
                 }
             }
 
+            // Cambio 1: Cash status banner – green/red
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null)
-                            Text("Estado de caja", style = MaterialTheme.typography.titleMedium)
-                        }
-
-                        if (!state.hasOpenCashSession) {
-                            Text(
-                                "Caja cerrada",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                "Necesaria para vender con efectivo.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Button(onClick = onCashOpen, modifier = Modifier.fillMaxWidth()) {
-                                Text("Abrir caja")
-                            }
-                        } else {
-                            Text(
-                                "Abierta $openedTime · ${cashSession?.openedBy ?: "Operador"}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                "Saldo teórico: ${currency.format(state.cashSummary?.expectedAmount ?: 0.0)}",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = onCashAudit, modifier = Modifier.weight(1f)) {
-                                    Text("Arqueo")
-                                }
-                                FilledTonalButton(onClick = onCashClose, modifier = Modifier.weight(1f)) {
-                                    Text("Cerrar caja")
-                                }
-                            }
-                            TextButton(onClick = onCashHub, modifier = Modifier.align(Alignment.End)) {
-                                Text("Ver panel de caja")
-                            }
-                        }
-                    }
-                }
+                CashStatusBanner(
+                    isOpen = state.hasOpenCashSession,
+                    openedTime = openedTime,
+                    openedBy = cashSession?.openedBy,
+                    expectedAmount = currency.format(state.cashSummary?.expectedAmount ?: 0.0),
+                    onCashOpen = onCashOpen,
+                    onCashAudit = onCashAudit,
+                    onCashClose = onCashClose,
+                    onCashHub = onCashHub
+                )
             }
 
+            // Cambio 2: Sticky daily summary card
+            stickyHeader {
+                DailySummaryCard(
+                    ventas = currency.format(state.dailySales),
+                    efectivo = currency.format(state.cashSummary?.cashSalesTotal ?: 0.0),
+                    ganancia = currency.format(state.dailyMargin)
+                )
+            }
+
+            // Primary action card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -260,6 +237,7 @@ fun HomeScreen(
                 }
             }
 
+            // Public catalog card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -287,15 +265,7 @@ fun HomeScreen(
                 }
             }
 
-            item {
-                KpiSection(
-                    isCompactWidth = isCompactWidth,
-                    dailySales = currency.format(state.dailySales),
-                    tickets = state.cashSummary?.movements?.count { it.type == "SALE_CASH" }?.toString() ?: "0",
-                    averageTicket = currency.format(state.averageTicket)
-                )
-            }
-
+            // Operational alerts card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -344,71 +314,214 @@ fun HomeScreen(
                 }
             }
 
+            // Cambio 3: Adaptive quick actions (top 3 by usage frequency)
             item {
-                ShortcutsSection(
-                    isCompactWidth = isCompactWidth,
+                AdaptiveShortcutsSection(
+                    routeCounts = routeCounts,
                     onNewSale = onNewSale,
                     onStock = onStock,
                     onClientes = onClientes,
                     onReports = onReports,
-                    onPricingSimulator = onPricingSimulator
+                    onPricingSimulator = onPricingSimulator,
+                    onProviders = onProviders,
+                    onExpenses = onExpenses
                 )
             }
         }
     }
 }
 
+// Cambio 1: Cash status banner with unambiguous green/red color
 @Composable
-private fun KpiSection(
-    isCompactWidth: Boolean,
-    dailySales: String,
-    tickets: String,
-    averageTicket: String
+private fun CashStatusBanner(
+    isOpen: Boolean,
+    openedTime: String,
+    openedBy: String?,
+    expectedAmount: String,
+    onCashOpen: () -> Unit,
+    onCashAudit: () -> Unit,
+    onCashClose: () -> Unit,
+    onCashHub: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Resumen del día", style = MaterialTheme.typography.titleMedium)
-        if (isCompactWidth) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                KpiCard(title = "Ventas hoy", value = dailySales, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    KpiCard(title = "Tickets", value = tickets, modifier = Modifier.weight(1f))
-                    KpiCard(title = "Ticket promedio", value = averageTicket, modifier = Modifier.weight(1f))
+    val backgroundColor = if (isOpen) CashOpenColor else CashClosedColor
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = if (isOpen) Icons.Default.CheckCircle else Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = CashOnColor,
+                    modifier = Modifier.size(22.dp)
+                )
+                Text(
+                    text = if (isOpen) "Caja abierta" else "Caja cerrada",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = CashOnColor
+                )
+            }
+
+            if (!isOpen) {
+                Text(
+                    "Necesaria para vender con efectivo.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CashOnColor.copy(alpha = 0.85f)
+                )
+                Button(
+                    onClick = onCashOpen,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CashOnColor,
+                        contentColor = CashClosedColor
+                    )
+                ) {
+                    Text("Abrir caja", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Text(
+                    "Abierta $openedTime · ${openedBy ?: "Operador"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CashOnColor.copy(alpha = 0.85f)
+                )
+                Text(
+                    expectedAmount,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = CashOnColor
+                )
+                Text(
+                    "Saldo teórico en caja",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CashOnColor.copy(alpha = 0.75f)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onCashAudit,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = CashOnColor),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, CashOnColor.copy(alpha = 0.7f))
+                    ) {
+                        Text("Arqueo")
+                    }
+                    Button(
+                        onClick = onCashClose,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CashOnColor,
+                            contentColor = CashOpenColor
+                        )
+                    ) {
+                        Text("Cerrar caja", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                TextButton(
+                    onClick = onCashHub,
+                    modifier = Modifier.align(Alignment.End),
+                    colors = ButtonDefaults.textButtonColors(contentColor = CashOnColor.copy(alpha = 0.85f))
+                ) {
+                    Text("Ver panel de caja")
                 }
             }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                KpiCard(title = "Ventas hoy", value = dailySales, modifier = Modifier.weight(1f))
-                KpiCard(title = "Tickets", value = tickets, modifier = Modifier.weight(1f))
-                KpiCard(title = "Ticket promedio", value = averageTicket, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+// Cambio 2: Sticky daily summary card (ventas, efectivo en caja, ganancia)
+@Composable
+private fun DailySummaryCard(
+    ventas: String,
+    efectivo: String,
+    ganancia: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(
+                "Resumen del día",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DailySummaryItem("Ventas", ventas, Modifier.weight(1f))
+                DailySummaryItem("Efectivo en caja", efectivo, Modifier.weight(1f))
+                DailySummaryItem("Ganancia", ganancia, Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun ShortcutsSection(
-    isCompactWidth: Boolean,
+private fun DailySummaryItem(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+// Cambio 3: Adaptive shortcuts – top 3 by usage frequency from routeCounts
+@Composable
+private fun AdaptiveShortcutsSection(
+    routeCounts: Map<String, Int>,
     onNewSale: () -> Unit,
     onStock: () -> Unit,
     onClientes: () -> Unit,
     onReports: () -> Unit,
-    onPricingSimulator: () -> Unit
+    onPricingSimulator: () -> Unit,
+    onProviders: () -> Unit,
+    onExpenses: () -> Unit
 ) {
-    val shortcuts = listOf(
-        ShortcutItem("Vender", Icons.Default.PointOfSale, onNewSale),
-        ShortcutItem("Stock", Icons.Default.Inventory2, onStock),
-        ShortcutItem("Clientes", Icons.Default.People, onClientes),
-        ShortcutItem("Reportes", Icons.Default.QueryStats, onReports),
-        ShortcutItem("Sim. costos", Icons.Default.Calculate, onPricingSimulator)
+    val allShortcuts = listOf(
+        ShortcutItem("Vender", Icons.Default.PointOfSale, "sell", onNewSale),
+        ShortcutItem("Stock", Icons.Default.Inventory2, "stock", onStock),
+        ShortcutItem("Clientes", Icons.Default.People, "clients_hub", onClientes),
+        ShortcutItem("Reportes", Icons.Default.QueryStats, "reports", onReports),
+        ShortcutItem("Sim. costos", Icons.Default.Calculate, "pricing_simulator", onPricingSimulator),
+        ShortcutItem("Proveedores", Icons.AutoMirrored.Filled.ReceiptLong, "providers_hub", onProviders),
+        ShortcutItem("Gastos", Icons.Default.Money, "expenses_hub", onExpenses)
     )
 
+    val top3 = allShortcuts
+        .sortedByDescending { routeCounts[it.route] ?: 0 }
+        .take(3)
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Atajos", style = MaterialTheme.typography.titleMedium)
-        shortcuts.chunked(3).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                rowItems.forEach { item ->
-                    ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
-                }
+        Text("Accesos rápidos", style = MaterialTheme.typography.titleMedium)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            top3.forEach { item ->
+                ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
             }
         }
     }
@@ -417,6 +530,7 @@ private fun ShortcutsSection(
 private data class ShortcutItem(
     val label: String,
     val icon: ImageVector,
+    val route: String,
     val onClick: () -> Unit
 )
 
@@ -449,16 +563,6 @@ private fun StoreLogo(
                     .padding(6.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-    }
-}
-
-@Composable
-private fun KpiCard(title: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.bodySmall)
-            Text(value, style = MaterialTheme.typography.titleMedium)
         }
     }
 }
