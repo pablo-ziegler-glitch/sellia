@@ -414,16 +414,23 @@ fun SelliaApp(
                 arguments = listOf(
                     navArgument(Routes.PosSuccess.ARG_ID) { type = NavType.LongType },
                     navArgument(Routes.PosSuccess.ARG_TOTAL) { type = NavType.FloatType },
-                    navArgument(Routes.PosSuccess.ARG_METHOD) { type = NavType.StringType }
+                    navArgument(Routes.PosSuccess.ARG_METHOD) { type = NavType.StringType },
+                    navArgument(Routes.PosSuccess.ARG_CUSTOMER) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
                 )
             ) { backStackEntry ->
                 val invoiceId = backStackEntry.arguments?.getLong(Routes.PosSuccess.ARG_ID) ?: 0L
                 val total = backStackEntry.arguments?.getFloat(Routes.PosSuccess.ARG_TOTAL)?.toDouble() ?: 0.0
                 val method = backStackEntry.arguments?.getString(Routes.PosSuccess.ARG_METHOD).orEmpty()
+                val customerName = backStackEntry.arguments?.getString(Routes.PosSuccess.ARG_CUSTOMER)
                 PosSuccessScreen(
                     invoiceId = invoiceId,
                     total = total,
                     method = method,
+                    customerName = customerName,
                     onNewSale = { navController.navigate(Routes.Pos.route) },
                     onViewSale = { navController.navigate(Routes.SalesInvoiceDetail.withId(invoiceId)) }
                 )
