@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 object SyncScheduler {
     private const val PREFS_NAME = "sync_scheduler_preferences"
     private const val KEY_INTERVAL_MINUTES = "sync_interval_minutes"
-    private const val DEFAULT_INTERVAL_MINUTES = 60
+    private const val DEFAULT_INTERVAL_MINUTES = 1440 // 24 hs
     const val PERIODIC_UNIQUE_NAME: String = "sync_periodic_work"
 
     fun enqueueNow(context: Context) {
