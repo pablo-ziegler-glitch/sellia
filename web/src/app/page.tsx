@@ -4,6 +4,7 @@ import {
   VALKIRJA_TENANT_ID,
   getStorefront,
   getPublicProducts,
+  getCatalogConfig,
 } from "@/lib/catalog";
 import { formatPrice } from "@/lib/format";
 import type { Metadata } from "next";
@@ -28,9 +29,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function LandingPage() {
-  const [storefront, allProducts] = await Promise.all([
+  const [storefront, allProducts, catalogConfig] = await Promise.all([
     getStorefront(VALKIRJA_TENANT_ID),
     getPublicProducts(VALKIRJA_TENANT_ID),
+    getCatalogConfig(VALKIRJA_TENANT_ID),
   ]);
 
   const previewProducts = allProducts.slice(0, 6);
@@ -316,7 +318,7 @@ export default async function LandingPage() {
                         {product.category}
                       </p>
                     )}
-                    {product.listPrice != null && (
+                    {catalogConfig?.showPrices && product.listPrice != null && (
                       <p
                         className="text-sm font-bold mt-2"
                         style={{ color: "var(--gold)" }}
