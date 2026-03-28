@@ -17,18 +17,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +49,10 @@ import com.example.selliaapp.repository.StockValuationScenario
 import com.example.selliaapp.viewmodel.ReportsFilter
 import com.example.selliaapp.viewmodel.ReportsViewModel
 import java.text.NumberFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
@@ -58,9 +70,66 @@ fun ReportsScreen(
     val state by vm.state.collectAsState()
     val localeEsAr = Locale("es", "AR")
     val currency = NumberFormat.getCurrencyInstance(localeEsAr)
+    val dateFmt = remember { DateTimeFormatter.ofPattern("dd/MM/yy") }
+
+    var showFromPicker by remember { mutableStateOf(false) }
+    var showToPicker by remember { mutableStateOf(false) }
+    var pendingFrom by remember { mutableStateOf<LocalDate?>(null) }
 
     LaunchedEffect(Unit) {
         vm.onFilterChange(ReportsFilter.DAY)
+    }
+
+    // From date picker
+    if (showFromPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = state.customFrom
+                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showFromPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        pendingFrom = Instant.ofEpochMilli(millis)
+                            .atZone(ZoneOffset.UTC).toLocalDate()
+                    }
+                    showFromPicker = false
+                    showToPicker = true
+                }) { Text("Siguiente") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFromPicker = false }) { Text("Cancelar") }
+            }
+        ) {
+            DatePicker(state = pickerState, title = { Text("Fecha desde", modifier = Modifier.padding(start = 24.dp, top = 16.dp)) })
+        }
+    }
+
+    // To date picker
+    if (showToPicker) {
+        val from = pendingFrom ?: state.customFrom
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = state.customTo
+                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showToPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        val to = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        vm.loadCustomRange(from, if (to.isBefore(from)) from else to)
+                    }
+                    showToPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showToPicker = false }) { Text("Cancelar") }
+            }
+        ) {
+            DatePicker(state = pickerState, title = { Text("Fecha hasta", modifier = Modifier.padding(start = 24.dp, top = 16.dp)) })
+        }
     }
 
     Scaffold(
@@ -83,6 +152,29 @@ fun ReportsScreen(
                 .navigationBarsPadding()
                 .padding(16.dp),
         ) {
+            // Presets de período
+            FilterPresetsRow(
+                selected = state.filter,
+                onSelect = { filter ->
+                    if (filter == ReportsFilter.CUSTOM) {
+                        showFromPicker = true
+                    } else {
+                        vm.onFilterChange(filter)
+                    }
+                }
+            )
+
+            if (state.filter == ReportsFilter.CUSTOM) {
+                Text(
+                    text = "${state.customFrom.format(dateFmt)} – ${state.customTo.format(dateFmt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                )
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             Box(
                 modifier = Modifier
                     .weight(1f, fill = true)
@@ -156,6 +248,36 @@ fun ReportsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilterPresetsRow(
+    selected: ReportsFilter,
+    onSelect: (ReportsFilter) -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = selected == ReportsFilter.DAY,
+            onClick = { onSelect(ReportsFilter.DAY) },
+            label = { Text("Hoy") }
+        )
+        FilterChip(
+            selected = selected == ReportsFilter.WEEK,
+            onClick = { onSelect(ReportsFilter.WEEK) },
+            label = { Text("Esta semana") }
+        )
+        FilterChip(
+            selected = selected == ReportsFilter.MONTH,
+            onClick = { onSelect(ReportsFilter.MONTH) },
+            label = { Text("Este mes") }
+        )
+        FilterChip(
+            selected = selected == ReportsFilter.CUSTOM,
+            onClick = { onSelect(ReportsFilter.CUSTOM) },
+            label = { Text("Personalizado") }
+        )
+    }
+}
+
 @Composable
 private fun SalesSummarySection(
     points: List<Pair<String, Double>>,
@@ -164,9 +286,10 @@ private fun SalesSummarySection(
     filter: ReportsFilter
 ) {
     val title = when (filter) {
-        ReportsFilter.DAY -> "Ventas de hoy"
-        ReportsFilter.WEEK -> "Ventas de la semana"
-        ReportsFilter.MONTH -> "Ventas del mes"
+        ReportsFilter.DAY    -> "Ventas de hoy"
+        ReportsFilter.WEEK   -> "Ventas de la semana"
+        ReportsFilter.MONTH  -> "Ventas del mes"
+        ReportsFilter.CUSTOM -> "Ventas del período"
     }
     Text(text = title, style = MaterialTheme.typography.titleMedium)
     Spacer(modifier = Modifier.height(8.dp))
