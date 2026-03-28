@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SyncOutboxDao {
@@ -17,6 +18,12 @@ interface SyncOutboxDao {
 
     @Query("SELECT * FROM sync_outbox ORDER BY createdAt ASC")
     suspend fun getAll(): List<SyncOutboxEntity>
+
+    @Query("SELECT * FROM sync_outbox ORDER BY createdAt ASC")
+    fun observeAll(): Flow<List<SyncOutboxEntity>>
+
+    @Query("SELECT COUNT(*) FROM sync_outbox")
+    fun observePendingCount(): Flow<Int>
 
     @Query("SELECT * FROM sync_outbox WHERE entityType = :entityType ORDER BY createdAt ASC")
     suspend fun getByType(entityType: String): List<SyncOutboxEntity>

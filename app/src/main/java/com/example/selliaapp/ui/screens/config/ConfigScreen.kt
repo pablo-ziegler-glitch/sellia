@@ -157,7 +157,7 @@ fun ConfigScreen(
                 )
                 SettingsItem(
                     icon = Icons.Filled.CloudSync,
-                    title = "Sincronización",
+                    title = "Sincronización y diagnóstico",
                     onClick = onSync
                 )
                 SettingsItem(
