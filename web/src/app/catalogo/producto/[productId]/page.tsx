@@ -10,6 +10,7 @@ import {
 import { formatPrice } from "@/lib/format";
 import type { Metadata } from "next";
 import ShareButton from "./ShareButton";
+import ProductInquiryForm from "./ProductInquiryForm";
 
 export const revalidate = 300;
 
@@ -97,6 +98,9 @@ export default async function ProductPage({ params }: Props) {
       },
     },
   };
+  const whatsappUrl = storefront?.contactWhatsapp
+    ? `https://wa.me/${storefront.contactWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola, me interesa ${product.name}`)}`
+    : null;
 
   return (
     <>
@@ -263,9 +267,9 @@ export default async function ProductPage({ params }: Props) {
                   text={product.description || `${product.name} en ${storeName}`}
                 />
               </div>
-              {storefront?.contactWhatsapp && (
+              {whatsappUrl && (
                 <a
-                  href={`https://wa.me/${storefront.contactWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola, me interesa: ${product.name}`)}`}
+                  href={whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center w-full rounded py-3 px-6 text-sm font-semibold transition-opacity hover:opacity-80"
@@ -274,10 +278,23 @@ export default async function ProductPage({ params }: Props) {
                   Consultar por WhatsApp
                 </a>
               )}
+              <ProductInquiryForm productId={productId} productName={product.name} />
             </div>
           </div>
         </div>
       </div>
+      {whatsappUrl && (
+        <a
+          href={whatsappUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Abrir WhatsApp para consultar este producto"
+          className="fixed bottom-5 right-5 z-50 inline-flex items-center justify-center rounded-full shadow-lg"
+          style={{ background: "#25D366", color: "#fff", width: 58, height: 58 }}
+        >
+          WA
+        </a>
+      )}
     </>
   );
 }
