@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -28,6 +29,7 @@ import java.util.Locale
 fun ProviderPurchaseOrdersScreen(
     providerRepo: ProviderRepository,
     invoiceRepo: ProviderInvoiceRepository,
+    onOpenDetail: (Int) -> Unit,
     onBack: () -> Unit
 ) {
     val providers by providerRepo.observeAll().collectAsState(initial = emptyList())
@@ -89,15 +91,27 @@ fun ProviderPurchaseOrdersScreen(
                                 text = "Total estimado: ${"%.2f".format(invoice.total)}",
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            Text(
+                                text = "Recepción: ${invoice.receptionStatus}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             row.items.forEach { item ->
                                 AssistChip(
                                     onClick = {},
                                     enabled = false,
                                     label = {
                                         val codePart = item.code?.takeIf { it.isNotBlank() }?.let { "$it • " } ?: ""
-                                        Text("$codePart${item.name} · ${item.quantity} u.")
+                                        val received = item.receivedQuantity?.let { " · recib.: $it" }.orEmpty()
+                                        Text("$codePart${item.name} · ped.: ${item.quantity}$received")
                                     }
                                 )
+                            }
+                            Button(
+                                onClick = { onOpenDetail(invoice.id) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Abrir recepción")
                             }
                         }
                     }

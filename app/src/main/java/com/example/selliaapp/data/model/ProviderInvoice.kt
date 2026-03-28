@@ -19,9 +19,13 @@ data class ProviderInvoice(
     val issueDateMillis: Long,          // fecha emisión
     val total: Double,                  // total de factura
     val status: ProviderInvoiceStatus = ProviderInvoiceStatus.IMPAGA,
+    val receptionStatus: ProviderInvoiceReceptionStatus = ProviderInvoiceReceptionStatus.PENDING,
+    val receivedAtMillis: Long? = null,
+    val discrepancyNote: String? = null,
     val paymentRef: String? = null,
     val paymentAmount: Double? = null,
     val paymentDateMillis: Long? = null
 )
 
 enum class ProviderInvoiceStatus { IMPAGA, PAGA }
+enum class ProviderInvoiceReceptionStatus { PENDING, PARTIAL, RECEIVED }

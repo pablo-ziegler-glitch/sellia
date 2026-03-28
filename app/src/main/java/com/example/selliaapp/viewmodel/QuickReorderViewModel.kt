@@ -7,6 +7,7 @@ import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
 import com.example.selliaapp.data.model.ProviderInvoice
 import com.example.selliaapp.data.model.ProviderInvoiceItem
+import com.example.selliaapp.data.model.ProviderInvoiceReceptionStatus
 import com.example.selliaapp.repository.IProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
@@ -158,13 +159,16 @@ class QuickReorderViewModel @Inject constructor(
                 providerId = providerId,
                 number = "PO-$now",
                 issueDateMillis = now,
-                total = lineTotal
+                total = lineTotal,
+                receptionStatus = if (snapshot.autoReceive) ProviderInvoiceReceptionStatus.RECEIVED else ProviderInvoiceReceptionStatus.PENDING,
+                receivedAtMillis = if (snapshot.autoReceive) now else null
             )
             val item = ProviderInvoiceItem(
                 invoiceId = 0,
-                code = product.code,
+                code = product.barcode ?: product.code,
                 name = product.name,
                 quantity = quantity,
+                receivedQuantity = if (snapshot.autoReceive) quantity else null,
                 priceUnit = priceUnitNet,
                 vatPercent = 0.0,
                 vatAmount = vatAmount,

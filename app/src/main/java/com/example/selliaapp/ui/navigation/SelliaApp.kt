@@ -122,6 +122,7 @@ import com.example.selliaapp.ui.screens.stock.ProductPriceAuditScreen
 import com.example.selliaapp.ui.screens.stock.StockImportScreen
 import com.example.selliaapp.ui.screens.stock.PhotoStockIntakeScreen
 import com.example.selliaapp.ui.screens.stock.StockMovementsScreen
+import com.example.selliaapp.ui.screens.stock.StockScanAction
 import com.example.selliaapp.ui.screens.stock.StockScreen
 import com.example.selliaapp.viewmodel.ClientMetricsViewModel
 import com.example.selliaapp.viewmodel.ClientPurchasesViewModel
@@ -691,18 +692,45 @@ fun SelliaApp(
                     ?.getStateFlow<String?>("scanned_stock_code", null) // <- llave unificada stock
                     ?.collectAsState(initial = null)
                     ?: remember { mutableStateOf<String?>(null) }
+                val stockScanAction by entry
+                    ?.savedStateHandle
+                    ?.getStateFlow<String?>("stock_scan_action", null)
+                    ?.collectAsState(initial = null)
+                    ?: remember { mutableStateOf<String?>(null) }
 
                 // Si llega un código de barras desde el escáner, lo manejamos en tu StockScreen (diálogo o acción)
                 LaunchedEffect(scannedForStock) {
                     scannedForStock?.let { barcode ->
+                        val product = vm.getByQrValue(barcode)
+                        when (stockScanAction) {
+                            StockScanAction.EDIT_PRICE.name -> {
+                                if (product != null) {
+                                    navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
+                                } else {
+                                    snackbarHostState.showSnackbar("No encontramos el producto para editar precio.")
+                                }
+                            }
+                            StockScanAction.RECEIVE_STOCK.name -> {
+                                if (product != null) {
+                                    navController.navigate(Routes.QuickAdjustStock.withProduct(product.id))
+                                } else {
+                                    navController.navigate(Routes.AddProduct.build(prefillBarcode = barcode))
+                                }
+                            }
+                            else -> Unit
+                        }
                         entry?.savedStateHandle?.set("scanned_stock_code", null)
+                        entry?.savedStateHandle?.set("stock_scan_action", null)
                     }
                 }
 
                 StockScreen(
                     vm = vm,
                     onAddProduct = { navController.navigate(Routes.AddProduct.route) },
-                    onScan = { navController.navigate(Routes.ScannerForStock.route) },
+                    onScan = { action ->
+                        entry?.savedStateHandle?.set("stock_scan_action", action.name)
+                        navController.navigate(Routes.ScannerForStock.route)
+                    },
                     onImportCsv = { navController.navigate(Routes.Stock_import.route) },
                     onPhotoIntake = { navController.navigate(Routes.StockPhotoIntake.route) },
                     onOpenPriceAudit = { navController.navigate(Routes.StockPriceAudit.route) },
@@ -1161,6 +1189,7 @@ fun SelliaApp(
                 ProviderPurchaseOrdersScreen(
                     providerRepo = pRepo,
                     invoiceRepo = invRepo,
+                    onOpenDetail = { id -> navController.navigate(Routes.ProviderInvoiceDetail.build(id)) },
                     onBack = { navController.popBackStack() }
                 )
             }
