@@ -22,6 +22,9 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
   startAt,
   endAt
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
@@ -115,6 +118,9 @@ const el = {
   storeDomainMessage: document.getElementById("storeDomainMessage"),
   syncProductsButton: document.getElementById("syncProductsButton"),
   syncProductsMessage: document.getElementById("syncProductsMessage"),
+  featuredProductsInput: document.getElementById("featuredProductsInput"),
+  saveFeaturedProductsButton: document.getElementById("saveFeaturedProductsButton"),
+  featuredProductsMessage: document.getElementById("featuredProductsMessage"),
   // POS — Punto de Venta
   posSalesPanel: document.getElementById("posSalesPanel"),
   posLoadingMessage: document.getElementById("posLoadingMessage"),
@@ -156,6 +162,20 @@ const el = {
   posModalConfirmBtn: document.getElementById("posModalConfirmBtn"),
   posModalCancelBtn: document.getElementById("posModalCancelBtn"),
   posToast: document.getElementById("posToast")
+  ,
+  bulkProductsPanel: document.getElementById("bulkProductsPanel"),
+  bulkProductsFeedback: document.getElementById("bulkProductsFeedback"),
+  bulkProductsSearchInput: document.getElementById("bulkProductsSearchInput"),
+  bulkProductsSelectAll: document.getElementById("bulkProductsSelectAll"),
+  bulkProductsBody: document.getElementById("bulkProductsBody"),
+  bulkPriceAction: document.getElementById("bulkPriceAction"),
+  bulkPriceValue: document.getElementById("bulkPriceValue"),
+  bulkApplyPriceButton: document.getElementById("bulkApplyPriceButton"),
+  bulkCategoryValue: document.getElementById("bulkCategoryValue"),
+  bulkAssignCategoryButton: document.getElementById("bulkAssignCategoryButton"),
+  bulkRemoveCategoryButton: document.getElementById("bulkRemoveCategoryButton"),
+  bulkPublishButton: document.getElementById("bulkPublishButton"),
+  bulkUnpublishButton: document.getElementById("bulkUnpublishButton")
 };
 
 const routeViews = {
@@ -185,6 +205,10 @@ const routeViews = {
   "#/store/sales": {
     title: "Punto de Venta",
     description: "Registrá ventas con búsqueda de productos en tiempo real."
+  },
+  "#/store/products-bulk": {
+    title: "Productos (Bulk)",
+    description: "Aplicá cambios en lote de precio, categoría y publicación."
   }
 };
 
@@ -205,6 +229,13 @@ const appState = {
   paymentsAuditUnsubscribe: null,
   maintenanceTasksUnsubscribe: null,
   maintenanceTasks: []
+};
+
+const bulkProductsState = {
+  products: [],
+  selectedIds: new Set(),
+  searchQuery: "",
+  unsubscribe: null,
 };
 
 bootstrap();
@@ -288,12 +319,21 @@ function wireEvents() {
   el.setStoreDomainButton?.addEventListener("click", onSetStoreDomain);
   el.removeStoreDomainButton?.addEventListener("click", onRemoveStoreDomain);
   el.syncProductsButton?.addEventListener("click", onSyncProducts);
+  el.saveFeaturedProductsButton?.addEventListener("click", onSaveFeaturedProducts);
   el.saveTenantPolicyButton?.addEventListener("click", onSaveTenantOnboardingPolicy);
   el.dashboardRetryButton?.addEventListener("click", loadDashboard);
   el.dashboardErrorRetryButton?.addEventListener("click", loadDashboard);
   el.maintenanceRetryButton?.addEventListener("click", loadMaintenanceTasks);
   el.maintenanceErrorRetryButton?.addEventListener("click", loadMaintenanceTasks);
   el.maintenanceCreateForm?.addEventListener("submit", onCreateMaintenanceTask);
+  el.bulkProductsSearchInput?.addEventListener("input", onBulkProductsSearch);
+  el.bulkProductsSelectAll?.addEventListener("change", onBulkToggleSelectAll);
+  el.bulkProductsBody?.addEventListener("change", onBulkProductCheckboxChange);
+  el.bulkApplyPriceButton?.addEventListener("click", onBulkApplyPriceOrMargin);
+  el.bulkAssignCategoryButton?.addEventListener("click", () => onBulkApplyCategory("assign"));
+  el.bulkRemoveCategoryButton?.addEventListener("click", () => onBulkApplyCategory("remove"));
+  el.bulkPublishButton?.addEventListener("click", () => onBulkSetPublishStatus("published"));
+  el.bulkUnpublishButton?.addEventListener("click", () => onBulkSetPublishStatus("draft"));
   window.addEventListener("hashchange", syncRouteWithPermissions);
   el.maintenanceBody?.addEventListener("click", onMaintenanceActions);
 
@@ -391,6 +431,9 @@ async function syncRouteWithPermissions() {
   if (currentRoute !== "#/store/sales") {
     stopPosListener();
   }
+  if (currentRoute !== "#/store/products-bulk") {
+    stopBulkProductsListener();
+  }
 
   if (currentRoute === "#/dashboard") {
     await loadDashboard();
@@ -406,6 +449,9 @@ async function syncRouteWithPermissions() {
   }
   if (currentRoute === "#/store/sales") {
     await initPosPanel();
+  }
+  if (currentRoute === "#/store/products-bulk") {
+    await initBulkProductsPanel();
   }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
@@ -515,6 +561,7 @@ function clearSessionState() {
   appState.sessionMaxMs = DEFAULT_SESSION_MAX_MS; // resetear al default
   appState.maintenanceTasks = [];
   stopMaintenanceTasksListener();
+  stopBulkProductsListener();
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
   appState.backupRequestsUnsubscribe = null;
   stopPaymentsListeners();
@@ -823,6 +870,7 @@ function toggleModulePanels(currentRoute) {
   if (el.storeConfigPanel) el.storeConfigPanel.hidden = currentRoute !== "#/settings/store";
   if (el.permissionsPanel) el.permissionsPanel.hidden = currentRoute !== "#/permissions";
   if (el.posSalesPanel) el.posSalesPanel.hidden = currentRoute !== "#/store/sales";
+  if (el.bulkProductsPanel) el.bulkProductsPanel.hidden = currentRoute !== "#/store/products-bulk";
 }
 
 async function loadTenantOnboardingPolicy() {
@@ -1017,16 +1065,26 @@ function setTenantPolicyMessage(message) {
 async function loadStoreConfig() {
   if (!appState.profile || !el.storeCurrentDomain) return;
   try {
-    const snap = await getDoc(
+    const [storeSnap, catalogSnap] = await Promise.all([
+      getDoc(
       doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "public_store")
-    );
-    const data = snap.exists() ? snap.data() : {};
+      ),
+      getDoc(
+        doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "public_catalog")
+      )
+    ]);
+    const data = storeSnap.exists() ? storeSnap.data() : {};
     const domain = data?.publicDomain || "";
     el.storeCurrentDomain.textContent = domain
       ? `Dominio actual: ${domain}`
       : "Sin dominio personalizado configurado.";
     if (el.storeDomainInput) {
       el.storeDomainInput.value = domain;
+    }
+    const catalogData = catalogSnap.exists() ? catalogSnap.data()?.data || {} : {};
+    const featuredIds = Array.isArray(catalogData.featuredProductIds) ? catalogData.featuredProductIds : [];
+    if (el.featuredProductsInput) {
+      el.featuredProductsInput.value = featuredIds.join(", ");
     }
   } catch {
     el.storeCurrentDomain.textContent = "No se pudo cargar la configuración de tienda.";
@@ -1105,6 +1163,46 @@ function setStoreDomainMessage(message) {
 
 function setSyncProductsMessage(message) {
   if (el.syncProductsMessage) el.syncProductsMessage.textContent = message || "";
+}
+
+async function onSaveFeaturedProducts() {
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    setFeaturedProductsMessage("Solo owner/admin pueden editar destacados.");
+    return;
+  }
+  const raw = (el.featuredProductsInput?.value || "").trim();
+  const featuredProductIds = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => /^[A-Za-z0-9_-]{3,120}$/.test(value));
+
+  if (raw && !featuredProductIds.length) {
+    setFeaturedProductsMessage("Ingresá IDs válidos separados por coma.");
+    return;
+  }
+
+  try {
+    if (el.saveFeaturedProductsButton) el.saveFeaturedProductsButton.disabled = true;
+    await setDoc(
+      doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "public_catalog"),
+      {
+        data: {
+          featuredProductIds,
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    setFeaturedProductsMessage(`Destacados guardados (${featuredProductIds.length} ID/s).`);
+  } catch (error) {
+    setFeaturedProductsMessage(parseAuthError(error));
+  } finally {
+    if (el.saveFeaturedProductsButton) el.saveFeaturedProductsButton.disabled = false;
+  }
+}
+
+function setFeaturedProductsMessage(message) {
+  if (el.featuredProductsMessage) el.featuredProductsMessage.textContent = message || "";
 }
 
 function parseAuthError(error) {
@@ -1760,4 +1858,226 @@ function showPosToast(message) {
   el.posToast.textContent = message;
   el.posToast.hidden = false;
   setTimeout(() => { if (el.posToast) el.posToast.hidden = true; }, 3000);
+}
+
+// ── Bulk products operations ────────────────────────────────────────────────
+async function initBulkProductsPanel() {
+  if (!appState.profile || !el.bulkProductsPanel || bulkProductsState.unsubscribe) return;
+  setBulkProductsFeedback("Cargando productos...");
+  const q = query(
+    collection(appState.firestore, "tenants", appState.profile.tenantId, "products"),
+    orderBy("name"),
+    limit(500)
+  );
+
+  bulkProductsState.unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      bulkProductsState.products = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      syncBulkSelectedIds();
+      renderBulkProductsTable();
+      setBulkProductsFeedback("");
+    },
+    (error) => {
+      setBulkProductsFeedback(`No se pudieron cargar productos: ${parseAuthError(error)}`);
+    }
+  );
+}
+
+function stopBulkProductsListener() {
+  if (typeof bulkProductsState.unsubscribe === "function") {
+    bulkProductsState.unsubscribe();
+  }
+  bulkProductsState.unsubscribe = null;
+  bulkProductsState.products = [];
+  bulkProductsState.selectedIds.clear();
+  if (el.bulkProductsBody) el.bulkProductsBody.innerHTML = '<tr><td colspan="6">Sin productos.</td></tr>';
+}
+
+function onBulkProductsSearch(event) {
+  bulkProductsState.searchQuery = (event.target?.value || "").trim().toLowerCase();
+  renderBulkProductsTable();
+}
+
+function getFilteredBulkProducts() {
+  if (!bulkProductsState.searchQuery) return bulkProductsState.products;
+  return bulkProductsState.products.filter((product) => {
+    const haystack = `${product.name || ""} ${product.sku || ""} ${product.code || ""}`.toLowerCase();
+    return haystack.includes(bulkProductsState.searchQuery);
+  });
+}
+
+function syncBulkSelectedIds() {
+  const validIds = new Set(bulkProductsState.products.map((p) => p.id));
+  bulkProductsState.selectedIds.forEach((id) => {
+    if (!validIds.has(id)) bulkProductsState.selectedIds.delete(id);
+  });
+}
+
+function renderBulkProductsTable() {
+  if (!el.bulkProductsBody) return;
+  const rows = getFilteredBulkProducts();
+  if (!rows.length) {
+    el.bulkProductsBody.innerHTML = '<tr><td colspan="6">No hay productos para el filtro actual.</td></tr>';
+    if (el.bulkProductsSelectAll) el.bulkProductsSelectAll.checked = false;
+    return;
+  }
+  el.bulkProductsBody.innerHTML = rows
+    .map((product) => `
+      <tr>
+        <td><input type="checkbox" data-product-id="${product.id}" ${bulkProductsState.selectedIds.has(product.id) ? "checked" : ""} /></td>
+        <td>${escapeHtml(product.name || "Sin nombre")}</td>
+        <td>${escapeHtml(product.sku || product.code || "-")}</td>
+        <td>${formatPosPrice(Number(product.listPrice || 0))}</td>
+        <td>${escapeHtml(product.category || "-")}</td>
+        <td>${product.publicStatus === "published" ? "Publicado" : "Borrador"}</td>
+      </tr>
+    `)
+    .join("");
+
+  if (el.bulkProductsSelectAll) {
+    el.bulkProductsSelectAll.checked = rows.length > 0 && rows.every((p) => bulkProductsState.selectedIds.has(p.id));
+  }
+}
+
+function onBulkProductCheckboxChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+  const productId = target.dataset.productId;
+  if (!productId) return;
+  if (target.checked) bulkProductsState.selectedIds.add(productId);
+  else bulkProductsState.selectedIds.delete(productId);
+}
+
+function onBulkToggleSelectAll(event) {
+  const checked = event.target?.checked === true;
+  getFilteredBulkProducts().forEach((product) => {
+    if (checked) bulkProductsState.selectedIds.add(product.id);
+    else bulkProductsState.selectedIds.delete(product.id);
+  });
+  renderBulkProductsTable();
+}
+
+function getSelectedBulkProducts() {
+  const selected = bulkProductsState.products.filter((p) => bulkProductsState.selectedIds.has(p.id));
+  if (!selected.length) {
+    setBulkProductsFeedback("Seleccioná al menos un producto.");
+    return [];
+  }
+  return selected;
+}
+
+async function onBulkApplyPriceOrMargin() {
+  const selected = getSelectedBulkProducts();
+  if (!selected.length || !appState.profile) return;
+
+  const mode = el.bulkPriceAction?.value || "set_price";
+  const rawValue = Number(el.bulkPriceValue?.value || "");
+  if (!Number.isFinite(rawValue) || rawValue < 0) {
+    setBulkProductsFeedback("Ingresá un valor numérico válido.");
+    return;
+  }
+
+  try {
+    toggleBulkActionButtons(true);
+    const batch = writeBatch(appState.firestore);
+    selected.forEach((product) => {
+      const ref = doc(appState.firestore, "tenants", appState.profile.tenantId, "products", product.id);
+      if (mode === "set_margin") {
+        const purchasePrice = Number(product.purchasePrice || 0);
+        const nextPrice = purchasePrice > 0 ? Math.round(purchasePrice * (1 + rawValue / 100)) : Number(product.listPrice || 0);
+        batch.update(ref, { marginPercent: rawValue, listPrice: nextPrice, updatedAt: serverTimestamp() });
+      } else {
+        batch.update(ref, { listPrice: rawValue, updatedAt: serverTimestamp() });
+      }
+    });
+    await batch.commit();
+    setBulkProductsFeedback(`Actualización aplicada a ${selected.length} producto(s).`);
+    if (el.bulkPriceValue) el.bulkPriceValue.value = "";
+  } catch (error) {
+    setBulkProductsFeedback(parseAuthError(error));
+  } finally {
+    toggleBulkActionButtons(false);
+  }
+}
+
+async function onBulkApplyCategory(mode) {
+  const selected = getSelectedBulkProducts();
+  if (!selected.length || !appState.profile) return;
+  const value = (el.bulkCategoryValue?.value || "").trim();
+  if (mode === "assign" && value.length < 2) {
+    setBulkProductsFeedback("Ingresá una categoría válida (mínimo 2 caracteres).");
+    return;
+  }
+  try {
+    toggleBulkActionButtons(true);
+    const batch = writeBatch(appState.firestore);
+    selected.forEach((product) => {
+      const ref = doc(appState.firestore, "tenants", appState.profile.tenantId, "products", product.id);
+      batch.update(ref, {
+        category: mode === "assign" ? value : "",
+        updatedAt: serverTimestamp()
+      });
+    });
+    await batch.commit();
+    setBulkProductsFeedback(`${mode === "assign" ? "Asignación" : "Remoción"} de categoría aplicada a ${selected.length} producto(s).`);
+    if (mode === "assign" && el.bulkCategoryValue) el.bulkCategoryValue.value = "";
+  } catch (error) {
+    setBulkProductsFeedback(parseAuthError(error));
+  } finally {
+    toggleBulkActionButtons(false);
+  }
+}
+
+async function onBulkSetPublishStatus(status) {
+  const selected = getSelectedBulkProducts();
+  if (!selected.length || !appState.profile) return;
+  try {
+    toggleBulkActionButtons(true);
+    const batch = writeBatch(appState.firestore);
+    selected.forEach((product) => {
+      const productRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "products", product.id);
+      batch.update(productRef, { publicStatus: status, updatedAt: serverTimestamp() });
+      const publicRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "public_products", product.id);
+      if (status === "published") {
+        batch.set(publicRef, {
+          name: product.name || "",
+          category: product.category || null,
+          parentCategory: product.parentCategory || null,
+          imageUrl: product.imageUrl || null,
+          listPrice: Number(product.listPrice || 0),
+          cashPrice: Number(product.cashPrice || product.listPrice || 0),
+          transferPrice: Number(product.transferPrice || product.listPrice || 0),
+          description: product.description || "",
+          publicStatus: "published",
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } else {
+        batch.delete(publicRef);
+      }
+    });
+    await batch.commit();
+    setBulkProductsFeedback(`${status === "published" ? "Publicación" : "Despublicación"} aplicada a ${selected.length} producto(s).`);
+  } catch (error) {
+    setBulkProductsFeedback(parseAuthError(error));
+  } finally {
+    toggleBulkActionButtons(false);
+  }
+}
+
+function toggleBulkActionButtons(disabled) {
+  [
+    el.bulkApplyPriceButton,
+    el.bulkAssignCategoryButton,
+    el.bulkRemoveCategoryButton,
+    el.bulkPublishButton,
+    el.bulkUnpublishButton
+  ].forEach((button) => {
+    if (button) button.disabled = disabled;
+  });
+}
+
+function setBulkProductsFeedback(message) {
+  if (!el.bulkProductsFeedback) return;
+  el.bulkProductsFeedback.textContent = message || "";
 }

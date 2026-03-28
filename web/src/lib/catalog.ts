@@ -41,6 +41,8 @@ export interface CatalogConfig {
   heroTitle: string;
   heroSubtitle: string;
   footerText: string;
+  featuredProductIds: string[];
+  featuredTitle: string;
 }
 
 /** Get catalog display config for a tenant. Returns safe defaults if not configured. */
@@ -59,6 +61,10 @@ export async function getCatalogConfig(tenantId: string): Promise<CatalogConfig>
     heroTitle: (raw.heroTitle as string) || "",
     heroSubtitle: (raw.heroSubtitle as string) || "",
     footerText: (raw.footerText as string) || "",
+    featuredProductIds: Array.isArray(raw.featuredProductIds)
+      ? raw.featuredProductIds.filter((id): id is string => typeof id === "string")
+      : [],
+    featuredTitle: (raw.featuredTitle as string) || "Productos destacados",
   };
 }
 
@@ -146,7 +152,7 @@ export async function getPublicProduct(
   if (!doc.exists) return null;
   const d = doc.data()!;
   return {
-    id: Number(doc.id) || 0,
+    id: doc.id,
     name: (d.name as string) || "",
     imageUrl: (d.imageUrl as string) || null,
     listPrice: (d.listPrice as number) ?? null,

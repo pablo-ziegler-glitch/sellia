@@ -79,6 +79,7 @@ import com.example.selliaapp.viewmodel.GlobalSearchViewModel
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import java.text.NumberFormat
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale

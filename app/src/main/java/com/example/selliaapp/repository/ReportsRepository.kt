@@ -127,6 +127,7 @@ class ReportsRepository @Inject constructor(
             ReportsFilter.DAY -> "HOUR"
             ReportsFilter.WEEK -> "DAY"
             ReportsFilter.MONTH -> "DAY"
+            ReportsFilter.CUSTOM -> "DAY"
         }
         return getSalesSeries(from, to, bucket)
     }

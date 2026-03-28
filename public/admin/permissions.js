@@ -192,6 +192,7 @@ export const ROUTE_POLICIES = Object.freeze({
   // Gestión de tienda (owner)
   "#/store/stock":              MODULE_ROLE_POLICIES.stock,
   "#/store/sales":              MODULE_ROLE_POLICIES.sales,
+  "#/store/products-bulk":      MODULE_ROLE_POLICIES.stock,
   "#/store/customers":          MODULE_ROLE_POLICIES.customers,
   "#/store/suppliers":          MODULE_ROLE_POLICIES.suppliers,
   "#/store/config":             MODULE_ROLE_POLICIES.storeConfig,
