@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +54,7 @@ import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -80,6 +82,7 @@ fun LocationSettingsScreen(
     val config = state.config
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var suggestedOnce by remember { mutableStateOf(false) }
     var addressQuery by remember(config.locationAddress) { mutableStateOf(config.locationAddress.orEmpty()) }
@@ -196,19 +199,21 @@ fun LocationSettingsScreen(
                             .fillMaxWidth()
                             .clickable {
                                 if (placesClient == null) return@clickable
-                                runCatching { placesClient.fetchAddress(prediction.placeId) }
-                                    .onSuccess { place ->
-                                        val selectedAddress = place.address.orEmpty()
-                                        vm.updateConfig(
-                                            config.copy(
-                                                locationLat = place.latLng?.latitude,
-                                                locationLng = place.latLng?.longitude,
-                                                locationAddress = selectedAddress
+                                scope.launch {
+                                    runCatching { placesClient.fetchAddress(prediction.placeId) }
+                                        .onSuccess { place ->
+                                            val selectedAddress = place.address.orEmpty()
+                                            vm.updateConfig(
+                                                config.copy(
+                                                    locationLat = place.latLng?.latitude,
+                                                    locationLng = place.latLng?.longitude,
+                                                    locationAddress = selectedAddress
+                                                )
                                             )
-                                        )
-                                        addressQuery = selectedAddress
-                                        placeSuggestions = emptyList()
-                                    }
+                                            addressQuery = selectedAddress
+                                            placeSuggestions = emptyList()
+                                        }
+                                }
                             }
                             .padding(vertical = 8.dp)
                     )

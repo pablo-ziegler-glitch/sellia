@@ -1,5 +1,8 @@
 package com.example.selliaapp.ui.screens.checkout
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.BorderStroke
@@ -102,6 +105,7 @@ fun CheckoutScreen(
     var showCustomerValidationDialog by remember { mutableStateOf(false) }
     var pendingCheckoutAction by remember { mutableStateOf(PendingCheckoutAction.CONFIRM_SALE) }
     var showBreakdown by remember { mutableStateOf(false) }
+    var autoSaleRegisteredOrderId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         // Recargo fue eliminado como feature; garantizamos que nunca infle el total silenciosamente
@@ -128,6 +132,45 @@ fun CheckoutScreen(
         if (!message.isNullOrBlank()) {
             snackbarHostState.showSnackbar(message)
             paymentVm.clearPaymentError()
+        }
+    }
+
+    LaunchedEffect(paymentState.paymentStatus, paymentState.orderId) {
+        val normalized = paymentState.paymentStatus?.trim()?.lowercase() ?: return@LaunchedEffect
+        val orderId = paymentState.orderId ?: return@LaunchedEffect
+        if (normalized == "approved" && autoSaleRegisteredOrderId != orderId && !isProcessing) {
+            autoSaleRegisteredOrderId = orderId
+            isProcessing = true
+            vm.placeOrder(
+                onSuccess = { resultado ->
+                    isProcessing = false
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "Pago aprobado. Venta #${resultado.invoiceNumber} registrada automáticamente."
+                        )
+                    }
+                    navController.navigate(
+                        Routes.PosSuccess.build(
+                            invoiceId = resultado.invoiceId,
+                            total = resultado.total,
+                            method = "Mercado Pago",
+                            customerName = state.selectedCustomerName
+                        )
+                    ) {
+                        popUpTo(Routes.Pos.route) { inclusive = false }
+                    }
+                },
+                onError = { error ->
+                    isProcessing = false
+                    autoSaleRegisteredOrderId = null
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            error.message?.takeIf { it.isNotBlank() }
+                                ?: "Pago aprobado, pero falló el registro automático. Confirmá manualmente."
+                        )
+                    }
+                }
+            )
         }
     }
 
@@ -499,6 +542,57 @@ fun CheckoutScreen(
                         }
                     }
                 }
+            }
+            if (!paymentState.checkoutUrl.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Link de cobro Mercado Pago", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = paymentState.checkoutUrl ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText("Link de pago", paymentState.checkoutUrl)
+                                )
+                                scope.launch { snackbarHostState.showSnackbar("Link copiado al portapapeles.") }
+                            }) {
+                                Text("Copiar link")
+                            }
+                            OutlinedButton(onClick = {
+                                CustomTabsIntent.Builder().setShowTitle(true).build()
+                                    .launchUrl(context, Uri.parse(paymentState.checkoutUrl))
+                            }) {
+                                Text("Abrir link")
+                            }
+                        }
+                    }
+                }
+            }
+
+            val status = paymentState.paymentStatus?.lowercase()
+            if (!status.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                val (statusLabel, statusColor) = when (status) {
+                    "approved" -> "Estado del pago: APROBADO" to Color(0xFF2E7D32)
+                    "rejected", "failed", "cancelled" -> "Estado del pago: RECHAZADO" to MaterialTheme.colorScheme.error
+                    "pending", "in_process", "pending_confirmation" -> "Estado del pago: PENDIENTE" to MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> "Estado del pago: ${status.uppercase()}" to MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Text(
+                    text = statusLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = statusColor
+                )
             }
 
             Spacer(Modifier.height(24.dp))

@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -160,7 +161,7 @@ import com.example.selliaapp.domain.security.Permission
 import com.example.selliaapp.ui.components.buildAccountSummary
 
 private const val NAV_ANIMATION_DURATION_MS = 280
-private val navAnimationSpec = tween<Int>(NAV_ANIMATION_DURATION_MS)
+private val navAnimationSpec = tween<IntOffset>(NAV_ANIMATION_DURATION_MS)
 private val navFadeSpec = tween<Float>(NAV_ANIMATION_DURATION_MS)
 
 private fun navEnterTransition(): EnterTransition {
@@ -1282,7 +1283,19 @@ fun SelliaApp(
 
             composable(Routes.Notifications.route) {
                 com.example.selliaapp.ui.screens.notifications.NotificationListScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onQuickAdjustStock = { productId ->
+                        navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
+                    },
+                    onQuickCreatePurchaseOrder = { productId ->
+                        navController.navigate(Routes.QuickReorder.withProduct(productId))
+                    },
+                    onOpenExpenseDetail = {
+                        navController.navigate(Routes.ExpenseEntries.route)
+                    },
+                    onOpenSaleDetail = { invoiceId ->
+                        navController.navigate(Routes.SalesInvoiceDetail.withId(invoiceId))
+                    }
                 )
             }
 

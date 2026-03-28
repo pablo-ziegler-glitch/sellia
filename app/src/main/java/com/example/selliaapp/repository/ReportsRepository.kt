@@ -3,6 +3,8 @@ package com.example.selliaapp.repository
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ReportDataDao
+import com.example.selliaapp.data.dao.CategorySalesRow
+import com.example.selliaapp.data.dao.ProductSalesRow
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.ReportPoint
 import com.example.selliaapp.viewmodel.ReportsFilter
@@ -20,6 +22,39 @@ import javax.inject.Singleton
 data class SalesReport(
     val total: Double,
     val series: List<Pair<String, Double>> // etiqueta (fecha) -> monto
+)
+
+data class ProductRankingItem(
+    val productId: Int,
+    val productName: String,
+    val units: Int,
+    val revenue: Double
+)
+
+data class CategoryShareItem(
+    val category: String,
+    val units: Int,
+    val revenue: Double,
+    val sharePercent: Double
+)
+
+enum class TrendDirection {
+    UP, DOWN, FLAT
+}
+
+data class PeriodComparison(
+    val currentTotal: Double,
+    val previousTotal: Double,
+    val delta: Double,
+    val deltaPercent: Double?,
+    val trend: TrendDirection
+)
+
+data class AdvancedSalesInsights(
+    val topProductsByUnits: List<ProductRankingItem>,
+    val topProductsByRevenue: List<ProductRankingItem>,
+    val categoryShares: List<CategoryShareItem>,
+    val comparison: PeriodComparison
 )
 
 data class StockValuationScenario(
@@ -92,6 +127,7 @@ class ReportsRepository @Inject constructor(
             ReportsFilter.DAY -> "HOUR"
             ReportsFilter.WEEK -> "DAY"
             ReportsFilter.MONTH -> "DAY"
+            ReportsFilter.CUSTOM -> "DAY"
         }
         return getSalesSeries(from, to, bucket)
     }
@@ -100,6 +136,73 @@ class ReportsRepository @Inject constructor(
         val products = productDao.getAllOnce()
         return buildStockValuationReport(products)
     }
+
+    suspend fun getAdvancedSalesInsights(
+        from: LocalDate,
+        to: LocalDate,
+        filter: ReportsFilter,
+        topLimit: Int = 5
+    ): AdvancedSalesInsights {
+        val zone = ZoneId.systemDefault()
+        val startMillis = from.atStartOfDay(zone).toInstant().toEpochMilli()
+        val endMillis = to.atTime(LocalTime.MAX).atZone(zone).toInstant().toEpochMilli()
+
+        val topByUnits = invoiceDao.topProductsByUnits(startMillis, endMillis, topLimit)
+            .map { it.toRankingItem() }
+        val topByRevenue = invoiceDao.topProductsByRevenue(startMillis, endMillis, topLimit)
+            .map { it.toRankingItem() }
+
+        val categoryRows = invoiceDao.salesByCategory(startMillis, endMillis)
+        val totalRevenue = categoryRows.sumOf { it.revenue }
+        val categoryShares = categoryRows.map { row ->
+            val sharePercent = if (totalRevenue > 0.0) (row.revenue / totalRevenue) * 100.0 else 0.0
+            row.toShareItem(sharePercent)
+        }
+
+        val periodDays = kotlin.math.max(1L, java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1)
+        val previousTo = from.minusDays(1)
+        val previousFrom = previousTo.minusDays(periodDays - 1)
+        val prevStartMillis = previousFrom.atStartOfDay(zone).toInstant().toEpochMilli()
+        val prevEndMillis = previousTo.atTime(LocalTime.MAX).atZone(zone).toInstant().toEpochMilli()
+        val currentTotal = invoiceDao.sumTotalBetween(startMillis, endMillis)
+        val previousTotal = invoiceDao.sumTotalBetween(prevStartMillis, prevEndMillis)
+        val delta = currentTotal - previousTotal
+        val deltaPercent = if (previousTotal == 0.0) null else (delta / previousTotal) * 100.0
+        val trend = when {
+            kotlin.math.abs(delta) < 0.01 -> TrendDirection.FLAT
+            delta > 0.0 -> TrendDirection.UP
+            else -> TrendDirection.DOWN
+        }
+
+        return AdvancedSalesInsights(
+            topProductsByUnits = topByUnits,
+            topProductsByRevenue = topByRevenue,
+            categoryShares = categoryShares,
+            comparison = PeriodComparison(
+                currentTotal = currentTotal,
+                previousTotal = previousTotal,
+                delta = delta,
+                deltaPercent = deltaPercent,
+                trend = trend
+            )
+        )
+    }
+
+    private fun ProductSalesRow.toRankingItem(): ProductRankingItem =
+        ProductRankingItem(
+            productId = productId,
+            productName = productName,
+            units = units,
+            revenue = revenue
+        )
+
+    private fun CategorySalesRow.toShareItem(sharePercent: Double): CategoryShareItem =
+        CategoryShareItem(
+            category = category,
+            units = units,
+            revenue = revenue,
+            sharePercent = sharePercent
+        )
 
     companion object {
         internal fun buildStockValuationReport(products: List<ProductEntity>): StockValuationReport {

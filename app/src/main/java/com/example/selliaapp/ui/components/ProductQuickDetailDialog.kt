@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Tune
@@ -51,7 +53,9 @@ fun ProductQuickDetailDialog(
     onPrintQr: (() -> Unit)? = null,
     onAdjustStock: (() -> Unit)? = null,
     onViewMovements: (() -> Unit)? = null,
-    onOrderFromProvider: (() -> Unit)? = null
+    onOrderFromProvider: (() -> Unit)? = null,
+    onEditVariantsMatrix: (() -> Unit)? = null,
+    onBulkImportVariants: (() -> Unit)? = null
 ) {
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
     val images: List<Any> = product.imageUrls.takeIf { it.isNotEmpty() }
@@ -88,6 +92,16 @@ fun ProductQuickDetailDialog(
                     if (onPrintQr != null) {
                         IconButton(onClick = onPrintQr) {
                             Icon(Icons.Default.Print, contentDescription = "Imprimir QR")
+                        }
+                    }
+                    if (onEditVariantsMatrix != null) {
+                        IconButton(onClick = onEditVariantsMatrix) {
+                            Icon(Icons.Default.GridView, contentDescription = "Matriz de variantes")
+                        }
+                    }
+                    if (onBulkImportVariants != null) {
+                        IconButton(onClick = onBulkImportVariants) {
+                            Icon(Icons.Default.FileUpload, contentDescription = "Carga masiva variantes")
                         }
                     }
                 }

@@ -25,6 +25,9 @@ interface VariantDao {
     @Query("SELECT * FROM variants WHERE productId = :productId")
     suspend fun getByProductOnce(productId: Int): List<VariantEntity>
 
+    @Query("DELETE FROM variants WHERE productId = :productId")
+    suspend fun deleteByProduct(productId: Int)
+
     @Query("SELECT SUM(quantity) FROM variants WHERE productId = :productId")
     suspend fun sumQuantity(productId: Int): Int?
 
