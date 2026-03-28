@@ -125,6 +125,7 @@ import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
+import com.example.selliaapp.viewmodel.ManageCustomersViewModel
 import com.example.selliaapp.viewmodel.PublicCatalogConfigViewModel
 import com.example.selliaapp.viewmodel.TenantManagementViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
@@ -450,9 +451,15 @@ fun SelliaApp(
 
             // CRUD clientes
             composable(Routes.ManageCustomers.route) {
-                // Versión que usa repos inyectados desde SelliaApp()
+                val vm = hiltViewModel<ManageCustomersViewModel>()
                 ManageCustomersScreen(
-                    customerRepository = customerRepo,
+                    vm = vm,
+                    onSellToCustomer = { customer ->
+                        val sellFlowEntry = navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE)
+                        sellFlowEntry.savedStateHandle["preselected_customer_id"] = customer.id
+                        sellFlowEntry.savedStateHandle["preselected_customer_name"] = customer.name
+                        navController.navigate(Routes.Pos.route)
+                    },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -482,6 +489,14 @@ fun SelliaApp(
                     val parentEntry = remember { navController.getBackStackEntry(Routes.SellRoutes.SELL_FLOW_ROUTE) }
                     val sellVm: SellViewModel = hiltViewModel(parentEntry)
                     val productVm: ProductViewModel = hiltViewModel()
+                    val preselectedCustomerId by parentEntry
+                        .savedStateHandle
+                        .getStateFlow<Int?>("preselected_customer_id", null)
+                        .collectAsStateWithLifecycle()
+                    val preselectedCustomerName by parentEntry
+                        .savedStateHandle
+                        .getStateFlow<String?>("preselected_customer_name", null)
+                        .collectAsStateWithLifecycle()
 
                     val currentEntry = navController.currentBackStackEntry
                     val scannedCode by currentEntry
@@ -499,6 +514,14 @@ fun SelliaApp(
                                 navController.navigate(Routes.AddProduct.build(prefillBarcode = code.trim()))
                             }
                             currentEntry?.savedStateHandle?.set("scanned_code", null)
+                        }
+                    }
+
+                    LaunchedEffect(preselectedCustomerId, preselectedCustomerName) {
+                        if (preselectedCustomerId != null || !preselectedCustomerName.isNullOrBlank()) {
+                            sellVm.setCustomer(preselectedCustomerId, preselectedCustomerName)
+                            parentEntry.savedStateHandle["preselected_customer_id"] = null
+                            parentEntry.savedStateHandle["preselected_customer_name"] = null
                         }
                     }
 

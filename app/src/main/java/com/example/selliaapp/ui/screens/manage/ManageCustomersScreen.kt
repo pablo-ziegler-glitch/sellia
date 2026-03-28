@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.People
@@ -25,11 +26,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.example.selliaapp.ui.components.BackTopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,24 +39,35 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.selliaapp.data.local.entity.CustomerEntity
-import com.example.selliaapp.repository.CustomerRepository
 import com.example.selliaapp.ui.components.CustomerEditorDialog
+import com.example.selliaapp.viewmodel.CustomerFrequencyFilter
+import com.example.selliaapp.viewmodel.ManageCustomersViewModel
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Gestión de clientes con búsqueda, edición, alta y borrado.
  */
 @Composable
 fun ManageCustomersScreen(
-    customerRepository: CustomerRepository,
+    vm: ManageCustomersViewModel,
+    onSellToCustomer: (CustomerEntity) -> Unit,
     onBack: () -> Unit
 ) {
-        val scope = rememberCoroutineScope()
-        val customers by customerRepository.observeAll().collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+    val customerInsights by vm.customerInsights.collectAsStateWithLifecycle()
+    val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
+    val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy", Locale("es", "AR")) }
 
-        var editing by remember { mutableStateOf<CustomerEntity?>(null) }
-        var showEditor by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<CustomerEntity?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var filter by remember { mutableStateOf(CustomerFrequencyFilter.ALL) }
 
     Scaffold(
         topBar = { BackTopAppBar(title = "Clientes", onBack = onBack) },
@@ -66,7 +78,7 @@ fun ManageCustomersScreen(
             }) { Icon(Icons.Default.Add, contentDescription = "Nuevo cliente") }
         }
     ) { padding ->
-        if (customers.isEmpty()) {
+        if (customerInsights.isEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -101,27 +113,90 @@ fun ManageCustomersScreen(
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxWidth().padding(padding)) {
-                items(customers) { c ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(padding)
+            ) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = {
+                                query = it
+                                vm.setQuery(it)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Buscar cliente") },
+                            placeholder = { Text("Nombre, email o teléfono") }
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CustomerFrequencyFilter.values().forEach { option ->
+                                Button(
+                                    onClick = {
+                                        filter = option
+                                        vm.setFrequencyFilter(option)
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        when (option) {
+                                            CustomerFrequencyFilter.ALL -> "Todos"
+                                            CustomerFrequencyFilter.TOP_CLIENTS -> "Top clientes"
+                                            CustomerFrequencyFilter.NO_RECENT_PURCHASES -> "Sin compras recientes"
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                items(customerInsights) { insight ->
+                    val customer = insight.customer
                     ListItem(
                         headlineContent = {
                             Text(
                                 buildString {
-                                    append(c.name)
-                                    if (!c.nickname.isNullOrBlank()) {
-                                        append(" -> ${c.nickname}")
+                                    append(customer.name)
+                                    if (!customer.nickname.isNullOrBlank()) {
+                                        append(" -> ${customer.nickname}")
                                     }
                                 }
                             )
                         },
-                        supportingContent = { Text(c.email ?: "-") },
+                        supportingContent = {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(customer.email ?: customer.phone ?: "-")
+                                Text("Compras totales: ${currency.format(insight.totalSpent)}")
+                                Text(
+                                    "Última visita: ${
+                                        insight.lastPurchaseMillis?.let { dateFormat.format(Date(it)) } ?: "Sin visitas"
+                                    }"
+                                )
+                                Text(
+                                    "Producto más comprado: ${
+                                        insight.mostPurchasedProduct?.let {
+                                            "$it (${insight.mostPurchasedUnits}u)"
+                                        } ?: "Sin datos"
+                                    }"
+                                )
+                            }
+                        },
                         trailingContent = {
                             Row {
+                                IconButton(onClick = { onSellToCustomer(customer) }) {
+                                    Icon(Icons.Default.AttachMoney, contentDescription = "Vender a este cliente")
+                                }
                                 IconButton(onClick = {
-                                    editing = c
+                                    editing = customer
                                     showEditor = true
                                 }) { Icon(Icons.Default.Edit, null) }
-                                IconButton(onClick = { scope.launch { customerRepository.delete(c) } }) {
+                                IconButton(onClick = { scope.launch { vm.delete(customer) } }) {
                                     Icon(Icons.Default.Delete, null)
                                 }
                             }
@@ -129,7 +204,7 @@ fun ManageCustomersScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                editing = c
+                                editing = customer
                                 showEditor = true
                             }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -145,10 +220,7 @@ fun ManageCustomersScreen(
                 initial = editing,
                 onDismiss = { showEditor = false },
                 onSave = { customer ->
-                    scope.launch {
-                        customerRepository.upsert(customer)
-                        showEditor = false
-                    }
+                    vm.save(customer) { showEditor = false }
                 }
             )
         }
