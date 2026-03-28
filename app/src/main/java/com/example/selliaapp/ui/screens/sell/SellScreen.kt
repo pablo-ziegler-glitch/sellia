@@ -133,6 +133,7 @@ fun SellScreen(
     var detailFor by remember { mutableStateOf<ProductEntity?>(null) }
     var showCustomerPicker by remember { mutableStateOf(false) }
     var showCancelPreSaleDialog by remember { mutableStateOf(false) }
+    var variantSelectionProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
     val currentEntry = navController.currentBackStackEntry
     val pendingProductId by currentEntry
@@ -157,9 +158,20 @@ fun SellScreen(
             products = allProducts.filter { (remainingById[it.id] ?: 0) > 0 },
             onPick = { p ->
                 showPicker = false
-                detailFor = p
+                if (p.sizes.isNotEmpty()) variantSelectionProduct = p else detailFor = p
             },
             onDismiss = { showPicker = false }
+        )
+    }
+
+    variantSelectionProduct?.let { product ->
+        VariantSelectorDialog(
+            product = product,
+            onDismiss = { variantSelectionProduct = null },
+            onConfirm = {
+                variantSelectionProduct = null
+                detailFor = product
+            }
         )
     }
 
@@ -708,4 +720,54 @@ private fun PorcentajeControl(
         )
         Text(descripcion, color = colorDescripcion, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+@Composable
+private fun VariantSelectorDialog(
+    product: ProductEntity,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    var selectedSize by remember(product) { mutableStateOf(product.sizes.firstOrNull().orEmpty()) }
+    val colorOptions = remember(product) {
+        product.color
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.distinct()
+            .orEmpty()
+    }
+    var selectedColor by remember(product) { mutableStateOf(colorOptions.firstOrNull().orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Seleccionar variante") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(product.name, style = MaterialTheme.typography.bodyMedium)
+                if (product.sizes.isNotEmpty()) {
+                    Text("Talle", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        product.sizes.forEach { size ->
+                            OutlinedButton(onClick = { selectedSize = size }) {
+                                Text(if (selectedSize == size) "✓ $size" else size)
+                            }
+                        }
+                    }
+                }
+                if (colorOptions.isNotEmpty()) {
+                    Text("Color", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        colorOptions.forEach { color ->
+                            OutlinedButton(onClick = { selectedColor = color }) {
+                                Text(if (selectedColor == color) "✓ $color" else color)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Continuar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
 }

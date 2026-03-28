@@ -1254,7 +1254,19 @@ fun SelliaApp(
 
             composable(Routes.Notifications.route) {
                 com.example.selliaapp.ui.screens.notifications.NotificationListScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onQuickAdjustStock = { productId ->
+                        navController.navigate(Routes.QuickAdjustStock.withProduct(productId))
+                    },
+                    onQuickCreatePurchaseOrder = { productId ->
+                        navController.navigate(Routes.QuickReorder.withProduct(productId))
+                    },
+                    onOpenExpenseDetail = {
+                        navController.navigate(Routes.ExpenseEntries.route)
+                    },
+                    onOpenSaleDetail = { invoiceId ->
+                        navController.navigate(Routes.SalesInvoiceDetail.withId(invoiceId))
+                    }
                 )
             }
 
