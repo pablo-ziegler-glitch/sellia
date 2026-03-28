@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -159,7 +160,7 @@ import com.example.selliaapp.domain.security.Permission
 import com.example.selliaapp.ui.components.buildAccountSummary
 
 private const val NAV_ANIMATION_DURATION_MS = 280
-private val navAnimationSpec = tween<Int>(NAV_ANIMATION_DURATION_MS)
+private val navAnimationSpec = tween<IntOffset>(NAV_ANIMATION_DURATION_MS)
 private val navFadeSpec = tween<Float>(NAV_ANIMATION_DURATION_MS)
 
 private fun navEnterTransition(): EnterTransition {
