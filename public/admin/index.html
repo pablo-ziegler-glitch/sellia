@@ -68,6 +68,11 @@
                 Punto de Venta
               </a>
 
+              <a href="#/store/products-bulk" class="nav-item" data-route="#/store/products-bulk">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
+                Productos (Bulk)
+              </a>
+
               <div class="nav-section-label">Configuración</div>
 
               <a href="#/settings/pricing" class="nav-item" data-route="#/settings/pricing">
@@ -305,6 +310,81 @@
                     <p class="muted">Forzá la sincronización si los productos no aparecen en el catálogo. Necesario la primera vez o cuando se cargan productos masivamente.</p>
                     <button id="syncProductsButton" type="button">Sincronizar productos ahora</button>
                     <p id="syncProductsMessage" class="banner"></p>
+                    <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border, #ececec);" />
+                    <p class="muted">Configurá productos destacados (IDs separados por coma) para la landing y la página /productos-destacados.</p>
+                    <label>
+                      IDs destacados
+                      <textarea id="featuredProductsInput" rows="3" placeholder="id1,id2,id3"></textarea>
+                    </label>
+                    <button id="saveFeaturedProductsButton" type="button">Guardar destacados</button>
+                    <p id="featuredProductsMessage" class="banner"></p>
+                  </fieldset>
+                </section>
+
+                <section id="bulkProductsPanel" class="module-panel" hidden>
+                  <h4>Operaciones bulk en productos</h4>
+                  <p class="muted">Seleccioná múltiples productos para actualizar precio/margen, categoría y estado público en un solo paso.</p>
+                  <p id="bulkProductsFeedback" class="banner"></p>
+                  <label>
+                    Buscar producto
+                    <input id="bulkProductsSearchInput" type="search" placeholder="Nombre, SKU o código..." autocomplete="off" />
+                  </label>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th><input id="bulkProductsSelectAll" type="checkbox" aria-label="Seleccionar todos" /></th>
+                          <th>Producto</th>
+                          <th>SKU/Código</th>
+                          <th>Precio lista</th>
+                          <th>Categoría</th>
+                          <th>Estado catálogo</th>
+                        </tr>
+                      </thead>
+                      <tbody id="bulkProductsBody">
+                        <tr><td colspan="6">Cargando productos...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <fieldset>
+                    <legend>Precio / margen</legend>
+                    <div class="form-grid">
+                      <label>
+                        Acción
+                        <select id="bulkPriceAction">
+                          <option value="set_price">Definir precio lista</option>
+                          <option value="set_margin">Definir margen sobre costo (%)</option>
+                        </select>
+                      </label>
+                      <label>
+                        Valor
+                        <input id="bulkPriceValue" type="number" min="0" step="0.01" placeholder="Ej: 15000 o 35" />
+                      </label>
+                    </div>
+                    <button id="bulkApplyPriceButton" type="button">Aplicar a seleccionados</button>
+                  </fieldset>
+
+                  <fieldset>
+                    <legend>Categoría</legend>
+                    <div class="form-grid">
+                      <label>
+                        Categoría
+                        <input id="bulkCategoryValue" type="text" maxlength="80" placeholder="Ej: Indumentaria" />
+                      </label>
+                    </div>
+                    <div class="btn-row">
+                      <button id="bulkAssignCategoryButton" type="button">Asignar categoría</button>
+                      <button id="bulkRemoveCategoryButton" type="button" class="secondary">Quitar categoría</button>
+                    </div>
+                  </fieldset>
+
+                  <fieldset>
+                    <legend>Catálogo público</legend>
+                    <div class="btn-row">
+                      <button id="bulkPublishButton" type="button">Publicar seleccionados</button>
+                      <button id="bulkUnpublishButton" type="button" class="secondary">Despublicar seleccionados</button>
+                    </div>
                   </fieldset>
                 </section>
 

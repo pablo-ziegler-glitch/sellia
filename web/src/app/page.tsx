@@ -35,7 +35,9 @@ export default async function LandingPage() {
     getCatalogConfig(VALKIRJA_TENANT_ID),
   ]);
 
-  const previewProducts = allProducts.slice(0, 6);
+  const featuredSet = new Set(catalogConfig?.featuredProductIds || []);
+  const configuredFeatured = allProducts.filter((product) => featuredSet.has(product.id));
+  const previewProducts = (configuredFeatured.length ? configuredFeatured : allProducts).slice(0, 6);
   const storeName = storefront?.storeName || "VALKIRJA";
 
   return (
@@ -355,6 +357,11 @@ export default async function LandingPage() {
               </Link>
               <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>
                 {allProducts.length} productos disponibles
+              </p>
+              <p className="text-xs mt-2">
+                <Link href="/productos-destacados" style={{ color: "var(--gold)" }}>
+                  Ver página de destacados
+                </Link>
               </p>
             </div>
           </div>
