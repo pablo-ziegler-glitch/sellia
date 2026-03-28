@@ -98,6 +98,7 @@ fun HomeScreen(
     onReports: () -> Unit,
     onProviders: () -> Unit,
     onExpenses: () -> Unit,
+    onLatestSales: () -> Unit,
     onPricingSimulator: () -> Unit,
     onPublicCatalog: () -> Unit,
     onPublicProductScan: () -> Unit,
@@ -476,7 +477,8 @@ fun HomeScreen(
                     onReports = onReports,
                     onPricingSimulator = onPricingSimulator,
                     onProviders = onProviders,
-                    onExpenses = onExpenses
+                    onExpenses = onExpenses,
+                    onLatestSales = onLatestSales
                 )
             }
         }
@@ -650,7 +652,8 @@ private fun AdaptiveShortcutsSection(
     onReports: () -> Unit,
     onPricingSimulator: () -> Unit,
     onProviders: () -> Unit,
-    onExpenses: () -> Unit
+    onExpenses: () -> Unit,
+    onLatestSales: () -> Unit
 ) {
     val allShortcuts = listOf(
         ShortcutItem("Vender", Icons.Default.PointOfSale, "sell", onNewSale),
@@ -659,7 +662,8 @@ private fun AdaptiveShortcutsSection(
         ShortcutItem("Reportes", Icons.Default.QueryStats, "reports", onReports),
         ShortcutItem("Sim. costos", Icons.Default.Calculate, "pricing_simulator", onPricingSimulator),
         ShortcutItem("Proveedores", Icons.AutoMirrored.Filled.ReceiptLong, "providers_hub", onProviders),
-        ShortcutItem("Gastos", Icons.Default.Money, "expenses_hub", onExpenses)
+        ShortcutItem("Gastos", Icons.Default.Money, "expenses_hub", onExpenses),
+        ShortcutItem("Últimas ventas", Icons.Default.CheckCircle, "sales_invoices", onLatestSales)
     )
 
     val top3 = allShortcuts

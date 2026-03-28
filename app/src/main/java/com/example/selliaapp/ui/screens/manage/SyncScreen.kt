@@ -38,9 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.selliaapp.ui.components.SyncPendingBanner
 import com.example.selliaapp.viewmodel.manage.SyncViewModel
 import com.example.selliaapp.sync.SyncScheduler
 import com.example.selliaapp.sync.SyncWorker
@@ -56,6 +58,9 @@ fun SyncScreen(
     val viewModel: SyncViewModel = hiltViewModel()
     val uiState = remember { mutableStateOf(viewModel.uiState()) }
     val workManager = remember(context) { WorkManager.getInstance(context) }
+    val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
+    val outboxByType by viewModel.outboxByType.collectAsStateWithLifecycle()
+    val outboxEntries by viewModel.outboxEntries.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var lastState by remember { mutableStateOf<WorkInfo.State?>(null) }
@@ -100,6 +105,8 @@ fun SyncScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.Start
         ) {
+            SyncPendingBanner()
+
             Text(
                 "La sincronización en la nube está activa de forma permanente.",
                 style = MaterialTheme.typography.bodyLarge
@@ -183,6 +190,23 @@ fun SyncScreen(
                     Spacer(Modifier.height(4.dp))
                     Text("Detalle: $lastMessage", style = MaterialTheme.typography.bodySmall)
                 }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text("Diagnóstico SyncOutbox", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Pendientes totales: $pendingCount",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (outboxByType.isNotEmpty()) {
+                outboxByType.entries.sortedBy { it.key }.forEach { (type, count) ->
+                    Text("• $type: $count pendientes", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            val latestError = outboxEntries.lastOrNull { !it.lastError.isNullOrBlank() }?.lastError
+            if (!latestError.isNullOrBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text("Último error: $latestError", style = MaterialTheme.typography.bodySmall)
             }
         }
     }

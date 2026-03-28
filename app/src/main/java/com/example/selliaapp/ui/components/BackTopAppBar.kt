@@ -41,5 +41,11 @@ fun BackTopAppBar(
             }
         },
         actions = actions
+            .let { externalActions ->
+                {
+                    SyncStatusTopBarIcon()
+                    externalActions()
+                }
+            }
     )
 }
