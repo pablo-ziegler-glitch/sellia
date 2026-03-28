@@ -13,6 +13,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +50,20 @@ fun CashCloseScreen(
 
     val summary = state.summary
     val expected = summary?.expectedAmount ?: 0.0
+    val countedAmount = counted.toDoubleOrNull()
+    val difference = countedAmount?.minus(expected)
+    val semaphoreColor = when {
+        difference == null -> MaterialTheme.colorScheme.surfaceVariant
+        kotlin.math.abs(difference) < 0.01 -> MaterialTheme.colorScheme.tertiaryContainer
+        kotlin.math.abs(difference) <= 2000 -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.errorContainer
+    }
+    val semaphoreLabel = when {
+        difference == null -> "Ingresá el contado para comparar"
+        kotlin.math.abs(difference) < 0.01 -> "OK: sin diferencias"
+        kotlin.math.abs(difference) <= 2000 -> "Atención: diferencia moderada"
+        else -> "Crítico: diferencia alta"
+    }
 
     Scaffold(
         topBar = {
@@ -73,6 +89,21 @@ fun CashCloseScreen(
             Text("Apertura: ${currency.format(summary?.session?.openingAmount ?: 0.0)}")
             Text("Ventas efectivo: ${currency.format(summary?.cashSalesTotal ?: 0.0)}")
             Text("Teórico final: ${currency.format(expected)}")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = semaphoreColor)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Diferencia al cierre", style = MaterialTheme.typography.titleSmall)
+                    Text("Esperado: ${currency.format(expected)}")
+                    Text("Contado: ${currency.format(countedAmount ?: 0.0)}")
+                    Text(
+                        "Diferencia: ${currency.format(difference ?: 0.0)}",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(semaphoreLabel, style = MaterialTheme.typography.bodySmall)
+                }
+            }
             OutlinedTextField(
                 value = counted,
                 onValueChange = { counted = it },
