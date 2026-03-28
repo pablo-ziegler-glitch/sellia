@@ -1143,7 +1143,9 @@ fun SelliaApp(
 
             // ---------- GASTOS ----------
             composable(Routes.ExpensesHub.route) {
+                val repo = hiltViewModel<ExpensesEntryPoint>().repo
                 ExpensesHubScreen(
+                    repo = repo,
                     onTemplates = { navController.navigate(Routes.ExpenseTemplates.route) },
                     onEntries = { navController.navigate(Routes.ExpenseEntries.route) },
                     onCashflow = { navController.navigate(Routes.ExpensesCashflow.route) },
