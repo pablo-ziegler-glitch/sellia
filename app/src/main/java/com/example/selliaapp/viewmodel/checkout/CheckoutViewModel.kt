@@ -134,6 +134,7 @@ class CheckoutViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         initPoint = result.initPoint,
+                        checkoutUrl = result.initPoint,
                         preferenceId = result.preferenceId,
                         orderId = result.orderId,
                         idempotencyKey = result.idempotencyKey,
@@ -312,6 +313,7 @@ data class CheckoutUiState(
 data class PaymentUiState(
     val isLoading: Boolean = false,
     val initPoint: String? = null,
+    val checkoutUrl: String? = null,
     val preferenceId: String? = null,
     val fallbackPaymentMethod: String? = null,
     val errorMessage: String? = null,

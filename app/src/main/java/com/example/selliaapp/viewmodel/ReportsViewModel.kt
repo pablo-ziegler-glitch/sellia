@@ -3,6 +3,7 @@ package com.example.selliaapp.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.selliaapp.data.model.ReportPoint
+import com.example.selliaapp.repository.AdvancedSalesInsights
 import com.example.selliaapp.repository.ReportsRepository
 import com.example.selliaapp.repository.StockValuationReport
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +21,7 @@ data class ReportsUiState(
     val filter: ReportsFilter = ReportsFilter.DAY,
     val total: Double = 0.0,
     val points: List<Pair<String, Double>> = emptyList(),
+    val advancedInsights: AdvancedSalesInsights? = null,
     val stockValuation: StockValuationReport? = null,
     val loading: Boolean = false,
     val error: String? = null,
@@ -80,12 +82,14 @@ class ReportsViewModel @Inject constructor(
                 val total  = series.sumOf { it.amount }
                 val pairs  = series.map { it.label to it.amount }
                 val stockValuation = reportsRepository.getStockValuationReport()
+                val advancedInsights = reportsRepository.getAdvancedSalesInsights(from, to, filter)
 
                 _reportData.value = series
                 _state.value = _state.value.copy(
                     loading = false,
                     total = total,
                     points = pairs,
+                    advancedInsights = advancedInsights,
                     stockValuation = stockValuation
                 )
             } catch (e: Exception) {
