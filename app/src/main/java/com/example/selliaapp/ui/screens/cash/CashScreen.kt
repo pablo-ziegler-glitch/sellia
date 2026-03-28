@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.selliaapp.data.local.entity.CashMovementType
 import com.example.selliaapp.ui.components.AccountAvatarMenu
 import com.example.selliaapp.ui.components.AccountSummary
 import com.example.selliaapp.viewmodel.cash.CashViewModel
@@ -162,7 +163,7 @@ fun CashScreen(
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Últimos movimientos", style = MaterialTheme.typography.titleMedium)
+                Text("Historial del día por tipo", style = MaterialTheme.typography.titleMedium)
                 if (summary?.movements.isNullOrEmpty()) {
                     Text(
                         "Sin movimientos registrados.",
@@ -170,11 +171,32 @@ fun CashScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
-                    summary?.movements?.take(5)?.forEach { movement ->
+                    val grouped = summary?.movements
+                        ?.sortedByDescending { it.createdAt }
+                        ?.groupBy { it.type }
+                        .orEmpty()
+                    grouped.forEach { (type, movements) ->
+                        val label = when (type) {
+                            CashMovementType.SALE_CASH -> "Ventas"
+                            CashMovementType.EXPENSE -> "Gastos"
+                            CashMovementType.ADJUSTMENT -> "Ajustes"
+                            CashMovementType.INCOME -> "Ingresos"
+                            else -> type
+                        }
                         Text(
-                            "• ${movement.type}: ${currency.format(movement.amount)}",
-                            style = MaterialTheme.typography.bodySmall
+                            "$label (${movements.size}) · ${currency.format(movements.sumOf { it.amount })}",
+                            style = MaterialTheme.typography.titleSmall
                         )
+                        movements.take(3).forEach { movement ->
+                            val movementTime = movement.createdAt
+                                .atZone(ZoneId.systemDefault())
+                                .format(dateFormatter)
+                            val note = movement.note?.takeIf { it.isNotBlank() } ?: "Sin comentario"
+                            Text(
+                                "• $movementTime · ${currency.format(movement.amount)} · $note",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             }
