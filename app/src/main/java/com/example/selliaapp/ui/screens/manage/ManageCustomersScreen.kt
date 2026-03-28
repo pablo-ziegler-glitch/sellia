@@ -82,10 +82,10 @@ fun ManageCustomersScreen(
             ) {
                 IllustratedEmptyState(
                     title = "Todavía no hay clientes",
-                    subtitle = "Registrá clientes para ver su historial y frecuencia de compra.",
-                    buttonText = "Agregar cliente",
+                    description = "Registrá clientes para ver su historial y frecuencia de compra.",
+                    actionLabel = "Agregar cliente",
                     icon = Icons.Default.People,
-                    onButtonClick = {
+                    onAction = {
                         editing = null
                         showEditor = true
                     }
