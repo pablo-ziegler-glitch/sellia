@@ -79,7 +79,18 @@ fun ManageCustomersScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-            )
+            ) {
+                IllustratedEmptyState(
+                    title = "Todavía no hay clientes",
+                    subtitle = "Registrá clientes para ver su historial y frecuencia de compra.",
+                    buttonText = "Agregar cliente",
+                    icon = Icons.Default.People,
+                    onButtonClick = {
+                        editing = null
+                        showEditor = true
+                    }
+                )
+            }
         } else {
             LazyColumn(
                 modifier = Modifier
