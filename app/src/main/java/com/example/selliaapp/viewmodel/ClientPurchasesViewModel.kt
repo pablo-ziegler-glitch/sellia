@@ -23,6 +23,7 @@ class ClientPurchasesViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
+    val currentQuery: StateFlow<String> = query
 
     // Cuando la query está vacía, usamos "__no_match__" para evitar traer todo.
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -33,4 +34,10 @@ class ClientPurchasesViewModel @Inject constructor(
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun setQuery(q: String) { query.value = q }
+
+    fun initializeQueryIfEmpty(initialQuery: String?) {
+        if (query.value.isBlank() && !initialQuery.isNullOrBlank()) {
+            query.value = initialQuery.trim()
+        }
+    }
 }
