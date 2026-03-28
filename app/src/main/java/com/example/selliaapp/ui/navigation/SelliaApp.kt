@@ -36,6 +36,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavHostController
@@ -107,6 +109,7 @@ import com.example.selliaapp.ui.screens.reports.PriceSummaryScreen
 import com.example.selliaapp.ui.screens.reports.ReportsScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoiceDetailScreen
 import com.example.selliaapp.ui.screens.sales.SalesInvoicesScreen
+import com.example.selliaapp.ui.screens.sales.InvoiceHistoryScreen
 import com.example.selliaapp.ui.screens.sales.SalesProfitReportScreen
 import com.example.selliaapp.ui.screens.sell.AddProductScreen
 import com.example.selliaapp.ui.screens.sell.SellScreen
@@ -146,6 +149,7 @@ import com.example.selliaapp.viewmodel.TenantOwnershipViewModel
 import com.example.selliaapp.viewmodel.cash.CashViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoiceDetailViewModel
 import com.example.selliaapp.viewmodel.sales.SalesInvoicesViewModel
+import com.example.selliaapp.viewmodel.sales.InvoiceHistoryViewModel
 import com.example.selliaapp.viewmodel.sales.SalesProfitReportViewModel
 import com.example.selliaapp.viewmodel.admin.UsageDashboardViewModel
 import com.example.selliaapp.viewmodel.admin.AccountRequestsViewModel
@@ -153,6 +157,29 @@ import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.domain.security.Permission
 import com.example.selliaapp.ui.components.buildAccountSummary
 
+private const val NAV_ANIMATION_DURATION_MS = 280
+private val navAnimationSpec = tween<Int>(NAV_ANIMATION_DURATION_MS)
+private val navFadeSpec = tween<Float>(NAV_ANIMATION_DURATION_MS)
+
+private fun navEnterTransition(): EnterTransition {
+    return slideInHorizontally(animationSpec = navAnimationSpec, initialOffsetX = { it }) +
+        fadeIn(animationSpec = navFadeSpec)
+}
+
+private fun navExitTransition(): ExitTransition {
+    return slideOutHorizontally(animationSpec = navAnimationSpec, targetOffsetX = { -it / 3 }) +
+        fadeOut(animationSpec = navFadeSpec)
+}
+
+private fun navPopEnterTransition(): EnterTransition {
+    return slideInHorizontally(animationSpec = navAnimationSpec, initialOffsetX = { -it / 3 }) +
+        fadeIn(animationSpec = navFadeSpec)
+}
+
+private fun navPopExitTransition(): ExitTransition {
+    return slideOutHorizontally(animationSpec = navAnimationSpec, targetOffsetX = { it }) +
+        fadeOut(animationSpec = navFadeSpec)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -249,22 +276,10 @@ fun SelliaApp(
             NavHost(
                 navController = navController,
                 startDestination = Routes.Home.route,
-                enterTransition = {
-                    slideInHorizontally(animationSpec = tween(300), initialOffsetX = { it }) +
-                        fadeIn(animationSpec = tween(300))
-                },
-                exitTransition = {
-                    slideOutHorizontally(animationSpec = tween(300), targetOffsetX = { -it / 3 }) +
-                        fadeOut(animationSpec = tween(300))
-                },
-                popEnterTransition = {
-                    slideInHorizontally(animationSpec = tween(300), initialOffsetX = { -it / 3 }) +
-                        fadeIn(animationSpec = tween(300))
-                },
-                popExitTransition = {
-                    slideOutHorizontally(animationSpec = tween(300), targetOffsetX = { it }) +
-                        fadeOut(animationSpec = tween(300))
-                }
+                enterTransition = { navEnterTransition() },
+                exitTransition = { navExitTransition() },
+                popEnterTransition = { navPopEnterTransition() },
+                popExitTransition = { navPopExitTransition() }
             ) {
             // -------------------- HOME (rediseñada) --------------------
             composable(Routes.Home.route) {
@@ -311,6 +326,7 @@ fun SelliaApp(
                         onReports = { navController.navigate(Routes.Reports.route) },
                         onProviders = { navController.navigate(Routes.ProvidersHub.route) },
                         onExpenses = { navController.navigate(Routes.ExpensesHub.route) },
+                        onLatestSales = { navController.navigate(Routes.SalesInvoices.route) },
                         onPublicCatalog = { navController.navigate(Routes.PublicProductCatalog.route) },
                         onPublicProductScan = { navController.navigate(Routes.PublicProductScan.route) },
                         onSyncNow = { SyncScheduler.enqueueNow(context) },
@@ -1028,10 +1044,11 @@ fun SelliaApp(
 
             // -------------------- (NUEVO) LISTA FACTURAS VENTA ---------
             composable(Routes.SalesInvoices.route) { // [NUEVO]
-                val vm: SalesInvoicesViewModel = hiltViewModel()
-                SalesInvoicesScreen(
+                val vm: InvoiceHistoryViewModel = hiltViewModel()
+                InvoiceHistoryScreen(
                     vm = vm,
                     onOpenDetail = { id -> navController.navigate(Routes.SalesInvoiceDetail.withId(id)) },
+                    onGoToSell = { navController.navigate(Routes.Pos.route) },
                     onBack = { navController.popBackStack() }
                 )
             }
