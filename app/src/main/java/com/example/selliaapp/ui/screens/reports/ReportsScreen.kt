@@ -44,8 +44,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.selliaapp.ui.navigation.Routes
+import com.example.selliaapp.repository.AdvancedSalesInsights
+import com.example.selliaapp.repository.CategoryShareItem
+import com.example.selliaapp.repository.PeriodComparison
+import com.example.selliaapp.repository.ProductRankingItem
 import com.example.selliaapp.repository.StockValuationReport
 import com.example.selliaapp.repository.StockValuationScenario
+import com.example.selliaapp.repository.TrendDirection
 import com.example.selliaapp.viewmodel.ReportsFilter
 import com.example.selliaapp.viewmodel.ReportsViewModel
 import java.text.NumberFormat
@@ -209,6 +214,16 @@ fun ReportsScreen(
                                 HorizontalDivider()
                             }
                             item {
+                                AdvancedInsightsSection(
+                                    insights = state.advancedInsights,
+                                    currency = currency,
+                                    filter = state.filter
+                                )
+                            }
+                            item {
+                                HorizontalDivider()
+                            }
+                            item {
                                 StockValuationSection(
                                     report = state.stockValuation,
                                     currency = currency
@@ -245,6 +260,198 @@ fun ReportsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AdvancedInsightsSection(
+    insights: AdvancedSalesInsights?,
+    currency: NumberFormat,
+    filter: ReportsFilter
+) {
+    Text(
+        text = "Analytics avanzado",
+        style = MaterialTheme.typography.titleMedium
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    if (insights == null) {
+        Text(
+            text = "Sin datos suficientes para analytics avanzado.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+
+    TrendComparisonCard(
+        comparison = insights.comparison,
+        currency = currency,
+        filter = filter
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+    HorizontalDivider()
+    Spacer(modifier = Modifier.height(10.dp))
+    RankingSection(
+        title = "Top productos por unidades",
+        rows = insights.topProductsByUnits,
+        currency = currency,
+        metric = { "${it.units} u." }
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+    RankingSection(
+        title = "Top productos por ingreso",
+        rows = insights.topProductsByRevenue,
+        currency = currency,
+        metric = { currency.format(it.revenue) }
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+    CategoryShareSection(
+        rows = insights.categoryShares,
+        currency = currency
+    )
+}
+
+@Composable
+private fun TrendComparisonCard(
+    comparison: PeriodComparison,
+    currency: NumberFormat,
+    filter: ReportsFilter
+) {
+    val periodLabel = when (filter) {
+        ReportsFilter.DAY -> "día anterior"
+        ReportsFilter.WEEK -> "semana anterior"
+        ReportsFilter.MONTH -> "mes anterior"
+        ReportsFilter.CUSTOM -> "período anterior equivalente"
+    }
+    val trendLabel = when (comparison.trend) {
+        TrendDirection.UP -> "▲ Tendencia alcista"
+        TrendDirection.DOWN -> "▼ Tendencia bajista"
+        TrendDirection.FLAT -> "▬ Tendencia estable"
+    }
+    val trendColor = when (comparison.trend) {
+        TrendDirection.UP -> Color(0xFF2E7D32)
+        TrendDirection.DOWN -> MaterialTheme.colorScheme.error
+        TrendDirection.FLAT -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val deltaText = buildString {
+        append(if (comparison.delta >= 0.0) "+" else "")
+        append(currency.format(comparison.delta))
+        comparison.deltaPercent?.let { percent ->
+            append(" (")
+            append(if (percent >= 0.0) "+" else "")
+            append(String.format(Locale.US, "%.1f", percent))
+            append("%)")
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "Comparación vs $periodLabel",
+            style = MaterialTheme.typography.titleSmall
+        )
+        ResumenCheckoutLikeRow("Total actual", currency.format(comparison.currentTotal))
+        ResumenCheckoutLikeRow("Total previo", currency.format(comparison.previousTotal))
+        ResumenCheckoutLikeRow(
+            "Delta",
+            deltaText,
+            valueColor = trendColor
+        )
+        Text(
+            text = trendLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = trendColor
+        )
+    }
+}
+
+@Composable
+private fun RankingSection(
+    title: String,
+    rows: List<ProductRankingItem>,
+    currency: NumberFormat,
+    metric: (ProductRankingItem) -> String
+) {
+    Text(text = title, style = MaterialTheme.typography.titleSmall)
+    Spacer(modifier = Modifier.height(4.dp))
+    if (rows.isEmpty()) {
+        Text(
+            text = "Sin ventas para calcular ranking.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        rows.forEachIndexed { index, row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${index + 1}. ${row.productName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${metric(row)} • ${currency.format(row.revenue)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryShareSection(
+    rows: List<CategoryShareItem>,
+    currency: NumberFormat
+) {
+    Text(text = "Ventas por categoría", style = MaterialTheme.typography.titleSmall)
+    Spacer(modifier = Modifier.height(4.dp))
+    if (rows.isEmpty()) {
+        Text(
+            text = "Sin categorías vendidas en el período.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        rows.forEach { row ->
+            val percent = String.format(Locale.US, "%.1f", row.sharePercent)
+            ResumenCheckoutLikeRow(
+                label = row.category,
+                value = "${row.units} u. • ${currency.format(row.revenue)} • $percent%"
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResumenCheckoutLikeRow(
+    label: String,
+    value: String,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = valueColor
+        )
     }
 }
 

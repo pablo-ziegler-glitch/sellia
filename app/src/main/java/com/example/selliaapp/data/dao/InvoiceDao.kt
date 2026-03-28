@@ -26,6 +26,17 @@ data class InvoiceWithItems(
 )
 data class DayRow(val day: Long, val total: Double)
 data class HourRow(val hour: Long, val total: Double)
+data class ProductSalesRow(
+    val productId: Int,
+    val productName: String,
+    val units: Int,
+    val revenue: Double
+)
+data class CategorySalesRow(
+    val category: String,
+    val units: Int,
+    val revenue: Double
+)
 
 /** Fila para el reporte de ganancias por factura */
 data class InvoiceProfitRow(
@@ -112,6 +123,67 @@ interface InvoiceDao {
         ORDER BY hour
     """)
     suspend fun salesGroupedByHour(startMillis: Long, endMillis: Long): List<HourRow>
+
+    @Query(
+        """
+        SELECT ii.productId AS productId,
+               MAX(ii.productName) AS productName,
+               SUM(ii.quantity) AS units,
+               SUM(ii.lineTotal) AS revenue
+        FROM invoice_items ii
+        INNER JOIN invoices i ON i.id = ii.invoiceId
+        WHERE i.status = 'EMITIDA'
+          AND i.dateMillis BETWEEN :startMillis AND :endMillis
+        GROUP BY ii.productId
+        ORDER BY revenue DESC
+        LIMIT :limit
+    """
+    )
+    suspend fun topProductsByRevenue(
+        startMillis: Long,
+        endMillis: Long,
+        limit: Int
+    ): List<ProductSalesRow>
+
+    @Query(
+        """
+        SELECT ii.productId AS productId,
+               MAX(ii.productName) AS productName,
+               SUM(ii.quantity) AS units,
+               SUM(ii.lineTotal) AS revenue
+        FROM invoice_items ii
+        INNER JOIN invoices i ON i.id = ii.invoiceId
+        WHERE i.status = 'EMITIDA'
+          AND i.dateMillis BETWEEN :startMillis AND :endMillis
+        GROUP BY ii.productId
+        ORDER BY units DESC, revenue DESC
+        LIMIT :limit
+    """
+    )
+    suspend fun topProductsByUnits(
+        startMillis: Long,
+        endMillis: Long,
+        limit: Int
+    ): List<ProductSalesRow>
+
+    @Query(
+        """
+        SELECT COALESCE(NULLIF(TRIM(COALESCE(p.parentCategory, p.category)), ''), 'Sin categoría') AS category,
+               SUM(ii.quantity) AS units,
+               SUM(ii.lineTotal) AS revenue
+        FROM invoice_items ii
+        INNER JOIN invoices i ON i.id = ii.invoiceId
+        LEFT JOIN products p ON p.id = ii.productId
+        WHERE i.status = 'EMITIDA'
+          AND i.dateMillis BETWEEN :startMillis AND :endMillis
+        GROUP BY category
+        ORDER BY revenue DESC
+    """
+    )
+    suspend fun salesByCategory(
+        startMillis: Long,
+        endMillis: Long
+    ): List<CategorySalesRow>
 
 
     /**
@@ -263,6 +335,5 @@ interface InvoiceDao {
     fun observeProfitRows(): Flow<List<InvoiceProfitRow>>
 
 }
-
 
 
