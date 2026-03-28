@@ -17,6 +17,7 @@ data class ProviderInvoiceItem(
     val code: String? = null,
     val name: String,
     val quantity: Double,
+    val receivedQuantity: Double? = null,
     val priceUnit: Double,
     val vatPercent: Double,
     val vatAmount: Double,

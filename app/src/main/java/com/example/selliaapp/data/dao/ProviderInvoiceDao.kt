@@ -39,6 +39,10 @@ interface ProviderInvoiceDao {
     @Query("SELECT * FROM provider_invoices WHERE id = :invoiceId")
     fun observeDetail(invoiceId: Int): Flow<ProviderInvoiceWithItems?>
 
+    @Transaction
+    @Query("SELECT * FROM provider_invoices WHERE id = :invoiceId")
+    suspend fun getDetailOnce(invoiceId: Int): ProviderInvoiceWithItems?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertInvoice(invoice: ProviderInvoice): Long
 
@@ -47,6 +51,9 @@ interface ProviderInvoiceDao {
 
     @Update
     suspend fun updateInvoice(invoice: ProviderInvoice): Int
+
+    @Update
+    suspend fun updateItems(items: List<ProviderInvoiceItem>)
 
     @Query("""
         SELECT CAST(strftime('%Y', (paymentDateMillis/1000), 'unixepoch') AS INTEGER) AS year,

@@ -16,7 +16,8 @@ import org.mockito.kotlin.verifyNoInteractions
 class ProviderInvoiceRepositoryTest {
 
     private val dao: ProviderInvoiceDao = mock()
-    private val repository = ProviderInvoiceRepository(dao)
+    private val productRepository: IProductRepository = mock()
+    private val repository = ProviderInvoiceRepository(dao, productRepository)
 
     @Test
     fun markPaid_rejectsNonPositiveAmount() = runTest {
@@ -34,7 +35,7 @@ class ProviderInvoiceRepositoryTest {
         assertNotNull(exception)
         assertTrue(exception is InvalidProviderPaymentException)
         assertTrue(exception?.message?.contains("monto") == true)
-        verifyNoInteractions(dao)
+        verifyNoInteractions(dao, productRepository)
     }
 
     @Test
@@ -53,7 +54,7 @@ class ProviderInvoiceRepositoryTest {
         assertNotNull(exception)
         assertTrue(exception is InvalidProviderPaymentException)
         assertTrue(exception?.message?.contains("referencia") == true)
-        verifyNoInteractions(dao)
+        verifyNoInteractions(dao, productRepository)
     }
 
     @Test

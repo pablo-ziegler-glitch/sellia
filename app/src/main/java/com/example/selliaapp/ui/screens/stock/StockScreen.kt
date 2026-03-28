@@ -94,6 +94,11 @@ import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToInt
 
+enum class StockScanAction {
+    RECEIVE_STOCK,
+    EDIT_PRICE
+}
+
 /**
  * Pantalla de Stock:
  * - Franja superior con buscador.
@@ -111,7 +116,7 @@ fun StockScreen(
     vm: ProductViewModel = hiltViewModel(),
     stockVm: StockViewModel = hiltViewModel(),
     onAddProduct: () -> Unit,
-    onScan: () -> Unit,
+    onScan: (StockScanAction) -> Unit,
     onImportCsv: () -> Unit,
     onPhotoIntake: () -> Unit,
     onOpenPriceAudit: () -> Unit,
@@ -338,9 +343,14 @@ fun StockScreen(
                                 onClick = { fabExpanded = false; onAddProduct() }
                             )
                             SmallFabWithLabel(
-                                label = "Escanear código",
+                                label = "Escanear para recepción",
                                 icon = { Icon(Icons.Default.CameraAlt, contentDescription = "Escanear") },
-                                onClick = { fabExpanded = false; onScan() }
+                                onClick = { fabExpanded = false; onScan(StockScanAction.RECEIVE_STOCK) }
+                            )
+                            SmallFabWithLabel(
+                                label = "Escanear para precio",
+                                icon = { Icon(Icons.Default.Tune, contentDescription = "Escanear precio") },
+                                onClick = { fabExpanded = false; onScan(StockScanAction.EDIT_PRICE) }
                             )
                             SmallFabWithLabel(
                                 label = "Historial de movimientos",
