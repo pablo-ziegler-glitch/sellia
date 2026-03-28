@@ -121,6 +121,7 @@ import com.example.selliaapp.ui.screens.stock.StockMovementsScreen
 import com.example.selliaapp.ui.screens.stock.StockScreen
 import com.example.selliaapp.viewmodel.ClientMetricsViewModel
 import com.example.selliaapp.viewmodel.ClientPurchasesViewModel
+import com.example.selliaapp.viewmodel.GlobalSearchViewModel
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
@@ -281,6 +282,7 @@ fun SelliaApp(
                     )
                 } else {
                     val homeVm: HomeViewModel = hiltViewModel()
+                    val globalSearchVm: GlobalSearchViewModel = hiltViewModel()
                     val marketingVm: MarketingConfigViewModel = hiltViewModel()
                     val marketingSettings by marketingVm.settings.collectAsStateWithLifecycle(
                         initialValue = MarketingSettings()
@@ -325,6 +327,19 @@ fun SelliaApp(
                         onCashAudit = navigateToCashAudit,
                         onCashClose = navigateToCashClose,
                         onCashHub = { navController.navigate(Routes.Cash.route) },
+                        globalSearchVm = globalSearchVm,
+                        onOpenProductFromSearch = { productId ->
+                            navController.navigate(Routes.AddProduct.withId(productId.toLong()))
+                        },
+                        onOpenCustomerFromSearch = { customer ->
+                            navController.navigate(Routes.ClientPurchases.withQuery(customer))
+                        },
+                        onOpenInvoiceFromSearch = { invoiceId ->
+                            navController.navigate(Routes.SalesInvoiceDetail.withId(invoiceId))
+                        },
+                        onOpenProviderFromSearch = {
+                            navController.navigate(Routes.ManageProviders.route)
+                        },
                         vm = homeVm,
                         accountSummary = accountSummary,
                         storeName = marketingSettings.storeName,
@@ -441,7 +456,7 @@ fun SelliaApp(
             composable(Routes.ClientsHub.route) {
                 ClientsHubScreen(
                     onCrud = { navController.navigate(Routes.ManageCustomers.route) },
-                    onSearchPurchases = { navController.navigate(Routes.ClientPurchases.route) },
+                    onSearchPurchases = { navController.navigate(Routes.ClientPurchases.withQuery("")) },
                     onMetrics = { navController.navigate(Routes.ClientMetrics.route) },
                     onExportCsv = null, // habilitable luego si sumamos Exportar CSV
                     onBack = { navController.popBackStack() }
@@ -458,9 +473,17 @@ fun SelliaApp(
             }
 
             // Búsqueda de compras por cliente
-            composable(Routes.ClientPurchases.route) {
+            composable(
+                route = Routes.ClientPurchases.route,
+                arguments = Routes.ClientPurchases.arguments
+            ) { backStackEntry ->
                 val vm = hiltViewModel<ClientPurchasesViewModel>()
-                ClientPurchasesScreen(vm = vm, onBack = { navController.popBackStack() })
+                val initialQuery = backStackEntry.arguments?.getString(Routes.ClientPurchases.ARG_QUERY)
+                ClientPurchasesScreen(
+                    vm = vm,
+                    initialQuery = initialQuery,
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             // Métricas de clientes

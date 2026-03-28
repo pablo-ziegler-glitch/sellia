@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.selliaapp.data.dao.InvoiceWithItems
@@ -26,9 +27,15 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun ClientPurchasesScreen(
     vm: ClientPurchasesViewModel,
+    initialQuery: String? = null,
     onBack: () -> Unit
 ) {
     val items by vm.results.collectAsState()
+    val query by vm.currentQuery.collectAsState()
+
+    LaunchedEffect(initialQuery) {
+        vm.initializeQueryIfEmpty(initialQuery)
+    }
 
     Scaffold(topBar = { BackTopAppBar(title = "Compras de clientes", onBack = onBack) }) { padding ->
         Column(
@@ -39,7 +46,7 @@ fun ClientPurchasesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             OutlinedTextField(
-                value = "",
+                value = query,
                 onValueChange = { vm.setQuery(it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Buscar por nombre, teléfono, email o apodo") },

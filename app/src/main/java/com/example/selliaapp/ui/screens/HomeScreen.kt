@@ -18,12 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Money
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -38,11 +40,14 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +70,12 @@ import coil.compose.AsyncImage
 import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.ui.components.AccountAvatarMenu
 import com.example.selliaapp.ui.components.AccountSummary
+import com.example.selliaapp.data.local.entity.CustomerEntity
+import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.model.dashboard.DailySalesPoint
+import com.example.selliaapp.data.model.Invoice
+import com.example.selliaapp.data.model.Provider
+import com.example.selliaapp.viewmodel.GlobalSearchViewModel
 import com.example.selliaapp.viewmodel.HomeViewModel
 import com.example.selliaapp.viewmodel.hasOpenCashSession
 import java.text.NumberFormat
@@ -99,6 +109,11 @@ fun HomeScreen(
     onCashAudit: () -> Unit,
     onCashClose: () -> Unit,
     onCashHub: () -> Unit,
+    globalSearchVm: GlobalSearchViewModel,
+    onOpenProductFromSearch: (Int) -> Unit,
+    onOpenCustomerFromSearch: (String) -> Unit,
+    onOpenInvoiceFromSearch: (Long) -> Unit,
+    onOpenProviderFromSearch: () -> Unit,
     accountSummary: AccountSummary,
     storeName: String,
     storeLogoUrl: String,
@@ -108,6 +123,13 @@ fun HomeScreen(
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
     var showCashRequired by remember { mutableStateOf(false) }
+    var showGlobalSearch by remember { mutableStateOf(false) }
+    val globalSearchState by globalSearchVm.state.collectAsStateWithLifecycle()
+    val setupComplete = storeName.isNotBlank() &&
+        storeName != "Tu tienda" &&
+        state.productCount > 0 &&
+        state.productsWithPriceCount > 0
+    var showSetupWizard by remember(state.showContextualTips) { mutableStateOf(state.showContextualTips && !setupComplete) }
 
     val cashSession = state.cashSummary?.session
     val openedTime = remember(cashSession?.openedAt, dateFormatter) {
@@ -115,6 +137,49 @@ fun HomeScreen(
             ?.atZone(ZoneId.systemDefault())
             ?.format(dateFormatter)
             ?: "-"
+    }
+
+    if (showGlobalSearch) {
+        GlobalSearchDialog(
+            state = globalSearchState,
+            onDismiss = {
+                showGlobalSearch = false
+                globalSearchVm.clear()
+            },
+            onQueryChange = globalSearchVm::setQuery,
+            onOpenProduct = { product ->
+                showGlobalSearch = false
+                globalSearchVm.clear()
+                onOpenProductFromSearch(product.id)
+            },
+            onOpenCustomer = { customer ->
+                showGlobalSearch = false
+                globalSearchVm.clear()
+                onOpenCustomerFromSearch(customer.name)
+            },
+            onOpenInvoice = { invoice ->
+                showGlobalSearch = false
+                globalSearchVm.clear()
+                onOpenInvoiceFromSearch(invoice.id)
+            },
+            onOpenProvider = {
+                showGlobalSearch = false
+                globalSearchVm.clear()
+                onOpenProviderFromSearch()
+            }
+        )
+    }
+
+    if (showSetupWizard) {
+        SetupWizardDialog(
+            onDismiss = {
+                showSetupWizard = false
+                vm.dismissContextualTips()
+            },
+            onStoreStep = onConfig,
+            onProductStep = onStock,
+            onPriceStep = onPricingSimulator
+        )
     }
 
     if (showCashRequired) {
@@ -174,7 +239,46 @@ fun HomeScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    IconButton(onClick = { showGlobalSearch = true }) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Buscar globalmente"
+                        )
+                    }
                     AccountAvatarMenu(accountSummary = accountSummary)
+                }
+            }
+
+            item {
+                SetupChecklistCard(
+                    storeName = storeName,
+                    hasProducts = state.productCount > 0,
+                    hasPricingConfigured = state.productsWithPriceCount > 0,
+                    onOpenStoreData = onConfig,
+                    onOpenFirstProduct = onStock,
+                    onOpenFirstPrice = onPricingSimulator
+                )
+            }
+
+            if (state.showContextualTips) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Tips de primera sesión", style = MaterialTheme.typography.titleMedium)
+                            Text("• Usá la lupa para buscar cualquier entidad desde Home.")
+                            Text("• Completá el checklist para terminar la configuración inicial.")
+                            Text("• Entrá en 'Vender' para crear tu primera factura.")
+                            TextButton(onClick = vm::dismissContextualTips) {
+                                Text("Entendido")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -697,4 +801,228 @@ private fun MiniSalesBarChart(weekSales: List<DailySalesPoint>, today: LocalDate
             }
         }
     }
+}
+
+@Composable
+private fun SetupChecklistCard(
+    storeName: String,
+    hasProducts: Boolean,
+    hasPricingConfigured: Boolean,
+    onOpenStoreData: () -> Unit,
+    onOpenFirstProduct: () -> Unit,
+    onOpenFirstPrice: () -> Unit
+) {
+    val storeConfigured = storeName.isNotBlank() && storeName != "Tu tienda"
+    val completed = listOf(storeConfigured, hasProducts, hasPricingConfigured).count { it }
+
+    if (completed == 3) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Setup inicial ($completed/3)", style = MaterialTheme.typography.titleMedium)
+            ChecklistRow("1) Datos de tienda", storeConfigured, onOpenStoreData)
+            ChecklistRow("2) Primer producto", hasProducts, onOpenFirstProduct)
+            ChecklistRow("3) Primer precio", hasPricingConfigured, onOpenFirstPrice)
+        }
+    }
+}
+
+@Composable
+private fun ChecklistRow(
+    label: String,
+    completed: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable { if (!completed) onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (completed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        Icon(
+            imageVector = if (completed) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.ArrowForwardIos,
+            contentDescription = null,
+            tint = if (completed) CashOpenColor else MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun GlobalSearchDialog(
+    state: com.example.selliaapp.viewmodel.GlobalSearchUiState,
+    onDismiss: () -> Unit,
+    onQueryChange: (String) -> Unit,
+    onOpenProduct: (ProductEntity) -> Unit,
+    onOpenCustomer: (CustomerEntity) -> Unit,
+    onOpenInvoice: (Invoice) -> Unit,
+    onOpenProvider: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.large) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Búsqueda global", style = MaterialTheme.typography.titleLarge)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    }
+                }
+
+                OutlinedTextField(
+                    value = state.query,
+                    onValueChange = onQueryChange,
+                    label = { Text("Buscar en productos, clientes, facturas y proveedores") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                if (!state.hasQuery) {
+                    Text(
+                        "Ingresá al menos 2 caracteres.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (state.products.isNotEmpty()) {
+                            item { Text("Productos", style = MaterialTheme.typography.titleSmall) }
+                            items(state.products.size) { index ->
+                                val product = state.products[index]
+                                SearchResultRow(title = product.name, subtitle = "SKU: ${product.code ?: "-"}") {
+                                    onOpenProduct(product)
+                                }
+                            }
+                        }
+
+                        if (state.customers.isNotEmpty()) {
+                            item { Text("Clientes", style = MaterialTheme.typography.titleSmall) }
+                            items(state.customers.size) { index ->
+                                val customer = state.customers[index]
+                                SearchResultRow(title = customer.name, subtitle = customer.phone ?: customer.email ?: "Sin contacto") {
+                                    onOpenCustomer(customer)
+                                }
+                            }
+                        }
+
+                        if (state.invoices.isNotEmpty()) {
+                            item { Text("Facturas", style = MaterialTheme.typography.titleSmall) }
+                            items(state.invoices.size) { index ->
+                                val invoice = state.invoices[index]
+                                SearchResultRow(
+                                    title = "Factura #${invoice.id}",
+                                    subtitle = invoice.customerName ?: "Cliente no asignado"
+                                ) { onOpenInvoice(invoice) }
+                            }
+                        }
+
+                        if (state.providers.isNotEmpty()) {
+                            item { Text("Proveedores", style = MaterialTheme.typography.titleSmall) }
+                            items(state.providers.size) { index ->
+                                val provider = state.providers[index]
+                                SearchResultRow(
+                                    title = provider.name,
+                                    subtitle = provider.phone ?: "Sin teléfono"
+                                ) { onOpenProvider() }
+                            }
+                        }
+
+                        if (!state.hasAnyResults) {
+                            item {
+                                Text(
+                                    "Sin resultados para \"${state.query}\".",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchResultRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SetupWizardDialog(
+    onDismiss: () -> Unit,
+    onStoreStep: () -> Unit,
+    onProductStep: () -> Unit,
+    onPriceStep: () -> Unit
+) {
+    var step by remember { mutableStateOf(0) }
+    val steps = listOf(
+        Triple("Paso 1/3", "Completá los datos de tu tienda", onStoreStep),
+        Triple("Paso 2/3", "Creá tu primer producto", onProductStep),
+        Triple("Paso 3/3", "Definí tu primer precio", onPriceStep)
+    )
+    val current = steps[step]
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Configuración inicial") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(current.first, style = MaterialTheme.typography.labelLarge)
+                Text(current.second)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                current.third.invoke()
+                if (step == steps.lastIndex) {
+                    onDismiss()
+                } else {
+                    step += 1
+                }
+            }) {
+                Text(if (step == steps.lastIndex) "Finalizar" else "Continuar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Más tarde") }
+        }
+    )
 }

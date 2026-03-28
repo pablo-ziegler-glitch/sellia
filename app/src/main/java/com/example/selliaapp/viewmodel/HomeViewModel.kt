@@ -10,6 +10,7 @@ import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.repository.CashRepository
 import com.example.selliaapp.repository.CashSessionSummary
 import com.example.selliaapp.repository.InvoiceRepository
+import com.example.selliaapp.repository.OnboardingRepository
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.ProviderInvoiceRepository
 import com.example.selliaapp.repository.ProviderRepository
@@ -49,7 +50,10 @@ data class HomeUiState(
     val dailyMargin: Double = 0.0,
     val averageTicket: Double = 0.0,
     val errorMessage: String? = null,
-    val cashSummary: CashSessionSummary? = null
+    val cashSummary: CashSessionSummary? = null,
+    val productCount: Int = 0,
+    val productsWithPriceCount: Int = 0,
+    val showContextualTips: Boolean = false
 )
 
 val HomeUiState.hasOpenCashSession: Boolean
@@ -62,7 +66,8 @@ class HomeViewModel @Inject constructor(
     private val productRepo: ProductRepository,
     private val providerInvoiceRepo: ProviderInvoiceRepository,
     private val cashRepository: CashRepository,
-    private val providerRepository: ProviderRepository
+    private val providerRepository: ProviderRepository,
+    private val onboardingRepository: OnboardingRepository
 ) : ViewModel() {
 
     companion object {
@@ -80,7 +85,14 @@ class HomeViewModel @Inject constructor(
         observeKpiMetrics()
         observeCashSession()
         observeIncompleteProviders()
+        observeSetupProgress()
+        _state.update { it.copy(showContextualTips = onboardingRepository.shouldShowContextualTips()) }
         refresh()
+    }
+
+    fun dismissContextualTips() {
+        onboardingRepository.markContextualTipsShown()
+        _state.update { it.copy(showContextualTips = false) }
     }
 
     fun refresh() {
@@ -202,6 +214,26 @@ class HomeViewModel @Inject constructor(
                 }
                 .collectLatest { summary ->
                     _state.update { it.copy(cashSummary = summary) }
+                }
+        }
+    }
+
+    private fun observeSetupProgress() {
+        viewModelScope.launch {
+            productRepo.observeAll()
+                .catch { /* no-op en home */ }
+                .collectLatest { products ->
+                    val pricedCount = products.count { product ->
+                        (product.listPrice ?: 0.0) > 0.0 ||
+                            (product.cashPrice ?: 0.0) > 0.0 ||
+                            (product.transferPrice ?: 0.0) > 0.0
+                    }
+                    _state.update {
+                        it.copy(
+                            productCount = products.size,
+                            productsWithPriceCount = pricedCount
+                        )
+                    }
                 }
         }
     }

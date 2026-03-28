@@ -81,7 +81,20 @@ sealed class Routes(val route: String) {
 
     // Hub de Clientes y subrutas nuevas
     object ClientsHub : Routes("clients_hub")
-    object ClientPurchases : Routes("client_purchases")
+    object ClientPurchases : Routes("client_purchases?query={query}") {
+        const val ARG_QUERY = "query"
+        fun withQuery(query: String): String = "client_purchases?query=${encode(query)}"
+        val arguments = listOf(
+            navArgument(ARG_QUERY) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = ""
+            }
+        )
+
+        private fun encode(value: String): String =
+            URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+    }
     object ClientMetrics : Routes("client_metrics")
 
     object ScannerForSell : Routes("scanner_for_sell")
