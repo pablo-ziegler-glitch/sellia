@@ -29,14 +29,37 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!product) return { title: "Producto no encontrado" };
   const storeName = storefront?.storeName || "VALKIRJA";
   const price = product.listPrice ? ` — ${formatPrice(product.listPrice)}` : "";
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://sellia1993.web.app";
+  const productUrl = `${baseUrl}/catalogo/producto/${productId}`;
+  const ogTitle = `${product.name}${price}`;
+  const ogDescription = product.description || `${product.name} disponible en ${storeName}`;
   return {
     title: `${product.name}${price} | ${storeName}`,
     description: product.description || `${product.name} en ${storeName}`,
     openGraph: {
-      title: `${product.name}${price}`,
-      description:
-        product.description || `${product.name} disponible en ${storeName}`,
-      ...(product.imageUrl ? { images: [{ url: product.imageUrl }] } : {}),
+      title: ogTitle,
+      description: ogDescription,
+      url: productUrl,
+      siteName: storeName,
+      type: "website",
+      ...(product.imageUrl
+        ? {
+            images: [
+              {
+                url: product.imageUrl,
+                width: 800,
+                height: 800,
+                alt: product.name,
+              },
+            ],
+          }
+        : {}),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: ogTitle,
+      description: ogDescription,
+      ...(product.imageUrl ? { images: [product.imageUrl] } : {}),
     },
   };
 }
@@ -230,8 +253,16 @@ export default async function ProductPage({ params }: Props) {
               </div>
             )}
 
-            {/* Acciones */}
-            <div className="space-y-3">
+            {/* Acciones — en mobile: ShareButton primero como CTA principal */}
+            <div className="flex flex-col gap-3">
+              {/* ShareButton: primer lugar en mobile, último en desktop */}
+              <div className="md:order-last">
+                <ShareButton
+                  url={productUrl}
+                  title={product.name}
+                  text={product.description || `${product.name} en ${storeName}`}
+                />
+              </div>
               {storefront?.contactWhatsapp && (
                 <a
                   href={`https://wa.me/${storefront.contactWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola, me interesa: ${product.name}`)}`}
@@ -243,14 +274,6 @@ export default async function ProductPage({ params }: Props) {
                   Consultar por WhatsApp
                 </a>
               )}
-              <ShareButton
-                url={productUrl}
-                title={product.name}
-                text={
-                  product.description ||
-                  `${product.name} en ${storeName}`
-                }
-              />
             </div>
           </div>
         </div>

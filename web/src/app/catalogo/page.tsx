@@ -176,7 +176,7 @@ export default async function CatalogoPage() {
         {products.length === 0 ? (
           <EmptyCatalog storefront={storefront} />
         ) : (
-          <Suspense fallback={<ProductGridSkeleton count={12} />}>
+          <Suspense fallback={<ProductGridSkeleton count={Math.min(products.length, 12)} />}>
             <ProductGrid
               products={products}
               showPrices={catalogConfig.showPrices}
