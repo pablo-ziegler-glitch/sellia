@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import java.time.LocalDate
 
 data class ManageProductsUiState(
     val query: String = "",
@@ -164,6 +165,10 @@ class ManageProductsViewModel @Inject constructor(
             .toMap()
     }
 
+    suspend fun getVariantMatrix(productId: Int): List<VariantEntity> {
+        return variantDao.getByProductOnce(productId)
+    }
+
     fun saveSizeStocks(product: ProductEntity, quantitiesBySize: Map<String, Int>) {
         val normalized = quantitiesBySize
             .mapKeys { it.key.trim() }
@@ -199,6 +204,81 @@ class ManageProductsViewModel @Inject constructor(
                 _message.value = error.message ?: "No se pudo guardar el stock por talle."
             }
         }
+    }
+
+    fun saveVariantMatrix(
+        product: ProductEntity,
+        rows: List<VariantEntity>
+    ) {
+        val normalizedRows = rows.mapNotNull { row ->
+            val size = row.option1?.trim().orEmpty()
+            val color = row.option2?.trim().orEmpty()
+            if (size.isBlank() || color.isBlank()) return@mapNotNull null
+            row.copy(
+                id = 0,
+                productId = product.id,
+                option1 = size,
+                option2 = color,
+                quantity = row.quantity.coerceAtLeast(0),
+                sku = row.sku?.trim()?.ifBlank { null },
+                updatedAt = LocalDate.now()
+            )
+        }
+
+        viewModelScope.launch {
+            val totalByVariants = normalizedRows.sumOf { it.quantity }
+            if (totalByVariants > product.quantity) {
+                _message.value = "La suma de stock por variantes no puede superar el stock total del producto."
+                return@launch
+            }
+            runCatching {
+                variantDao.deleteByProduct(product.id)
+                if (normalizedRows.isNotEmpty()) {
+                    variantDao.insertAll(normalizedRows)
+                }
+            }.onFailure { error ->
+                _message.value = error.message ?: "No se pudieron guardar las variantes."
+            }
+        }
+    }
+
+    fun importVariantsFromCsv(product: ProductEntity, csvText: String) {
+        val lines = csvText.lines()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        if (lines.isEmpty()) {
+            _message.value = "Pegá al menos una fila con formato talle,color,stock[,sku]."
+            return
+        }
+
+        val parsed = mutableListOf<VariantEntity>()
+        val errors = mutableListOf<String>()
+        lines.forEachIndexed { index, line ->
+            val cells = line.split(",").map { it.trim() }
+            if (cells.size < 3) {
+                errors += "Fila ${index + 1}: faltan columnas (talle,color,stock[,sku])."
+                return@forEachIndexed
+            }
+            val qty = cells[2].toIntOrNull()
+            if (qty == null || qty < 0) {
+                errors += "Fila ${index + 1}: stock inválido."
+                return@forEachIndexed
+            }
+            parsed += VariantEntity(
+                productId = product.id,
+                sku = cells.getOrNull(3)?.ifBlank { null },
+                option1 = cells[0],
+                option2 = cells[1],
+                quantity = qty
+            )
+        }
+
+        if (errors.isNotEmpty()) {
+            _message.value = errors.take(2).joinToString("\n")
+            return
+        }
+        saveVariantMatrix(product, parsed)
+        _message.value = "Variantes importadas: ${parsed.size}."
     }
 
     fun clearMessage() {

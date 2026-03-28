@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -41,6 +42,10 @@ import com.example.selliaapp.viewmodel.NotificationViewModel
 fun NotificationListScreen(
     onBack: () -> Unit,
     onNotificationClick: (AppNotification) -> Unit = {},
+    onQuickAdjustStock: (Int) -> Unit = {},
+    onQuickCreatePurchaseOrder: (Int) -> Unit = {},
+    onOpenExpenseDetail: () -> Unit = {},
+    onOpenSaleDetail: (Long) -> Unit = {},
     vm: NotificationViewModel = hiltViewModel()
 ) {
     val notifications by vm.notifications.collectAsStateWithLifecycle()
@@ -91,6 +96,10 @@ fun NotificationListScreen(
                 items(notifications, key = { it.id }) { notification ->
                     NotificationItem(
                         notification = notification,
+                        onQuickAdjustStock = onQuickAdjustStock,
+                        onQuickCreatePurchaseOrder = onQuickCreatePurchaseOrder,
+                        onOpenExpenseDetail = onOpenExpenseDetail,
+                        onOpenSaleDetail = onOpenSaleDetail,
                         onClick = {
                             if (!notification.read) {
                                 vm.markAsRead(notification.id)
@@ -107,6 +116,10 @@ fun NotificationListScreen(
 @Composable
 private fun NotificationItem(
     notification: AppNotification,
+    onQuickAdjustStock: (Int) -> Unit,
+    onQuickCreatePurchaseOrder: (Int) -> Unit,
+    onOpenExpenseDetail: () -> Unit,
+    onOpenSaleDetail: (Long) -> Unit,
     onClick: () -> Unit
 ) {
     Card(
@@ -146,6 +159,34 @@ private fun NotificationItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                val productId = notification.actionRoute?.substringAfterLast("/")?.toIntOrNull()
+                val saleId = notification.actionRoute?.substringAfterLast("/")?.toLongOrNull()
+                val isCriticalStock = notification.type.contains("stock", ignoreCase = true)
+                val isBudgetExceeded = notification.type.contains("budget", ignoreCase = true) ||
+                    notification.type.contains("expense", ignoreCase = true)
+                val isMercadoPagoPayment = notification.type.contains("mercadopago", ignoreCase = true) ||
+                    notification.type.contains("payment_received", ignoreCase = true)
+
+                if (isCriticalStock && productId != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
+                        Button(onClick = { onQuickAdjustStock(productId) }) {
+                            Text("Ajustar stock")
+                        }
+                        TextButton(onClick = { onQuickCreatePurchaseOrder(productId) }) {
+                            Text("Crear OC")
+                        }
+                    }
+                }
+                if (isBudgetExceeded) {
+                    TextButton(onClick = onOpenExpenseDetail) {
+                        Text("Ver detalle de gastos")
+                    }
+                }
+                if (isMercadoPagoPayment && saleId != null) {
+                    TextButton(onClick = { onOpenSaleDetail(saleId) }) {
+                        Text("Ver resumen de venta")
+                    }
+                }
             }
         }
     }

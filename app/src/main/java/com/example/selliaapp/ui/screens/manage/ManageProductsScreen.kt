@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -57,6 +58,7 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 import java.time.LocalDate
+import com.example.selliaapp.data.local.entity.VariantEntity
 
 @Composable
 fun ManageProductsRoute(
@@ -94,6 +96,10 @@ fun ManageProductsScreen(
     var editingSizeProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var sizeStocksDraft by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var quickPoProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var variantMatrixProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var variantMatrixDraft by remember { mutableStateOf<List<VariantEntity>>(emptyList()) }
+    var bulkVariantImportProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var bulkVariantInput by remember { mutableStateOf("") }
     val currencyFormatter = remember {
         NumberFormat.getCurrencyInstance(Locale("es", "AR")).apply {
             maximumFractionDigits = 0
@@ -394,7 +400,16 @@ fun ManageProductsScreen(
                     selectedProduct = null
                     quickPoProduct = product
                 }
-            } else null
+            } else null,
+            onEditVariantsMatrix = {
+                selectedProduct = null
+                variantMatrixProduct = product
+            },
+            onBulkImportVariants = {
+                selectedProduct = null
+                bulkVariantImportProduct = product
+                bulkVariantInput = ""
+            }
         )
     }
 
@@ -433,6 +448,53 @@ fun ManageProductsScreen(
         )
     }
 
+    variantMatrixProduct?.let { product ->
+        LaunchedEffect(product.id) {
+            variantMatrixDraft = vm.getVariantMatrix(product.id)
+        }
+        VariantMatrixDialog(
+            product = product,
+            variants = variantMatrixDraft,
+            onDismiss = { variantMatrixProduct = null },
+            onSave = { rows ->
+                vm.saveVariantMatrix(product, rows)
+                variantMatrixProduct = null
+            }
+        )
+    }
+
+    bulkVariantImportProduct?.let { product ->
+        AlertDialog(
+            onDismissRequest = { bulkVariantImportProduct = null },
+            title = { Text("Carga masiva de variantes") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Formato por línea: talle,color,stock[,sku]")
+                    OutlinedTextField(
+                        value = bulkVariantInput,
+                        onValueChange = { bulkVariantInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 6,
+                        label = { Text("Pegar CSV") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.importVariantsFromCsv(product, bulkVariantInput)
+                    bulkVariantImportProduct = null
+                }) {
+                    Text("Importar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { bulkVariantImportProduct = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
     if (message != null) {
         AlertDialog(
             onDismissRequest = { },
@@ -445,6 +507,61 @@ fun ManageProductsScreen(
             }
         )
     }
+}
+
+@Composable
+private fun VariantMatrixDialog(
+    product: ProductEntity,
+    variants: List<VariantEntity>,
+    onDismiss: () -> Unit,
+    onSave: (List<VariantEntity>) -> Unit
+) {
+    val sizes = remember(product) { product.sizes.ifEmpty { listOf("Único") } }
+    val colors = remember(product, variants) {
+        val variantColors = variants.mapNotNull { it.option2?.trim()?.takeIf(String::isNotBlank) }
+        (variantColors + listOfNotNull(product.color?.trim()?.takeIf(String::isNotBlank))).distinct().ifEmpty { listOf("Base") }
+    }
+    var draft by remember(variants) {
+        mutableStateOf(
+            variants.associateBy { "${it.option1}|${it.option2}" }.mapValues { it.value.quantity }
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Matriz talle × color · ${product.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                colors.forEach { color ->
+                    Text(color, style = MaterialTheme.typography.titleSmall)
+                    sizes.forEach { size ->
+                        val key = "$size|$color"
+                        OutlinedTextField(
+                            value = (draft[key] ?: 0).toString(),
+                            onValueChange = { draft = draft + (key to (it.toIntOrNull() ?: 0).coerceAtLeast(0)) },
+                            label = { Text("Talle $size") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val rows = draft.map { (key, qty) ->
+                    val split = key.split("|")
+                    VariantEntity(
+                        productId = product.id,
+                        sku = null,
+                        option1 = split.getOrNull(0),
+                        option2 = split.getOrNull(1),
+                        quantity = qty
+                    )
+                }
+                onSave(rows)
+            }) { Text("Guardar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
 }
 
 @Composable
