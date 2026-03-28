@@ -562,6 +562,9 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_47_48 = object : Migration(47, 48) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
+                    "ALTER TABLE `products` ADD COLUMN `manualGainPercent` REAL"
+                )
+                db.execSQL(
                     "ALTER TABLE `provider_invoices` ADD COLUMN `receptionStatus` TEXT NOT NULL DEFAULT 'PENDING'"
                 )
                 db.execSQL(
