@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
@@ -44,6 +45,7 @@ import com.example.selliaapp.data.model.ExpenseStatus
 import com.example.selliaapp.data.model.ExpenseTemplate
 import com.example.selliaapp.repository.ExpenseRepository
 import com.example.selliaapp.ui.components.BackTopAppBar
+import com.example.selliaapp.ui.components.IllustratedEmptyState
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -252,26 +254,54 @@ fun ExpenseEntriesScreen(
                 HorizontalDivider()
             }
 
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(sortedRecords) { record ->
-                    ElevatedCard(Modifier.fillMaxWidth()) {
-                        ListItem(
-                            headlineContent = {
-                                Text("${record.nameSnapshot}  •  ${"%.2f".format(record.amount)}")
-                            },
-                            supportingContent = {
-                                val attachments = if (record.receiptUris.isEmpty()) {
-                                    "Sin adjuntos"
-                                } else {
-                                    "${record.receiptUris.size} adjunto(s)"
+            if (sortedRecords.isEmpty()) {
+                val hasFilters = nameFilter.text.isNotBlank() ||
+                    monthFilter != null ||
+                    yearFilter != null ||
+                    statusFilter != null
+                IllustratedEmptyState(
+                    icon = Icons.Default.ReceiptLong,
+                    title = if (hasFilters) "No hay gastos con esos filtros" else "No hay gastos cargados",
+                    description = if (hasFilters) {
+                        "Probá limpiar filtros o ajustar la búsqueda para encontrar resultados."
+                    } else {
+                        "Creá tu primer gasto para controlar egresos, adjuntar comprobantes y seguir el cashflow."
+                    },
+                    actionLabel = if (hasFilters) "Limpiar filtros" else "Registrar gasto",
+                    onAction = {
+                        if (hasFilters) {
+                            nameFilter = TextFieldValue("")
+                            monthFilter = null
+                            yearFilter = null
+                            statusFilter = null
+                        } else {
+                            showNew = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(sortedRecords) { record ->
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = {
+                                    Text("${record.nameSnapshot}  •  ${"%.2f".format(record.amount)}")
+                                },
+                                supportingContent = {
+                                    val attachments = if (record.receiptUris.isEmpty()) {
+                                        "Sin adjuntos"
+                                    } else {
+                                        "${record.receiptUris.size} adjunto(s)"
+                                    }
+                                    Text(
+                                        "Categoría: ${record.categorySnapshot}  •  " +
+                                            "Mes/Año: ${record.month}/${record.year}  •  " +
+                                            "Estado: ${record.status}  •  $attachments"
+                                    )
                                 }
-                                Text(
-                                    "Categoría: ${record.categorySnapshot}  •  " +
-                                        "Mes/Año: ${record.month}/${record.year}  •  " +
-                                        "Estado: ${record.status}  •  $attachments"
-                                )
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
