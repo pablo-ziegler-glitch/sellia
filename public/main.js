@@ -44,6 +44,10 @@ const TENANT_LANDING_PRESETS = {
         "FLOKI te ayuda a ordenar catálogo, acelerar ventas y profesionalizar la operación comercial con una experiencia simple y efectiva.",
       ogImage: "/assets/og-image.svg"
     },
+    media: {
+      previewHeroImage: "/assets/og-image.svg",
+      previewLogoImage: "/assets/logo.svg"
+    },
     hero: {
       title: "FLOKI: la historia de cómo convertir caos operativo en crecimiento",
       subtitle:
@@ -89,7 +93,15 @@ function resolveLandingConfig() {
     hero: mergeSection(GENERIC_LANDING_CONFIG.hero, preset.hero),
     cta: mergeSection(GENERIC_LANDING_CONFIG.cta, preset.cta),
     story: mergeSection(GENERIC_LANDING_CONFIG.story, preset.story),
-    purpose: mergeSection(GENERIC_LANDING_CONFIG.purpose, preset.purpose)
+    purpose: mergeSection(GENERIC_LANDING_CONFIG.purpose, preset.purpose),
+    media: mergeSection(
+      {
+        previewHeroImage: "/assets/og-image.svg",
+        previewLogoImage: "/assets/logo.svg",
+        previewPlaceholderImage: "/assets/placeholder.svg"
+      },
+      preset.media
+    )
   };
 }
 
@@ -183,7 +195,16 @@ function createProductCard(product) {
   article.className = "product-card";
 
   const image = document.createElement("img");
-  safeDom.setSafeUrl?.(image, "src", product.image);
+  const imageSrc = typeof product.image === "string" ? product.image.trim() : "";
+  const isHttpsImage = imageSrc.startsWith("https://");
+  if (isHttpsImage) {
+    const wasApplied = safeDom.setSafeUrl?.(image, "src", imageSrc);
+    if (!wasApplied) {
+      image.src = landingConfig.media?.previewPlaceholderImage || "/assets/placeholder.svg";
+    }
+  } else {
+    image.src = imageSrc || landingConfig.media?.previewPlaceholderImage || "/assets/placeholder.svg";
+  }
   image.alt = safeDom.sanitizeText ? safeDom.sanitizeText(product.name) : String(product.name || "Producto");
   image.loading = "lazy";
 
@@ -213,6 +234,34 @@ function resolveCatalogTenantId() {
     params.get("TIENDA")?.trim() ||
     (config.tenantId || "").trim()
   );
+}
+
+function sanitizeImageUrlWithFallback(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return "";
+  if (safeDom.toAllowedHttpsUrl) {
+    return safeDom.toAllowedHttpsUrl(rawUrl) || "";
+  }
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    return parsed.protocol === "https:" ? parsed.toString() : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function resolvePreviewImageByTenant(item, tenantId) {
+  const tenantKey = (tenantId || "").trim().toLowerCase();
+  const preset = TENANT_LANDING_PRESETS[tenantKey] || {};
+  const media = {
+    ...(landingConfig.media || {}),
+    ...(preset.media || {})
+  };
+
+  const itemImage = sanitizeImageUrlWithFallback(item.imageUrl || item.image || "");
+  if (itemImage) return itemImage;
+  if (media.previewHeroImage) return media.previewHeroImage;
+  if (media.previewLogoImage) return media.previewLogoImage;
+  return media.previewPlaceholderImage || "/assets/placeholder.svg";
 }
 
 async function fetchCatalogPreviewProducts() {
@@ -247,7 +296,7 @@ async function fetchCatalogPreviewProducts() {
     return items.slice(0, 6).map((item) => ({
       name: item.name || "Producto",
       desc: item.sku ? `SKU: ${item.sku}` : "Disponible en catálogo público.",
-      image: "/assets/placeholder.svg",
+      image: resolvePreviewImageByTenant(item, tenantId),
       tag: item.storeName || item.tenantId || "Colección"
     }));
   } finally {
