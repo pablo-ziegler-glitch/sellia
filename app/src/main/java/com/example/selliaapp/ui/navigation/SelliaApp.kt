@@ -1271,7 +1271,10 @@ fun SelliaApp(
                 com.example.selliaapp.ui.screens.customer.StoreDetailScreen(
                     tenantId = tenantId,
                     tenantName = tenantName,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onOpenProduct = { productId ->
+                        navController.navigate(Routes.PublicProductDetail.withId(productId))
+                    }
                 )
             }
 
