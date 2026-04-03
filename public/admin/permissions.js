@@ -88,6 +88,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
     ...CHANNEL_CAPABILITIES.storefront,
     ...CHANNEL_CAPABILITIES.web_bo_store,
     ...CHANNEL_CAPABILITIES.web_bo_admin,
+    ...CHANNEL_CAPABILITIES.web_bo_platform,
   ],
   // Admin de plataforma: gestión de plataforma + soporte operativo de tiendas.
   admin: [
@@ -117,7 +118,7 @@ export const TENANT_SCOPE_ROLE_POLICIES = Object.freeze({
   storefront: Object.freeze({
     sameTenant:  ["viewer", "owner", "admin", "manager", "cashier"],
     crossTenant: ["viewer", "admin"],
-    platform:    ["admin", "superadmin"],
+    platform:    ["owner", "admin", "superadmin"],
   }),
   mobile_ops: Object.freeze({
     sameTenant:  ["owner", "manager", "cashier"],
@@ -137,7 +138,7 @@ export const TENANT_SCOPE_ROLE_POLICIES = Object.freeze({
   web_bo_platform: Object.freeze({
     sameTenant:  [],
     crossTenant: [],
-    platform:    ["admin", "superadmin"],
+    platform:    ["owner", "admin", "superadmin"],
   }),
 });
 
@@ -171,14 +172,14 @@ export const MODULE_ROLE_POLICIES = Object.freeze({
   backupsRead:             ["owner", "admin"],
   backupsWrite:            ["owner", "admin"],
 
-  // Administración de plataforma (solo admin)
-  platformTenants:         ["admin"],
-  platformFeatures:        ["admin"],
-  platformAnalytics:       ["admin"],
-  platformAnnouncements:   ["admin"],
-  platformAudit:           ["admin"],
-  platformSupport:         ["admin"],
-  platformPlans:           ["admin"],
+  // Administración de plataforma (owner/admin)
+  platformTenants:         ["owner", "admin"],
+  platformFeatures:        ["owner", "admin"],
+  platformAnalytics:       ["owner", "admin"],
+  platformAnnouncements:   ["owner", "admin"],
+  platformAudit:           ["owner", "admin"],
+  platformSupport:         ["owner", "admin"],
+  platformPlans:           ["owner", "admin"],
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,7 +211,7 @@ export const ROUTE_POLICIES = Object.freeze({
   "#/maintenance":              MODULE_ROLE_POLICIES.maintenanceWrite,
   "#/backups":                  MODULE_ROLE_POLICIES.backupsRead,
 
-  // Administración de plataforma (solo admin)
+  // Administración de plataforma (owner/admin)
   "#/platform/tenants":         MODULE_ROLE_POLICIES.platformTenants,
   "#/platform/features":        MODULE_ROLE_POLICIES.platformFeatures,
   "#/platform/analytics":       MODULE_ROLE_POLICIES.platformAnalytics,

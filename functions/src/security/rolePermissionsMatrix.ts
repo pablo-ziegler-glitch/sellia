@@ -187,18 +187,18 @@ export const CHANNEL_CAPABILITY_ROLE_POLICIES = Object.freeze({
   }),
 
   web_bo_platform: Object.freeze({
-    // Administración de plataforma: exclusivo del admin
+    // Administración de plataforma: accesible por owner/admin
     // IMPORTANTE: el admin ve funcionalidades de tiendas pero NO sus datos internos
-    "platform.tenants.read":           Object.freeze(["admin"]),
-    "platform.tenants.lifecycle":      Object.freeze(["admin"]),
-    "platform.features.read":          Object.freeze(["admin"]),
-    "platform.features.write":         Object.freeze(["admin"]),
-    "platform.analytics.read":         Object.freeze(["admin"]),
-    "platform.announcements.manage":   Object.freeze(["admin"]),
-    "platform.audit.read":             Object.freeze(["admin"]),
-    "platform.support.read":           Object.freeze(["admin"]),
-    "platform.plans.read":             Object.freeze(["admin"]),
-    "platform.plans.write":            Object.freeze(["admin"]),
+    "platform.tenants.read":           Object.freeze(["owner", "admin"]),
+    "platform.tenants.lifecycle":      Object.freeze(["owner", "admin"]),
+    "platform.features.read":          Object.freeze(["owner", "admin"]),
+    "platform.features.write":         Object.freeze(["owner", "admin"]),
+    "platform.analytics.read":         Object.freeze(["owner", "admin"]),
+    "platform.announcements.manage":   Object.freeze(["owner", "admin"]),
+    "platform.audit.read":             Object.freeze(["owner", "admin"]),
+    "platform.support.read":           Object.freeze(["owner", "admin"]),
+    "platform.plans.read":             Object.freeze(["owner", "admin"]),
+    "platform.plans.write":            Object.freeze(["owner", "admin"]),
   }),
 
 } as const);
@@ -234,7 +234,7 @@ export const TENANT_SCOPE_ROLE_POLICIES: Readonly<Record<ChannelKey, Readonly<Re
   web_bo_platform: Object.freeze({
     sameTenant:   Object.freeze([]),                   // admin opera a nivel plataforma, no dentro de un tenant
     crossTenant:  Object.freeze([]),
-    platform:     Object.freeze(["admin", "superadmin"]),
+    platform:     Object.freeze(["owner", "admin", "superadmin"]),
   }),
 });
 
@@ -268,15 +268,15 @@ export const MODULE_ROLE_POLICIES = Object.freeze({
   backupsRead:             Object.freeze(["owner", "admin"]),
   backupsWrite:            Object.freeze(["owner", "admin"]),
 
-  // ── Administración de plataforma (solo admin) ──
+  // ── Administración de plataforma (owner/admin) ──
   // RESTRICCIÓN: el admin NO accede a datos internos de tiendas
-  platformTenants:         Object.freeze(["admin"]),
-  platformFeatures:        Object.freeze(["admin"]),
-  platformAnalytics:       Object.freeze(["admin"]),
-  platformAnnouncements:   Object.freeze(["admin"]),
-  platformAudit:           Object.freeze(["admin"]),
-  platformSupport:         Object.freeze(["admin"]),
-  platformPlans:           Object.freeze(["admin"]),
+  platformTenants:         Object.freeze(["owner", "admin"]),
+  platformFeatures:        Object.freeze(["owner", "admin"]),
+  platformAnalytics:       Object.freeze(["owner", "admin"]),
+  platformAnnouncements:   Object.freeze(["owner", "admin"]),
+  platformAudit:           Object.freeze(["owner", "admin"]),
+  platformSupport:         Object.freeze(["owner", "admin"]),
+  platformPlans:           Object.freeze(["owner", "admin"]),
 } as const);
 
 export type ModulePolicyKey = keyof typeof MODULE_ROLE_POLICIES;

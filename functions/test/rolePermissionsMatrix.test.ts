@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hasRoleForModule, MODULE_ROLE_POLICIES } from "../src/security/rolePermissionsMatrix";
 
 describe("rolePermissionsMatrix critical regression", () => {
-  const CRITICAL_MODULES = ["users", "cloudServices", "maintenanceWrite", "backupsWrite"] as const;
+  const CRITICAL_MODULES = ["usersRoles", "cloudConfig", "maintenanceWrite", "backupsWrite"] as const;
 
   it("limits critical modules to owner/admin only", () => {
     for (const module of CRITICAL_MODULES) {
@@ -16,9 +16,9 @@ describe("rolePermissionsMatrix critical regression", () => {
   });
 
   it("normalizes role input before authorization", () => {
-    expect(hasRoleForModule(" Owner ", "users")).toBe(true);
-    expect(hasRoleForModule("ADMIN", "users")).toBe(true);
-    expect(hasRoleForModule("", "users")).toBe(false);
-    expect(hasRoleForModule(null, "users")).toBe(false);
+    expect(hasRoleForModule(" Owner ", "usersRoles")).toBe(true);
+    expect(hasRoleForModule("ADMIN", "usersRoles")).toBe(true);
+    expect(hasRoleForModule("", "usersRoles")).toBe(false);
+    expect(hasRoleForModule(null, "usersRoles")).toBe(false);
   });
 });

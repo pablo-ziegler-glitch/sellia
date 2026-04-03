@@ -3476,8 +3476,8 @@ export const setTenantOnboardingPolicy = functions
       context.auth.token.superAdmin === true ||
       callerUserDoc.get("isSuperAdmin") === true;
 
-    if (!isSuperAdmin && role !== "owner") {
-      throw new functions.https.HttpsError("permission-denied", "Solo owner/superAdmin puede cambiar política");
+    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+      throw new functions.https.HttpsError("permission-denied", "Solo owner/admin/superAdmin puede cambiar política");
     }
 
     await db
