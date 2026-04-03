@@ -82,6 +82,14 @@ class IProductRepositoryAdapter @Inject constructor(
     override suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult =
         legacy.simulateImport(context, fileUri)
 
+    override suspend fun previewImport(
+        context: Context,
+        fileUri: Uri
+    ): ProductRepository.ImportApprovalSummary = legacy.previewImport(context, fileUri)
+
+    override suspend fun regenerateExistingAccountData(): ProductRepository.RegenerationResult =
+        legacy.regenerateExistingAccountData()
+
     override suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,

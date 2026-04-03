@@ -76,6 +76,19 @@ class ProductRepository(
     private val tenantSkuConfigDao: TenantSkuConfigDao,
     @IoDispatcher private val io: CoroutineDispatcher   // <-- igual que en el VM
 ) {
+    data class ImportApprovalSummary(
+        val newProducts: Int,
+        val existingProducts: Int,
+        val totalStockToAdd: Int,
+        val duplicateNameProducts: Int
+    )
+
+    data class RegenerationResult(
+        val syncedFromCloud: Int,
+        val mergedGroups: Int,
+        val removedDuplicates: Int,
+        val generatedSkuCodes: Int
+    )
 
     // ---------- Cache simple en memoria ----------
     @Volatile private var lastCache: List<ProductEntity> = emptyList()
@@ -213,15 +226,18 @@ class ProductRepository(
         db.withTransaction {
             rows.forEach { r ->
                 val updated = r.updatedAt ?: LocalDate.now()
-                val rBarcode = r.barcode
+                val normalizedCode = r.code?.trim()?.takeIf { it.isNotBlank() }
+                val normalizedName = r.name.trim().takeIf { it.isNotBlank() }
+                val rBarcode = r.barcode?.trim()?.takeIf { it.isNotBlank() }
                 val existing = when {
-                    !rBarcode.isNullOrBlank() -> productDao.getByBarcodeOnce(rBarcode)
-                    !r.name.isNullOrBlank()   -> productDao.getByNameOnce(r.name)
+                    !normalizedCode.isNullOrBlank() -> productDao.getByCodeOnce(normalizedCode)
+                    !normalizedName.isNullOrBlank() -> productDao.getByNameNormalizedOnce(normalizedName)
+                    !rBarcode.isNullOrBlank()       -> productDao.getByBarcodeOnce(rBarcode)
                     else                      -> null
                 }
                 val beforeQty = existing?.quantity ?: 0
                 val incoming = ProductEntity(
-                    code = r.code,
+                    code = normalizedCode,
                     barcode = r.barcode,
                     name = r.name,
                     purchasePrice = r.purchasePrice,
@@ -325,9 +341,12 @@ class ProductRepository(
         val already = cachedOrEmpty()
         for ((idx, r) in rows.withIndex()) {
             try {
+                val normalizedCode = r.code?.trim()?.takeIf { it.isNotBlank() }
+                val normalizedName = r.name.trim().takeIf { it.isNotBlank() }
                 val exists = when {
-                    !r.barcode.isNullOrBlank() -> already.any { it.barcode == r.barcode }
-                    else                       -> already.any { it.name.equals(r.name, ignoreCase = true) }
+                    !normalizedCode.isNullOrBlank() -> already.any { it.code?.trim() == normalizedCode }
+                    !normalizedName.isNullOrBlank() -> already.any { it.name.trim().equals(normalizedName, ignoreCase = true) }
+                    else -> false
                 }
                 if (exists) updated++ else inserted++
             } catch (e: Exception) {
@@ -335,6 +354,112 @@ class ProductRepository(
             }
         }
         ImportResult(inserted, updated, errors)
+    }
+
+    suspend fun previewImport(context: Context, fileUri: Uri): ImportApprovalSummary = withContext(io) {
+        val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
+        val existing = cachedOrEmpty()
+        var newProducts = 0
+        var existingProducts = 0
+        var totalStockToAdd = 0
+        rows.forEach { row ->
+            val normalizedCode = row.code?.trim()?.takeIf { it.isNotBlank() }
+            val normalizedName = row.name.trim().takeIf { it.isNotBlank() }
+            val found = when {
+                !normalizedCode.isNullOrBlank() -> existing.firstOrNull { it.code?.trim() == normalizedCode }
+                !normalizedName.isNullOrBlank() -> existing.firstOrNull { it.name.trim().equals(normalizedName, ignoreCase = true) }
+                else -> null
+            }
+            if (found == null) {
+                newProducts += 1
+            } else {
+                existingProducts += 1
+                totalStockToAdd += max(0, row.quantity)
+            }
+        }
+        val duplicateNameProducts = existing
+            .groupBy { it.name.trim().lowercase() }
+            .values
+            .sumOf { group -> if (group.size > 1) group.size else 0 }
+        ImportApprovalSummary(
+            newProducts = newProducts,
+            existingProducts = existingProducts,
+            totalStockToAdd = totalStockToAdd,
+            duplicateNameProducts = duplicateNameProducts
+        )
+    }
+
+    suspend fun regenerateExistingAccountData(): RegenerationResult = withContext(io) {
+        val syncedFromCloud = runCatching { syncDown() }
+            .onFailure { error ->
+                Log.w("ProductRepository", "No se pudo refrescar desde nube durante regeneración.", error)
+            }
+            .getOrDefault(0)
+        val all = productDao.getAllOnce()
+        val grouped = all
+            .groupBy { it.name.trim().lowercase() }
+            .filterKeys { it.isNotBlank() }
+            .values
+            .filter { it.size > 1 }
+        var removedDuplicates = 0
+        var generatedSkuCodes = 0
+        val now = System.currentTimeMillis()
+        val skuPrefix = resolveSkuPrefix()
+        db.withTransaction {
+            grouped.forEach { duplicates ->
+                val keeper = duplicates.minByOrNull { it.id } ?: return@forEach
+                val others = duplicates.filter { it.id != keeper.id }
+                val mergedQty = duplicates.sumOf { it.quantity }
+                val merged = keeper.copy(quantity = mergedQty, updatedAt = LocalDate.now())
+                productDao.update(merged)
+                if (others.isNotEmpty()) {
+                    productDao.deleteByIds(others.map { it.id })
+                    removedDuplicates += others.size
+                }
+                val delta = mergedQty - keeper.quantity
+                if (delta != 0) {
+                    stockMovementDao.insert(
+                        StockMovementEntity(
+                            productId = keeper.id,
+                            delta = delta,
+                            reason = StockMovementReasons.CSV_IMPORT,
+                            ts = Instant.ofEpochMilli(now),
+                            note = "Regeneración de cuenta: consolidación de duplicados por nombre"
+                        )
+                    )
+                }
+                syncOutboxDao.upsert(
+                    SyncOutboxEntity(
+                        entityType = SyncEntityType.PRODUCT.storageKey,
+                        entityId = keeper.id.toLong(),
+                        createdAt = now
+                    )
+                )
+            }
+            productDao.getAllOnce().forEach { product ->
+                if (product.code.isNullOrBlank()) {
+                    val regenerated = ensureAutoCodes(product, prefix = skuPrefix)
+                    if (regenerated.code != product.code) {
+                        productDao.update(regenerated)
+                        generatedSkuCodes += 1
+                        syncOutboxDao.upsert(
+                            SyncOutboxEntity(
+                                entityType = SyncEntityType.PRODUCT.storageKey,
+                                entityId = product.id.toLong(),
+                                createdAt = now
+                            )
+                        )
+                    }
+                }
+            }
+            lastCache = productDao.getAllOnce()
+        }
+        RegenerationResult(
+            syncedFromCloud = syncedFromCloud,
+            mergedGroups = grouped.size,
+            removedDuplicates = removedDuplicates,
+            generatedSkuCodes = generatedSkuCodes
+        )
     }
 
     /**
@@ -422,10 +547,14 @@ class ProductRepository(
                         errors += "Línea $lineNumber: el código \"$normalizedCode\" está duplicado en el archivo."
                         return@forEachIndexed
                     }
-                    val rBarcode2 = r.barcode
+                    val rCode = r.code?.trim()?.takeIf { it.isNotBlank() }
+                    val rName = r.name.trim().takeIf { it.isNotBlank() }
+                    val rBarcode2 = r.barcode?.trim()?.takeIf { it.isNotBlank() }
                     val existing = when {
+                        !rCode.isNullOrBlank()     -> productDao.getByCodeOnce(rCode)
+                        !rName.isNullOrBlank()     -> productDao.getByNameNormalizedOnce(rName)
                         !rBarcode2.isNullOrBlank() -> productDao.getByBarcodeOnce(rBarcode2)
-                        else                       -> productDao.getByNameOnce(r.name)
+                        else                       -> null
                     }
                     if (normalizedCode != null) {
                         val codeOwner = productDao.getByCodeOnce(normalizedCode)

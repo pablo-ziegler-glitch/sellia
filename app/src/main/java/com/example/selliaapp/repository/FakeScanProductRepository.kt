@@ -119,6 +119,25 @@ class FakeScanProductRepository(
     override suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult =
         ImportResult(0, 0, emptyList())
 
+    override suspend fun previewImport(
+        context: Context,
+        fileUri: Uri
+    ): ProductRepository.ImportApprovalSummary =
+        ProductRepository.ImportApprovalSummary(
+            newProducts = 0,
+            existingProducts = 0,
+            totalStockToAdd = 0,
+            duplicateNameProducts = 0
+        )
+
+    override suspend fun regenerateExistingAccountData(): ProductRepository.RegenerationResult =
+        ProductRepository.RegenerationResult(
+            syncedFromCloud = 0,
+            mergedGroups = 0,
+            removedDuplicates = 0,
+            generatedSkuCodes = 0
+        )
+
     override suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,
