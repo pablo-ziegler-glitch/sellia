@@ -181,15 +181,13 @@ service cloud.firestore {
      * - Para admins con JWT claims, valida integridad adicional
      */
     function isTenantAdmin(tenantId) {
-      let currentEffectiveTenantId = effectiveTenantId();
-
       // SuperAdmin siempre tiene acceso. Para admin regular se valida:
       // 1) claim admin (JWT) o flag isAdmin en /users/{uid} + membresía + rol admin/owner
-      // 2) si tiene tenantId efectivo, debe coincidir con el tenant solicitado
+      // 2) se evita bloquear por tenantId efectivo cuando la membresía válida vive en tenant_users/tenantIds
+      //    para soportar sincronización multi-tenant y datos legacy desnormalizados.
       return hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
         hasTenantAdminSignal() &&
-        isTenantMember(tenantId) &&
-        (currentEffectiveTenantId == '' || currentEffectiveTenantId == tenantId)
+        isTenantMember(tenantId)
       );
     }
 
