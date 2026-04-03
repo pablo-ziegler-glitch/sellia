@@ -9,8 +9,7 @@
   const runtimeTenantId = runtimeConfig.tenantId || "";
 
   const domainTenantFallbacks = {
-    "valkirja.com.ar": "valkirja",
-    "www.valkirja.com.ar": "valkirja"
+    "valkirja.com.ar": "valkirja"
   };
 
   const storeConfig = {
@@ -55,32 +54,24 @@
     const projectId = config.firebase?.projectId;
     const apiKey = config.firebase?.apiKey;
 
+    const hostname = resolveLookupHostname();
+
     if (!config.tenantId) {
-      const fallbackTenant = resolveTenantFromHostnameFallback();
+      const fallbackTenant = resolveTenantFromHostnameFallback(hostname);
       if (fallbackTenant) {
         config.tenantId = fallbackTenant;
       }
     }
 
-    if (!config.tenantId && projectId && apiKey) {
-      const hostname = globalScope.location.hostname.replace(/^www\./, "");
-      const isFirebaseDefaultDomain = hostname.endsWith(".web.app") || hostname.endsWith(".firebaseapp.com");
-      if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1" && !isFirebaseDefaultDomain) {
-        try {
-          const domainLookupResp = await fetchWithTimeout(
-            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(hostname)}?key=${apiKey}`
-          );
-          if (domainLookupResp.ok) {
-            const domainDoc = await domainLookupResp.json();
-            const resolvedTenant = domainDoc?.fields?.tenantId?.stringValue?.trim();
-            if (resolvedTenant) {
-              config.tenantId = resolvedTenant;
-              config._resolvedFromHostname = true;
-            }
-          }
-        } catch (_error) {
-          // Domain lookup failed — fallback to existing logic
+    if (projectId && apiKey && hostname) {
+      try {
+        const liveTenant = await resolveTenantFromFirestoreByHostname(projectId, apiKey, hostname);
+        if (liveTenant) {
+          config.tenantId = liveTenant;
+          config._resolvedFromHostname = true;
         }
+      } catch (_error) {
+        // Domain lookup failed — fallback to existing logic
       }
     }
 
@@ -140,11 +131,15 @@
     applyFallbackDomainByTenant(config);
   }
 
-  async function fetchWithTimeout(url, timeoutMs = 2500) {
+  async function fetchWithTimeout(url, timeoutMs = 2500, init = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(url, { signal: controller.signal, cache: "no-store" });
+      return await fetch(url, {
+        cache: "no-store",
+        ...init,
+        signal: controller.signal
+      });
     } finally {
       clearTimeout(timeoutId);
     }
@@ -160,8 +155,50 @@
     );
   }
 
-  function resolveTenantFromHostnameFallback() {
+  async function resolveTenantFromFirestoreByHostname(projectId, apiKey, hostname) {
+    const response = await fetchWithTimeout(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`,
+      2500,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "domain_to_tenant" }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: "__name__" },
+                op: "EQUAL",
+                value: {
+                  referenceValue: `projects/${projectId}/databases/(default)/documents/domain_to_tenant/${hostname}`
+                }
+              }
+            },
+            limit: 1
+          }
+        })
+      }
+    );
+
+    if (!response.ok) return "";
+
+    const queryResult = await response.json();
+    const firstRow = Array.isArray(queryResult) ? queryResult[0] : null;
+    return firstRow?.document?.fields?.tenantId?.stringValue?.trim() || "";
+  }
+
+  function resolveLookupHostname() {
     const hostname = globalScope.location.hostname.toLowerCase().replace(/^www\./, "");
+    const isFirebaseDefaultDomain = hostname.endsWith(".web.app") || hostname.endsWith(".firebaseapp.com");
+    if (!hostname || hostname === "localhost" || hostname === "127.0.0.1" || isFirebaseDefaultDomain) {
+      return "";
+    }
+    return hostname;
+  }
+
+  function resolveTenantFromHostnameFallback(hostname) {
     return domainTenantFallbacks[hostname] || "";
   }
 
