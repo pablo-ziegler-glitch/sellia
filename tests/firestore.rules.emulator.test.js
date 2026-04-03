@@ -396,6 +396,33 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     await assertSucceeds(getDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-legacy-bare-uid')));
   });
 
+  it('denies cross-tenant access when legacy bare uid membership belongs to another tenant', async () => {
+    await seedUser('legacy-bare-uid-cross-tenant', {
+      role: 'viewer',
+      tenantId: '',
+      email: 'legacy-bare-uid-cross-tenant@example.com',
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenant_users', 'legacy-bare-uid-cross-tenant'), {
+        tenantId: TENANT_A,
+        uid: 'legacy-bare-uid-cross-tenant',
+        role: 'viewer',
+        status: 'active',
+      });
+      await setDoc(doc(db, 'tenants', TENANT_B, 'products', 'sku-denied-cross-tenant'), { name: 'Private B' });
+    });
+
+    const db = dbWithClaims('legacy-bare-uid-cross-tenant', {
+      uid: 'legacy-bare-uid-cross-tenant',
+      email: 'legacy-bare-uid-cross-tenant@example.com',
+      role: 'viewer',
+    });
+
+    await assertFails(getDoc(doc(db, 'tenants', TENANT_B, 'products', 'sku-denied-cross-tenant')));
+  });
+
   it('allows tenant membership by legacy bare email tenant_users id', async () => {
     await seedUser('legacy-bare-email-member', {
       role: 'viewer',

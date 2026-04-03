@@ -131,12 +131,17 @@ service cloud.firestore {
     }
 
     function hasTenantMembershipDoc(tenantId) {
+      let legacyUidDoc = get(/databases/$(database)/documents/tenant_users/$(request.auth.uid));
+      let legacyEmailDoc = requesterEmail() != ''
+        ? get(/databases/$(database)/documents/tenant_users/$(requesterEmail()))
+        : null;
+
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + request.auth.uid)) ||
-        exists(/databases/$(database)/documents/tenant_users/$(request.auth.uid)) ||
+        (legacyUidDoc.exists && legacyUidDoc.data.tenantId == tenantId) ||
         (requesterEmail() != '' && (
           exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + requesterEmail())) ||
-          exists(/databases/$(database)/documents/tenant_users/$(requesterEmail()))
+          (legacyEmailDoc != null && legacyEmailDoc.exists && legacyEmailDoc.data.tenantId == tenantId)
         ))
       );
     }
