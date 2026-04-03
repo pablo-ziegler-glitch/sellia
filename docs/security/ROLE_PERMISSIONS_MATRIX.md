@@ -1,9 +1,78 @@
 # Role Permissions Matrix (Fuente única de verdad)
 
-Versión de matriz: `2026-03-13`
+- Versión de matriz: `2026-04-03`
 Objeto canónico: `functions/src/security/rolePermissionsMatrix.ts`
 Adaptador frontend web: `public/admin/permissions.js`
 Adaptador frontend mobile: `app/src/main/java/com/example/selliaapp/domain/security/RolePermissionMatrix.kt`
+
+---
+
+## Tabla técnica de control (drift)
+
+| Rol | Permisos |
+|---|---|
+| `viewer` | — |
+| `owner` | — |
+| `admin` | — |
+| `manager` | `stock.manage`, `stock.report`, `sales.manage`, `sales.report`, `customers.manage` |
+| `cashier` | — |
+
+| Módulo | owner | admin | manager | cashier | viewer |
+|---|---|---|---|---|---|
+| storefrontCatalog | ✅ | ✅ | ✅ | ✅ | ✅ |
+| storefrontNovedades | ✅ | ✅ | ✅ | ✅ | ✅ |
+| stock | ✅ | ✅ | ✅ | ❌ | ❌ |
+| sales | ✅ | ✅ | ✅ | ✅ | ❌ |
+| customers | ✅ | ✅ | ✅ | ❌ | ❌ |
+| suppliers | ✅ | ✅ | ❌ | ❌ | ❌ |
+| storeConfig | ✅ | ✅ | ❌ | ❌ | ❌ |
+| bulkImport | ✅ | ✅ | ❌ | ❌ | ❌ |
+| backupsStore | ✅ | ✅ | ❌ | ❌ | ❌ |
+| cloudSync | ✅ | ✅ | ❌ | ❌ | ❌ |
+| dashboard | ✅ | ✅ | ✅ | ❌ | ❌ |
+| pricing | ✅ | ✅ | ❌ | ❌ | ❌ |
+| usersRoles | ✅ | ✅ | ❌ | ❌ | ❌ |
+| cloudConfig | ✅ | ✅ | ❌ | ❌ | ❌ |
+| tenantLifecycle | ✅ | ✅ | ❌ | ❌ | ❌ |
+| maintenanceRead | ✅ | ✅ | ❌ | ❌ | ❌ |
+| maintenanceWrite | ✅ | ✅ | ❌ | ❌ | ❌ |
+| backupsRead | ✅ | ✅ | ❌ | ❌ | ❌ |
+| backupsWrite | ✅ | ✅ | ❌ | ❌ | ❌ |
+| platformTenants | ❌ | ✅ | ❌ | ❌ | ❌ |
+| platformFeatures | ❌ | ✅ | ❌ | ❌ | ❌ |
+| platformAnalytics | ❌ | ✅ | ❌ | ❌ | ❌ |
+| platformAnnouncements | ❌ | ✅ | ❌ | ❌ | ❌ |
+| platformAudit | ❌ | ✅ | ❌ | ❌ | ❌ |
+| platformSupport | ❌ | ✅ | ❌ | ❌ | ❌ |
+| platformPlans | ❌ | ✅ | ❌ | ❌ | ❌ |
+
+| Ruta | Módulo |
+|---|---|
+| `#/catalog` | storefrontCatalog |
+| `#/novedades` | storefrontNovedades |
+| `#/store/stock` | stock |
+| `#/store/sales` | sales |
+| `#/store/products-bulk` | stock |
+| `#/store/customers` | customers |
+| `#/store/suppliers` | suppliers |
+| `#/store/config` | storeConfig |
+| `#/store/bulk-import` | bulkImport |
+| `#/store/backups` | backupsStore |
+| `#/store/cloud-sync` | cloudSync |
+| `#/dashboard` | dashboard |
+| `#/settings/pricing` | pricing |
+| `#/settings/users` | usersRoles |
+| `#/settings/cloud-services` | cloudConfig |
+| `#/settings/tenant-lifecycle` | tenantLifecycle |
+| `#/maintenance` | maintenanceWrite |
+| `#/backups` | backupsRead |
+| `#/platform/tenants` | platformTenants |
+| `#/platform/features` | platformFeatures |
+| `#/platform/analytics` | platformAnalytics |
+| `#/platform/announcements` | platformAnnouncements |
+| `#/platform/audit` | platformAudit |
+| `#/platform/support` | platformSupport |
+| `#/platform/plans` | platformPlans |
 
 ---
 
@@ -66,11 +135,9 @@ El dueño tiene **dos vistas**:
 
 ### 3. `admin` — Administrador de Plataforma
 
-El admin tiene **acceso completo a la plataforma** pero con una restricción importante:
+El admin tiene **acceso completo a la plataforma** y también puede operar módulos de tienda para soporte.
 
-> **RESTRICCIÓN CLAVE:** El admin puede ver y gestionar las *funcionalidades disponibles*
-> de cada tienda, pero **NO puede acceder a los datos internos de las tiendas**
-> (productos, clientes, ventas, stock, reportes operativos).
+> **Cambio vigente:** El admin puede asistir también en módulos operativos de tienda dentro del backoffice cuando el tenant lo requiera.
 
 **Funciones de plataforma:**
 
@@ -86,11 +153,7 @@ El admin tiene **acceso completo a la plataforma** pero con una restricción imp
 | Config administrativa | Acceso a pricing, cloud config y users/roles de cualquier tienda (para asistencia) |
 
 **No puede acceder a:**
-- Productos, stock, inventario de ninguna tienda
-- Clientes, proveedores de ninguna tienda
-- Historial de ventas ni reportes operativos de ninguna tienda
-- Caja (no opera POS de ninguna tienda)
-- Backups ni importaciones de datos de tiendas específicas
+- Caja mobile (`mobile_ops`) de ninguna tienda
 
 **accountType:** N/A (cuenta de plataforma) | **Claims JWT:** `admin: true`, `role: "admin"`
 
@@ -150,16 +213,16 @@ El admin de plataforma **no opera caja** en ninguna tienda.
 
 | Capacidad | owner | admin | manager |
 |---|---|---|---|
-| `stock.manage` | ✅ | ❌ | ✅ |
-| `stock.report` | ✅ | ❌ | ✅ |
-| `sales.manage` | ✅ | ❌ | ✅ |
-| `sales.report` | ✅ | ❌ | ✅ |
-| `customers.manage` | ✅ | ❌ | ✅ |
-| `suppliers.manage` | ✅ | ❌ | ❌ |
-| `store.config` | ✅ | ❌ | ❌ |
-| `bulk.import` | ✅ | ❌ | ❌ |
-| `backups.manage` | ✅ | ❌ | ❌ |
-| `cloud.sync` | ✅ | ❌ | ❌ |
+| `stock.manage` | ✅ | ✅ | ✅ |
+| `stock.report` | ✅ | ✅ | ✅ |
+| `sales.manage` | ✅ | ✅ | ✅ |
+| `sales.report` | ✅ | ✅ | ✅ |
+| `customers.manage` | ✅ | ✅ | ✅ |
+| `suppliers.manage` | ✅ | ✅ | ❌ |
+| `store.config` | ✅ | ✅ | ❌ |
+| `bulk.import` | ✅ | ✅ | ❌ |
+| `backups.manage` | ✅ | ✅ | ❌ |
+| `cloud.sync` | ✅ | ✅ | ❌ |
 
 ### `web_bo_admin` — Config administrativa de tienda
 
@@ -193,15 +256,15 @@ El admin de plataforma **no opera caja** en ninguna tienda.
 |---|---|---|---|---|---|
 | storefrontCatalog | ✅ | ✅ | ✅ | ✅ | ✅ |
 | storefrontNovedades | ✅ | ✅ | ✅ | ✅ | ✅ |
-| stock | ❌ | ✅ | ❌ | ✅ | ❌ |
-| sales | ❌ | ✅ | ❌ | ✅ | ✅ |
-| customers | ❌ | ✅ | ❌ | ✅ | ❌ |
-| suppliers | ❌ | ✅ | ❌ | ❌ | ❌ |
-| storeConfig | ❌ | ✅ | ❌ | ❌ | ❌ |
-| bulkImport | ❌ | ✅ | ❌ | ❌ | ❌ |
-| backupsStore | ❌ | ✅ | ❌ | ❌ | ❌ |
-| cloudSync | ❌ | ✅ | ❌ | ❌ | ❌ |
-| dashboard | ❌ | ✅ | ❌ | ✅ | ❌ |
+| stock | ❌ | ✅ | ✅ | ✅ | ❌ |
+| sales | ❌ | ✅ | ✅ | ✅ | ✅ |
+| customers | ❌ | ✅ | ✅ | ✅ | ❌ |
+| suppliers | ❌ | ✅ | ✅ | ❌ | ❌ |
+| storeConfig | ❌ | ✅ | ✅ | ❌ | ❌ |
+| bulkImport | ❌ | ✅ | ✅ | ❌ | ❌ |
+| backupsStore | ❌ | ✅ | ✅ | ❌ | ❌ |
+| cloudSync | ❌ | ✅ | ✅ | ❌ | ❌ |
+| dashboard | ❌ | ✅ | ✅ | ✅ | ❌ |
 | pricing | ❌ | ✅ | ✅ | ❌ | ❌ |
 | usersRoles | ❌ | ✅ | ✅ | ❌ | ❌ |
 | cloudConfig | ❌ | ✅ | ✅ | ❌ | ❌ |
@@ -216,11 +279,7 @@ El admin de plataforma **no opera caja** en ninguna tienda.
 | platformSupport | ❌ | ❌ | ✅ | ❌ | ❌ |
 | platformPlans | ❌ | ❌ | ✅ | ❌ | ❌ |
 
-> **admin** tiene ❌ en todos los módulos de gestión de tienda (`stock`, `sales`,
-> `customers`, `suppliers`, `storeConfig`, `bulkImport`, `backupsStore`, `cloudSync`,
-> `dashboard`) porque esos módulos exponen datos internos de la tienda.
-> El admin SOLO accede a los módulos `platform*` y a config administrativa (`pricing`,
-> `usersRoles`, `cloudConfig`, etc.) para asistencia técnica.
+> **admin** puede operar módulos de tienda y de plataforma para soporte integral del tenant.
 
 ---
 
@@ -230,15 +289,15 @@ El admin de plataforma **no opera caja** en ninguna tienda.
 |---|---|---|
 | `#/catalog` | storefrontCatalog | viewer, owner, admin, manager, cashier |
 | `#/novedades` | storefrontNovedades | viewer, owner, admin, manager, cashier |
-| `#/store/stock` | stock | owner, manager |
-| `#/store/sales` | sales | owner, manager, cashier |
-| `#/store/customers` | customers | owner, manager |
-| `#/store/suppliers` | suppliers | owner |
-| `#/store/config` | storeConfig | owner |
-| `#/store/bulk-import` | bulkImport | owner |
-| `#/store/backups` | backupsStore | owner |
-| `#/store/cloud-sync` | cloudSync | owner |
-| `#/dashboard` | dashboard | owner, manager |
+| `#/store/stock` | stock | owner, admin, manager |
+| `#/store/sales` | sales | owner, admin, manager, cashier |
+| `#/store/customers` | customers | owner, admin, manager |
+| `#/store/suppliers` | suppliers | owner, admin |
+| `#/store/config` | storeConfig | owner, admin |
+| `#/store/bulk-import` | bulkImport | owner, admin |
+| `#/store/backups` | backupsStore | owner, admin |
+| `#/store/cloud-sync` | cloudSync | owner, admin |
+| `#/dashboard` | dashboard | owner, admin, manager |
 | `#/settings/pricing` | pricing | owner, admin |
 | `#/settings/users` | usersRoles | owner, admin |
 | `#/settings/cloud-services` | cloudConfig | owner, admin |
@@ -261,7 +320,7 @@ El admin de plataforma **no opera caja** en ninguna tienda.
 |---|---|---|---|
 | `storefront` | viewer, owner, admin, manager, cashier | viewer, admin | admin, superadmin |
 | `mobile_ops` | owner, manager, cashier | — | superadmin |
-| `web_bo_store` | owner, manager | — | superadmin |
+| `web_bo_store` | owner, admin, manager | — | superadmin |
 | `web_bo_admin` | owner, admin | — | superadmin |
 | `web_bo_platform` | — | — | admin, superadmin |
 
@@ -285,7 +344,7 @@ El admin de plataforma **no opera caja** en ninguna tienda.
 
 1. `viewer` representa **solo cliente final** y no puede operar caja ni administración.
 2. `owner` puede cambiar entre vista cliente y vista de gestión de su tienda.
-3. `admin` gestiona funcionalidades de tiendas pero **nunca accede a datos internos** de las mismas.
+3. `admin` puede asistir módulos de tienda y plataforma según la matriz vigente.
 4. Los feature flags de tienda son todos `true` por defecto. El admin solo los desactiva si hay razones de plan/soporte.
 5. `mobile_ops` está restringido a staff operativo de la tienda (owner, manager, cashier). El admin de plataforma no opera POS.
 6. Cualquier cambio en permisos debe actualizar primero `functions/src/security/rolePermissionsMatrix.ts` y luego sus adaptadores.

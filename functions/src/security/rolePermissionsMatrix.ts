@@ -1,4 +1,4 @@
-export const ROLE_PERMISSIONS_MATRIX_VERSION = "2026-03-13";
+export const ROLE_PERMISSIONS_MATRIX_VERSION = "2026-04-03";
 
 /**
  * ═══════════════════════════════════════════════════════════════════
@@ -78,7 +78,7 @@ export const CHANNEL_CAPABILITIES = Object.freeze({
 
   /**
    * web_bo_store — Gestión de tienda (backoffice del dueño)
-   * Solo para owner. El dueño gestiona su propia tienda.
+   * Acceso para owner/admin. El admin puede asistir en soporte operativo.
    * Manager puede acceder a un subconjunto (ver CHANNEL_CAPABILITY_ROLE_POLICIES).
    */
   web_bo_store: Object.freeze([
@@ -159,17 +159,17 @@ export const CHANNEL_CAPABILITY_ROLE_POLICIES = Object.freeze({
   }),
 
   web_bo_store: Object.freeze({
-    // Gestión de tienda: solo owner (y manager para subconjunto operativo)
-    "stock.manage":          Object.freeze(["owner", "manager"]),
-    "stock.report":          Object.freeze(["owner", "manager"]),
-    "sales.manage":          Object.freeze(["owner", "manager"]),
-    "sales.report":          Object.freeze(["owner", "manager"]),
-    "customers.manage":      Object.freeze(["owner", "manager"]),
-    "suppliers.manage":      Object.freeze(["owner"]),            // solo owner gestiona proveedores
-    "store.config":          Object.freeze(["owner"]),            // configuración crítica: solo owner
-    "bulk.import":           Object.freeze(["owner"]),            // cargas masivas: solo owner
-    "backups.manage":        Object.freeze(["owner"]),            // backup/restore: solo owner
-    "cloud.sync":            Object.freeze(["owner"]),            // sincronización cloud: solo owner
+    // Gestión de tienda para owner/admin (manager en subconjunto operativo)
+    "stock.manage":          Object.freeze(["owner", "admin", "manager"]),
+    "stock.report":          Object.freeze(["owner", "admin", "manager"]),
+    "sales.manage":          Object.freeze(["owner", "admin", "manager"]),
+    "sales.report":          Object.freeze(["owner", "admin", "manager"]),
+    "customers.manage":      Object.freeze(["owner", "admin", "manager"]),
+    "suppliers.manage":      Object.freeze(["owner", "admin"]),
+    "store.config":          Object.freeze(["owner", "admin"]),
+    "bulk.import":           Object.freeze(["owner", "admin"]),
+    "backups.manage":        Object.freeze(["owner", "admin"]),
+    "cloud.sync":            Object.freeze(["owner", "admin"]),
   }),
 
   web_bo_admin: Object.freeze({
@@ -222,7 +222,7 @@ export const TENANT_SCOPE_ROLE_POLICIES: Readonly<Record<ChannelKey, Readonly<Re
     platform:     Object.freeze(["superadmin"]),
   }),
   web_bo_store: Object.freeze({
-    sameTenant:   Object.freeze(["owner", "manager"]),
+    sameTenant:   Object.freeze(["owner", "admin", "manager"]),
     crossTenant:  Object.freeze([]),
     platform:     Object.freeze(["superadmin"]),
   }),
@@ -247,15 +247,15 @@ export const MODULE_ROLE_POLICIES = Object.freeze({
   storefrontCatalog:       Object.freeze(["viewer", "owner", "admin", "manager", "cashier"]),
   storefrontNovedades:     Object.freeze(["viewer", "owner", "admin", "manager", "cashier"]),
 
-  // ── Gestión de tienda (owner + manager limitado) ──
-  stock:                   Object.freeze(["owner", "manager"]),
-  sales:                   Object.freeze(["owner", "manager", "cashier"]),
-  customers:               Object.freeze(["owner", "manager"]),
-  suppliers:               Object.freeze(["owner"]),
-  storeConfig:             Object.freeze(["owner"]),
-  bulkImport:              Object.freeze(["owner"]),
-  backupsStore:            Object.freeze(["owner"]),
-  cloudSync:               Object.freeze(["owner"]),
+  // ── Gestión de tienda (owner/admin + manager limitado) ──
+  stock:                   Object.freeze(["owner", "admin", "manager"]),
+  sales:                   Object.freeze(["owner", "admin", "manager", "cashier"]),
+  customers:               Object.freeze(["owner", "admin", "manager"]),
+  suppliers:               Object.freeze(["owner", "admin"]),
+  storeConfig:             Object.freeze(["owner", "admin"]),
+  bulkImport:              Object.freeze(["owner", "admin"]),
+  backupsStore:            Object.freeze(["owner", "admin"]),
+  cloudSync:               Object.freeze(["owner", "admin"]),
 
   // ── Configuración administrativa de tienda (owner + admin) ──
   dashboard:               Object.freeze(["owner", "admin", "manager"]),
@@ -342,15 +342,8 @@ export const hasRoleForChannelInTenantScope = (
   return TENANT_SCOPE_ROLE_SET[channel][tenantScope].has(normalizedRole);
 };
 
-/**
- * Verifica si un admin de plataforma intenta acceder a datos internos de una tienda.
- * El admin SOLO puede acceder a feature flags y metadatos, no a datos operativos.
- */
-export const ADMIN_STORE_DATA_RESTRICTED_MODULES: ReadonlySet<ModulePolicyKey> = new Set([
-  "stock", "sales", "customers", "suppliers",
-  "backupsStore", "cloudSync", "bulkImport",
-  "dashboard",  // el dashboard de una tienda específica tiene datos internos
-]);
+// Actualmente no hay módulos restringidos para admin dentro del backoffice web.
+export const ADMIN_STORE_DATA_RESTRICTED_MODULES: ReadonlySet<ModulePolicyKey> = new Set([]);
 
 export const adminCanAccessModule = (module: ModulePolicyKey): boolean => {
   return !ADMIN_STORE_DATA_RESTRICTED_MODULES.has(module);

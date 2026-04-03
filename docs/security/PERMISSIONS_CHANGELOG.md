@@ -44,6 +44,24 @@ Registro inmutable de cambios de permisos. Cada versión debe tener:
   - Firestore rules: pendiente agregar restricción de acceso a datos internos para admin.
 - Security review: APPROVED (product-architecture)
 
+## 2026-04-03
+
+- Date: 2026-04-03
+- Author: codex-agent
+- Change summary:
+  - Se flexibilizó el rol `admin` para soporte operativo sobre tenants.
+  - `admin` ahora puede acceder a módulos de gestión de tienda en backoffice web:
+    stock, sales, customers, suppliers, storeConfig, bulkImport, backupsStore y cloudSync.
+  - Se removieron restricciones adicionales de rutas/módulos para `admin`
+    (`ADMIN_STORE_DATA_RESTRICTED_MODULES` y `ADMIN_STORE_DATA_RESTRICTED_ROUTES` quedan vacíos).
+  - Se habilitó `admin` en `web_bo_store.sameTenant`.
+  - Versión de matriz actualizada de "2026-03-13" a "2026-04-03".
+- Impact:
+  - Backend: rolePermissionsMatrix.ts actualizado.
+  - Frontend web: public/admin/permissions.js sincronizado.
+  - Docs: ROLE_PERMISSIONS_MATRIX.md actualizado.
+- Security review: APPROVED (codex-agent)
+
 ## 2026-02-24
 
 - Date: 2026-02-24

@@ -14,7 +14,7 @@
  *  (Roles de staff asignados por el owner: manager, cashier)
  */
 
-export const ROLE_PERMISSIONS_MATRIX_VERSION = "2026-03-13";
+export const ROLE_PERMISSIONS_MATRIX_VERSION = "2026-04-03";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CANALES Y CAPACIDADES
@@ -89,9 +89,10 @@ export const ROLE_PERMISSIONS = Object.freeze({
     ...CHANNEL_CAPABILITIES.web_bo_store,
     ...CHANNEL_CAPABILITIES.web_bo_admin,
   ],
-  // Admin de plataforma: gestión de plataforma. NO datos internos de tiendas.
+  // Admin de plataforma: gestión de plataforma + soporte operativo de tiendas.
   admin: [
     ...CHANNEL_CAPABILITIES.storefront,
+    ...CHANNEL_CAPABILITIES.web_bo_store,
     ...CHANNEL_CAPABILITIES.web_bo_admin,
     ...CHANNEL_CAPABILITIES.web_bo_platform,
   ],
@@ -124,7 +125,7 @@ export const TENANT_SCOPE_ROLE_POLICIES = Object.freeze({
     platform:    ["superadmin"],
   }),
   web_bo_store: Object.freeze({
-    sameTenant:  ["owner", "manager"],
+    sameTenant:  ["owner", "admin", "manager"],
     crossTenant: [],
     platform:    ["superadmin"],
   }),
@@ -149,15 +150,15 @@ export const MODULE_ROLE_POLICIES = Object.freeze({
   storefrontCatalog:       ["viewer", "owner", "admin", "manager", "cashier"],
   storefrontNovedades:     ["viewer", "owner", "admin", "manager", "cashier"],
 
-  // Gestión de tienda (owner, manager limitado)
-  stock:                   ["owner", "manager"],
-  sales:                   ["owner", "manager", "cashier"],
-  customers:               ["owner", "manager"],
-  suppliers:               ["owner"],
-  storeConfig:             ["owner"],
-  bulkImport:              ["owner"],
-  backupsStore:            ["owner"],
-  cloudSync:               ["owner"],
+  // Gestión de tienda (owner/admin, manager limitado)
+  stock:                   ["owner", "admin", "manager"],
+  sales:                   ["owner", "admin", "manager", "cashier"],
+  customers:               ["owner", "admin", "manager"],
+  suppliers:               ["owner", "admin"],
+  storeConfig:             ["owner", "admin"],
+  bulkImport:              ["owner", "admin"],
+  backupsStore:            ["owner", "admin"],
+  cloudSync:               ["owner", "admin"],
 
   // Config administrativa de tienda
   dashboard:               ["owner", "admin", "manager"],
@@ -242,17 +243,8 @@ export const STORE_FEATURE_FLAGS = Object.freeze({
   "feature.novedades":        { defaultEnabled: true,  description: "Cartel de novedades / banners de tienda" },
 });
 
-// Módulos a los que el admin NO puede acceder aunque isTenantAdmin() sea true
-export const ADMIN_STORE_DATA_RESTRICTED_ROUTES = new Set([
-  "#/store/stock",
-  "#/store/sales",
-  "#/store/customers",
-  "#/store/suppliers",
-  "#/store/backups",
-  "#/store/cloud-sync",
-  "#/store/bulk-import",
-  // Nota: #/dashboard muestra métricas de uso (getUsageMetricsHistory), accesible para admin.
-]);
+// Actualmente no hay rutas restringidas para admin dentro del backoffice web.
+export const ADMIN_STORE_DATA_RESTRICTED_ROUTES = new Set([]);
 
 export const INTERNAL_ROLES = new Set(["owner", "admin", "manager", "cashier"]);
 
@@ -281,7 +273,7 @@ export function hasRouteAccess(role, route) {
   const allowedRoles = ROUTE_POLICIES[route];
   if (!Array.isArray(allowedRoles)) return false;
   if (!allowedRoles.includes(normalizedRole)) return false;
-  // El admin no puede acceder a rutas con datos internos de tienda
+  // Restricciones adicionales por rol (si existieran rutas restringidas)
   if (normalizedRole === "admin" && ADMIN_STORE_DATA_RESTRICTED_ROUTES.has(route)) return false;
   return true;
 }
