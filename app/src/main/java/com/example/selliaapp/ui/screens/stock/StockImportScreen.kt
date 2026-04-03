@@ -21,6 +21,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -31,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,8 +56,11 @@ fun StockImportScreen(
 
 ) {
     val context = LocalContext.current
+    val approval by viewModel.approval.collectAsState()
+    val regenerationMessage by viewModel.regenerationMessage.collectAsState()
     var isImporting by remember { mutableStateOf(false) }
     var lastFileName by remember { mutableStateOf<String?>(null) }
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
 
     val openFile = rememberLauncherForActivityResult(
@@ -74,13 +80,10 @@ fun StockImportScreen(
                 val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (idx != -1 && c.moveToFirst()) c.getString(idx) else null
             }
+        selectedUri = uri
 
-        isImporting = true
         message = null
-        viewModel.importFromFile(context, uri, ProductRepository.ImportStrategy.Append) { result ->
-            isImporting = false
-            message = result.toUserMessage(lastFileName)
-        }
+        viewModel.prepareImportApproval(context, uri, lastFileName ?: "archivo seleccionado")
     }
 
     Scaffold(
@@ -148,6 +151,23 @@ fun StockImportScreen(
                 }
             }
 
+            OutlinedButton(
+                onClick = { viewModel.regenerateExistingAccountData() },
+                enabled = !isImporting
+            ) {
+                Text("Regenerar datos de cuenta existente")
+            }
+
+            if (regenerationMessage != null) {
+                Surface(tonalElevation = 1.dp) {
+                    Text(
+                        modifier = Modifier.padding(12.dp),
+                        text = regenerationMessage!!,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
             if (message != null) {
                 Surface(tonalElevation = 1.dp) {
                     Text(
@@ -155,6 +175,57 @@ fun StockImportScreen(
                         text = message!!,
                         style = MaterialTheme.typography.bodyMedium
                     )
+                }
+            }
+
+            approval?.let { approvalUi ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Aprobación previa de importación", fontWeight = FontWeight.Bold)
+                        Text("Archivo: ${approvalUi.fileName}")
+                        Text("Se agregarán ${approvalUi.summary.newProducts} productos nuevos.")
+                        Text("Se actualizarán ${approvalUi.summary.existingProducts} productos existentes.")
+                        Text("Stock a adicionar en existentes: ${approvalUi.summary.totalStockToAdd} unidades.")
+                        if (approvalUi.summary.duplicateNameProducts > 0) {
+                            Text(
+                                "Advertencia: hay ${approvalUi.summary.duplicateNameProducts} productos duplicados por nombre en la cuenta.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { viewModel.clearApproval() }) {
+                                Text("Cancelar")
+                            }
+                            Button(
+                                enabled = !isImporting,
+                                onClick = {
+                                    val uri = selectedUri
+                                    if (uri == null) {
+                                        message = "No se pudo recuperar el archivo para importar."
+                                        return@Button
+                                    }
+                                    isImporting = true
+                                    viewModel.importFromFile(
+                                        context = context,
+                                        uri = uri,
+                                        strategy = ProductRepository.ImportStrategy.Append
+                                    ) { result ->
+                                        isImporting = false
+                                        message = result.toUserMessage(lastFileName)
+                                    }
+                                }
+                            ) {
+                                Text(if (isImporting) "Importando..." else "Aprobar e importar")
+                            }
+                        }
+                    }
                 }
             }
         }

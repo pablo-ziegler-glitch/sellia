@@ -65,6 +65,11 @@ interface IProductRepository {
     // ---------- Archivo tabular: desde archivo ----------
     enum class ImportStrategy { Append, Replace } // espejo del enum, por conveniencia
     suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult
+    suspend fun previewImport(
+        context: Context,
+        fileUri: Uri
+    ): ProductRepository.ImportApprovalSummary
+    suspend fun regenerateExistingAccountData(): ProductRepository.RegenerationResult
     suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,

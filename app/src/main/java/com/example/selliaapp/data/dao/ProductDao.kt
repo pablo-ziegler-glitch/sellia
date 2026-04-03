@@ -44,6 +44,9 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE name = :name LIMIT 1")
     suspend fun getByNameOnce(name: String): ProductEntity?
 
+    @Query("SELECT * FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name)) LIMIT 1")
+    suspend fun getByNameNormalizedOnce(name: String): ProductEntity?
+
     @Query("SELECT * FROM products WHERE barcode = :barcode LIMIT 1")
     suspend fun getByBarcode(barcode: String): ProductEntity?
 
@@ -119,6 +122,9 @@ interface ProductDao {
     @Query("DELETE FROM products WHERE id = :id")
     suspend fun deleteById(id: Int): Int
 
+    @Query("DELETE FROM products WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Int>): Int
+
     /** Borrado completo de productos (uso exclusivo en recuperaciones críticas). */
     @Query("DELETE FROM products")
     suspend fun deleteAll()
@@ -126,18 +132,22 @@ interface ProductDao {
     // --------- Ayuda para importación/merge ---------
 
     /**
-     * Upsert por “claves” (barcode o nombre).
-     * - Si encuentra existente por barcode, usa ese.
-     * - Si no, intenta por nombre.
+     * Upsert por “claves” (sku/código y nombre).
+     * - Si encuentra existente por código, usa ese.
+     * - Si no, intenta por nombre (normalizado).
+     * - Si no, intenta por barcode.
      * - Si no existe, inserta.
      * - Si existe, fusiona campos no nulos del entrante.
      */
     @Transaction
     suspend fun upsertByKeys(incoming: ProductEntity): Int {
+        val incomingCode = incoming.code?.trim()?.takeIf { it.isNotBlank() }
+        val incomingName = incoming.name.trim().takeIf { it.isNotBlank() }
         val incomingBarcode = incoming.barcode
         val existing: ProductEntity? = when {
+            !incomingCode.isNullOrBlank()    -> getByCodeOnce(incomingCode)
+            !incomingName.isNullOrBlank()    -> getByNameNormalizedOnce(incomingName)
             !incomingBarcode.isNullOrBlank() -> getByBarcodeOnce(incomingBarcode)
-            !incoming.name.isNullOrBlank()   -> getByNameOnce(incoming.name)
             else                             -> null
         }
         return if (existing == null) {

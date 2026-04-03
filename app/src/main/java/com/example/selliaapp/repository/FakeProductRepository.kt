@@ -75,6 +75,25 @@ class FakeProductRepository : IProductRepository {
         return simulateResult
     }
 
+    override suspend fun previewImport(
+        context: Context,
+        fileUri: Uri
+    ): ProductRepository.ImportApprovalSummary =
+        ProductRepository.ImportApprovalSummary(
+            newProducts = simulateResult.inserted,
+            existingProducts = simulateResult.updated,
+            totalStockToAdd = 0,
+            duplicateNameProducts = 0
+        )
+
+    override suspend fun regenerateExistingAccountData(): ProductRepository.RegenerationResult =
+        ProductRepository.RegenerationResult(
+            syncedFromCloud = 0,
+            mergedGroups = 0,
+            removedDuplicates = 0,
+            generatedSkuCodes = 0
+        )
+
     override suspend fun importProductsFromFile(
         context: Context,
         fileUri: Uri,

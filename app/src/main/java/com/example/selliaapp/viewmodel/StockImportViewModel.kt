@@ -31,6 +31,10 @@ class StockImportViewModel @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher,   // qualifier de IO
     @ApplicationContext private val appContext: Context  // contexto app
 ) : ViewModel() {
+    data class ImportApprovalUi(
+        val fileName: String,
+        val summary: ProductRepository.ImportApprovalSummary
+    )
 
     data class DryRunResult(
         val inserted: Int,
@@ -49,6 +53,10 @@ class StockImportViewModel @Inject constructor(
 
     private val _importing = MutableStateFlow(false)
     val importing: StateFlow<Boolean> = _importing
+    private val _approval = MutableStateFlow<ImportApprovalUi?>(null)
+    val approval: StateFlow<ImportApprovalUi?> = _approval
+    private val _regenerationMessage = MutableStateFlow<String?>(null)
+    val regenerationMessage: StateFlow<String?> = _regenerationMessage
 
     private var currentUri: Uri? = null
     private var cachedRows: List<ProductCsvImporter.Row> = emptyList() // reservado si luego querés flujo avanzado
@@ -90,6 +98,44 @@ class StockImportViewModel @Inject constructor(
      * Importa desde un archivo tabular (CSV/Excel/Sheets) referenciado por [uri] con la estrategia indicada.
      * Mantiene la firma pública con ProductRepository.ImportStrategy para no romper la UI.
      */
+    fun prepareImportApproval(
+        context: Context,
+        uri: Uri,
+        fileName: String
+    ) {
+        currentUri = uri
+        viewModelScope.launch(io) {
+            val summary = repo.previewImport(context, uri)
+            withContext(Dispatchers.Main) {
+                _approval.value = ImportApprovalUi(fileName = fileName, summary = summary)
+            }
+        }
+    }
+
+    fun clearApproval() {
+        _approval.value = null
+    }
+
+    fun regenerateExistingAccountData() {
+        viewModelScope.launch(io) {
+            val result = repo.regenerateExistingAccountData()
+            val message = buildString {
+                append("Regeneración completada.")
+                append(" Sincronizados desde nube: ${result.syncedFromCloud}.")
+                append(" Grupos duplicados consolidados: ${result.mergedGroups}.")
+                append(" Productos duplicados removidos: ${result.removedDuplicates}.")
+                append(" SKU generados para datos viejos/sin código: ${result.generatedSkuCodes}.")
+            }
+            withContext(Dispatchers.Main) {
+                _regenerationMessage.value = message
+            }
+        }
+    }
+
+    fun clearRegenerationMessage() {
+        _regenerationMessage.value = null
+    }
+
     fun importFromFile(
         context: Context,
         uri: Uri,
@@ -99,6 +145,7 @@ class StockImportViewModel @Inject constructor(
         viewModelScope.launch(io) {
             val result = repo.importProductsFromFile(context, uri, strategy)
             withContext(Dispatchers.Main) {
+                _approval.value = null
                 onCompleted(result)
             }
         }
