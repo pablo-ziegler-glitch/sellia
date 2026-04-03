@@ -369,6 +369,60 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     await assertSucceeds(getDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-email-member')));
   });
 
+  it('allows tenant membership by legacy bare uid tenant_users id', async () => {
+    await seedUser('legacy-bare-uid-member', {
+      role: 'viewer',
+      tenantId: '',
+      email: 'legacy-bare-uid@example.com',
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenant_users', 'legacy-bare-uid-member'), {
+        tenantId: TENANT_A,
+        uid: 'legacy-bare-uid-member',
+        role: 'viewer',
+        status: 'active',
+      });
+      await setDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-legacy-bare-uid'), { name: 'Private legacy uid' });
+    });
+
+    const db = dbWithClaims('legacy-bare-uid-member', {
+      uid: 'legacy-bare-uid-member',
+      email: 'legacy-bare-uid@example.com',
+      role: 'viewer',
+    });
+
+    await assertSucceeds(getDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-legacy-bare-uid')));
+  });
+
+  it('allows tenant membership by legacy bare email tenant_users id', async () => {
+    await seedUser('legacy-bare-email-member', {
+      role: 'viewer',
+      tenantId: '',
+      email: 'legacy-bare-email@example.com',
+    });
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'tenant_users', 'legacy-bare-email@example.com'), {
+        tenantId: TENANT_A,
+        email: 'legacy-bare-email@example.com',
+        role: 'viewer',
+        status: 'active',
+      });
+      await setDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-legacy-bare-email'), { name: 'Private legacy email' });
+    });
+
+    const db = dbWithClaims('legacy-bare-email-member', {
+      uid: 'legacy-bare-email-member',
+      email: 'legacy-bare-email@example.com',
+      role: 'viewer',
+    });
+
+    await assertSucceeds(getDoc(doc(db, 'tenants', TENANT_A, 'products', 'sku-legacy-bare-email')));
+  });
+
   it('allows tenant membership when tenantId exists in users.tenantIds array', async () => {
     await seedUser('multi-tenant-uid', {
       role: 'viewer',
