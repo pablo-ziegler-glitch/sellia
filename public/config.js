@@ -54,20 +54,10 @@
       const hostname = globalScope.location.hostname.replace(/^www\./, "");
       const isFirebaseDefaultDomain = hostname.endsWith(".web.app") || hostname.endsWith(".firebaseapp.com");
       if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1" && !isFirebaseDefaultDomain) {
-        try {
-          const domainLookupResp = await fetchWithTimeout(
-            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(hostname)}?key=${apiKey}`
-          );
-          if (domainLookupResp.ok) {
-            const domainDoc = await domainLookupResp.json();
-            const resolvedTenant = domainDoc?.fields?.tenantId?.stringValue?.trim();
-            if (resolvedTenant) {
-              config.tenantId = resolvedTenant;
-              config._resolvedFromHostname = true;
-            }
-          }
-        } catch (_error) {
-          // Domain lookup failed — fallback to existing logic
+        const resolvedTenant = await resolveTenantFromDomainMapping(projectId, apiKey, hostname);
+        if (resolvedTenant) {
+          config.tenantId = resolvedTenant;
+          config._resolvedFromHostname = true;
         }
       }
     }
@@ -136,6 +126,42 @@
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  async function resolveTenantFromDomainMapping(projectId, apiKey, hostname) {
+    const domainCandidates = buildDomainCandidates(hostname);
+    for (const domain of domainCandidates) {
+      try {
+        const domainLookupResp = await fetchWithTimeout(
+          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(domain)}?key=${apiKey}`
+        );
+        if (!domainLookupResp.ok) {
+          continue;
+        }
+        const domainDoc = await domainLookupResp.json();
+        const resolvedTenant = domainDoc?.fields?.tenantId?.stringValue?.trim();
+        if (resolvedTenant) {
+          return resolvedTenant;
+        }
+      } catch (_error) {
+        // Si falla una variante del dominio, continuar con el resto de candidatos.
+      }
+    }
+    return "";
+  }
+
+  function buildDomainCandidates(hostname) {
+    const normalizedHost = (hostname || "").toLowerCase().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+    if (!normalizedHost) {
+      return [];
+    }
+    const candidates = [normalizedHost];
+    if (!normalizedHost.startsWith("www.")) {
+      candidates.push(`www.${normalizedHost}`);
+    } else {
+      candidates.push(normalizedHost.replace(/^www\./, ""));
+    }
+    return [...new Set(candidates)];
   }
 
   function resolveTenantFromUrl() {
