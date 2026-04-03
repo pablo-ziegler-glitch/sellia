@@ -103,6 +103,9 @@ function buildFriendlyCatalogError(error) {
   if (message.includes("Rate limit")) {
     return "Demasiadas solicitudes al catálogo. Reintentá en unos segundos.";
   }
+  if (message.toLowerCase().includes("abort")) {
+    return "El catálogo tardó demasiado en responder. Verificá la función /public/catalog.";
+  }
   return message || "Error al cargar catálogo público.";
 }
 
@@ -116,9 +119,15 @@ async function fetchCatalogProductsFromBackend() {
   let pageToken = "";
 
   while (items.length < catalogLimit) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
     const response = await fetch(buildCatalogEndpointUrl(pageToken), {
       method: "GET",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal
+    }).finally(() => {
+      clearTimeout(timeoutId);
     });
 
     if (!response.ok) {

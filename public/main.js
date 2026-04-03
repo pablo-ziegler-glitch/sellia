@@ -205,16 +205,68 @@ function createProductCard(product) {
   return article;
 }
 
+function resolveCatalogTenantId() {
+  const params = new URLSearchParams(window.location.search || "");
+  return (
+    params.get("tenantId")?.trim() ||
+    params.get("tienda")?.trim() ||
+    params.get("TIENDA")?.trim() ||
+    (config.tenantId || "").trim()
+  );
+}
+
+async function fetchCatalogPreviewProducts() {
+  const tenantId = resolveCatalogTenantId();
+  if (!tenantId) {
+    throw new Error("No se detectó tenantId para cargar la vitrina pública.");
+  }
+
+  const endpoint = new URL((config.publicCatalogApiBaseUrl || "/public/catalog").trim(), window.location.origin);
+  endpoint.searchParams.set("tenantId", tenantId);
+  endpoint.searchParams.set("pageSize", "6");
+  endpoint.searchParams.set("sort", "name_asc");
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(endpoint.toString(), {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Catálogo respondió ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    return items.slice(0, 6).map((item) => ({
+      name: item.name || "Producto",
+      desc: item.sku ? `SKU: ${item.sku}` : "Disponible en catálogo público.",
+      image: "/assets/placeholder.svg",
+      tag: item.storeName || item.tenantId || "Colección"
+    }));
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function renderLandingProducts() {
   const productGrid = document.getElementById("productGrid");
   if (!productGrid) return;
+
   try {
-    const response = await fetch("/data/products.json", { cache: "force-cache" });
-    if (!response.ok) throw new Error("No se pudo cargar la data local");
-    const products = await response.json();
+    const products = await fetchCatalogPreviewProducts();
+    if (!products.length) {
+      throw new Error("Catálogo sin productos publicados todavía.");
+    }
 
     const fragment = document.createDocumentFragment();
-    products.slice(0, 6).forEach((product) => {
+    products.forEach((product) => {
       fragment.appendChild(createProductCard(product));
     });
     productGrid.replaceChildren(fragment);
@@ -222,7 +274,7 @@ async function renderLandingProducts() {
     console.warn("No se pudieron cargar los productos de la landing", error);
     const warning = document.createElement("p");
     warning.className = "muted";
-    warning.textContent = "No se pudo cargar la vitrina.";
+    warning.textContent = "No hay productos públicos visibles en este momento.";
     productGrid.replaceChildren(warning);
   }
 }
