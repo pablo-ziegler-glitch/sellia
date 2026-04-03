@@ -246,8 +246,8 @@ const assertLandingVersion = (value: unknown, fieldName: "draftVersion" | "publi
 const ensureCanWriteGlobal = (context: functions.https.CallableContext, userData: Record<string, unknown>): void => {
   const role = normalizeString(userData.role).toLowerCase();
   const isSuperAdmin = context.auth?.token?.superAdmin === true || userData.isSuperAdmin === true;
-  if (!isSuperAdmin && role !== "owner") {
-    throw new functions.https.HttpsError("permission-denied", "solo owner/superAdmin puede editar landing global");
+  if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+    throw new functions.https.HttpsError("permission-denied", "solo owner/admin/superAdmin puede editar landing global");
   }
 };
 

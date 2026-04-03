@@ -890,8 +890,8 @@ async function loadTenantOnboardingPolicy() {
 }
 
 async function onSaveTenantOnboardingPolicy() {
-  if (!appState.profile || appState.profile.role !== "owner") {
-    setTenantPolicyMessage("Solo el owner puede modificar la política de activación.");
+  if (!appState.profile || !["owner", "admin"].includes(appState.profile.role)) {
+    setTenantPolicyMessage("Solo owner/admin pueden modificar la política de activación.");
     return;
   }
   const mode = el.tenantActivationModeSelect?.value || "auto";
