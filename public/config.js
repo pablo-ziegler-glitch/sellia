@@ -145,6 +145,42 @@
     }
   }
 
+  async function resolveTenantFromDomainMapping(projectId, apiKey, hostname) {
+    const domainCandidates = buildDomainCandidates(hostname);
+    for (const domain of domainCandidates) {
+      try {
+        const domainLookupResp = await fetchWithTimeout(
+          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/domain_to_tenant/${encodeURIComponent(domain)}?key=${apiKey}`
+        );
+        if (!domainLookupResp.ok) {
+          continue;
+        }
+        const domainDoc = await domainLookupResp.json();
+        const resolvedTenant = domainDoc?.fields?.tenantId?.stringValue?.trim();
+        if (resolvedTenant) {
+          return resolvedTenant;
+        }
+      } catch (_error) {
+        // Si falla una variante del dominio, continuar con el resto de candidatos.
+      }
+    }
+    return "";
+  }
+
+  function buildDomainCandidates(hostname) {
+    const normalizedHost = (hostname || "").toLowerCase().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+    if (!normalizedHost) {
+      return [];
+    }
+    const candidates = [normalizedHost];
+    if (!normalizedHost.startsWith("www.")) {
+      candidates.push(`www.${normalizedHost}`);
+    } else {
+      candidates.push(normalizedHost.replace(/^www\./, ""));
+    }
+    return [...new Set(candidates)];
+  }
+
   function resolveTenantFromUrl() {
     const params = new URLSearchParams(globalScope.location.search);
     return (
