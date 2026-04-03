@@ -353,3 +353,20 @@ Aplicación:
 ```bash
 gsutil lifecycle set lifecycle.json gs://<bucket>
 ```
+
+## Interpretación rápida de logs de `publicCatalog`
+
+Cuando desplegás o probás la función HTTP `publicCatalog`, en `firebase functions:log --only publicCatalog` suelen aparecer dos tipos de eventos:
+
+- `D publicCatalog: Function execution started` / `finished with status code: 200`:
+  - Confirma que la invocación HTTP terminó bien.
+  - El campo `Function execution took ... ms` indica latencia total de esa ejecución.
+- `N publicCatalog: {"@type":"type.googleapis.com/google.cloud.audit.AuditLog", ... "CloudFunctionsService.UpdateFunction" ...}`:
+  - Es un evento de auditoría de despliegue/actualización de la función.
+  - No representa una invocación de usuario ni un error runtime.
+
+Guía práctica de diagnóstico:
+
+1. Si hay `status code: 200`, la función respondió correctamente.
+2. Si solo ves `AuditLog` de `UpdateFunction`, corresponde a un deploy reciente.
+3. Si la latencia sube de forma intermitente (por ejemplo > 5 s), revisá cold starts, dependencia externa y lecturas Firestore en la ruta de `publicCatalog`.

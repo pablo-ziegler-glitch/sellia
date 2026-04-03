@@ -8,6 +8,11 @@
   // después de que falla el lookup por hostname y por directorio público.
   const runtimeTenantId = runtimeConfig.tenantId || "";
 
+  const domainTenantFallbacks = {
+    "valkirja.com.ar": "valkirja",
+    "www.valkirja.com.ar": "valkirja"
+  };
+
   const storeConfig = {
     brandName: runtimeConfig.brandName || "FLOKI",
     publicStoreUrl: runtimeConfig.publicStoreUrl || "https://floki.com.ar/product.html",
@@ -49,6 +54,13 @@
 
     const projectId = config.firebase?.projectId;
     const apiKey = config.firebase?.apiKey;
+
+    if (!config.tenantId) {
+      const fallbackTenant = resolveTenantFromHostnameFallback();
+      if (fallbackTenant) {
+        config.tenantId = fallbackTenant;
+      }
+    }
 
     if (!config.tenantId && projectId && apiKey) {
       const hostname = globalScope.location.hostname.replace(/^www\./, "");
@@ -146,6 +158,11 @@
       params.get("TIENDA")?.trim() ||
       ""
     );
+  }
+
+  function resolveTenantFromHostnameFallback() {
+    const hostname = globalScope.location.hostname.toLowerCase().replace(/^www\./, "");
+    return domainTenantFallbacks[hostname] || "";
   }
 
   function applyFallbackDomainByTenant(config) {
