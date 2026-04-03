@@ -178,7 +178,7 @@ service cloud.firestore {
       // 1) claim admin (JWT) o flag isAdmin en /users/{uid} + membresía + rol admin/owner
       // 2) si tiene tenantId efectivo, debe coincidir con el tenant solicitado
       return hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
-        (hasAdminClaim() || hasAdminUserFlag()) &&
+        hasTenantAdminSignal() &&
         isTenantMember(tenantId) &&
         (currentEffectiveTenantId == '' || currentEffectiveTenantId == tenantId)
       );
