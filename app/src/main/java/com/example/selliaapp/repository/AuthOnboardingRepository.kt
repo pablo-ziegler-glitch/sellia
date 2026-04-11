@@ -14,17 +14,4 @@ interface AuthOnboardingRepository {
         storePhone: String,
         skuPrefix: String?
     ): Result<OnboardingResult>
-
-    suspend fun registerViewer(
-        email: String,
-        password: String,
-        tenantId: String?,
-        tenantName: String?,
-        customerName: String,
-        customerPhone: String?
-    ): Result<OnboardingResult>
-
-    suspend fun registerViewerWithGoogle(
-        idToken: String
-    ): Result<OnboardingResult>
 }

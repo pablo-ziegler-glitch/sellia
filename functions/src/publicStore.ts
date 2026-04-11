@@ -361,10 +361,7 @@ export const createTriggerStoreProductsSyncHandler = (
     const userTenantId = normalizeString(userData.tenantId);
     const userRole = normalizeString(userData.role).toLowerCase();
 
-    if (
-      !isSuperAdmin &&
-      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
-    ) {
+    if (!isSuperAdmin && (userTenantId !== tenantId || userRole !== "owner")) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "sin permisos sobre este tenant"

@@ -235,14 +235,14 @@ class StorageRepositoryImpl @Inject constructor(
         if (!(roleAllowed || legacyRoleAllowed || isAdminFlag || isSuperAdminFlag)) {
             throw IllegalStateException(
                 "Tu rol '$role' no tiene permiso de escritura en Storage para este tenant. " +
-                    "Roles permitidos: owner, admin, manager, cashier."
+                    "Roles permitidos: owner."
             )
         }
     }
 
     private companion object {
         private const val PUBLIC_CATALOG_PATH = "Images/public/catalog"
-        private val STORAGE_WRITE_ROLES = setOf("owner", "admin", "manager", "cashier")
+        private val STORAGE_WRITE_ROLES = setOf("owner")
         private val LEGACY_WRITE_ROLE_ALIASES = setOf("super_admin", "superadmin", "seller", "employee")
     }
 }

@@ -5,7 +5,6 @@ import com.example.selliaapp.di.AppModule.IoDispatcher
 import com.example.selliaapp.domain.security.AppRole
 import com.example.selliaapp.domain.security.RolePermissions
 import com.example.selliaapp.domain.security.UserAccessState
-import com.example.selliaapp.domain.security.SecurityHashing
 import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.SecurityConfigRepository
 import com.google.firebase.auth.FirebaseAuth
@@ -53,22 +52,16 @@ class AccessControlRepositoryImpl @Inject constructor(
         resolveAccess(auth.currentUser?.email)
 
     private suspend fun resolveAccess(email: String?): UserAccessState = withContext(io) {
-        val normalizedEmail = email?.trim()?.lowercase()
-        val adminHash = securityConfigRepository.getAdminEmailHash()
-        val isConfiguredAdmin = !normalizedEmail.isNullOrBlank() &&
-            SecurityHashing.hashEmail(normalizedEmail) == adminHash
         val user = when {
             !email.isNullOrBlank() -> userDao.getByEmail(email)
             else -> userDao.getFirst()
         }
-        val firestoreRole = resolveRoleFromCloud()
-        val totalUsers = userDao.countUsers()
         val role = resolveEffectiveRole(
-            isConfiguredAdmin = isConfiguredAdmin,
+            isConfiguredAdmin = false,
             localRole = user?.let { AppRole.fromRaw(it.role) },
             localUserIsActive = user?.isActive == true,
-            firestoreRole = firestoreRole,
-            totalUsers = totalUsers,
+            firestoreRole = resolveRoleFromCloud(),
+            totalUsers = userDao.countUsers(),
             hasAuthenticatedEmail = !email.isNullOrBlank()
         )
         UserAccessState(
@@ -82,19 +75,11 @@ class AccessControlRepositoryImpl @Inject constructor(
         val uid = auth.currentUser?.uid ?: return null
         val snapshot = firestore.collection("users").document(uid).get().await()
         if (!snapshot.exists()) return null
-        val roleRaw = snapshot.getString("role")?.trim()?.lowercase()
-        val isSuperAdmin = snapshot.getBoolean("isSuperAdmin") == true
-        val isAdmin = snapshot.getBoolean("isAdmin") == true
-        if (isSuperAdmin || roleRaw == "super_admin" || isAdmin || roleRaw == AppRole.ADMIN.raw) {
-            return AppRole.ADMIN
-        }
         val status = snapshot.getString("status")?.lowercase()
         if (!status.isNullOrBlank() && status != "active") {
-            return AppRole.VIEWER
+            return null
         }
-        return when {
-            else -> AppRole.fromRaw(roleRaw)
-        }
+        return AppRole.OWNER
     }
 
 
@@ -107,12 +92,11 @@ class AccessControlRepositoryImpl @Inject constructor(
             totalUsers: Int,
             hasAuthenticatedEmail: Boolean
         ): AppRole = when {
-            isConfiguredAdmin -> AppRole.ADMIN
-            firestoreRole != null -> firestoreRole
-            localRole == AppRole.ADMIN -> AppRole.ADMIN
-            localUserIsActive && localRole != null -> localRole
-            totalUsers == 0 && hasAuthenticatedEmail -> AppRole.ADMIN
-            else -> AppRole.fromRaw(null)
+            isConfiguredAdmin -> AppRole.OWNER
+            firestoreRole != null -> AppRole.OWNER
+            localUserIsActive && localRole != null -> AppRole.OWNER
+            totalUsers == 0 && hasAuthenticatedEmail -> AppRole.OWNER
+            else -> AppRole.OWNER
         }
     }
 

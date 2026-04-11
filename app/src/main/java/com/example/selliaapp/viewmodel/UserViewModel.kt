@@ -48,7 +48,7 @@ class UserViewModel  @Inject constructor(
                 val requestedRole = AppRole.fromRaw(role)
                 val totalUsers = repository.countUsers()
                 val effectiveRole = if (totalUsers == 0) {
-                    AppRole.ADMIN.raw
+                    AppRole.OWNER.raw
                 } else {
                     normalizeAssignableRole(requestedRole).raw
                 }
@@ -90,9 +90,6 @@ class UserViewModel  @Inject constructor(
     }
 
     private fun normalizeAssignableRole(role: AppRole): AppRole = when (role) {
-        AppRole.MANAGER,
-        AppRole.CASHIER -> role
-
-        else -> AppRole.CASHIER
+        else -> AppRole.OWNER
     }
 }

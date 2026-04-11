@@ -7,7 +7,7 @@ data class UserAccessState(
 ) {
     companion object {
         fun guest(): UserAccessState {
-            val role = AppRole.VIEWER
+            val role = AppRole.OWNER
             return UserAccessState(email = null, role = role, permissions = RolePermissions.forRole(role))
         }
     }

@@ -30,10 +30,13 @@ class ProductCsvImporter(
      * la referencia `ProductCsvImporter.Row`.
      */
     data class Row(
+        val lineNumber: Int,
         val code: String?,
         val barcode: String?,
         val name: String,
-        val quantity: Int,
+        val quantity: Int?,
+        val quantityRaw: String?,
+        val hasInvalidQuantity: Boolean,
         val purchasePrice: Double?,
         val listPrice: Double?,
         val cashPrice: Double?,
@@ -54,9 +57,14 @@ class ProductCsvImporter(
         val sizes: List<String>,
         val minStock: Int?,
         val publicStatus: String,
-        val markedAsUpdate: Boolean,
+        val updateStockRequested: Boolean,
+        val updateStockMarkerValid: Boolean,
+        val updateStockMarkerRaw: String?,
         val updatedAt: LocalDate?
-    )
+    ) {
+        @Deprecated("Usar updateStockRequested")
+        val markedAsUpdate: Boolean get() = updateStockRequested
+    }
 
     /**
      * Importa insertando siempre (Append): si hay barcode y existe, lo trata como nueva inserción
@@ -88,7 +96,7 @@ class ProductCsvImporter(
                     ml3cPrice = r.ml3cPrice,
                     ml6cPrice = r.ml6cPrice,
                     autoPricing = false,
-                    quantity = r.quantity,
+                    quantity = r.quantity ?: 0,
                     description = r.description,
                     imageUrl = r.imageUrl,
                     imageUrls = r.imageUrls,
@@ -137,10 +145,10 @@ class ProductCsvImporter(
                     val existing = productDao.getByBarcode(barcode)
                     if (existing == null) {
                         // Inserta
-                val entity = ProductEntity(
-                    id = 0,
-                    code = r.code,
-                    barcode = r.barcode,
+                        val entity = ProductEntity(
+                            id = 0,
+                            code = r.code,
+                            barcode = r.barcode,
                     name = r.name,
                     purchasePrice = r.purchasePrice,
                             listPrice = r.listPrice,
@@ -151,7 +159,7 @@ class ProductCsvImporter(
                             ml3cPrice = r.ml3cPrice,
                             ml6cPrice = r.ml6cPrice,
                             autoPricing = false,
-                            quantity = r.quantity,
+                            quantity = r.quantity ?: 0,
                             description = r.description,
                             imageUrl = r.imageUrl,
                             imageUrls = r.imageUrls,
@@ -182,7 +190,7 @@ class ProductCsvImporter(
                             ml3cPrice   = r.ml3cPrice ?: existing.ml3cPrice,
                             ml6cPrice   = r.ml6cPrice ?: existing.ml6cPrice,
                             autoPricing = existing.autoPricing,
-                            quantity    = (existing.quantity) + (r.quantity),
+                            quantity    = (existing.quantity) + (r.quantity ?: 0),
                             description = r.description ?: existing.description,
                             imageUrl    = r.imageUrl ?: existing.imageUrl,
                             imageUrls   = if (r.imageUrls.isEmpty()) existing.imageUrls else r.imageUrls,
@@ -217,7 +225,7 @@ class ProductCsvImporter(
                         ml3cPrice = r.ml3cPrice,
                         ml6cPrice = r.ml6cPrice,
                     autoPricing = false,
-                    quantity = r.quantity,
+                    quantity = r.quantity ?: 0,
                     description = r.description,
                     imageUrl = r.imageUrl,
                     imageUrls = r.imageUrls,
@@ -282,9 +290,10 @@ class ProductCsvImporter(
                     break
                 }
 
+                val lineNumber = lineIdx + 2
                 val name = idx.get(row, "name", aliases = listOf("nombre", "product", "producto"))
-                    ?.takeIf { it.isNotBlank() }
-                    ?: continue
+                    ?.trim()
+                    .orEmpty()
 
                 val code = idx.get(row, "code", aliases = listOf("codigo_interno", "sku"))?.ifBlank { null }
                 val barcode = idx.get(row, "barcode", aliases = listOf("codigo", "código", "ean", "upc", "sku"))?.ifBlank { null }
@@ -324,9 +333,9 @@ class ProductCsvImporter(
                     aliases = listOf("precio_ml_6c", "price_ml_6c")
                 )?.let { parseDecimal(it) }
 
-                val quantity = parseIntValue(
-                    idx.get(row, "quantity", aliases = listOf("qty", "stock", "cantidad"))
-                ) ?: 0
+                val quantityRaw = idx.get(row, "quantity", aliases = listOf("qty", "stock", "cantidad"))
+                val parsedQuantity = parseIntValue(quantityRaw)
+                val hasInvalidQuantity = quantityRaw?.trim()?.isNotBlank() == true && parsedQuantity == null
 
                 val description = idx.get(row, "description", aliases = listOf("descripcion", "desc"))?.ifBlank { null }
                 val imageUrl = idx.get(
@@ -377,22 +386,30 @@ class ProductCsvImporter(
                     aliases = listOf("estado_publicacion", "publish_status")
                 )?.trim()?.lowercase()?.takeIf { it == "published" || it == "draft" } ?: "draft"
 
-                val markedAsUpdate = parseUpdateMarker(
-                    idx.get(
-                        row,
+                val updateMarkerRaw = idx.get(
+                    row,
+                    "actualizar_stock",
+                    aliases = listOf(
                         "actualizacion",
-                        aliases = listOf("actualización", "update", "is_update", "actualizar")
+                        "actualización",
+                        "update",
+                        "is_update",
+                        "actualizar"
                     )
                 )
+                val updateMarker = StockUpdateMarkerParser.parse(updateMarkerRaw)
 
                 val updatedAt = idx.get(row, "updated_at", aliases = listOf("actualizado", "fecha"))
                     ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
                 rows += Row(
+                    lineNumber = lineNumber,
                     code = code,
                     barcode = barcode,
                     name = name,
-                    quantity = if (quantity < 0) 0 else quantity,
+                    quantity = parsedQuantity,
+                    quantityRaw = quantityRaw,
+                    hasInvalidQuantity = hasInvalidQuantity,
                     purchasePrice = purchasePrice,
                     listPrice = listPrice,
                     cashPrice = cashPrice,
@@ -413,16 +430,13 @@ class ProductCsvImporter(
                     sizes = sizes,
                     minStock = minStock,
                     publicStatus = publicStatus,
-                    markedAsUpdate = markedAsUpdate,
+                    updateStockRequested = updateMarker.requested,
+                    updateStockMarkerValid = updateMarker.valid,
+                    updateStockMarkerRaw = updateMarker.normalizedValue,
                     updatedAt = updatedAt
                 )
             }
             return rows
-        }
-
-        private fun parseUpdateMarker(raw: String?): Boolean {
-            val value = raw?.trim()?.lowercase() ?: return false
-            return value == "x" || value == "1" || value == "si" || value == "sí" || value == "true"
         }
 
         private fun parseDecimal(raw: String?): Double? {

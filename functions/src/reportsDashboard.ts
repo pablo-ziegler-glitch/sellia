@@ -99,7 +99,7 @@ export const USAGE_CURRENT_DOC_ID = "current";
 export const USAGE_DAILY_SNAPSHOTS_COLLECTION = "dailySnapshots";
 export const ALERT_THRESHOLDS = [70, 90, 100];
 
-const ADMIN_ROLES = new Set(["admin", "owner"]);
+const ADMIN_ROLES = new Set(["owner"]);
 
 const METRIC_FLAT_KEY_MAP: Record<string, string> = {
   "firestore.googleapis.com/document/read_count": "firestore_reads",
@@ -972,7 +972,7 @@ export const createGetTenantCostDashboardHandler =
       throw new functions.https.HttpsError("permission-denied", "tenant inválido para el usuario");
     }
 
-    if (!isSuperAdmin && !["owner", "admin", "manager"].includes(userRole)) {
+    if (!isSuperAdmin && userRole !== "owner") {
       throw new functions.https.HttpsError("permission-denied", "sin permisos para ver costos");
     }
 

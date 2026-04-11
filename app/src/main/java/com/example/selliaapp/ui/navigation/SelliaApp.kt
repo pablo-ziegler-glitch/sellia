@@ -204,7 +204,7 @@ fun SelliaApp(
         buildAccountSummary(authState, accessState)
     }
     val role = accessState.role
-    val isClientFinal = role == AppRole.VIEWER
+    val isClientFinal = false
     val navigationUsageStore = remember(context) { NavigationUsageStore(context.applicationContext) }
     val routeCounts by navigationUsageStore.observeRouteCounts().collectAsStateWithLifecycle()
     val roleRouteCounts = remember(role, routeCounts) {
@@ -227,7 +227,7 @@ fun SelliaApp(
             }
         } + BottomNavItem(
             route = Routes.More.route,
-            label = if (isClientFinal) "Cuenta" else "Más",
+            label = "Más",
             icon = Icons.Default.Menu
         )
     }
@@ -440,7 +440,7 @@ fun SelliaApp(
                 val accessState by accessVm.state.collectAsStateWithLifecycle()
                 UsageAlertsScreen(
                     onBack = { navController.popBackStack() },
-                    canEditLimits = accessState.role == AppRole.ADMIN
+                    canEditLimits = true
                 )
             }
 
@@ -940,7 +940,7 @@ fun SelliaApp(
                     onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
                     onStoreSettings = { navController.navigate(Routes.StoreSettings.route) },
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
-                    showDevelopmentOptions = accessState.role == AppRole.ADMIN,
+                    showDevelopmentOptions = true,
                     onSupport = { navController.navigate(Routes.AppVersion.route) },
                     onOpenBackofficeWeb = { module ->
                         uriHandler.openUri("https://sellia1993.web.app/backoffice/${module.slug}")

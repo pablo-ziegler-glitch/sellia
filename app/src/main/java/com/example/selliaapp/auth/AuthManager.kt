@@ -1,6 +1,5 @@
 package com.example.selliaapp.auth
 
-import com.example.selliaapp.BuildConfig
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
@@ -109,7 +108,7 @@ class AuthManager @Inject constructor(
             val user = result.user ?: throw IllegalStateException("No se pudo obtener el usuario")
             showLoading(progress = 0.55f, label = "Recuperando datos de tu tienda...")
             val session = runCatching { fetchSession(user) }
-                .getOrElse { ensurePublicCustomerSession(user, allowOnboardingFallback) }
+                .getOrElse { throw IllegalStateException("No encontramos un perfil dueño válido para esta cuenta.") }
             syncTenantStoreMetadata(session)
             publishAuthenticatedState(session)
             session
@@ -120,87 +119,7 @@ class AuthManager @Inject constructor(
 
     suspend fun completePublicCustomerOnboarding(tenantId: String, tenantName: String?): Result<AuthSession> =
         runCatching {
-            val user = firebaseAuth.currentUser ?: throw IllegalStateException("Sesión no disponible")
-            val tenantSnapshot = firestore.collection("tenants").document(tenantId).get().await()
-            if (!tenantSnapshot.exists()) {
-                throw IllegalArgumentException("La tienda seleccionada no existe")
-            }
-            val tenantStatus = tenantSnapshot.getString("status")?.trim()?.lowercase(Locale.ROOT)
-            if (!tenantStatus.isNullOrBlank() && tenantStatus != "active") {
-                throw IllegalStateException("La tienda seleccionada no está activa en este momento")
-            }
-
-            val createdAt = FieldValue.serverTimestamp()
-            val normalizedEmail = (user.email ?: "").trim().lowercase(Locale.ROOT)
-            val displayName = (user.displayName ?: "").trim()
-
-            val userRef = firestore.collection("users").document(user.uid)
-            val userSnapshot = userRef.get().await()
-            val currentTenantId = userSnapshot.getString("tenantId")
-            @Suppress("UNCHECKED_CAST")
-            val existingTenantIds = (userSnapshot.get("tenantIds") as? List<*>)
-                ?.mapNotNull { it as? String }
-                ?.map { it.trim() }
-                ?.filter { it.isNotBlank() }
-                .orEmpty()
-            val mergedTenantIds = (existingTenantIds + listOfNotNull(currentTenantId?.trim(), tenantId.trim()))
-                .filter { it.isNotBlank() }
-                .distinct()
-
-            userRef
-                .set(
-                    mapOf(
-                        "tenantId" to tenantId,
-                        "tenantIds" to mergedTenantIds,
-                        "email" to normalizedEmail,
-                        "role" to "viewer",
-                        "accountType" to "final_customer",
-                        "status" to "active",
-                        "displayName" to displayName,
-                        "selectedCatalogTenantId" to tenantId,
-                        "followedTenantIds" to mergedTenantIds,
-                        "updatedAt" to createdAt
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
-
-            firestore.collection("tenant_users")
-                .document("${tenantId}_${normalizedEmail}")
-                .set(
-                    mapOf(
-                        "tenantId" to tenantId,
-                        "name" to displayName,
-                        "email" to normalizedEmail,
-                        "role" to "viewer",
-                        "isActive" to true,
-                        "updatedAt" to createdAt
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
-
-            firestore.collection("account_requests")
-                .document(user.uid)
-                .set(
-                    mapOf(
-                        "uid" to user.uid,
-                        "email" to (user.email ?: ""),
-                        "accountType" to "final_customer",
-                        "status" to "active",
-                        "tenantId" to tenantId,
-                        "tenantName" to tenantName.orEmpty(),
-                        "contactName" to displayName,
-                        "createdAt" to createdAt,
-                        "updatedAt" to createdAt
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
-
-            val session = fetchSession(user)
-            publishAuthenticatedState(session)
-            session
+            throw IllegalStateException("El onboarding de cliente final está deshabilitado en esta app.")
         }.onFailure {
             _state.value = AuthState.PartiallyAuthenticated(
                 session = pendingSessionFromCurrentUser(),
@@ -427,20 +346,6 @@ class AuthManager @Inject constructor(
         val resolvedTenantId = selectedTenantId ?: availableTenants.firstOrNull()?.id
 
         if (resolvedTenantId == null) {
-            val role = snapshot.getString("role")?.trim()?.lowercase(Locale.ROOT)
-            val accountType = snapshot.getString("accountType")?.trim()?.lowercase(Locale.ROOT)
-            if (role == "viewer" || accountType == "final_customer" || accountType == "public_customer") {
-                _state.value = AuthState.PartiallyAuthenticated(
-                    session = PendingAuthSession(
-                        uid = user.uid,
-                        email = user.email,
-                        displayName = user.displayName,
-                        photoUrl = user.photoUrl?.toString(),
-                        availableTenants = availableTenants
-                    ),
-                    requiredAction = RequiredAuthAction.SELECT_TENANT
-                )
-            }
             throw MissingTenantContextException()
         }
 
@@ -457,35 +362,8 @@ class AuthManager @Inject constructor(
     }
 
     private suspend fun ensurePublicCustomerSession(user: FirebaseUser, allowOnboardingFallback: Boolean): AuthSession {
-        showLoading(progress = 0.82f, label = "Preparando alta de cliente...")
-        val existing = runCatching { fetchSession(user) }.getOrNull()
-        if (existing != null) return existing
-
-        if (!allowOnboardingFallback) {
-            firebaseAuth.signOut()
-            throw IllegalStateException("No encontramos tu perfil. Registrate con Google para crear tu cuenta.")
-        }
-
-        val globalPublicTenantId = BuildConfig.GLOBAL_PUBLIC_CUSTOMER_TENANT_ID.trim()
-        if (globalPublicTenantId.isNotBlank()) {
-            val tenantSnapshot = firestore.collection("tenants").document(globalPublicTenantId).get().await()
-            if (!tenantSnapshot.exists()) {
-                throw IllegalStateException(
-                    "GLOBAL_PUBLIC_CUSTOMER_TENANT_ID apunta a un tenant inexistente. Configuralo correctamente."
-                )
-            }
-        }
-
-        _state.value = AuthState.PartiallyAuthenticated(
-            session = PendingAuthSession(
-                uid = user.uid,
-                email = user.email,
-                displayName = user.displayName,
-                photoUrl = user.photoUrl?.toString()
-            ),
-            requiredAction = RequiredAuthAction.SELECT_TENANT
-        )
-        throw MissingTenantContextException()
+        firebaseAuth.signOut()
+        throw IllegalStateException("El acceso de cliente final fue deshabilitado. Solo se permiten cuentas de dueño.")
     }
 
     private suspend fun validateTenantIsActiveOrThrow(tenantId: String) {

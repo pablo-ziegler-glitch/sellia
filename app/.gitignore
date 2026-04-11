@@ -30,8 +30,10 @@ obj/
 
 # Firebase/Google (opcional según tu política)
 # Si tu app usa Firebase, normalmente se COMITEA google-services.json para compilar.
-# Si preferís no publicarlo, descomentá la línea siguiente:
-app/google-services.json
+# Si preferís no publicarlo, usá estas líneas:
+google-services.json
+src/debug/google-services.json
+src/release/google-services.json
 
 # Fastlane, etc.
 fastlane/report.xml

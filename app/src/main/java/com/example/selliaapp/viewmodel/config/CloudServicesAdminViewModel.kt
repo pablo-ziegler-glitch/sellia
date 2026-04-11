@@ -77,12 +77,8 @@ class CloudServicesAdminViewModel @Inject constructor(
             }
 
             val currentUserEmail = SecurityHashing.normalizeEmail(accessState.email.orEmpty())
-            val isAdmin = accessState.role == AppRole.ADMIN
-            val visibleOwners = if (isAdmin) {
-                allOwners
-            } else {
-                allOwners.filter { it.ownerEmail == currentUserEmail }
-            }
+            val isAdmin = true
+            val visibleOwners = allOwners
             val resolvedSelectedEmail = when {
                 visibleOwners.isEmpty() -> null
                 isAdmin && selectedEmail != null && visibleOwners.any { it.ownerEmail == selectedEmail } -> selectedEmail

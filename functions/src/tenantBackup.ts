@@ -145,7 +145,7 @@ export const createRequestTenantBackupHandler = ({
       tenantId,
       context,
       userData,
-      allowedRoles: ["owner", "admin"],
+      allowedRoles: ["owner"],
       allowSuperAdmin: true,
       logSecurityEvent,
     });
@@ -236,7 +236,7 @@ export const createRequestTenantRestoreHandler = ({
       tenantId,
       context,
       userData: callerData,
-      allowedRoles: ["owner", "admin"],
+      allowedRoles: ["owner"],
       allowSuperAdmin: true,
       logSecurityEvent,
     });

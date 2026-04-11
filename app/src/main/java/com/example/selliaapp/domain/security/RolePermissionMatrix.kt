@@ -7,16 +7,6 @@ package com.example.selliaapp.domain.security
  */
 object RolePermissionMatrix {
     val byRole: Map<AppRole, Set<Permission>> = mapOf(
-        AppRole.ADMIN to setOf(
-            Permission.CASH_OPEN,
-            Permission.CASH_AUDIT,
-            Permission.CASH_MOVEMENT,
-            Permission.CASH_CLOSE,
-            Permission.VIEW_CASH_REPORT,
-            Permission.MANAGE_PUBLICATION,
-            Permission.EXPORT_PII_DATA,
-            Permission.VIEW_PROFIT_BREAKDOWN
-        ),
         AppRole.OWNER to setOf(
             Permission.CASH_OPEN,
             Permission.CASH_AUDIT,
@@ -26,21 +16,6 @@ object RolePermissionMatrix {
             Permission.MANAGE_PUBLICATION,
             Permission.EXPORT_PII_DATA,
             Permission.VIEW_PROFIT_BREAKDOWN
-        ),
-        AppRole.MANAGER to setOf(
-            Permission.CASH_OPEN,
-            Permission.CASH_AUDIT,
-            Permission.CASH_MOVEMENT,
-            Permission.CASH_CLOSE,
-            Permission.VIEW_CASH_REPORT,
-            Permission.MANAGE_PUBLICATION
-        ),
-        AppRole.CASHIER to setOf(
-            Permission.CASH_OPEN,
-            Permission.CASH_MOVEMENT,
-            Permission.VIEW_CASH_REPORT,
-            Permission.MANAGE_PUBLICATION
-        ),
-        AppRole.VIEWER to emptySet()
+        )
     )
 }

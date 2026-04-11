@@ -31,6 +31,21 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { hasRouteAccess, isInternalRole, normalizeInternalRole, rolePermissions } from "./permissions.js";
 
+const ADMIN_WEB_DISABLED = true;
+if (ADMIN_WEB_DISABLED) {
+  const disabledMessage = document.createElement("main");
+  disabledMessage.className = "layout";
+  disabledMessage.innerHTML = `
+    <section class="auth-panel">
+      <h1>Backoffice web deshabilitado</h1>
+      <p class="muted">La configuración y administración se realiza únicamente desde la app interna.</p>
+    </section>
+  `;
+  document.body.innerHTML = "";
+  document.body.appendChild(disabledMessage);
+  throw new Error("Admin web disabled by owner-only policy");
+}
+
 const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
 const TOKEN_REFRESH_MS = 50 * 60 * 1000;
 // Límite absoluto de sesión. El admin puede configurarlo en Firestore
@@ -455,7 +470,7 @@ async function syncRouteWithPermissions() {
   }
 
   const canManageBackups = ["owner", "admin"].includes(appState.profile.role);
-  const canViewCosts = ["owner", "admin", "manager"].includes(appState.profile.role);
+  const canViewCosts = ["owner"].includes(appState.profile.role);
   const isCloudServicesRoute = currentRoute === "#/settings/cloud-services";
   const isStoreRoute = currentRoute === "#/settings/store";
   el.backupPanel.hidden = !(canManageBackups && isCloudServicesRoute);

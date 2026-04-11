@@ -27,5 +27,5 @@ export const getDefaultRuntimeFlags = (): RuntimeFlagsSnapshot => ({
   [RuntimeFlagKeys.PAYMENTS_ROUTES]: true,
   [RuntimeFlagKeys.CATALOG_ROUTES]: true,
   [RuntimeFlagKeys.ANALYTICS_ROUTES]: true,
-  [RuntimeFlagKeys.ADMIN_ROUTES]: true,
+  [RuntimeFlagKeys.ADMIN_ROUTES]: false,
 });
