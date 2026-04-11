@@ -149,7 +149,7 @@ fun BulkDataScreen(
             uri = uri,
             strategy = ProductRepository.ImportStrategy.Append
         ) { result ->
-            ImportErrorReportStore.save(context, ImportErrorReportStore.Scope.PRODUCTS, fileName, result.errors)
+            ImportErrorReportStore.save(context, ImportErrorReportStore.Scope.PRODUCTS, fileName, result)
             showMessage(result.toUserMessage(fileName))
         }
     }
@@ -171,11 +171,41 @@ fun BulkDataScreen(
     }
 
     val totalPicker = rememberImportLauncher(context) { uri ->
+        val fileName = queryDisplayName(uri)
         bulkViewModel.importAll(context, uri) { result ->
             result.fold(
                 onSuccess = { summary ->
-                    ImportErrorReportStore.save(context, ImportErrorReportStore.Scope.TOTAL, queryDisplayName(uri), summary.errors)
+                    ImportErrorReportStore.save(
+                        context,
+                        ImportErrorReportStore.Scope.TOTAL,
+                        fileName,
+                        summary.errors,
+                        summary.rowIssues
+                    )
                     showMessage(summary.message)
+                    if (summary.normalizedBackupCsv != null) {
+                        val normalizedName = buildString {
+                            val base = fileName?.substringBeforeLast(".") ?: "exportacion_total"
+                            append(base)
+                            append("_normalizado_")
+                            append(System.currentTimeMillis())
+                            append(".csv")
+                        }
+                        val normalizedUri = exportContentToDownloads(
+                            context = context,
+                            fileName = normalizedName,
+                            mimeType = "text/csv",
+                            content = summary.normalizedBackupCsv
+                        )
+                        if (normalizedUri != null) {
+                            showMessage("Se generó backup normalizado: $normalizedName")
+                        } else {
+                            showMessage("No se pudo guardar el backup normalizado con columnas faltantes.")
+                        }
+                    }
+                    summary.normalizationNotes.forEach { note ->
+                        showMessage(note)
+                    }
                     if (summary.errors.isNotEmpty()) {
                         showMessage("Se detectaron ${summary.errors.size} errores en la importación total.")
                     }

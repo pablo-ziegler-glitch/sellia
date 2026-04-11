@@ -220,12 +220,19 @@ Desde la pantalla **Cargas masivas** podés generar archivos CSV con los datos a
 
 Los CSV exportados respetan los encabezados de las plantillas actuales para facilitar reimportaciones o análisis externos.
 
+### Regla de importación de stock para productos existentes
+- La columna `actualizar_stock` controla si una fila que coincide con un producto existente puede modificar existencias.
+- Valores válidos para actualizar stock: `1`, `true`, `si`, `sí`, `x`, `update`, `stock`.
+- Si el producto ya existe y `actualizar_stock` no está marcado (o es inválido), la fila se rechaza y queda en el reporte de importación.
+- Si el producto no existe, se crea normalmente aunque `actualizar_stock` esté vacío.
+
 ### Exportación total e importación total
 También podés generar un CSV único con todas las entidades y reimportarlo:
 1. En **Cargas masivas**, usá **Exportar** en la tarjeta **Exportación total**.
 2. Para restaurar, usá **Importar** en esa misma tarjeta y seleccioná el CSV total.
 
 La importación total agrega registros de forma segura (no elimina datos existentes) y procesa productos, clientes, ventas y gastos.
+Si el backup viene en un formato anterior y faltan columnas nuevas (por ejemplo `actualizar_stock`), el importador mantiene retrocompatibilidad y genera automáticamente un archivo total **normalizado** en Descargas con las columnas agregadas.
 
 ## 🚀 Build de release
 Generar un APK de release (requiere configuración de signing):

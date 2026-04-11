@@ -24,12 +24,15 @@ object ProductCsvExporter {
         "sizes",
         "provider_sku",
         "min_stock",
+        "actualizar_stock",
         "description",
         "image_url",
         "image_urls",
         "public_status",
         "updated_at"
     )
+
+    fun headerColumns(): List<String> = header
 
     fun export(products: List<ProductEntity>): String {
         return buildString {
@@ -59,6 +62,7 @@ object ProductCsvExporter {
                             product.sizes.joinToString("|"),
                             product.providerSku,
                             product.minStock?.toString(),
+                            "",
                             product.description,
                             product.imageUrl,
                             imageUrls,

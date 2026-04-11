@@ -11,8 +11,10 @@ import com.example.selliaapp.data.csv.ProductCsvExporter
 import com.example.selliaapp.data.csv.SalesCsvExporter
 import com.example.selliaapp.data.csv.SalesCsvImporter
 import com.example.selliaapp.data.csv.TotalCsvBundle
+import com.example.selliaapp.data.csv.TotalCsvCompatibility
 import com.example.selliaapp.data.dao.InvoiceDao
 import com.example.selliaapp.data.model.ImportResult
+import com.example.selliaapp.data.model.ImportRowIssue
 import com.example.selliaapp.di.IoDispatcher
 import com.example.selliaapp.domain.security.Permission
 import com.example.selliaapp.repository.AccessControlRepository
@@ -49,7 +51,10 @@ class BulkDataViewModel @Inject constructor(
 
     data class TotalImportSummary(
         val message: String,
-        val errors: List<String>
+        val errors: List<String>,
+        val rowIssues: List<ImportRowIssue> = emptyList(),
+        val normalizedBackupCsv: String? = null,
+        val normalizationNotes: List<String> = emptyList()
     )
 
     fun importCustomers(
@@ -181,13 +186,15 @@ class BulkDataViewModel @Inject constructor(
                 val content = context.contentResolver.openInputStream(uri)?.use { stream ->
                     String(stream.readBytes())
                 } ?: ""
-                val parseResult = TotalCsvBundle.splitSections(content)
+                val normalized = TotalCsvCompatibility.normalizeForImport(content)
+                val parseResult = TotalCsvBundle.splitSections(normalized.content)
                 val sections = parseResult.sections
                 val errors = mutableListOf<String>()
                 var productsResult: ImportResult? = null
                 var customersResult: ImportResult? = null
                 var expensesResult: ImportResult? = null
                 var salesInserted = 0
+                val rowIssues = mutableListOf<ImportRowIssue>()
 
                 sections[TotalCsvBundle.PRODUCTS]?.takeIf { it.isNotBlank() }?.let { csv ->
                     val table = CsvUtils.readAll(ByteArrayInputStream(csv.toByteArray()))
@@ -196,6 +203,7 @@ class BulkDataViewModel @Inject constructor(
                         ProductRepository.ImportStrategy.Append
                     )
                     errors += productsResult?.errors.orEmpty()
+                    rowIssues += productsResult?.rowIssues.orEmpty()
                 }
 
                 sections[TotalCsvBundle.CUSTOMERS]?.takeIf { it.isNotBlank() }?.let { csv ->
@@ -230,7 +238,13 @@ class BulkDataViewModel @Inject constructor(
                         append(" Ventas: $salesInserted.")
                     }
                 }
-                TotalImportSummary(message = message, errors = errors)
+                TotalImportSummary(
+                    message = message,
+                    errors = errors,
+                    rowIssues = rowIssues,
+                    normalizedBackupCsv = normalized.content.takeIf { normalized.changed },
+                    normalizationNotes = normalized.notes
+                )
             }
             withContext(Dispatchers.Main) {
                 onCompleted(result)
