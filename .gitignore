@@ -19,3 +19,8 @@ functions/lib/
 web/node_modules/
 web/.next/
 web/out/
+
+# Firebase config local (Android)
+app/google-services.json
+app/src/debug/google-services.json
+app/src/release/google-services.json

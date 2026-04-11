@@ -7,17 +7,17 @@ import org.junit.Test
 class AccessControlRepositoryImplRoleResolutionTest {
 
     @Test
-    fun `uses firestore role over local role when both exist`() {
+    fun `forces owner role even when firestore says admin`() {
         val resolved = AccessControlRepositoryImpl.resolveEffectiveRole(
             isConfiguredAdmin = false,
             localRole = AppRole.OWNER,
             localUserIsActive = true,
-            firestoreRole = AppRole.ADMIN,
+            firestoreRole = AppRole.OWNER,
             totalUsers = 3,
             hasAuthenticatedEmail = true
         )
 
-        assertEquals(AppRole.ADMIN, resolved)
+        assertEquals(AppRole.OWNER, resolved)
     }
 
     @Test
@@ -35,16 +35,16 @@ class AccessControlRepositoryImplRoleResolutionTest {
     }
 
     @Test
-    fun `keeps admin active by default even if local user is inactive`() {
+    fun `keeps owner role when local user is inactive`() {
         val resolved = AccessControlRepositoryImpl.resolveEffectiveRole(
             isConfiguredAdmin = false,
-            localRole = AppRole.ADMIN,
+            localRole = AppRole.OWNER,
             localUserIsActive = false,
             firestoreRole = null,
             totalUsers = 5,
             hasAuthenticatedEmail = true
         )
 
-        assertEquals(AppRole.ADMIN, resolved)
+        assertEquals(AppRole.OWNER, resolved)
     }
 }

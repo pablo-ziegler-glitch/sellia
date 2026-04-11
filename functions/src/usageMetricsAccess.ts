@@ -1,6 +1,6 @@
 import * as functions from "firebase-functions";
 
-const TENANT_METRICS_ROLES = new Set(["owner", "admin", "manager"]);
+const TENANT_METRICS_ROLES = new Set(["owner"]);
 
 type UserProfile = {
   role?: unknown;
@@ -49,7 +49,7 @@ export const authorizeUsageMetricsAccess = (
   if (!TENANT_METRICS_ROLES.has(role) && !isSuperAdmin) {
     throw new functions.https.HttpsError(
       "permission-denied",
-      "Solo owner/admin/manager pueden acceder a métricas"
+      "Solo owner puede acceder a métricas"
     );
   }
 
@@ -83,4 +83,3 @@ export const authorizeUsageMetricsAccess = (
     requestedTenantId: "",
   };
 };
-

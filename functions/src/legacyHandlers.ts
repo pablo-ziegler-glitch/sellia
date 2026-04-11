@@ -2038,8 +2038,7 @@ export const publicCatalog = functions
 
 type TenantOwnershipAction =
   | "ASSOCIATE_OWNER"
-  | "TRANSFER_PRIMARY_OWNER"
-  | "DELEGATE_STORE";
+  | "TRANSFER_PRIMARY_OWNER";
 
 type ManageTenantOwnershipPayload = {
   tenantId?: unknown;
@@ -2391,7 +2390,7 @@ const normalizeEmail = (value: unknown): string =>
 
 const isAdminRole = (role: unknown): boolean => {
   const normalized = normalizeString(role).toLowerCase();
-  return normalized === "admin" || normalized === "owner";
+  return normalized === "owner";
 };
 
 const toBoolean = (value: unknown): boolean => {
@@ -2668,7 +2667,7 @@ const resolveTargetUserId = async (
 const upsertTenantUserMembership = async (
   tenantId: string,
   uid: string,
-  role: "owner" | "manager"
+  role: "owner"
 ): Promise<void> => {
   const userRef = db.collection("users").doc(uid);
   const tenantUserRef = db.collection("tenant_users").doc(`${tenantId}_${uid}`);
@@ -2745,7 +2744,6 @@ export const manageTenantOwnership = functions
     const allowedActions: TenantOwnershipAction[] = [
       "ASSOCIATE_OWNER",
       "TRANSFER_PRIMARY_OWNER",
-      "DELEGATE_STORE",
     ];
     if (!allowedActions.includes(action)) {
       throw new functions.https.HttpsError("invalid-argument", "action inválida");
@@ -2775,12 +2773,12 @@ export const manageTenantOwnership = functions
     const hasAdminClaim =
       isGlobalAdminActor ||
       context.auth.token.admin === true ||
-      context.auth.token.role === "admin";
+      context.auth.token.role === "owner";
 
     if (!hasAdminClaim && (!isAdminRole(callerRole) || callerTenantId !== tenantId)) {
       throw new functions.https.HttpsError(
         "permission-denied",
-        "Solo admin/owner del tenant puede gestionar titularidad"
+        "Solo owner del tenant puede gestionar titularidad"
       );
     }
 
@@ -2828,10 +2826,6 @@ export const manageTenantOwnership = functions
         );
       }
 
-      if (action === "DELEGATE_STORE") {
-        delegatedStoreUids.add(targetUid);
-      }
-
       tx.set(
         tenantRef,
         {
@@ -2860,11 +2854,7 @@ export const manageTenantOwnership = functions
       };
     });
 
-    if (action === "DELEGATE_STORE") {
-      await upsertTenantUserMembership(tenantId, targetUid, "manager");
-    } else {
-      await upsertTenantUserMembership(tenantId, targetUid, "owner");
-    }
+    await upsertTenantUserMembership(tenantId, targetUid, "owner");
 
     const visibility = buildRoleScopedOwnershipResponse(
       {
@@ -3330,7 +3320,7 @@ const userCanRequestTenantBackup = (
   }
 
   const userRole = normalizeString(userData.role).toLowerCase();
-  return userRole === "owner" || userRole === "admin";
+  return userRole === "owner";
 };
 
 const _tenantBackupHandlersDeps = {
@@ -3440,7 +3430,7 @@ export const getTenantOnboardingPolicy = functions
       callerUserDoc.get("isSuperAdmin") === true ||
       callerUserDoc.get("isAdmin") === true;
 
-    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
+    if (!isSuperAdmin && role !== "owner") {
       throw new functions.https.HttpsError("permission-denied", "Acceso restringido");
     }
 
@@ -3476,8 +3466,8 @@ export const setTenantOnboardingPolicy = functions
       context.auth.token.superAdmin === true ||
       callerUserDoc.get("isSuperAdmin") === true;
 
-    if (!isSuperAdmin && !["owner", "admin"].includes(role)) {
-      throw new functions.https.HttpsError("permission-denied", "Solo owner/admin/superAdmin puede cambiar política");
+    if (!isSuperAdmin && role !== "owner") {
+      throw new functions.https.HttpsError("permission-denied", "Solo owner/superAdmin puede cambiar política");
     }
 
     await db
@@ -3789,7 +3779,7 @@ export const setMercadoPagoToggle = functions
     const hasAdminClaim =
       context.auth.token.superAdmin === true ||
       context.auth.token.admin === true ||
-      context.auth.token.role === "admin";
+      context.auth.token.role === "owner";
 
     if (scope === "global" && !hasAdminClaim) {
       throw new functions.https.HttpsError(
@@ -3802,7 +3792,7 @@ export const setMercadoPagoToggle = functions
       if (!isAdminRole(callerRole) || callerTenantId !== tenantId) {
         throw new functions.https.HttpsError(
           "permission-denied",
-          "solo admin/owner del tenant puede cambiar el flag"
+          "solo owner del tenant puede cambiar el flag"
         );
       }
     }
@@ -4048,10 +4038,7 @@ export const setStoreDomain = functions
     const userTenantId = normalizeString(userData.tenantId);
     const userRole = normalizeString(userData.role).toLowerCase();
 
-    if (
-      !isSuperAdmin &&
-      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
-    ) {
+    if (!isSuperAdmin && (userTenantId !== tenantId || userRole !== "owner")) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "sin permisos sobre este tenant"
@@ -4153,10 +4140,7 @@ export const removeStoreDomain = functions
     const userTenantId = normalizeString(userData.tenantId);
     const userRole = normalizeString(userData.role).toLowerCase();
 
-    if (
-      !isSuperAdmin &&
-      (userTenantId !== tenantId || !["owner", "admin"].includes(userRole))
-    ) {
+    if (!isSuperAdmin && (userTenantId !== tenantId || userRole !== "owner")) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "sin permisos sobre este tenant"

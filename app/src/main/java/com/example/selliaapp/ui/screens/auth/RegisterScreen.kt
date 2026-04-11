@@ -50,15 +50,12 @@ fun RegisterScreen(
         String?,
         RegisterMode
     ) -> Unit,
-    onGoogleSignInClick: () -> Unit,
     onLoginClick: () -> Unit
 ) {
     var storeName by remember { mutableStateOf("") }
     var storeAddress by remember { mutableStateOf("") }
     var storePhone by remember { mutableStateOf("") }
     var skuPrefix by remember { mutableStateOf("") }
-    var customerName by remember { mutableStateOf("") }
-    var customerPhone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var modeExpanded by remember { mutableStateOf(false) }
@@ -143,23 +140,6 @@ fun RegisterScreen(
                 singleLine = true
             )
             Spacer(modifier = Modifier.height(12.dp))
-        } else if (mode == RegisterMode.FINAL_CUSTOMER) {
-            OutlinedTextField(
-                value = customerName,
-                onValueChange = { customerName = it },
-                label = { Text("Nombre y apellido") },
-                enabled = !isLoading,
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = customerPhone,
-                onValueChange = { customerPhone = it },
-                label = { Text("Teléfono celular (opcional)") },
-                enabled = !isLoading,
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(12.dp))
         }
         OutlinedTextField(
             value = email,
@@ -201,9 +181,6 @@ fun RegisterScreen(
                     storePhone.isNotBlank() &&
                     (skuPrefix.isBlank() || skuPrefix.length >= 3)
 
-            RegisterMode.FINAL_CUSTOMER ->
-                customerName.isNotBlank()
-
             RegisterMode.UNSELECTED -> false
         }
 
@@ -218,8 +195,8 @@ fun RegisterScreen(
                     skuPrefix.trim(),
                     null,
                     null,
-                    customerName.trim(),
-                    customerPhone.takeIf { it.isNotBlank() }?.trim(),
+                    "",
+                    null,
                     mode
                 )
             },
@@ -229,15 +206,6 @@ fun RegisterScreen(
                 canSubmit
         ) {
             Text(if (isLoading) "Creando..." else "Crear cuenta")
-        }
-        if (mode == RegisterMode.FINAL_CUSTOMER) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = { onGoogleSignInClick() },
-                enabled = !isLoading
-            ) {
-                Text("Crear con Google")
-            }
         }
         Spacer(modifier = Modifier.height(12.dp))
         TextButton(onClick = onLoginClick, enabled = !isLoading) {

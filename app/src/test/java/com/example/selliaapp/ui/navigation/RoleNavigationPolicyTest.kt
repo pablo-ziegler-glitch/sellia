@@ -25,14 +25,14 @@ class RoleNavigationPolicyTest {
     }
 
     @Test
-    fun `cashier menu keeps three primary flows`() {
+    fun `owner menu keeps three primary flows`() {
         val result = RoleNavigationPolicy.primaryRoutesForRole(
-            role = AppRole.CASHIER,
+            role = AppRole.OWNER,
             usageByRoute = mapOf(Routes.Stock.route to 12, Routes.Pos.route to 40)
         )
 
         assertEquals(
-            listOf(Routes.Home.route, Routes.Pos.route, Routes.Stock.route),
+            listOf(Routes.Home.route, Routes.Pos.route, Routes.Stock.route, Routes.ClientsHub.route),
             result
         )
     }

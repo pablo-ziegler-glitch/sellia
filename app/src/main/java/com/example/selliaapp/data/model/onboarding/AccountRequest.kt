@@ -1,12 +1,11 @@
 package com.example.selliaapp.data.model.onboarding
 
 enum class AccountRequestType(val raw: String, val label: String) {
-    FINAL_CUSTOMER("final_customer", "Cliente final"),
     STORE_OWNER("store_owner", "Dueño tienda");
 
     companion object {
         fun fromRaw(value: String?): AccountRequestType =
-            entries.firstOrNull { it.raw == value } ?: FINAL_CUSTOMER
+            entries.firstOrNull { it.raw == value } ?: STORE_OWNER
     }
 }
 

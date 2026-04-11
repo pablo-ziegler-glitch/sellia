@@ -4,7 +4,7 @@ export type PiiSensitivity = "direct" | "quasi" | "sensitive" | "operational";
 
 export type PiiVisibility = "full" | "partial" | "masked";
 
-export type PiiRole = "owner" | "admin" | "manager" | "cashier" | "support" | "auditor";
+export type PiiRole = "owner" | "support" | "auditor";
 
 type FieldRule = {
   sensitivity: PiiSensitivity;
@@ -17,51 +17,51 @@ export const PII_FIELD_RULES: Record<PiiDomain, Record<string, FieldRule>> = {
     email: {
       sensitivity: "direct",
       defaultVisibility: "partial",
-      byRole: { owner: "full", admin: "full", auditor: "partial" },
+      byRole: { owner: "full", auditor: "partial" },
     },
     phone: {
       sensitivity: "direct",
       defaultVisibility: "masked",
-      byRole: { owner: "partial", admin: "partial", auditor: "masked" },
+      byRole: { owner: "partial", auditor: "masked" },
     },
     displayName: {
       sensitivity: "quasi",
       defaultVisibility: "partial",
-      byRole: { owner: "full", admin: "full" },
+      byRole: { owner: "full" },
     },
     documentNumber: {
       sensitivity: "sensitive",
       defaultVisibility: "masked",
-      byRole: { owner: "partial", admin: "partial", auditor: "masked" },
+      byRole: { owner: "partial", auditor: "masked" },
     },
   },
   customers: {
     fullName: {
       sensitivity: "direct",
       defaultVisibility: "partial",
-      byRole: { owner: "full", admin: "full", manager: "partial" },
+      byRole: { owner: "full" },
     },
     email: {
       sensitivity: "direct",
       defaultVisibility: "masked",
-      byRole: { owner: "partial", admin: "partial", manager: "masked" },
+      byRole: { owner: "partial" },
     },
     phoneE164: {
       sensitivity: "direct",
       defaultVisibility: "masked",
-      byRole: { owner: "partial", admin: "partial" },
+      byRole: { owner: "partial" },
     },
     documentNumber: {
       sensitivity: "sensitive",
       defaultVisibility: "masked",
-      byRole: { owner: "masked", admin: "masked", auditor: "masked" },
+      byRole: { owner: "masked", auditor: "masked" },
     },
   },
   logs: {
     actorUid: {
       sensitivity: "operational",
       defaultVisibility: "partial",
-      byRole: { owner: "partial", admin: "partial", auditor: "partial" },
+      byRole: { owner: "partial", auditor: "partial" },
     },
     requesterIp: {
       sensitivity: "sensitive",
@@ -71,14 +71,14 @@ export const PII_FIELD_RULES: Record<PiiDomain, Record<string, FieldRule>> = {
     payerEmail: {
       sensitivity: "direct",
       defaultVisibility: "masked",
-      byRole: { owner: "partial", admin: "partial", auditor: "masked" },
+      byRole: { owner: "partial", auditor: "masked" },
     },
   },
   exports: {
     storagePath: {
       sensitivity: "operational",
       defaultVisibility: "masked",
-      byRole: { owner: "partial", admin: "partial", auditor: "masked" },
+      byRole: { owner: "partial", auditor: "masked" },
     },
     signedUrl: {
       sensitivity: "sensitive",

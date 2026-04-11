@@ -53,7 +53,6 @@ fun SelliaRoot(
 
     var isRegistering by rememberSaveable { mutableStateOf(false) }
     var loginEmail by rememberSaveable { mutableStateOf("") }
-    var googleAuthFlow by rememberSaveable { mutableStateOf(GoogleAuthFlow.LOGIN) }
     var activeSessionAlert by remember { mutableStateOf<SessionUiAlert?>(null) }
 
     val context = LocalContext.current
@@ -87,11 +86,7 @@ fun SelliaRoot(
                 if (token.isNullOrBlank()) {
                     authViewModel.reportAuthError("No se pudo obtener el token de Google.")
                 } else {
-                    if (googleAuthFlow == GoogleAuthFlow.REGISTER_FINAL_CUSTOMER) {
-                        registerViewModel.registerWithGoogle(idToken = token)
-                    } else {
-                        authViewModel.signInWithGoogle(token, allowOnboardingFallback = false)
-                    }
+                    authViewModel.signInWithGoogle(token, allowOnboardingFallback = false)
                 }
             }
             .onFailure {
@@ -100,8 +95,7 @@ fun SelliaRoot(
     }
 
     // ✅ Callback NORMAL (no @Composable)
-    val onGoogleSignInClick: (GoogleAuthFlow) -> Unit = { flow ->
-        googleAuthFlow = flow
+    val onGoogleSignInClick: () -> Unit = {
         if (webClientId.isBlank()) {
             authViewModel.reportAuthError("Falta configurar el web client id de Google.")
         } else {
@@ -216,7 +210,6 @@ fun SelliaRoot(
                     mode = registerState.mode,
                     onModeChange = registerViewModel::updateMode,
                     onSubmit = registerViewModel::register,
-                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER) },
                     onLoginClick = {
                         registerViewModel.clearError()
                         isRegistering = false
@@ -229,7 +222,7 @@ fun SelliaRoot(
                     email = loginEmail,
                     onEmailChange = { loginEmail = it },
                     onSubmit = authViewModel::signIn,
-                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.LOGIN) },
+                    onGoogleSignInClick = onGoogleSignInClick,
                     onRegisterClick = { isRegistering = true }
                 )
             }
@@ -244,7 +237,6 @@ fun SelliaRoot(
                     mode = registerState.mode,
                     onModeChange = registerViewModel::updateMode,
                     onSubmit = registerViewModel::register,
-                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.REGISTER_FINAL_CUSTOMER) },
                     onLoginClick = {
                         registerViewModel.clearError()
                         isRegistering = false
@@ -257,15 +249,10 @@ fun SelliaRoot(
                     email = loginEmail,
                     onEmailChange = { loginEmail = it },
                     onSubmit = authViewModel::signIn,
-                    onGoogleSignInClick = { onGoogleSignInClick(GoogleAuthFlow.LOGIN) },
+                    onGoogleSignInClick = onGoogleSignInClick,
                     onRegisterClick = { isRegistering = true }
                 )
             }
         }
     }
-}
-
-private enum class GoogleAuthFlow {
-    LOGIN,
-    REGISTER_FINAL_CUSTOMER
 }

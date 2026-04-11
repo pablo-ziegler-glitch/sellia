@@ -62,7 +62,7 @@ service cloud.firestore {
         userDoc.data.isAdmin == true &&
         userDoc.data.role is string &&
         userDoc.data.status == 'active' &&
-        normalizeRole(userDoc.data.role) in ['admin', 'owner'];
+        normalizeRole(userDoc.data.role) == 'owner';
     }
 
     /**
@@ -166,7 +166,7 @@ service cloud.firestore {
     }
 
     function isAdminRole() {
-      return normalizedRole() in ['owner', 'admin'];
+      return normalizedRole() == 'owner';
     }
 
     function hasTenantAdminSignal() {
@@ -203,14 +203,6 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isSafeSelfSignupPayload() {
-      return request.resource.data.accountType == 'final_customer' &&
-        request.resource.data.role == 'viewer' &&
-        request.resource.data.status == 'active' &&
-        request.resource.data.isAdmin == false &&
-        request.resource.data.isSuperAdmin == false;
-    }
-
     function isOwnerBootstrap(userId) {
       return isOwnUserDoc(userId) &&
         request.resource.data.accountType == 'store_owner' &&
@@ -227,7 +219,7 @@ service cloud.firestore {
         (isAuthenticated() && requesterUserDoc().exists && isTenantAdmin(resource.data.tenantId));
 
       allow create: if hasSuperAdminClaim() ||
-        (isOwnUserDoc(userId) && (isSafeSelfSignupPayload() || isOwnerBootstrap(userId))) ||
+        (isOwnUserDoc(userId) && isOwnerBootstrap(userId)) ||
         (isAuthenticated() && isTenantAdmin(request.resource.data.tenantId));
 
       allow update, delete: if hasSuperAdminClaim() ||
@@ -391,17 +383,17 @@ service cloud.firestore {
       allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag();
     }
 
-    // --- Configuración de plataforma (solo admin/superAdmin) ---
+    // --- Configuración de plataforma (solo owner/superAdmin) ---
     // Contiene configuraciones globales como política de sesión (session.maxSessionHours).
-    // Lectura: cualquier usuario autenticado con rol admin u owner (para cargar política de sesión).
-    // Escritura: solo superAdmin o admin con claim de plataforma.
+    // Lectura: cualquier usuario autenticado con rol owner (para cargar política de sesión).
+    // Escritura: solo superAdmin o owner con claim admin.
     match /platform/{docId} {
       allow read: if isAuthenticated() && (
         hasSuperAdminClaim() || hasSuperAdminUserFlag() ||
-        normalizedRole() in ['admin', 'owner']
+        normalizedRole() == 'owner'
       );
       allow write: if hasSuperAdminClaim() || hasSuperAdminUserFlag() || (
-        isAuthenticated() && normalizedRole() == 'admin' && hasAdminClaim()
+        isAuthenticated() && normalizedRole() == 'owner' && hasAdminClaim()
       );
     }
 

@@ -16,7 +16,6 @@ import javax.inject.Inject
 
 enum class RegisterMode(val label: String) {
     UNSELECTED("Seleccioná tipo de cuenta"),
-    FINAL_CUSTOMER("Cliente final"),
     STORE_OWNER("Dueño tienda")
 }
 
@@ -49,7 +48,7 @@ class RegisterViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 requiresTenantSelectionOnboarding = required,
-                mode = if (required) RegisterMode.FINAL_CUSTOMER else it.mode,
+                mode = if (required) RegisterMode.STORE_OWNER else it.mode,
                 errorMessage = null,
                 successMessage = null
             )
@@ -57,25 +56,7 @@ class RegisterViewModel @Inject constructor(
     }
 
     fun completeTenantSelectionOnboarding(tenantId: String?, tenantName: String?) {
-        if (tenantId.isNullOrBlank()) {
-            _uiState.update { it.copy(errorMessage = "Seleccioná una tienda") }
-            return
-        }
-        _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-        viewModelScope.launch {
-            authManager.completePublicCustomerOnboarding(tenantId, tenantName)
-                .onSuccess {
-                    _uiState.update { it.copy(isLoading = false, requiresTenantSelectionOnboarding = false) }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = AuthErrorMapper.toUserMessage(error, "No se pudo completar el onboarding")
-                        )
-                    }
-                }
-        }
+        _uiState.update { it.copy(errorMessage = "El onboarding de cliente final fue deshabilitado.") }
     }
 
     fun register(
@@ -118,10 +99,6 @@ class RegisterViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Indicá el teléfono comercial") }
             return
         }
-        if (mode == RegisterMode.FINAL_CUSTOMER && customerName.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Ingresá tu nombre") }
-            return
-        }
         _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
         viewModelScope.launch {
             val result = when (mode) {
@@ -133,49 +110,17 @@ class RegisterViewModel @Inject constructor(
                     storePhone = storePhone.trim(),
                     skuPrefix = skuPrefix.trim().ifBlank { null }
                 )
-                RegisterMode.FINAL_CUSTOMER -> onboardingRepository.registerViewer(
-                    email = email.trim(),
-                    password = password,
-                    tenantId = selectedTenantId,
-                    tenantName = selectedTenantName,
-                    customerName = customerName.trim(),
-                    customerPhone = customerPhone?.trim()
-                )
                 RegisterMode.UNSELECTED -> Result.failure(IllegalStateException("Seleccioná el tipo de cuenta"))
             }
             result.onSuccess {
                 authManager.signOut()
-                val successMessage = if (mode == RegisterMode.STORE_OWNER) {
-                    "Cuenta creada. Verificá tu email para continuar; además un administrador debe habilitar tu tienda."
-                } else {
-                    "Cuenta creada. Te enviamos un email de verificación. Confirmalo antes de ingresar."
-                }
+                val successMessage = "Cuenta creada. Verificá tu email para continuar; además un administrador debe habilitar tu tienda."
                 _uiState.update { state ->
                     state.copy(
                         isLoading = false,
                         successMessage = successMessage
                     )
                 }
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = AuthErrorMapper.toUserMessage(error, "No se pudo completar el registro")
-                    )
-                }
-            }
-        }
-    }
-
-    fun registerWithGoogle(idToken: String) {
-        _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-        viewModelScope.launch {
-            val result = onboardingRepository.registerViewerWithGoogle(
-                idToken = idToken
-            )
-            result.onSuccess {
-                authManager.refreshSession()
-                _uiState.update { state -> state.copy(isLoading = false) }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(

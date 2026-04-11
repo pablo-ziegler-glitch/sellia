@@ -29,6 +29,7 @@ import com.example.selliaapp.data.local.entity.SyncOutboxEntity
 import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.data.mappers.toModel
 import com.example.selliaapp.data.model.ImportResult
+import com.example.selliaapp.data.model.ImportRowIssue
 import com.example.selliaapp.data.model.Product
 import com.example.selliaapp.data.model.dashboard.LowStockProduct
 import com.example.selliaapp.data.model.stock.StockAdjustmentReason
@@ -249,7 +250,7 @@ class ProductRepository(
                     ml3cPrice = r.ml3cPrice,
                     ml6cPrice = r.ml6cPrice,
                     autoPricing = false,
-                    quantity = max(0, r.quantity),
+                    quantity = max(0, r.quantity ?: 0),
                     description = r.description,
                     imageUrl = r.imageUrl,
                     imageUrls = r.imageUrls,
@@ -333,50 +334,32 @@ class ProductRepository(
      */
     suspend fun simulateImport(context: Context, fileUri: Uri): ImportResult = withContext(io) {
         val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
-        var inserted = 0
-        var updated = 0
-        val errors = mutableListOf<String>()
-
-        // Simulación simple: contamos por barcode/nombre sin tocar DB
         val already = cachedOrEmpty()
-        for ((idx, r) in rows.withIndex()) {
-            try {
-                val normalizedCode = r.code?.trim()?.takeIf { it.isNotBlank() }
-                val normalizedName = r.name.trim().takeIf { it.isNotBlank() }
-                val exists = when {
-                    !normalizedCode.isNullOrBlank() -> already.any { it.code?.trim() == normalizedCode }
-                    !normalizedName.isNullOrBlank() -> already.any { it.name.trim().equals(normalizedName, ignoreCase = true) }
-                    else -> false
-                }
-                if (exists) updated++ else inserted++
-            } catch (e: Exception) {
-                errors += "Línea ${idx + 2}: ${e.message}"
-            }
-        }
-        ImportResult(inserted, updated, errors)
+        val plan = ProductImportPlanner.plan(rows, already)
+        val errors = plan.issues.map { issueToLegacyError(it) }
+        ImportResult(
+            inserted = plan.totalCreated,
+            updated = plan.totalStockUpdated,
+            errors = errors,
+            totalProcessed = plan.totalProcessed,
+            totalCreated = plan.totalCreated,
+            totalStockUpdated = plan.totalStockUpdated,
+            totalRejected = plan.totalRejected,
+            totalValidationErrors = plan.totalValidationErrors,
+            rowIssues = plan.issues
+        )
     }
 
     suspend fun previewImport(context: Context, fileUri: Uri): ImportApprovalSummary = withContext(io) {
         val rows = ProductCsvImporter.parseFile(context.contentResolver, fileUri)
         val existing = cachedOrEmpty()
-        var newProducts = 0
-        var existingProducts = 0
-        var totalStockToAdd = 0
-        rows.forEach { row ->
-            val normalizedCode = row.code?.trim()?.takeIf { it.isNotBlank() }
-            val normalizedName = row.name.trim().takeIf { it.isNotBlank() }
-            val found = when {
-                !normalizedCode.isNullOrBlank() -> existing.firstOrNull { it.code?.trim() == normalizedCode }
-                !normalizedName.isNullOrBlank() -> existing.firstOrNull { it.name.trim().equals(normalizedName, ignoreCase = true) }
-                else -> null
-            }
-            if (found == null) {
-                newProducts += 1
-            } else {
-                existingProducts += 1
-                totalStockToAdd += max(0, row.quantity)
-            }
-        }
+        val plan = ProductImportPlanner.plan(rows, existing)
+        val totalStockToAdd = plan.actions
+            .filterIsInstance<ProductImportPlanner.Action.UpdateStock>()
+            .sumOf { max(0, it.row.quantity ?: 0) }
+        val existingProducts = plan.actions.count { it is ProductImportPlanner.Action.UpdateStock } +
+            plan.issues.count { it.technicalReason.contains("existing_product_", ignoreCase = true) }
+        val newProducts = plan.actions.count { it is ProductImportPlanner.Action.Create }
         val duplicateNameProducts = existing
             .groupBy { it.name.trim().lowercase() }
             .values
@@ -528,184 +511,184 @@ class ProductRepository(
         strategy: ImportStrategy,
         allowMasterCatalogSync: Boolean
     ): ImportResult {
-        var inserted = 0
-        var updated = 0
-        val errors = mutableListOf<String>()
         val touchedIds = mutableSetOf<Int>()
         val now = System.currentTimeMillis()
         val skuPrefix = resolveSkuPrefix()
-        val seenCodes = mutableSetOf<String>()
         val interactionEvents = mutableListOf<StockInteractionEvent>()
         val crossCatalogCandidates = mutableMapOf<String, Pair<String, String?>>()
+        val existing = cachedOrEmpty()
+        val plan = ProductImportPlanner.plan(rows, existing)
+        val issues = plan.issues.toMutableList()
 
         db.withTransaction {
-            rows.forEachIndexed { idx, r ->
+            plan.actions.forEach { action ->
                 try {
-                    val lineNumber = idx + 2
-                    val normalizedCode = r.code?.trim()?.takeIf { it.isNotBlank() }
-                    if (normalizedCode != null && !seenCodes.add(normalizedCode)) {
-                        errors += "Línea $lineNumber: el código \"$normalizedCode\" está duplicado en el archivo."
-                        return@forEachIndexed
-                    }
-                    val rCode = r.code?.trim()?.takeIf { it.isNotBlank() }
-                    val rName = r.name.trim().takeIf { it.isNotBlank() }
-                    val rBarcode2 = r.barcode?.trim()?.takeIf { it.isNotBlank() }
-                    val existing = when {
-                        !rCode.isNullOrBlank()     -> productDao.getByCodeOnce(rCode)
-                        !rName.isNullOrBlank()     -> productDao.getByNameNormalizedOnce(rName)
-                        !rBarcode2.isNullOrBlank() -> productDao.getByBarcodeOnce(rBarcode2)
-                        else                       -> null
-                    }
-                    if (normalizedCode != null) {
-                        val codeOwner = productDao.getByCodeOnce(normalizedCode)
-                        if (codeOwner != null && (existing == null || codeOwner.id != existing.id)) {
-                            errors += "Línea $lineNumber: el código \"$normalizedCode\" ya existe."
-                            return@forEachIndexed
-                        }
-                    }
-
-                    if (existing == null) {
-                        val p = ProductEntity(
-                            code = normalizedCode,
-                            barcode = r.barcode,
-                            name = r.name,
-                            purchasePrice = r.purchasePrice,
-                            listPrice = r.listPrice,
-                            cashPrice = r.cashPrice,
-                            transferPrice = r.transferPrice,
-                            transferNetPrice = r.transferNetPrice,
-                            mlPrice = r.mlPrice,
-                            ml3cPrice = r.ml3cPrice,
-                            ml6cPrice = r.ml6cPrice,
-                            autoPricing = false,
-                            quantity = max(0, r.quantity),
-                            description = r.description,
-                            imageUrl = r.imageUrl,
-                            imageUrls = r.imageUrls,
-                            categoryId = null,                      // si querés, usar ensureCategoryId(r.category)
-                            providerId = null,                      // si en el futuro sumamos CSV con proveedor
-                            providerName = r.providerName,
-                            providerSku = r.providerSku,
-                            brand = r.brand,
-                            parentCategory = r.parentCategory,
-                            category = r.category,
-                            color = r.color,
-                            sizes = r.sizes,
-                            minStock = r.minStock?.let { max(0, it) },
-                            updatedAt = r.updatedAt ?: LocalDate.now()
-                        )
-                        val priced = applyAutoPricing(p, existing)
-                        val prepared = ensureAutoCodes(priced, prefix = skuPrefix)
-                        assertCodeAvailable(prepared.code, currentId = null)
-                        val id = productDao.insert(prepared).toInt()
-                        touchedIds += id
-                        if (r.imageUrls.isNotEmpty()) {
-                            replaceProductImages(id, r.imageUrls)
-                        }
-                        if (prepared.quantity != 0) {
-                            stockMovementDao.insert(
-                                StockMovementEntity(
-                                    productId = id,
-                                    delta = prepared.quantity,
-                                    reason = StockMovementReasons.CSV_IMPORT,
-                                    ts = Instant.ofEpochMilli(now),
-                                    note = "Importación CSV (nuevo)"
+                    when (action) {
+                        is ProductImportPlanner.Action.Create -> {
+                            val r = action.row
+                            val normalizedCode = r.code?.trim()?.takeIf { it.isNotBlank() }
+                            val normalizedBarcode = r.barcode?.trim()?.takeIf { it.isNotBlank() }
+                            val qty = max(0, r.quantity ?: 0)
+                            val existingByCode = normalizedCode?.let { productDao.getByCodeOnce(it) }
+                            val existingByBarcode = normalizedBarcode?.let { productDao.getByBarcodeOnce(it) }
+                            if (existingByCode != null || existingByBarcode != null) {
+                                val issue = ImportRowIssue(
+                                    line = r.lineNumber,
+                                    productName = r.name.ifBlank { null },
+                                    skuOrBarcode = normalizedCode ?: normalizedBarcode,
+                                    attemptedAction = "crear",
+                                    technicalReason = "concurrency_uniqueness_conflict",
+                                    userMessage = "El producto ya existe y no se pudo crear por conflicto concurrente.",
+                                    suggestion = "Reintentá importación usando actualizar_stock para productos existentes."
+                                )
+                                issues += issue
+                                return@forEach
+                            }
+                            if (strategy != ImportStrategy.Append && strategy != ImportStrategy.Replace) {
+                                throw IllegalArgumentException("Estrategia no soportada: $strategy")
+                            }
+                            val p = ProductEntity(
+                                code = normalizedCode,
+                                barcode = normalizedBarcode,
+                                name = r.name.trim(),
+                                purchasePrice = r.purchasePrice,
+                                listPrice = r.listPrice,
+                                cashPrice = r.cashPrice,
+                                transferPrice = r.transferPrice,
+                                transferNetPrice = r.transferNetPrice,
+                                mlPrice = r.mlPrice,
+                                ml3cPrice = r.ml3cPrice,
+                                ml6cPrice = r.ml6cPrice,
+                                autoPricing = false,
+                                quantity = qty,
+                                description = r.description,
+                                imageUrl = r.imageUrl,
+                                imageUrls = r.imageUrls,
+                                categoryId = null,
+                                providerId = null,
+                                providerName = r.providerName,
+                                providerSku = r.providerSku,
+                                brand = r.brand,
+                                parentCategory = r.parentCategory,
+                                category = r.category,
+                                color = r.color,
+                                sizes = r.sizes,
+                                minStock = r.minStock?.let { max(0, it) },
+                                updatedAt = r.updatedAt ?: LocalDate.now()
+                            )
+                            val priced = applyAutoPricing(p, existing = null)
+                            val prepared = ensureAutoCodes(priced, prefix = skuPrefix)
+                            assertCodeAvailable(prepared.code, currentId = null)
+                            val id = productDao.insert(prepared).toInt()
+                            touchedIds += id
+                            if (r.imageUrls.isNotEmpty()) {
+                                replaceProductImages(id, r.imageUrls)
+                            }
+                            if (prepared.quantity != 0) {
+                                stockMovementDao.insert(
+                                    StockMovementEntity(
+                                        productId = id,
+                                        delta = prepared.quantity,
+                                        reason = StockMovementReasons.CSV_IMPORT,
+                                        ts = Instant.ofEpochMilli(now),
+                                        note = "Importación CSV (nuevo)"
+                                    )
+                                )
+                            }
+                            syncOutboxDao.upsert(
+                                SyncOutboxEntity(
+                                    entityType = SyncEntityType.PRODUCT.storageKey,
+                                    entityId = id.toLong(),
+                                    createdAt = now
                                 )
                             )
-                        }
-                        syncOutboxDao.upsert(
-                            SyncOutboxEntity(
-                                entityType = SyncEntityType.PRODUCT.storageKey,
-                                entityId = id.toLong(),
-                                createdAt = now
+                            interactionEvents += StockInteractionEvent(
+                                action = "PRODUCT_CREATED",
+                                productId = id,
+                                productName = prepared.name,
+                                delta = prepared.quantity,
+                                reason = StockMovementReasons.CSV_IMPORT,
+                                note = "Importación CSV (nuevo)",
+                                source = "CSV_IMPORT",
+                                occurredAtEpochMs = now
                             )
-                        )
-                        inserted++
-                        interactionEvents += StockInteractionEvent(
-                            action = "PRODUCT_CREATED",
-                            productId = id,
-                            productName = prepared.name,
-                            delta = prepared.quantity,
-                            reason = StockMovementReasons.CSV_IMPORT,
-                            note = "Importación CSV (nuevo)",
-                            source = "CSV_IMPORT",
-                            occurredAtEpochMs = now
-                        )
-                        prepared.barcode?.trim()?.takeIf { it.isNotBlank() }?.let { barcode ->
-                            crossCatalogCandidates[barcode] = prepared.name to prepared.brand
+                            prepared.barcode?.trim()?.takeIf { it.isNotBlank() }?.let { barcode ->
+                                crossCatalogCandidates[barcode] = prepared.name to prepared.brand
+                            }
                         }
-                    } else {
-                        val newQty = existing.quantity + max(0, r.quantity)
-                        val merged = existing.copy(
-                            code        = normalizedCode ?: existing.code,
-                            barcode     = r.barcode ?: existing.barcode,
-                            name        = r.name.ifBlank { existing.name },
-                            purchasePrice = r.purchasePrice ?: existing.purchasePrice,
-                            listPrice   = r.listPrice ?: existing.listPrice,
-                            cashPrice   = r.cashPrice ?: existing.cashPrice,
-                            transferPrice = r.transferPrice ?: existing.transferPrice,
-                            transferNetPrice = r.transferNetPrice ?: existing.transferNetPrice,
-                            mlPrice     = r.mlPrice ?: existing.mlPrice,
-                            ml3cPrice   = r.ml3cPrice ?: existing.ml3cPrice,
-                            ml6cPrice   = r.ml6cPrice ?: existing.ml6cPrice,
-                            autoPricing = existing.autoPricing,
-                            quantity    = newQty,
-                            description = r.description ?: existing.description,
-                            imageUrl    = r.imageUrl ?: existing.imageUrl,
-                            imageUrls   = if (r.imageUrls.isEmpty()) existing.imageUrls else r.imageUrls,
-                            parentCategory = r.parentCategory ?: existing.parentCategory,
-                            category    = r.category ?: existing.category,
-                            providerName = r.providerName ?: existing.providerName,
-                            providerSku  = r.providerSku ?: existing.providerSku,
-                            brand       = r.brand ?: existing.brand,
-                            color       = r.color ?: existing.color,
-                            sizes       = if (r.sizes.isEmpty()) existing.sizes else r.sizes,
-                            minStock    = r.minStock ?: existing.minStock,
-                            updatedAt   = r.updatedAt ?: LocalDate.now()
-                        )
-                        val priced = applyAutoPricing(merged, existing)
-                        assertCodeAvailable(priced.code, currentId = existing.id)
-                        productDao.update(priced)
-                        touchedIds += existing.id
-                        if (r.imageUrls.isNotEmpty()) {
-                            replaceProductImages(existing.id, r.imageUrls)
-                        }
-                        val delta = newQty - existing.quantity
-                        if (delta != 0) {
-                            stockMovementDao.insert(
-                                StockMovementEntity(
-                                    productId = existing.id,
-                                    delta = delta,
-                                    reason = StockMovementReasons.CSV_IMPORT,
-                                    ts = Instant.ofEpochMilli(now),
-                                    note = if (r.markedAsUpdate) "Importación CSV (actualización marcada)" else "Importación CSV (actualización automática)"
+                        is ProductImportPlanner.Action.UpdateStock -> {
+                            val r = action.row
+                            val current = productDao.getById(action.existing.id)
+                            if (current == null) {
+                                issues += ImportRowIssue(
+                                    line = r.lineNumber,
+                                    productName = r.name.ifBlank { null },
+                                    skuOrBarcode = r.code?.trim()?.ifBlank { null } ?: r.barcode?.trim()?.ifBlank { null },
+                                    attemptedAction = "actualizar stock",
+                                    technicalReason = "missing_target_product",
+                                    userMessage = "No se encontró el producto a actualizar.",
+                                    suggestion = "Revisá código/barcode y reintentá la importación."
+                                )
+                                return@forEach
+                            }
+                            val replacementQty = max(0, r.quantity ?: 0)
+                            val merged = current.copy(
+                                quantity = replacementQty,
+                                updatedAt = r.updatedAt ?: LocalDate.now()
+                            )
+                            productDao.update(merged)
+                            touchedIds += current.id
+                            val delta = replacementQty - current.quantity
+                            if (delta != 0) {
+                                stockMovementDao.insert(
+                                    StockMovementEntity(
+                                        productId = current.id,
+                                        delta = delta,
+                                        reason = StockMovementReasons.CSV_IMPORT,
+                                        ts = Instant.ofEpochMilli(now),
+                                        note = "Importación CSV (actualización de stock)"
+                                    )
+                                )
+                            }
+                            syncOutboxDao.upsert(
+                                SyncOutboxEntity(
+                                    entityType = SyncEntityType.PRODUCT.storageKey,
+                                    entityId = current.id.toLong(),
+                                    createdAt = now
                                 )
                             )
-                        }
-                        syncOutboxDao.upsert(
-                            SyncOutboxEntity(
-                                entityType = SyncEntityType.PRODUCT.storageKey,
-                                entityId = existing.id.toLong(),
-                                createdAt = now
+                            interactionEvents += StockInteractionEvent(
+                                action = "PRODUCT_STOCK_UPDATED",
+                                productId = current.id,
+                                productName = current.name,
+                                delta = delta,
+                                reason = StockMovementReasons.CSV_IMPORT,
+                                note = "Importación CSV (actualización de stock)",
+                                source = "CSV_IMPORT",
+                                occurredAtEpochMs = now
                             )
-                        )
-                        updated++
-                        interactionEvents += StockInteractionEvent(
-                            action = "PRODUCT_UPDATED",
-                            productId = existing.id,
-                            productName = priced.name,
-                            delta = newQty - existing.quantity,
-                            reason = StockMovementReasons.CSV_IMPORT,
-                            note = if (r.markedAsUpdate) "Importación CSV (actualización marcada)" else "Importación CSV (actualización automática)",
-                            source = "CSV_IMPORT",
-                            occurredAtEpochMs = now
-                        )
-                        priced.barcode?.trim()?.takeIf { it.isNotBlank() }?.let { barcode ->
-                            crossCatalogCandidates[barcode] = priced.name to priced.brand
+                            current.barcode?.trim()?.takeIf { it.isNotBlank() }?.let { barcode ->
+                                crossCatalogCandidates[barcode] = current.name to current.brand
+                            }
                         }
                     }
                 } catch (e: Exception) {
-                    errors += "Línea ${idx + 2}: ${e.message}"
+                    val row = when (action) {
+                        is ProductImportPlanner.Action.Create -> action.row
+                        is ProductImportPlanner.Action.UpdateStock -> action.row
+                    }
+                    issues += ImportRowIssue(
+                        line = row.lineNumber,
+                        productName = row.name.ifBlank { null },
+                        skuOrBarcode = row.code?.trim()?.ifBlank { null } ?: row.barcode?.trim()?.ifBlank { null },
+                        attemptedAction = when (action) {
+                            is ProductImportPlanner.Action.Create -> "crear"
+                            is ProductImportPlanner.Action.UpdateStock -> "actualizar stock"
+                        },
+                        technicalReason = e.message ?: "import_runtime_error",
+                        userMessage = "La fila no pudo procesarse por un error interno controlado.",
+                        suggestion = "Corregí los datos y reintentá. Si persiste, revisá logs técnicos."
+                    )
                 }
             }
             lastCache = productDao.getAllOnce()
@@ -717,7 +700,24 @@ class ProductRepository(
                 syncToCrossCatalog(barcode = barcode, name = data.first, brand = data.second)
             }
         }
-        return ImportResult(inserted, updated, errors)
+        val errors = issues.map { issueToLegacyError(it) }
+        val created = interactionEvents.count { it.action == "PRODUCT_CREATED" }
+        val stockUpdated = interactionEvents.count { it.action == "PRODUCT_STOCK_UPDATED" }
+        val validationErrors = plan.totalValidationErrors + issues.count {
+            it.technicalReason.contains("invalid_", ignoreCase = true) ||
+                it.technicalReason.contains("missing_", ignoreCase = true)
+        }
+        return ImportResult(
+            inserted = created,
+            updated = stockUpdated,
+            errors = errors,
+            totalProcessed = rows.size,
+            totalCreated = created,
+            totalStockUpdated = stockUpdated,
+            totalRejected = issues.size,
+            totalValidationErrors = validationErrors,
+            rowIssues = issues
+        )
     }
 
     /**
@@ -729,17 +729,13 @@ class ProductRepository(
         uri: Uri,
         strategy: ImportStrategy
     ): ImportResult {
-        val importer = ProductCsvImporter(productDao, productImageDao)
+        val rows = ProductCsvImporter.parseFile(resolver, uri)
         return when (strategy) {
-            ImportStrategy.Append -> importer.importAppend(resolver, uri)
-            // Si realmente querés "UpsertByBarcode", agregalo al enum:
-            // ImportStrategy.UpsertByBarcode -> importer.importUpsertByBarcode(resolver, uri)
-            ImportStrategy.Replace -> {
-                // Si Replace para vos significa "reemplazar stock" en existentes,
-                // podés reutilizar importProductsFromFile con tu estrategia Replace:
-                // (necesitarías un Context; si no lo tenés acá, dejá sólo Append/Upsert y remové Replace)
-                ImportResult(0, 0, listOf("Replace no soportado en este método. Usá importProductsFromFile(...)"))
-            }
+            ImportStrategy.Append, ImportStrategy.Replace -> importProducts(
+                rows = rows,
+                strategy = strategy,
+                allowMasterCatalogSync = false
+            )
         }
     }
 
@@ -1373,6 +1369,17 @@ class ProductRepository(
         }
     }
 
+    private fun issueToLegacyError(issue: ImportRowIssue): String = buildString {
+        append("Línea ${issue.line}")
+        issue.productName?.let { append(" | Producto: \"$it\"") }
+        issue.skuOrBarcode?.let { append(" | SKU/Barcode: $it") }
+        append(" | Estado: ${issue.status}")
+        append(" | Acción: ${issue.attemptedAction}")
+        append(" | Motivo: ${issue.userMessage}")
+        append(" | Sugerencia: ${issue.suggestion}")
+        append(" | Técnico: ${issue.technicalReason}")
+    }
+
 
 
     private fun isCsvOrXlsxImport(context: Context, uri: Uri): Boolean {
@@ -1459,7 +1466,7 @@ class ProductRepository(
             (claims["admin"] as? Boolean) == true ||
                 (claims["isAdmin"] as? Boolean) == true ||
                 (claims["isSuperAdmin"] as? Boolean) == true ||
-                (claims["role"] as? String)?.equals("admin", ignoreCase = true) == true
+                (claims["role"] as? String)?.equals("owner", ignoreCase = true) == true
         }.getOrDefault(false)
 
         if (tokenAllowed) {
@@ -1471,7 +1478,7 @@ class ProductRepository(
             val snapshot = firestore.collection("users").document(user.uid).get().await()
             if (!snapshot.exists()) return@runCatching false
             val role = snapshot.getString("role")?.lowercase()
-            role == "admin" ||
+            role == "owner" ||
                 snapshot.getBoolean("isAdmin") == true ||
                 snapshot.getBoolean("isSuperAdmin") == true
         }.getOrDefault(false)

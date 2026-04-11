@@ -6,7 +6,6 @@ import com.example.selliaapp.repository.AuthOnboardingRepository
 import com.example.selliaapp.repository.OnboardingResult
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -28,8 +27,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
 
     private companion object {
         const val ACCOUNT_TYPE_STORE_OWNER = "store_owner"
-        const val ACCOUNT_TYPE_FINAL_CUSTOMER = "final_customer"
-        const val ACCOUNT_ORIGIN_PUBLIC_SIGN_UP = "public_sign_up"
         const val ACCOUNT_ORIGIN_ADMIN_FLOW = "admin_flow"
         const val TENANT_ACTIVATION_MODE_AUTO = "auto"
         const val TENANT_ACTIVATION_MODE_MANUAL = "manual"
@@ -167,105 +164,6 @@ class AuthOnboardingRepositoryImpl @Inject constructor(
             if (currentUser != null && currentUser.email == email) {
                 runCatching { currentUser.delete().await() }
             }
-        }
-    }
-
-    override suspend fun registerViewer(
-        email: String,
-        password: String,
-        tenantId: String?,
-        tenantName: String?,
-        customerName: String,
-        customerPhone: String?
-    ): Result<OnboardingResult> = withContext(io) {
-        runCatching {
-            val result = auth.createUserWithEmailAndPassword(email, password).await()
-            val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
-            val createdAt = FieldValue.serverTimestamp()
-            val userRef = firestore.collection("users").document(user.uid)
-            userRef.set(
-                mapOf(
-                    "email" to email,
-                    "role" to AppRole.VIEWER.raw,
-                    "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
-                    "status" to "active",
-                    "isAdmin" to false,
-                    "isSuperAdmin" to false,
-                    "displayName" to customerName,
-                    "phone" to customerPhone,
-                    "createdAt" to createdAt,
-                    "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                )
-            ).await()
-            firestore.collection("account_requests")
-                .document(user.uid)
-                .set(
-                    mapOf(
-                        "uid" to user.uid,
-                        "requestedBy" to user.uid,
-                        "email" to email,
-                        "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
-                        "status" to "active",
-                        "contactName" to customerName,
-                        "contactPhone" to customerPhone,
-                        "createdAt" to createdAt,
-                        "requestOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
-            sendEmailVerification(user)
-            OnboardingResult(uid = user.uid, tenantId = "")
-        }.onFailure {
-            val currentUser = auth.currentUser
-            if (currentUser != null && currentUser.email == email) {
-                runCatching { currentUser.delete().await() }
-            }
-        }
-    }
-
-    override suspend fun registerViewerWithGoogle(
-        idToken: String
-    ): Result<OnboardingResult> = withContext(io) {
-        runCatching {
-            val credential = GoogleAuthProvider.getCredential(idToken, null)
-            val result = auth.signInWithCredential(credential).await()
-            val user = result.user ?: throw IllegalStateException("No se pudo crear el usuario")
-            val createdAt = FieldValue.serverTimestamp()
-            val userRef = firestore.collection("users").document(user.uid)
-            val normalizedEmail = (user.email ?: "").trim().lowercase()
-            val displayName = (user.displayName ?: "").trim()
-            userRef.set(
-                mapOf(
-                    "email" to normalizedEmail,
-                    "role" to AppRole.VIEWER.raw,
-                    "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
-                    "status" to "active",
-                    "isAdmin" to false,
-                    "isSuperAdmin" to false,
-                    "displayName" to displayName,
-                    "createdAt" to createdAt,
-                    "accountOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                ),
-                SetOptions.merge()
-            ).await()
-            firestore.collection("account_requests")
-                .document(user.uid)
-                .set(
-                    mapOf(
-                        "uid" to user.uid,
-                        "requestedBy" to user.uid,
-                        "email" to (user.email ?: ""),
-                        "accountType" to ACCOUNT_TYPE_FINAL_CUSTOMER,
-                        "status" to "active",
-                        "contactName" to (user.displayName ?: ""),
-                        "createdAt" to createdAt,
-                        "requestOrigin" to ACCOUNT_ORIGIN_PUBLIC_SIGN_UP
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
-            OnboardingResult(uid = user.uid, tenantId = "")
         }
     }
 

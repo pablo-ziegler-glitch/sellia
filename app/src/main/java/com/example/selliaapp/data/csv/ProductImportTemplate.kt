@@ -5,7 +5,7 @@ object ProductImportTemplate {
         return buildString {
             appendLine(
                 "name,purchase_price,quantity,parent_category,category,description,imageUrl,image_urls,code,barcode,provider,brand,color,sizes,provider_sku," +
-                    "min_stock,actualizacion,list_price,cash_price,transfer_price,transfer_net_price,ml_price,ml_3c_price,ml_6c_price,updated_at"
+                    "min_stock,actualizar_stock,list_price,cash_price,transfer_price,transfer_net_price,ml_price,ml_3c_price,ml_6c_price,updated_at"
             )
             appendLine(
                 "Shampoo 500ml,1800.00,24,Perfumería,Higiene,Shampoo para uso diario,https://example.com/shampoo.jpg," +

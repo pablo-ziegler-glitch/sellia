@@ -92,7 +92,6 @@ fun ManageUsersScreen(
             onDismiss = { ownershipDialog = null },
             onConfirm = { targetEmail, keepPreviousOwnerAccess ->
                 when (dialogState.action) {
-                    OwnershipAction.DELEGATE_STORE -> ownershipViewModel.delegateStore(targetEmail)
                     OwnershipAction.ASSOCIATE_OWNER -> ownershipViewModel.associateOwner(targetEmail)
                     OwnershipAction.TRANSFER_PRIMARY_OWNER -> ownershipViewModel.transferPrimaryOwner(
                         targetEmail,
@@ -202,7 +201,6 @@ fun ManageUsersScreen(
                     message = ownershipState.message,
                     error = ownershipState.error,
                     onClearMessage = ownershipViewModel::clearMessage,
-                    onDelegateStore = { ownershipDialog = OwnershipActionDialogState(OwnershipAction.DELEGATE_STORE) },
                     onAssociateOwner = { ownershipDialog = OwnershipActionDialogState(OwnershipAction.ASSOCIATE_OWNER) },
                     onTransferOwner = { ownershipDialog = OwnershipActionDialogState(OwnershipAction.TRANSFER_PRIMARY_OWNER) }
                 )
@@ -254,10 +252,6 @@ fun ManageUsersScreen(
 
 
 private enum class OwnershipAction(val title: String, val description: String) {
-    DELEGATE_STORE(
-        title = "Delegar tienda",
-        description = "Asigna acceso de encargado/a sin transferir la titularidad principal."
-    ),
     ASSOCIATE_OWNER(
         title = "Asociar co-dueño/a",
         description = "Agrega un dueño adicional para operar la misma tienda sin pérdida de información."
@@ -279,7 +273,6 @@ private fun OwnershipManagementPanel(
     message: String?,
     error: String?,
     onClearMessage: () -> Unit,
-    onDelegateStore: () -> Unit,
     onAssociateOwner: () -> Unit,
     onTransferOwner: () -> Unit
 ) {
@@ -306,9 +299,6 @@ private fun OwnershipManagementPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = onDelegateStore, enabled = !isLoading) {
-                    Text("Delegar tienda")
-                }
                 Button(onClick = onAssociateOwner, enabled = !isLoading) {
                     Text("Agregar co-dueño")
                 }
@@ -396,10 +386,7 @@ private fun OwnershipActionDialog(
 
 
 private fun normalizeAssignableRole(role: AppRole): AppRole = when (role) {
-    AppRole.MANAGER,
-    AppRole.CASHIER -> role
-
-    else -> AppRole.CASHIER
+    else -> AppRole.OWNER
 }
 
 @Composable
@@ -773,7 +760,7 @@ private fun UserEditorDialog(
     var isActive by remember(user) { mutableStateOf(user?.isActive ?: true) }
     var roleExpanded by remember { mutableStateOf(false) }
     val roleOptions = remember(user) {
-        (listOf(AppRole.MANAGER, AppRole.CASHIER) + AppRole.fromRaw(user?.role)).distinct()
+        listOf(AppRole.OWNER)
     }
     val canSave = name.isNotBlank() && email.isNotBlank() && canManageUsers
 

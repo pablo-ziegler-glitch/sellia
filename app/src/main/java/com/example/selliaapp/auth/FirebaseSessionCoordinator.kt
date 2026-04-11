@@ -178,7 +178,7 @@ class FirebaseSessionCoordinator @Inject constructor(
 
     private fun requiredPermissionFor(error: Throwable): String = when (error) {
         is StorageException -> {
-            "Escritura en Storage para el tenant activo (rol owner/manager/cashier/admin o super admin)."
+            "Escritura en Storage para el tenant activo (rol owner o super admin)."
         }
 
         is FirebaseFirestoreException -> {

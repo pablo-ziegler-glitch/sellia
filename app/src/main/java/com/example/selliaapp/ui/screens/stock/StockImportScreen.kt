@@ -112,8 +112,8 @@ fun StockImportScreen(
             Text("Cómo funciona", style = MaterialTheme.typography.titleMedium)
             Text("Seleccioná un archivo .csv o una planilla de Excel/Google Sheets. La app creará/actualizará productos.")
             Text("Formato recomendado:", style = MaterialTheme.typography.titleSmall)
-            Text("name, barcode, purchase_price, list_price, cash_price, transfer_price, transfer_net_price, ml_price, ml_3c_price, ml_6c_price, quantity, actualizacion, imageUrl, image_urls")
-            Text("• actualizacion: usar X/x para marcar visualmente que la fila es actualización (informativo).")
+            Text("name, barcode, purchase_price, list_price, cash_price, transfer_price, transfer_net_price, ml_price, ml_3c_price, ml_6c_price, quantity, actualizar_stock, imageUrl, image_urls")
+            Text("• actualizar_stock: usar 1/true/si/sí/x/update/stock para actualizar stock de un producto existente.")
             Text("• imageUrl / image_urls: cargá URLs públicas de Firebase Storage (Download URL).")
             Text(
                 "Alias aceptados:\n" +
