@@ -20,10 +20,8 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -79,7 +77,6 @@ fun ConfigScreen(
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
     onSupport: () -> Unit,
-    onOpenBackofficeWeb: (BackofficeModule) -> Unit,
     adminFeatureFlags: ConfigAdminFeatureFlags,
     isClientFinal: Boolean,
     onStorefront: () -> Unit = {},
@@ -178,52 +175,40 @@ fun ConfigScreen(
 
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "Administrativas (Backoffice Web)",
+                    text = "Administrativas (App)",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
 
                 AdminActionItem(
                     title = "Usuarios y roles",
-                    module = BackofficeModule.USERS_AND_ROLES,
                     mobileEnabled = adminFeatureFlags.usersAndRolesEnabled && canManageUsers,
-                    onMobileClick = onManageUsers,
-                    onWebClick = onOpenBackofficeWeb
+                    onMobileClick = onManageUsers
                 )
                 AdminActionItem(
                     title = "Servicios en la nube",
-                    module = BackofficeModule.CLOUD_SERVICES,
                     mobileEnabled = adminFeatureFlags.cloudServicesEnabled && canManageCloudServices,
-                    onMobileClick = onCloudServicesAdmin,
-                    onWebClick = onOpenBackofficeWeb
+                    onMobileClick = onCloudServicesAdmin
                 )
                 AdminActionItem(
                     title = "Pricing global",
-                    module = BackofficeModule.GLOBAL_PRICING,
                     mobileEnabled = adminFeatureFlags.globalPricingEnabled,
-                    onMobileClick = onPricingConfig,
-                    onWebClick = onOpenBackofficeWeb
+                    onMobileClick = onPricingConfig
                 )
                 AdminActionItem(
                     title = "Tenant lifecycle",
-                    module = BackofficeModule.TENANT_LIFECYCLE,
                     mobileEnabled = adminFeatureFlags.tenantLifecycleEnabled,
-                    onMobileClick = onTenantDeactivation,
-                    onWebClick = onOpenBackofficeWeb
+                    onMobileClick = onTenantDeactivation
                 )
                 AdminActionItem(
                     title = "Cargas masivas y ABMs",
-                    module = BackofficeModule.BULK_ABM,
                     mobileEnabled = adminFeatureFlags.bulkAbmEnabled,
-                    onMobileClick = onBulkData,
-                    onWebClick = onOpenBackofficeWeb
+                    onMobileClick = onBulkData
                 )
                 AdminActionItem(
                     title = "Configuraciones de tienda",
-                    module = BackofficeModule.STORE_SETTINGS,
                     mobileEnabled = adminFeatureFlags.storeSettingsEnabled,
-                    onMobileClick = onStoreSettings,
-                    onWebClick = onOpenBackofficeWeb
+                    onMobileClick = onStoreSettings
                 )
 
                 if (adminFeatureFlags.marketingConfigEnabled) {
@@ -378,21 +363,18 @@ data class ConfigAdminFeatureFlags(
 ) {
     companion object {
         /**
-         * Estado objetivo: mobile sólo para operación de campo.
-         * Dejar flags en false permite apagar módulos admin sin romper navegación
-         * porque cada acción conserva fallback "Abrir en Backoffice Web".
-         * storeSettingsEnabled siempre activo para espejo de configuraciones de tienda.
+         * Estado objetivo: operación administrativa completa desde la app.
          */
         val MobileFieldOnly = ConfigAdminFeatureFlags(
-            usersAndRolesEnabled = false,
-            cloudServicesEnabled = false,
-            globalPricingEnabled = false,
-            tenantLifecycleEnabled = false,
-            bulkAbmEnabled = false,
-            marketingConfigEnabled = false,
-            productQrsEnabled = false,
-            securitySettingsEnabled = false,
-            publicCatalogConfigEnabled = false,
+            usersAndRolesEnabled = true,
+            cloudServicesEnabled = true,
+            globalPricingEnabled = true,
+            tenantLifecycleEnabled = true,
+            bulkAbmEnabled = true,
+            marketingConfigEnabled = true,
+            productQrsEnabled = true,
+            securitySettingsEnabled = true,
+            publicCatalogConfigEnabled = true,
             storeSettingsEnabled = true
         )
     }
@@ -401,24 +383,15 @@ data class ConfigAdminFeatureFlags(
 @Composable
 private fun AdminActionItem(
     title: String,
-    module: BackofficeModule,
     mobileEnabled: Boolean,
-    onMobileClick: () -> Unit,
-    onWebClick: (BackofficeModule) -> Unit
+    onMobileClick: () -> Unit
 ) {
-    if (mobileEnabled) {
-        SettingsItem(
-            icon = Icons.Filled.AdminPanelSettings,
-            title = "$title (Mobile heredado)",
-            onClick = onMobileClick
-        )
-    } else {
-        SettingsItem(
-            icon = Icons.AutoMirrored.Filled.OpenInNew,
-            title = "$title · Abrir en Backoffice Web",
-            onClick = { onWebClick(module) }
-        )
-    }
+    if (!mobileEnabled) return
+    SettingsItem(
+        icon = Icons.Filled.AdminPanelSettings,
+        title = title,
+        onClick = onMobileClick
+    )
 }
 
 @Composable
