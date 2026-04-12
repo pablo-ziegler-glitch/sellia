@@ -50,14 +50,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.domain.product.ProductSortOption
 import com.example.selliaapp.ui.components.BackTopAppBar
-import com.example.selliaapp.ui.components.ProductEditorDialog
 import com.example.selliaapp.ui.components.ProductQuickDetailDialog
 import com.example.selliaapp.ui.components.StockBySizeDialog
 import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
-import java.time.LocalDate
 import com.example.selliaapp.data.local.entity.VariantEntity
 
 @Composable
@@ -70,7 +68,11 @@ fun ManageProductsRoute(
         vm = vm,
         onBack = onBack,
         onShowQr = onShowQr,
-        onBulkImport = {}
+        onBulkImport = {},
+        onCreateProduct = {},
+        onEditProduct = {},
+        onAdjustStock = {},
+        onViewMovements = {}
     )
 }
 
@@ -79,17 +81,18 @@ fun ManageProductsScreen(
     vm: ManageProductsViewModel,
     onBack: () -> Unit,
     onShowQr: () -> Unit,
-    onBulkImport: () -> Unit
+    onBulkImport: () -> Unit,
+    onCreateProduct: () -> Unit,
+    onEditProduct: (ProductEntity) -> Unit,
+    onAdjustStock: (ProductEntity) -> Unit,
+    onViewMovements: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val state by vm.state.collectAsState()
     val message by vm.message.collectAsState()
     val products by vm.filteredProducts.collectAsState(initial = emptyList())
-    val pricingSettings by vm.pricingSettings.collectAsState()
 
-    var showEditor by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<ProductEntity?>(null) }
     var selectedProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var sortExpanded by remember { mutableStateOf(false) }
     var showSizeEditor by remember { mutableStateOf(false) }
@@ -135,10 +138,7 @@ fun ManageProductsScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                editing = null
-                showEditor = true
-            }) {
+            FloatingActionButton(onClick = onCreateProduct) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir producto")
             }
         }
@@ -284,7 +284,7 @@ fun ManageProductsScreen(
                             Text("Limpiar filtros")
                         }
                     } else {
-                        Button(onClick = { editing = null; showEditor = true }) {
+                        Button(onClick = onCreateProduct) {
                             Icon(Icons.Default.Add, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Agregar producto")
@@ -316,81 +316,25 @@ fun ManageProductsScreen(
         }
     }
 
-    if (showEditor) {
-        ProductEditorDialog(
-            initial = editing,
-            posnetPercent = pricingSettings?.posnet3CuotasPercent ?: 0.0,
-            operativosPercent = pricingSettings?.operativosLocalPercent ?: 0.0,
-            onDismiss = { showEditor = false },
-            onSave = { name, barcode, purchasePrice, listPrice, cashPrice, transferPrice, mlPrice, ml3cPrice, ml6cPrice, stock, minStock, description, imageUrls, gainTargetPercent, providerName, providerSku ->
-                scope.launch {
-                    val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
-                    val base: ProductEntity = editing ?: ProductEntity(
-                        id = 0,
-                        code = null,
-                        barcode = barcode,
-                        name = name,
-                        purchasePrice = purchasePrice,
-                        listPrice = listPrice,
-                        cashPrice = cashPrice,
-                        transferPrice = transferPrice,
-                        mlPrice = mlPrice,
-                        ml3cPrice = ml3cPrice,
-                        ml6cPrice = ml6cPrice,
-                        quantity = stock,
-                        description = description,
-                        imageUrl = normalizedImages.firstOrNull(),
-                        imageUrls = normalizedImages,
-                        category = null,
-                        minStock = minStock,
-                        gainTargetPercent = gainTargetPercent,
-                        providerName = providerName,
-                        providerSku = providerSku,
-                        updatedAt = LocalDate.now()
-                    )
-
-                    val toSave: ProductEntity = base.copy(
-                        name = name,
-                        barcode = barcode,
-                        purchasePrice = purchasePrice,
-                        listPrice = listPrice,
-                        cashPrice = cashPrice,
-                        transferPrice = transferPrice,
-                        mlPrice = mlPrice,
-                        ml3cPrice = ml3cPrice,
-                        ml6cPrice = ml6cPrice,
-                        quantity = stock,
-                        description = description,
-                        imageUrl = normalizedImages.firstOrNull(),
-                        imageUrls = normalizedImages,
-                        minStock = minStock,
-                        gainTargetPercent = gainTargetPercent,
-                        providerName = providerName,
-                        providerSku = providerSku,
-                        updatedAt = LocalDate.now()
-                    )
-
-                    vm.upsert(toSave)
-                    showEditor = false
-                }
-            }
-        )
-    }
-
     selectedProduct?.let { product ->
         ProductQuickDetailDialog(
             product = product,
             onDismiss = { selectedProduct = null },
             onEdit = {
                 selectedProduct = null
-                editing = product
-                showEditor = true
-                editingSizeProduct = product
-                showSizeEditor = true
+                onEditProduct(product)
             },
             onDelete = {
                 selectedProduct = null
                 scope.launch { vm.deleteById(product.id) }
+            },
+            onAdjustStock = {
+                selectedProduct = null
+                onAdjustStock(product)
+            },
+            onViewMovements = {
+                selectedProduct = null
+                onViewMovements()
             },
             onPrintQr = {
                 downloadProductQrFromDetail(product)

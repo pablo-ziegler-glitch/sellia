@@ -1151,7 +1151,17 @@ fun SelliaApp(
                      vm = vm,
                      onBack = { navController.popBackStack() },
                      onShowQr = { navController.navigate(Routes.ProductQr.route) },
-                     onBulkImport = { navController.navigate(Routes.BulkData.route) }
+                     onBulkImport = { navController.navigate(Routes.BulkData.route) },
+                     onCreateProduct = { navController.navigate(Routes.AddProduct.route) },
+                     onEditProduct = { product ->
+                         navController.navigate(Routes.AddProduct.withId(product.id.toLong()))
+                     },
+                     onAdjustStock = { product ->
+                         navController.navigate(Routes.QuickAdjustStock.withProduct(product.id))
+                     },
+                     onViewMovements = {
+                         navController.navigate(Routes.StockMovements.route)
+                     }
                 )
             }
 
