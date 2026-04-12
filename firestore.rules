@@ -31,6 +31,18 @@ service cloud.firestore {
       return isAuthenticated() && requesterUserDoc().exists && requesterData().isSuperAdmin == true;
     }
 
+    function hasOwnerBypass() {
+      return isAuthenticated() && (
+        (request.auth.token.role is string && normalizeRole(request.auth.token.role) == 'owner') ||
+        (
+          requesterUserDoc().exists &&
+          requesterData().role is string &&
+          normalizeRole(requesterData().role) == 'owner' &&
+          requesterData().isAdmin == true
+        )
+      );
+    }
+
     function hasAdminClaim() {
       return isAuthenticated() && (
         request.auth.token.admin == true ||
@@ -43,7 +55,7 @@ service cloud.firestore {
     }
 
     function hasAdministrativeBypass() {
-      return hasSuperAdminClaim() || hasSuperAdminUserFlag();
+      return hasSuperAdminClaim() || hasSuperAdminUserFlag() || hasOwnerBypass();
     }
 
     // ─── Integrity Checks for Admins ──────────────────────────────────────
