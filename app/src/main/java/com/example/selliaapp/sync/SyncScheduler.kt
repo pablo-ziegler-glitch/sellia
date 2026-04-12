@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 
 
@@ -17,13 +18,16 @@ object SyncScheduler {
     private const val DEFAULT_INTERVAL_MINUTES = 1440 // 24 hs
     const val PERIODIC_UNIQUE_NAME: String = "sync_periodic_work"
 
-    fun enqueueNow(context: Context) {
+    fun enqueueNow(context: Context, includeBackup: Boolean = false) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         val req = OneTimeWorkRequestBuilder<SyncWorker>()
             .setConstraints(constraints)
+            .setInputData(
+                workDataOf(SyncWorker.INPUT_INCLUDE_BACKUP to includeBackup)
+            )
             .addTag(SyncWorker.TAG)
             .build()
 
@@ -46,6 +50,9 @@ object SyncScheduler {
 
         val request = PeriodicWorkRequestBuilder<SyncWorker>(safeIntervalMinutes.toLong(), TimeUnit.MINUTES)
             .setConstraints(constraints)
+            .setInputData(
+                workDataOf(SyncWorker.INPUT_INCLUDE_BACKUP to false)
+            )
             .addTag(SyncWorker.TAG)
             .build()
 

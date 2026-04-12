@@ -48,6 +48,16 @@ import {
   createTriggerStoreProductsSyncHandler,
   type PublicProductPayload,
 } from "./publicStore";
+import {
+  completeBackgroundJobRun,
+  getBackgroundJobConfig,
+  listBackgroundJobsConfig,
+  parseBackgroundJobRunInput,
+  parseBackgroundJobUpdateInput,
+  shouldRunBackgroundJobNow,
+  type BackgroundJobId,
+  upsertBackgroundJobConfig,
+} from "./backgroundJobs";
 
 admin.initializeApp();
 
@@ -1396,11 +1406,70 @@ export const reconcilePayment =
 export const createPaymentPreference =
   functions.runWith({ enforceAppCheck: true }).https.onCall(createPaymentPreferenceHandler);
 
+const collectUsageMetricsJobHandler = createCollectUsageMetricsHandler(db);
+const evaluateUsageAlertsJobHandler = createEvaluateUsageAlertsHandler(db);
+const refreshPublicProductsJobHandler = createRefreshPublicProductsHandler(db);
+const evaluateTenantBudgetAlertsJobHandler = createEvaluateTenantBudgetAlertsHandler(db);
+
+const runControlledBackgroundJob = async (params: {
+  jobId: BackgroundJobId;
+  trigger: "scheduler" | "manual";
+  runner: () => Promise<unknown>;
+}): Promise<null> => {
+  const startedAtMs = Date.now();
+  try {
+    await params.runner();
+    await completeBackgroundJobRun({
+      db,
+      jobId: params.jobId,
+      trigger: params.trigger,
+      startedAtMs,
+      result: "success",
+    });
+    return null;
+  } catch (error) {
+    await completeBackgroundJobRun({
+      db,
+      jobId: params.jobId,
+      trigger: params.trigger,
+      startedAtMs,
+      result: "error",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+};
+
+const runScheduledBackgroundJob = async (params: {
+  jobId: BackgroundJobId;
+  runner: () => Promise<unknown>;
+}): Promise<null> => {
+  const config = await getBackgroundJobConfig(db, params.jobId);
+  const decision = shouldRunBackgroundJobNow({ config });
+  if (!decision.shouldRun) {
+    console.info("Background job skipped by TTL control", {
+      jobId: params.jobId,
+      reason: decision.reason,
+      nextRunAt: decision.nextRunAt,
+    });
+    return null;
+  }
+  return runControlledBackgroundJob({
+    jobId: params.jobId,
+    trigger: "scheduler",
+    runner: params.runner,
+  });
+};
 
 export const collectUsageMetrics = functions.pubsub
   .schedule("every 24 hours")
   .timeZone("UTC")
-  .onRun(createCollectUsageMetricsHandler(db));
+  .onRun(() =>
+    runScheduledBackgroundJob({
+      jobId: "collect_usage_metrics",
+      runner: () => collectUsageMetricsJobHandler(),
+    })
+  );
 
 
 
@@ -1703,10 +1772,7 @@ export const mpWebhook = functions.https.onRequest(async (req, res) => {
   }
 });
 
-export const reconcilePendingPayments = functions.pubsub
-  .schedule("every 10 minutes")
-  .timeZone("UTC")
-  .onRun(async () => {
+const reconcilePendingPaymentsJobRunner = async (): Promise<null> => {
     let config: MpConfig;
     try {
       config = getMpConfig();
@@ -1758,12 +1824,16 @@ export const reconcilePendingPayments = functions.pubsub
       disputes: 0,
       agedAlerts: 0,
       officialFetchErrors: 0,
+      writesApplied: 0,
+      writesSkippedNoChange: 0,
       startedAt: admin.firestore.FieldValue.serverTimestamp(),
       finishedAt: null as admin.firestore.FieldValue | admin.firestore.Timestamp | null,
     };
 
     for (const paymentDoc of candidates) {
       const paymentData = (paymentDoc.data() ?? {}) as Record<string, unknown>;
+      const previousReconciliation =
+        (paymentData.reconciliation as Record<string, unknown> | undefined) ?? {};
       const paymentId = paymentDoc.id;
       const tenantId = paymentDoc.ref.parent.parent?.id ?? "";
       const orderId = normalizeString(paymentData.orderId);
@@ -1805,23 +1875,49 @@ export const reconcilePendingPayments = functions.pubsub
           reasons.push("amount_mismatch");
         }
 
-        await paymentDoc.ref.set(
-          {
-            status: canApplyPaymentTransition(internalStatus, officialStatus) ? officialStatus : internalStatus,
-            reconciliation: {
-              lastRunId: runId,
-              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
-              pendingAgeMinutes: ageMinutes,
-              officialStatus,
-              internalStatus,
-              discrepancy: reasons.length > 0,
-              reasons,
-              officialSummary,
+        const nextStatus = canApplyPaymentTransition(internalStatus, officialStatus)
+          ? officialStatus
+          : internalStatus;
+        const previousOfficialStatus = normalizeString(previousReconciliation.officialStatus).toUpperCase();
+        const previousInternalStatus = normalizeString(previousReconciliation.internalStatus).toUpperCase();
+        const previousDiscrepancy = previousReconciliation.discrepancy === true;
+        const previousReasons = Array.isArray(previousReconciliation.reasons)
+          ? previousReconciliation.reasons.map((entry) => String(entry))
+          : [];
+        const previousSummary = JSON.stringify(previousReconciliation.officialSummary ?? {});
+        const nextSummary = JSON.stringify(officialSummary);
+        const sameReasons =
+          previousReasons.length === reasons.length &&
+          previousReasons.every((reason, index) => reason === reasons[index]);
+        const statusChanged = normalizeString(paymentData.status).toUpperCase() !== nextStatus;
+        const reconciliationChanged =
+          previousOfficialStatus !== officialStatus ||
+          previousInternalStatus !== internalStatus ||
+          previousDiscrepancy !== (reasons.length > 0) ||
+          !sameReasons ||
+          previousSummary !== nextSummary;
+        if (statusChanged || reconciliationChanged) {
+          await paymentDoc.ref.set(
+            {
+              status: nextStatus,
+              reconciliation: {
+                lastRunId: runId,
+                lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+                pendingAgeMinutes: ageMinutes,
+                officialStatus,
+                internalStatus,
+                discrepancy: reasons.length > 0,
+                reasons,
+                officialSummary,
+              },
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             },
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+            { merge: true }
+          );
+          summary.writesApplied += 1;
+        } else {
+          summary.writesSkippedNoChange += 1;
+        }
 
         if (reasons.length > 0) {
           await upsertPaymentDispute({
@@ -1851,23 +1947,33 @@ export const reconcilePendingPayments = functions.pubsub
       } catch (error) {
         summary.officialFetchErrors += 1;
         const mpError = summarizeMercadoPagoError(error);
+        const previousError = (previousReconciliation.error as Record<string, unknown> | undefined) ?? {};
+        const errorUnchanged =
+          Number(previousError.status ?? Number.NaN) === (mpError.status ?? Number.NaN) &&
+          normalizeString(previousError.code) === normalizeString(mpError.code) &&
+          normalizeString(previousError.message) === normalizeString(mpError.message);
 
-        await paymentDoc.ref.set(
-          {
-            reconciliation: {
-              lastRunId: runId,
-              lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
-              pendingAgeMinutes: ageMinutes,
-              error: {
-                status: mpError.status,
-                code: mpError.code,
-                message: mpError.message,
+        if (!errorUnchanged) {
+          await paymentDoc.ref.set(
+            {
+              reconciliation: {
+                lastRunId: runId,
+                lastReconciledAt: admin.firestore.FieldValue.serverTimestamp(),
+                pendingAgeMinutes: ageMinutes,
+                error: {
+                  status: mpError.status,
+                  code: mpError.code,
+                  message: mpError.message,
+                },
               },
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             },
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+            { merge: true }
+          );
+          summary.writesApplied += 1;
+        } else {
+          summary.writesSkippedNoChange += 1;
+        }
 
         console.error("Mercado Pago reconciliation fetch failed", {
           runId,
@@ -1890,17 +1996,34 @@ export const reconcilePendingPayments = functions.pubsub
       disputes: summary.disputes,
       agedAlerts: summary.agedAlerts,
       officialFetchErrors: summary.officialFetchErrors,
+      writesApplied: summary.writesApplied,
+      writesSkippedNoChange: summary.writesSkippedNoChange,
       pendingMinutes,
       alertMinutes,
       batchSize,
     });
 
     return null;
-  });
+  };
+
+export const reconcilePendingPayments = functions.pubsub
+  .schedule("every 10 minutes")
+  .timeZone("UTC")
+  .onRun(() =>
+    runScheduledBackgroundJob({
+      jobId: "reconcile_pending_payments",
+      runner: reconcilePendingPaymentsJobRunner,
+    })
+  );
 
 export const evaluateUsageAlerts = functions.pubsub
   .schedule("every 6 hours")
-  .onRun(createEvaluateUsageAlertsHandler(db));
+  .onRun(() =>
+    runScheduledBackgroundJob({
+      jobId: "evaluate_usage_alerts",
+      runner: () => evaluateUsageAlertsJobHandler(),
+    })
+  );
 
 export const syncPublicProductOnWrite = functions.firestore
   .document("tenants/{tenantId}/products/{productId}")
@@ -1908,14 +2031,32 @@ export const syncPublicProductOnWrite = functions.firestore
 
 export const refreshPublicProducts = functions.pubsub
   .schedule("every 2 hours")
-  .onRun(createRefreshPublicProductsHandler(db));
+  .onRun(() =>
+    runScheduledBackgroundJob({
+      jobId: "refresh_public_products",
+      runner: () => refreshPublicProductsJobHandler(),
+    })
+  );
 
-export const publicCatalog = functions
-  .runWith({
+const runWithOnRequestCompat = (
+  options: functions.RuntimeOptions,
+  handler: (req: functions.https.Request, res: functions.Response<unknown>) => Promise<void>
+) => {
+  const runWithResult = functions.runWith(options) as unknown as {
+    https?: { onRequest?: (wrapped: typeof handler) => unknown };
+  };
+  if (typeof runWithResult?.https?.onRequest === "function") {
+    return runWithResult.https.onRequest(handler);
+  }
+  return functions.https.onRequest(handler);
+};
+
+export const publicCatalog = runWithOnRequestCompat(
+  {
     timeoutSeconds: 30,
     memory: "256MB",
-  })
-  .https.onRequest(async (req, res) => {
+  },
+  async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.set("Access-Control-Allow-Headers", "Content-Type");
@@ -2034,7 +2175,8 @@ export const publicCatalog = functions
       });
       res.status(status).json({ error: message });
     }
-  });
+  }
+);
 
 type TenantOwnershipAction =
   | "ASSOCIATE_OWNER"
@@ -2536,6 +2678,11 @@ const canReadMaintenance = (userData: admin.firestore.DocumentData): boolean =>
 
 const canWriteMaintenance = (userData: admin.firestore.DocumentData): boolean =>
   hasModuleAccess(userData, "maintenanceWrite");
+
+const canManageBackgroundJobs = (userData: admin.firestore.DocumentData): boolean => {
+  const role = normalizeString(userData.role).toLowerCase();
+  return role === "owner" || role === "admin" || userData.isAdmin === true || userData.isSuperAdmin === true;
+};
 
 const sanitizeMaintenanceTaskPayload = (
   payload: Record<string, unknown>,
@@ -3489,12 +3636,7 @@ export const setTenantOnboardingPolicy = functions
     };
   });
 
-export const createDailyTenantBackups = functions
-  .runWith({ timeoutSeconds: 540, memory: "1GB" })
-  .pubsub
-  .schedule("every 24 hours")
-  .timeZone("UTC")
-  .onRun(async () => {
+const createDailyTenantBackupsJobRunner = async (): Promise<null> => {
     const requestDate = new Date().toISOString().slice(0, 10);
     const requestId = `system-daily-${requestDate}`;
     const tenantsSnapshot = await db.collection("tenants").get();
@@ -3539,7 +3681,19 @@ export const createDailyTenantBackups = functions
       }
     }
     return null;
-  });
+  };
+
+export const createDailyTenantBackups = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .pubsub
+  .schedule("every 24 hours")
+  .timeZone("UTC")
+  .onRun(() =>
+    runScheduledBackgroundJob({
+      jobId: "create_daily_tenant_backups",
+      runner: createDailyTenantBackupsJobRunner,
+    })
+  );
 
 export const purgeDeletedProductFromBackups = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
@@ -3569,12 +3723,7 @@ export const purgeDeletedProductFromBackups = functions
   });
 
 
-export const archiveAndPurgeTenantBackups = functions
-  .runWith({ timeoutSeconds: 540, memory: "1GB" })
-  .pubsub
-  .schedule("every 24 hours")
-  .timeZone("UTC")
-  .onRun(async () => {
+const archiveAndPurgeTenantBackupsJobRunner = async (): Promise<null> => {
     const tenantsSnapshot = await db.collection("tenants").get();
     const nowMs = Date.now();
 
@@ -3597,7 +3746,19 @@ export const archiveAndPurgeTenantBackups = functions
     }
 
     return null;
-  });
+  };
+
+export const archiveAndPurgeTenantBackups = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .pubsub
+  .schedule("every 24 hours")
+  .timeZone("UTC")
+  .onRun(() =>
+    runScheduledBackgroundJob({
+      jobId: "archive_and_purge_tenant_backups",
+      runner: archiveAndPurgeTenantBackupsJobRunner,
+    })
+  );
 
 export const getTenantCostDashboard = functions
   .runWith({ enforceAppCheck: true })
@@ -3608,7 +3769,122 @@ export const evaluateTenantBudgetAlerts = functions
   .pubsub
   .schedule("every 24 hours")
   .timeZone("UTC")
-  .onRun(createEvaluateTenantBudgetAlertsHandler(db));
+  .onRun(() =>
+    runScheduledBackgroundJob({
+      jobId: "evaluate_tenant_budget_alerts",
+      runner: () => evaluateTenantBudgetAlertsJobHandler(),
+    })
+  );
+
+const requireBackgroundJobsAccess = async (context: functions.https.CallableContext, operation: string): Promise<{
+  uid: string;
+  userData: admin.firestore.DocumentData;
+}> => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+  }
+  const uid = context.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+  }
+  const userData = userDoc.data() || {};
+  if (!canManageBackgroundJobs(userData)) {
+    throw new functions.https.HttpsError("permission-denied", "sin permisos para gobernar jobs");
+  }
+  await enforceAdminRateLimit({
+    operation,
+    uid,
+    tenantId: normalizeString(userData.tenantId) || "platform",
+    ip: getRequestIp(context),
+  });
+  return { uid, userData };
+};
+
+export const getBackgroundJobsConfig = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (_data: unknown, context) => {
+    await assertAppCheckForInternalCallable({
+      operation: "getBackgroundJobsConfig",
+      context,
+      tenantId: undefined,
+    });
+    await requireBackgroundJobsAccess(context, "getBackgroundJobsConfig");
+    const jobs = await listBackgroundJobsConfig(db);
+    return { jobs };
+  });
+
+export const setBackgroundJobConfig = functions
+  .runWith({ enforceAppCheck: false })
+  .https.onCall(async (data: unknown, context) => {
+    await assertAppCheckForInternalCallable({
+      operation: "setBackgroundJobConfig",
+      context,
+      tenantId: undefined,
+    });
+    const { uid } = await requireBackgroundJobsAccess(context, "setBackgroundJobConfig");
+    const input = parseBackgroundJobUpdateInput(data);
+    const updated = await upsertBackgroundJobConfig({
+      db,
+      input,
+      actorUid: uid,
+    });
+
+    await db.collection("audit_logs").doc().set({
+      eventType: "background_job_config",
+      action: "update",
+      actorUid: uid,
+      jobId: updated.jobId,
+      mode: updated.mode,
+      active: updated.active,
+      intervalValue: updated.intervalValue,
+      intervalUnit: updated.intervalUnit,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { job: updated };
+  });
+
+export const runBackgroundJobNow = functions
+  .runWith({ enforceAppCheck: false, timeoutSeconds: 540, memory: "1GB" })
+  .https.onCall(async (data: unknown, context) => {
+    await assertAppCheckForInternalCallable({
+      operation: "runBackgroundJobNow",
+      context,
+      tenantId: undefined,
+    });
+    const { uid } = await requireBackgroundJobsAccess(context, "runBackgroundJobNow");
+    const input = parseBackgroundJobRunInput(data);
+
+    const runnerMap: Record<BackgroundJobId, () => Promise<unknown>> = {
+      collect_usage_metrics: () => collectUsageMetricsJobHandler(),
+      evaluate_usage_alerts: () => evaluateUsageAlertsJobHandler(),
+      refresh_public_products: () => refreshPublicProductsJobHandler(),
+      reconcile_pending_payments: reconcilePendingPaymentsJobRunner,
+      create_daily_tenant_backups: createDailyTenantBackupsJobRunner,
+      archive_and_purge_tenant_backups: archiveAndPurgeTenantBackupsJobRunner,
+      evaluate_tenant_budget_alerts: () => evaluateTenantBudgetAlertsJobHandler(),
+    };
+
+    await runControlledBackgroundJob({
+      jobId: input.jobId,
+      trigger: "manual",
+      runner: runnerMap[input.jobId],
+    });
+
+    await db.collection("audit_logs").doc().set({
+      eventType: "background_job_run",
+      action: "manual_run",
+      actorUid: uid,
+      jobId: input.jobId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      ok: true,
+      job: await getBackgroundJobConfig(db, input.jobId),
+    };
+  });
 
 export const createMaintenanceTask = functions
   .runWith({ enforceAppCheck: false })

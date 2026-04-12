@@ -134,10 +134,11 @@ export const getBillingConfig = (): BillingConfig => {
 };
 
 export const getAppCheckEnforcementMode = (): AppCheckEnforcementMode => {
+  const defaultMode = process.env.NODE_ENV === "production" ? "enforce" : "monitor";
   const configured =
     process.env.APP_CHECK_ENFORCEMENT_MODE ??
     getOptionalParam(APP_CHECK_ENFORCEMENT_MODE_PARAM) ??
-    "monitor";
+    defaultMode;
 
   return configured.trim().toLowerCase() === "enforce" ? "enforce" : "monitor";
 };
