@@ -7,9 +7,9 @@ import androidx.work.Configuration
 import com.example.selliaapp.repository.AppVersionRepository
 import com.example.selliaapp.sync.PricingScheduler
 import com.example.selliaapp.sync.SyncScheduler
+import com.example.selliaapp.appcheck.AppCheckProviderFactoryResolver
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -98,7 +98,7 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         )
 
         if (useDebugProvider) {
-            appCheck.installAppCheckProviderFactory(DebugAppCheckProviderFactory.getInstance())
+            appCheck.installAppCheckProviderFactory(AppCheckProviderFactoryResolver.debugFactory())
             appCheck.setTokenAutoRefreshEnabled(true)
 
             appCheck.getAppCheckToken(true)

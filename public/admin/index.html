@@ -100,6 +100,11 @@
                 Cloud Services
               </a>
 
+              <a href="#/settings/jobs" class="nav-item" data-route="#/settings/jobs">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6"/><path d="M12 9v6"/><circle cx="12" cy="12" r="9"/></svg>
+                Jobs & TTL
+              </a>
+
               <a href="#/maintenance" class="nav-item" data-route="#/maintenance">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                 Mantenimiento
@@ -253,6 +258,39 @@
                       </thead>
                       <tbody id="costByServiceBody">
                         <tr><td colspan="4">Sin datos de costo.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section id="jobsPanel" class="module-panel" hidden>
+                  <h4>Gobernanza de Jobs y TTL</h4>
+                  <p class="muted">Control estricto: ejecución a demanda o automática con TTL configurable.</p>
+                  <p id="jobsFeedback" class="banner"></p>
+                  <div class="inline-actions">
+                    <button id="jobsRefreshButton" type="button">Actualizar</button>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Job</th>
+                          <th>Servicio</th>
+                          <th>Modo</th>
+                          <th>Activo</th>
+                          <th>TTL</th>
+                          <th>Último run</th>
+                          <th>Próximo run</th>
+                          <th>Duración</th>
+                          <th>Resultado</th>
+                          <th>Ejecuciones</th>
+                          <th>Entorno</th>
+                          <th>Historial</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="jobsBody">
+                        <tr><td colspan="13">Sin datos.</td></tr>
                       </tbody>
                     </table>
                   </div>

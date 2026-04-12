@@ -14,3 +14,6 @@ export const setTenantOnboardingPolicy = legacy.setTenantOnboardingPolicy;
 export const purgeDeletedProductFromBackups = legacy.purgeDeletedProductFromBackups;
 export const setStoreDomain = legacy.setStoreDomain;
 export const removeStoreDomain = legacy.removeStoreDomain;
+export const getBackgroundJobsConfig = legacy.getBackgroundJobsConfig;
+export const setBackgroundJobConfig = legacy.setBackgroundJobConfig;
+export const runBackgroundJobNow = legacy.runBackgroundJobNow;

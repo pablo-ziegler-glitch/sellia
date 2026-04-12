@@ -119,6 +119,7 @@ export const ROUTE_POLICIES = Object.freeze({
   "#/settings/pricing": MODULE_ROLE_POLICIES.pricing,
   "#/settings/users": MODULE_ROLE_POLICIES.usersRoles,
   "#/settings/cloud-services": MODULE_ROLE_POLICIES.cloudConfig,
+  "#/settings/jobs": MODULE_ROLE_POLICIES.cloudConfig,
   "#/settings/tenant-lifecycle": MODULE_ROLE_POLICIES.tenantLifecycle,
   "#/maintenance": MODULE_ROLE_POLICIES.maintenanceWrite,
   "#/backups": MODULE_ROLE_POLICIES.backupsRead,
