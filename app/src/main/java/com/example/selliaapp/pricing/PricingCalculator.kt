@@ -62,18 +62,14 @@ object PricingCalculator {
         val posnet3Cuotas = settings.posnet3CuotasPercent / 100.0
         val transferenciaRetencion = settings.transferenciaRetencionPercent / 100.0
 
-        // El margen se aplica sobre compra + operativos (ambos son costos que deben generar ganancia).
-        // El costo fijo imputado se suma al final, ya que sólo debe recuperarse (sin markup).
-        // El IVA de producto (21 %) se aplica al total final antes del recargo de cuotas,
-        // ya que es el impuesto que el cliente paga sobre el precio de venta.
+        // El margen objetivo se calcula sobre toda la estructura de costo:
+        // compra + operativos + costo fijo imputado.
+        // Esto conserva la equivalencia con la planilla de referencia validada por negocio.
         val operativosAmount = purchasePrice * operativosLocal
-        val baseWithProfit = (purchasePrice + operativosAmount) * (1 + targetMargin)
-        val withFixed = baseWithProfit + fixedCostImputed
-        val ivaProduct = settings.ivaProductPercent / 100.0
-        val withIva = withFixed * (1 + ivaProduct)
-        val listPriceRaw = withIva * (1 + posnet3Cuotas)
-        val cashPriceRaw = withIva
-        val transferPriceRaw = withIva
+        val costWithOperativosAndFixed = purchasePrice + operativosAmount + fixedCostImputed
+        val cashPriceRaw = costWithOperativosAndFixed * (1 + targetMargin)
+        val listPriceRaw = cashPriceRaw * (1 + posnet3Cuotas)
+        val transferPriceRaw = cashPriceRaw
 
         val listPrice = roundUpByTier(listPriceRaw)
         val cashPrice = roundUpByTier(cashPriceRaw)

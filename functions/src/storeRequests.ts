@@ -19,7 +19,7 @@ interface StoreRequestData {
  */
 export const onStoreRequestStatusChange = functions.firestore
   .document("store_requests/{requestId}")
-  .onUpdate(async (change, context) => {
+  .onWrite(async (change, context) => {
     const db = admin.firestore();
     const before = change.before.data() as StoreRequestData | undefined;
     const after = change.after.data() as StoreRequestData | undefined;

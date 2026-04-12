@@ -116,13 +116,20 @@ export const resolveFieldVisibility = (
   fieldName: string,
   role: PiiRole | null | undefined
 ): PiiVisibility => {
+  const normalizedRole = (() => {
+    const raw = String(role ?? "").trim().toLowerCase();
+    if (raw === "admin") return "owner";
+    if (raw === "manager" || raw === "cashier") return "support";
+    return raw;
+  })() as PiiRole;
+
   const domainRules = PII_FIELD_RULES[domain];
   const fieldRule = domainRules[fieldName];
   if (!fieldRule) {
     return "full";
   }
-  if (role && fieldRule.byRole?.[role]) {
-    return fieldRule.byRole[role] as PiiVisibility;
+  if (normalizedRole && fieldRule.byRole?.[normalizedRole]) {
+    return fieldRule.byRole[normalizedRole] as PiiVisibility;
   }
   return fieldRule.defaultVisibility;
 };
