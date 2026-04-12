@@ -196,11 +196,6 @@ fun ConfigScreen(
                     onMobileClick = onPricingConfig
                 )
                 AdminActionItem(
-                    title = "Tenant lifecycle",
-                    mobileEnabled = adminFeatureFlags.tenantLifecycleEnabled,
-                    onMobileClick = onTenantDeactivation
-                )
-                AdminActionItem(
                     title = "Cargas masivas y ABMs",
                     mobileEnabled = adminFeatureFlags.bulkAbmEnabled,
                     onMobileClick = onBulkData
@@ -243,6 +238,11 @@ fun ConfigScreen(
                 }
 
                 if (adminFeatureFlags.tenantLifecycleEnabled) {
+                    SettingsItem(
+                        icon = Icons.Filled.Lock,
+                        title = "Solicitar desactivación tienda",
+                        onClick = onTenantDeactivation
+                    )
                     SettingsItem(
                         icon = Icons.Filled.Lock,
                         title = "Solicitar reactivación tienda",
@@ -337,16 +337,6 @@ fun ConfigScreen(
             }
         )
     }
-}
-
-
-enum class BackofficeModule(val slug: String) {
-    USERS_AND_ROLES("users_roles"),
-    CLOUD_SERVICES("cloud_services"),
-    GLOBAL_PRICING("global_pricing"),
-    TENANT_LIFECYCLE("tenant_lifecycle"),
-    BULK_ABM("bulk_abm"),
-    STORE_SETTINGS("store")
 }
 
 data class ConfigAdminFeatureFlags(

@@ -9,6 +9,7 @@ import com.example.selliaapp.repository.AccessControlRepository
 import com.example.selliaapp.repository.SecurityConfigRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -35,12 +36,16 @@ class AccessControlRepositoryImpl @Inject constructor(
         val scope = CoroutineScope(SupervisorJob() + io)
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             scope.launch {
-                trySend(resolveAccess(firebaseAuth.currentUser?.email))
+                val access = runCatching { resolveAccess(firebaseAuth.currentUser?.email) }
+                    .getOrDefault(UserAccessState.guest())
+                trySend(access)
             }
         }
         auth.addAuthStateListener(listener)
         scope.launch {
-            trySend(resolveAccess(auth.currentUser?.email))
+            val access = runCatching { resolveAccess(auth.currentUser?.email) }
+                .getOrDefault(UserAccessState.guest())
+            trySend(access)
         }
         awaitClose {
             auth.removeAuthStateListener(listener)
@@ -73,13 +78,21 @@ class AccessControlRepositoryImpl @Inject constructor(
 
     private suspend fun resolveRoleFromCloud(): AppRole? {
         val uid = auth.currentUser?.uid ?: return null
-        val snapshot = firestore.collection("users").document(uid).get().await()
-        if (!snapshot.exists()) return null
-        val status = snapshot.getString("status")?.lowercase()
-        if (!status.isNullOrBlank() && status != "active") {
-            return null
+        return runCatching {
+            val snapshot = firestore.collection("users").document(uid).get().await()
+            if (!snapshot.exists()) return@runCatching null
+            val status = snapshot.getString("status")?.lowercase()
+            if (!status.isNullOrBlank() && status != "active") {
+                return@runCatching null
+            }
+            AppRole.OWNER
+        }.getOrElse { error ->
+            when (error) {
+                is FirebaseFirestoreException ->
+                    if (error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) null else throw error
+                else -> throw error
+            }
         }
-        return AppRole.OWNER
     }
 
 
