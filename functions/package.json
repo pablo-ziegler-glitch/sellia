@@ -21,6 +21,8 @@
     "admin:audit": "node scripts/audit-admin-integrity.js",
     "admin:diagnose": "node scripts/admin-integrity-helpers.js",
     "admin:health-check": "node scripts/admin-integrity-helpers.js --health-check",
+    "admin:migrate-owner-model:dry": "node scripts/migrate-owner-admin-model.js --dry-run",
+    "admin:migrate-owner-model": "node scripts/migrate-owner-admin-model.js",
     "check:permissions-drift": "node scripts/check-role-permissions-drift.js",
     "test:security:bo": "vitest run test/backofficeSecurity.integration.test.ts",
     "catalog:backfill:dry": "node scripts/backfill-valkirja-catalog.js --dry-run",

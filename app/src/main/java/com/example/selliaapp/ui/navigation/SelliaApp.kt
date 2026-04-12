@@ -26,7 +26,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
@@ -71,7 +70,6 @@ import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.CrossCatalogAdminScreen
 import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
 import com.example.selliaapp.ui.screens.config.AppVersionScreen
-import com.example.selliaapp.ui.screens.config.BackofficeModule
 import com.example.selliaapp.ui.screens.config.ConfigAdminFeatureFlags
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
@@ -904,7 +902,6 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
-                val uriHandler = LocalUriHandler.current
                 val tenantManagementVm: TenantManagementViewModel = hiltViewModel()
                 val tenantManagementState by tenantManagementVm.uiState.collectAsStateWithLifecycle()
                 val userProfile = remember(authState, accessState) {
@@ -942,9 +939,6 @@ fun SelliaApp(
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = true,
                     onSupport = { navController.navigate(Routes.AppVersion.route) },
-                    onOpenBackofficeWeb = { module ->
-                        uriHandler.openUri("https://sellia1993.web.app/backoffice/${module.slug}")
-                    },
                     adminFeatureFlags = ConfigAdminFeatureFlags.MobileFieldOnly,
                     isClientFinal = isClientFinal,
                     onStorefront = { navController.navigate(Routes.Storefront.route) },
