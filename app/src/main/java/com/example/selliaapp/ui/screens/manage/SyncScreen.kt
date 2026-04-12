@@ -108,7 +108,7 @@ fun SyncScreen(
             SyncPendingBanner()
 
             Text(
-                "La sincronización en la nube está activa de forma permanente.",
+                "La sincronización automática usa modo incremental para reducir costo en Firestore.",
                 style = MaterialTheme.typography.bodyLarge
             )
 
@@ -151,15 +151,15 @@ fun SyncScreen(
                 style = MaterialTheme.typography.titleSmall
             )
             Text(
-                "Siempre activo para todos los usuarios. Guarda todas las tablas locales en Firestore para recuperación y auditoría.",
+                "Ejecutalo sólo bajo demanda. El respaldo completo empuja todas las tablas locales a Firestore.",
                 style = MaterialTheme.typography.bodySmall
             )
 
             Button(
                 enabled = !syncing,
                 onClick = {
-                    SyncScheduler.enqueueNow(context)
-                    scope.launch { snackbarHostState.showSnackbar("Sincronización encolada.") }
+                    SyncScheduler.enqueueNow(context, includeBackup = false)
+                    scope.launch { snackbarHostState.showSnackbar("Sincronización incremental encolada.") }
                 }
             ) {
                 if (syncing) {
@@ -170,7 +170,17 @@ fun SyncScreen(
                         strokeWidth = 2.dp
                     )
                 }
-                Text(if (syncing) "Sincronizando..." else "Sincronizar ahora")
+                Text(if (syncing) "Sincronizando..." else "Sincronizar ahora (incremental)")
+            }
+
+            OutlinedButton(
+                enabled = !syncing,
+                onClick = {
+                    SyncScheduler.enqueueNow(context, includeBackup = true)
+                    scope.launch { snackbarHostState.showSnackbar("Respaldo completo encolado.") }
+                }
+            ) {
+                Text("Respaldo completo (alto costo)")
             }
 
             if (syncing) {

@@ -19,7 +19,6 @@ import {
   getDocs,
   getFirestore,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -31,7 +30,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { hasRouteAccess, isInternalRole, normalizeInternalRole, rolePermissions } from "./permissions.js";
 
-const ADMIN_WEB_DISABLED = true;
+const ADMIN_WEB_DISABLED = false;
 if (ADMIN_WEB_DISABLED) {
   const disabledMessage = document.createElement("main");
   disabledMessage.className = "layout";
@@ -55,6 +54,7 @@ const TOKEN_REFRESH_MS = 50 * 60 * 1000;
 const DEFAULT_SESSION_MAX_MS = 8 * 60 * 60 * 1000;
 const SESSION_CHECK_INTERVAL_MS = 60 * 1000; // verificar cada 60 segundos
 const DEFAULT_ROUTE = "#/dashboard";
+const PRODUCT_LIST_CACHE_TTL_MS = 90 * 1000;
 
 const el = {
   authPanel: document.getElementById("authPanel"),
@@ -121,6 +121,10 @@ const el = {
   currentCostTotalValue: document.getElementById("currentCostTotalValue"),
   costDeltaValue: document.getElementById("costDeltaValue"),
   costByServiceBody: document.getElementById("costByServiceBody"),
+  jobsPanel: document.getElementById("jobsPanel"),
+  jobsBody: document.getElementById("jobsBody"),
+  jobsFeedback: document.getElementById("jobsFeedback"),
+  jobsRefreshButton: document.getElementById("jobsRefreshButton"),
   tenantPolicyPanel: document.getElementById("tenantPolicyPanel"),
   tenantActivationModeSelect: document.getElementById("tenantActivationModeSelect"),
   saveTenantPolicyButton: document.getElementById("saveTenantPolicyButton"),
@@ -209,6 +213,10 @@ const routeViews = {
     title: "Servicios cloud",
     description: "Gestión de backups y estado cloud del tenant."
   },
+  "#/settings/jobs": {
+    title: "Jobs y TTL",
+    description: "Control operativo de jobs automáticos: modo, TTL, activación y ejecución manual."
+  },
   "#/maintenance": {
     title: "Mantenimiento",
     description: "Tareas operativas multi-tenant con auditoría de cambios."
@@ -243,7 +251,9 @@ const appState = {
   paymentsFlagsUnsubscribe: null,
   paymentsAuditUnsubscribe: null,
   maintenanceTasksUnsubscribe: null,
-  maintenanceTasks: []
+  maintenanceTasks: [],
+  backgroundJobs: [],
+  productQueryCache: new Map()
 };
 
 const bulkProductsState = {
@@ -349,6 +359,8 @@ function wireEvents() {
   el.bulkRemoveCategoryButton?.addEventListener("click", () => onBulkApplyCategory("remove"));
   el.bulkPublishButton?.addEventListener("click", () => onBulkSetPublishStatus("published"));
   el.bulkUnpublishButton?.addEventListener("click", () => onBulkSetPublishStatus("draft"));
+  el.jobsRefreshButton?.addEventListener("click", loadBackgroundJobsConfig);
+  el.jobsBody?.addEventListener("click", onBackgroundJobsActions);
   window.addEventListener("hashchange", syncRouteWithPermissions);
   el.maintenanceBody?.addEventListener("click", onMaintenanceActions);
 
@@ -462,6 +474,9 @@ async function syncRouteWithPermissions() {
   if (currentRoute === "#/settings/cloud-services") {
     await loadTenantOnboardingPolicy();
   }
+  if (currentRoute === "#/settings/jobs") {
+    await loadBackgroundJobsConfig();
+  }
   if (currentRoute === "#/store/sales") {
     await initPosPanel();
   }
@@ -484,8 +499,8 @@ async function syncRouteWithPermissions() {
     stopBackupRequestsListener();
     stopPaymentsListeners();
   } else {
-    startBackupRequestsListener();
-    startPaymentsListeners();
+    await startBackupRequestsListener();
+    await startPaymentsListeners();
   }
 
   if (!el.costDashboardPanel.hidden) {
@@ -575,6 +590,8 @@ function clearSessionState() {
   appState.profile = null;
   appState.sessionMaxMs = DEFAULT_SESSION_MAX_MS; // resetear al default
   appState.maintenanceTasks = [];
+  appState.backgroundJobs = [];
+  appState.productQueryCache.clear();
   stopMaintenanceTasksListener();
   stopBulkProductsListener();
   if (typeof appState.backupRequestsUnsubscribe === "function") appState.backupRequestsUnsubscribe();
@@ -585,9 +602,48 @@ function clearSessionState() {
   el.costDashboardPanel.hidden = true;
   el.backupRequestsBody.innerHTML = '<tr><td colspan="6">Sin solicitudes recientes.</td></tr>';
   el.costByServiceBody.innerHTML = '<tr><td colspan="4">Sin datos de costo.</td></tr>';
+  if (el.jobsBody) el.jobsBody.innerHTML = '<tr><td colspan="13">Sin datos.</td></tr>';
+  if (el.jobsFeedback) el.jobsFeedback.textContent = "";
   el.budgetTotalValue.textContent = '-';
   el.currentCostTotalValue.textContent = '-';
   el.costDeltaValue.textContent = '-';
+}
+
+function getProductsCacheKey(tenantId, limitSize) {
+  return `${tenantId}|products|limit:${limitSize}`;
+}
+
+function getCachedProducts(cacheKey) {
+  const hit = appState.productQueryCache.get(cacheKey);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PRODUCT_LIST_CACHE_TTL_MS) {
+    appState.productQueryCache.delete(cacheKey);
+    return null;
+  }
+  return hit.products;
+}
+
+function setCachedProducts(cacheKey, products) {
+  appState.productQueryCache.set(cacheKey, { at: Date.now(), products });
+}
+
+async function loadTenantProducts(limitSize) {
+  if (!appState.profile) return [];
+  const tenantId = appState.profile.tenantId;
+  const cacheKey = getProductsCacheKey(tenantId, limitSize);
+  const cached = getCachedProducts(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const q = query(
+    collection(appState.firestore, "tenants", tenantId, "products"),
+    orderBy("name"),
+    limit(limitSize)
+  );
+  const snapshot = await getDocs(q);
+  const products = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  setCachedProducts(cacheKey, products);
+  return products;
 }
 
 function showDeniedState(message) {
@@ -611,33 +667,32 @@ function stopBackupRequestsListener() {
   stopPaymentsListeners();
 }
 
-function startBackupRequestsListener() {
-  if (appState.backupRequestsUnsubscribe || !appState.profile) return;
+async function startBackupRequestsListener() {
+  if (!appState.profile) return;
   const requestsQuery = query(
     collection(appState.firestore, "tenant_backups", appState.profile.tenantId, "requests"),
     orderBy("createdAt", "desc"),
     limit(12)
   );
 
-  appState.backupRequestsUnsubscribe = onSnapshot(
-    requestsQuery,
-    (snapshot) => {
-      if (snapshot.empty) {
-        el.backupRequestsBody.innerHTML = "<tr><td colspan=\"6\">Sin solicitudes recientes.</td></tr>";
-        return;
-      }
-      el.backupRequestsBody.innerHTML = snapshot.docs.map((requestDoc) => {
-        const row = requestDoc.data();
-        const createdAtMillis = row.createdAt?.toMillis?.() || null;
-        return `<tr>
+  try {
+    const snapshot = await getDocs(requestsQuery);
+    if (snapshot.empty) {
+      el.backupRequestsBody.innerHTML = "<tr><td colspan=\"6\">Sin solicitudes recientes.</td></tr>";
+      return;
+    }
+    el.backupRequestsBody.innerHTML = snapshot.docs.map((requestDoc) => {
+      const row = requestDoc.data();
+      const createdAtMillis = row.createdAt?.toMillis?.() || null;
+      return `<tr>
           <td>${requestDoc.id}</td><td>${row.status || "queued"}</td>
           <td>${createdAtMillis ? new Date(createdAtMillis).toLocaleString() : "-"}</td>
           <td>${row.createdByUid || "-"}</td><td>${Number.isFinite(row.docCount) ? row.docCount : "-"}</td><td>${row.errorMessage || "-"}</td>
         </tr>`;
-      }).join("");
-    },
-    (error) => setBackupMessage(`No se pudo cargar historial de backups: ${error.message || error}`)
-  );
+    }).join("");
+  } catch (error) {
+    setBackupMessage(`No se pudo cargar historial de backups: ${error.message || error}`);
+  }
 }
 
 async function onRequestBackupNow() {
@@ -657,6 +712,7 @@ async function onRequestBackupNow() {
     const requestId = response?.data?.requestId || "-";
     setBackupMessage(deduplicated ? `Ya existía una solicitud reciente (${requestId}).` : `Solicitud creada (${requestId}).`);
     el.backupReasonInput.value = "";
+    await startBackupRequestsListener();
   } catch (error) {
     setBackupMessage(parseAuthError(error));
   } finally {
@@ -670,59 +726,41 @@ function setBackupMessage(message) {
 
 
 function stopPaymentsListeners() {
-  if (typeof appState.paymentsFlagsUnsubscribe === "function") {
-    appState.paymentsFlagsUnsubscribe();
-  }
-  if (typeof appState.paymentsAuditUnsubscribe === "function") {
-    appState.paymentsAuditUnsubscribe();
-  }
   appState.paymentsFlagsUnsubscribe = null;
   appState.paymentsAuditUnsubscribe = null;
 }
 
-function startPaymentsListeners() {
+async function startPaymentsListeners() {
   if (!appState.profile) return;
-  if (!appState.paymentsFlagsUnsubscribe) {
+  try {
     const tenantFlagsRef = doc(appState.firestore, "tenants", appState.profile.tenantId, "config", "runtime_flags");
     const globalFlagsRef = doc(appState.firestore, "config", "runtime_flags");
-
-    appState.paymentsFlagsUnsubscribe = onSnapshot(
-      query(
-        collection(appState.firestore, "tenants", appState.profile.tenantId, "audit_logs"),
-        orderBy("createdAt", "desc"),
-        limit(1)
-      ),
-      async () => {
-        const [tenantSnap, globalSnap] = await Promise.all([getDoc(tenantFlagsRef), getDoc(globalFlagsRef)]);
-        renderPaymentsFlags(globalSnap.data() || {}, tenantSnap.data() || {});
-      }
-    );
-  }
-
-  if (!appState.paymentsAuditUnsubscribe) {
     const auditQuery = query(
       collection(appState.firestore, "tenants", appState.profile.tenantId, "audit_logs"),
       orderBy("createdAt", "desc"),
       limit(12)
     );
+    const [tenantSnap, globalSnap, auditSnapshot] = await Promise.all([
+      getDoc(tenantFlagsRef),
+      getDoc(globalFlagsRef),
+      getDocs(auditQuery),
+    ]);
+    renderPaymentsFlags(globalSnap.data() || {}, tenantSnap.data() || {});
 
-    appState.paymentsAuditUnsubscribe = onSnapshot(
-      auditQuery,
-      (snapshot) => {
-        const rows = snapshot.docs
-          .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-          .filter((row) => row.action === "toggle_mercadopago");
+    const rows = auditSnapshot.docs
+      .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+      .filter((row) => row.action === "toggle_mercadopago");
 
-        if (!rows.length) {
-          el.paymentsAuditBody.innerHTML = '<tr><td colspan="5">Sin eventos recientes.</td></tr>';
-          return;
-        }
+    if (!rows.length) {
+      el.paymentsAuditBody.innerHTML = '<tr><td colspan="5">Sin eventos recientes.</td></tr>';
+      return;
+    }
 
-        el.paymentsAuditBody.innerHTML = rows
-          .map((row) => {
-            const createdAtMillis = row.createdAt?.toMillis?.() || null;
-            const createdAtLabel = createdAtMillis ? new Date(createdAtMillis).toLocaleString() : "-";
-            return `
+    el.paymentsAuditBody.innerHTML = rows
+      .map((row) => {
+        const createdAtMillis = row.createdAt?.toMillis?.() || null;
+        const createdAtLabel = createdAtMillis ? new Date(createdAtMillis).toLocaleString() : "-";
+        return `
               <tr>
                 <td>${createdAtLabel}</td>
                 <td>${(row.scope || "tenant").toString()}</td>
@@ -731,13 +769,10 @@ function startPaymentsListeners() {
                 <td>${(row.reason || "-").toString()}</td>
               </tr>
             `;
-          })
-          .join("");
-      },
-      (error) => {
-        setPaymentsToggleMessage(`No se pudo cargar auditoría: ${error.message || error}`);
-      }
-    );
+      })
+      .join("");
+  } catch (error) {
+    setPaymentsToggleMessage(`No se pudo cargar auditoría: ${error.message || error}`);
   }
 }
 
@@ -810,6 +845,7 @@ async function onApplyPaymentsToggle() {
       `Toggle aplicado. MP efectivo: ${effectiveEnabled === true ? "habilitado" : "deshabilitado"}.`
     );
     el.paymentsToggleReason.value = "";
+    await startPaymentsListeners();
   } catch (error) {
     setPaymentsToggleMessage(parseAuthError(error));
   } finally {
@@ -877,11 +913,178 @@ function formatMoney(value) {
   }).format(value);
 }
 
+async function loadBackgroundJobsConfig() {
+  if (!appState.profile || !el.jobsPanel) return;
+  try {
+    if (el.jobsRefreshButton) el.jobsRefreshButton.disabled = true;
+    setJobsFeedback("Cargando configuración de jobs...");
+    const callable = httpsCallable(appState.cloudFunctions, "getBackgroundJobsConfig");
+    const response = await callable({});
+    const jobs = Array.isArray(response?.data?.jobs) ? response.data.jobs : [];
+    appState.backgroundJobs = jobs;
+    renderBackgroundJobsTable(jobs);
+    setJobsFeedback(jobs.length ? "" : "No hay jobs configurados.");
+  } catch (error) {
+    setJobsFeedback(parseAuthError(error));
+    if (el.jobsBody) el.jobsBody.innerHTML = '<tr><td colspan="13">No se pudo cargar.</td></tr>';
+  } finally {
+    if (el.jobsRefreshButton) el.jobsRefreshButton.disabled = false;
+  }
+}
+
+function renderBackgroundJobsTable(jobs) {
+  if (!el.jobsBody) return;
+  if (!jobs.length) {
+    el.jobsBody.innerHTML = '<tr><td colspan="13">Sin datos.</td></tr>';
+    return;
+  }
+
+  el.jobsBody.innerHTML = jobs
+    .map((job) => {
+      const jobId = escapeHtml(job.jobId || "");
+      const mode = job.mode === "on_demand" ? "on_demand" : "automatic";
+      const active = job.active !== false;
+      const ttlValue = Number(job.intervalValue || 0);
+      const ttlUnit = ["seconds", "minutes", "hours", "days"].includes(job.intervalUnit)
+        ? job.intervalUnit
+        : "minutes";
+      const lastRun = job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : "-";
+      const nextRun = job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : "-";
+      const lastResult = job.lastResult || "-";
+      const costTier = escapeHtml(job.costTier || "n/a");
+      const lastDurationMs = Number.isFinite(Number(job.lastDurationMs))
+        ? `${Math.max(0, Math.trunc(Number(job.lastDurationMs)))} ms`
+        : "-";
+      const environment = escapeHtml(job.environment || "-");
+      const history = Array.isArray(job.history) ? job.history.slice(-3).reverse() : [];
+      const historyPreview = history.length
+        ? history.map((entry) => {
+          const when = entry?.ranAt ? new Date(entry.ranAt).toLocaleString() : "-";
+          const result = escapeHtml(entry?.result || "-");
+          const trigger = escapeHtml(entry?.trigger || "-");
+          return `${when} · ${result} · ${trigger}`;
+        }).join("<br/>")
+        : "-";
+      return `
+        <tr data-job-id="${jobId}">
+          <td>
+            <strong>${escapeHtml(job.name || jobId)}</strong>
+            <div class="muted">${escapeHtml(job.description || "")}</div>
+            <span class="jobs-badge">${costTier}</span>
+          </td>
+          <td>${escapeHtml(job.service || "-")}</td>
+          <td>
+            <select id="job-mode-${jobId}">
+              <option value="automatic" ${mode === "automatic" ? "selected" : ""}>Automático</option>
+              <option value="on_demand" ${mode === "on_demand" ? "selected" : ""}>A demanda</option>
+            </select>
+          </td>
+          <td>
+            <label>
+              <input id="job-active-${jobId}" type="checkbox" ${active ? "checked" : ""} />
+              Activo
+            </label>
+          </td>
+          <td>
+            <div class="jobs-controls">
+              <input id="job-ttl-value-${jobId}" type="number" min="1" max="100000" value="${ttlValue}" />
+              <select id="job-ttl-unit-${jobId}">
+                <option value="seconds" ${ttlUnit === "seconds" ? "selected" : ""}>seg</option>
+                <option value="minutes" ${ttlUnit === "minutes" ? "selected" : ""}>min</option>
+                <option value="hours" ${ttlUnit === "hours" ? "selected" : ""}>hs</option>
+                <option value="days" ${ttlUnit === "days" ? "selected" : ""}>días</option>
+              </select>
+            </div>
+          </td>
+          <td>${escapeHtml(lastRun)}</td>
+          <td>${escapeHtml(nextRun)}</td>
+          <td>${escapeHtml(lastDurationMs)}</td>
+          <td>${escapeHtml(lastResult)}</td>
+          <td>${formatNumber(job.executionCount || 0)}</td>
+          <td>${environment}</td>
+          <td>${historyPreview}</td>
+          <td>
+            <button class="secondary" data-action="save-job" data-job-id="${jobId}">Guardar</button>
+            <button class="secondary" data-action="run-job" data-job-id="${jobId}">Ejecutar</button>
+            <button class="secondary" data-action="disable-job" data-job-id="${jobId}">Desactivar</button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function readJobRowConfig(jobId) {
+  const mode = document.getElementById(`job-mode-${jobId}`)?.value || "automatic";
+  const active = document.getElementById(`job-active-${jobId}`)?.checked === true;
+  const intervalValue = Number(document.getElementById(`job-ttl-value-${jobId}`)?.value || 0);
+  const intervalUnit = document.getElementById(`job-ttl-unit-${jobId}`)?.value || "minutes";
+  return { mode, active, intervalValue, intervalUnit };
+}
+
+async function onBackgroundJobsActions(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button || !appState.profile) return;
+  const action = button.dataset.action;
+  const jobId = button.dataset.jobId;
+  if (!jobId) return;
+
+  if (action === "run-job") {
+    await runBackgroundJobManual(jobId, button);
+    return;
+  }
+
+  if (action === "disable-job") {
+    await saveBackgroundJobConfig(jobId, { active: false }, button);
+    return;
+  }
+
+  if (action === "save-job") {
+    const config = readJobRowConfig(jobId);
+    await saveBackgroundJobConfig(jobId, config, button);
+  }
+}
+
+async function saveBackgroundJobConfig(jobId, config, button) {
+  try {
+    button.disabled = true;
+    setJobsFeedback("");
+    const callable = httpsCallable(appState.cloudFunctions, "setBackgroundJobConfig");
+    await callable({ jobId, ...config });
+    setJobsFeedback(`Configuración actualizada para ${jobId}.`);
+    await loadBackgroundJobsConfig();
+  } catch (error) {
+    setJobsFeedback(parseAuthError(error));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function runBackgroundJobManual(jobId, button) {
+  try {
+    button.disabled = true;
+    setJobsFeedback(`Ejecutando ${jobId}...`);
+    const callable = httpsCallable(appState.cloudFunctions, "runBackgroundJobNow");
+    await callable({ jobId });
+    setJobsFeedback(`Ejecución manual completada para ${jobId}.`);
+    await loadBackgroundJobsConfig();
+  } catch (error) {
+    setJobsFeedback(parseAuthError(error));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function setJobsFeedback(message) {
+  if (el.jobsFeedback) el.jobsFeedback.textContent = message || "";
+}
+
 
 function toggleModulePanels(currentRoute) {
   if (el.dashboardPanel) el.dashboardPanel.hidden = currentRoute !== "#/dashboard";
   if (el.maintenancePanel) el.maintenancePanel.hidden = currentRoute !== "#/maintenance";
   if (el.tenantPolicyPanel) el.tenantPolicyPanel.hidden = currentRoute !== "#/settings/cloud-services";
+  if (el.jobsPanel) el.jobsPanel.hidden = currentRoute !== "#/settings/jobs";
   if (el.storeConfigPanel) el.storeConfigPanel.hidden = currentRoute !== "#/settings/store";
   if (el.permissionsPanel) el.permissionsPanel.hidden = currentRoute !== "#/permissions";
   if (el.posSalesPanel) el.posSalesPanel.hidden = currentRoute !== "#/store/sales";
@@ -969,27 +1172,21 @@ async function loadMaintenanceTasks() {
     orderBy("createdAt", "desc"),
     limit(20)
   );
-  appState.maintenanceTasksUnsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      appState.maintenanceTasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      if (snapshot.empty) {
-        setMaintenanceState("empty");
-        return;
-      }
-      setMaintenanceState("content");
-      renderMaintenanceTasks(appState.maintenanceTasks);
-    },
-    (error) => {
-      setMaintenanceState("error", parseAuthError(error));
+  try {
+    const snapshot = await getDocs(q);
+    appState.maintenanceTasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (snapshot.empty) {
+      setMaintenanceState("empty");
+      return;
     }
-  );
+    setMaintenanceState("content");
+    renderMaintenanceTasks(appState.maintenanceTasks);
+  } catch (error) {
+    setMaintenanceState("error", parseAuthError(error));
+  }
 }
 
 function stopMaintenanceTasksListener() {
-  if (typeof appState.maintenanceTasksUnsubscribe === "function") {
-    appState.maintenanceTasksUnsubscribe();
-  }
   appState.maintenanceTasksUnsubscribe = null;
 }
 
@@ -1040,6 +1237,7 @@ async function onCreateMaintenanceTask(event) {
     await callable({ tenantId: appState.profile.tenantId, title, priority });
     if (el.maintenanceTitleInput) el.maintenanceTitleInput.value = "";
     if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = "Tarea creada correctamente.";
+    await loadMaintenanceTasks();
   } catch (error) {
     if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = parseAuthError(error);
   } finally {
@@ -1061,6 +1259,7 @@ async function onMaintenanceActions(event) {
     if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = "";
     const callable = httpsCallable(appState.cloudFunctions, "updateMaintenanceTask");
     await callable({ tenantId: appState.profile.tenantId, taskId, status: newStatus });
+    await loadMaintenanceTasks();
   } catch (error) {
     if (el.maintenanceFeedback) el.maintenanceFeedback.textContent = parseAuthError(error);
     button.disabled = false;
@@ -1365,7 +1564,7 @@ async function initPosPanel() {
 
   loadPosCart();
   wirePosEvents();
-  startPosProductsListener();
+  await startPosProductsListener();
 
   // Sync UI to loaded state
   document.querySelectorAll(".pos-pill[data-method]").forEach((btn) => {
@@ -1507,15 +1706,16 @@ function posProductPrice(productOrItem, method) {
   return productOrItem.listPrice ?? 0;
 }
 
-function startPosProductsListener() {
-  if (posState.productsUnsubscribe || !appState.profile) return;
-  const ref = collection(appState.firestore, "tenants", appState.profile.tenantId, "products");
-  posState.productsUnsubscribe = onSnapshot(ref, (snapshot) => {
-    posState.products = snapshot.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
+async function startPosProductsListener() {
+  if (!appState.profile) return;
+  try {
+    const products = await loadTenantProducts(500);
+    posState.products = products
       .filter((p) => p.stock == null || Number(p.stock) > 0); // exclude stock <= 0
     renderPosProductList((el.posSearchInput?.value || "").trim().toLowerCase());
-  });
+  } catch (error) {
+    showPosToast(`No se pudo cargar productos: ${parseAuthError(error)}`);
+  }
 }
 
 function renderPosProductList(searchQuery) {
@@ -1877,32 +2077,20 @@ function showPosToast(message) {
 
 // ── Bulk products operations ────────────────────────────────────────────────
 async function initBulkProductsPanel() {
-  if (!appState.profile || !el.bulkProductsPanel || bulkProductsState.unsubscribe) return;
+  if (!appState.profile || !el.bulkProductsPanel) return;
   setBulkProductsFeedback("Cargando productos...");
-  const q = query(
-    collection(appState.firestore, "tenants", appState.profile.tenantId, "products"),
-    orderBy("name"),
-    limit(500)
-  );
 
-  bulkProductsState.unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      bulkProductsState.products = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      syncBulkSelectedIds();
-      renderBulkProductsTable();
-      setBulkProductsFeedback("");
-    },
-    (error) => {
-      setBulkProductsFeedback(`No se pudieron cargar productos: ${parseAuthError(error)}`);
-    }
-  );
+  try {
+    bulkProductsState.products = await loadTenantProducts(500);
+    syncBulkSelectedIds();
+    renderBulkProductsTable();
+    setBulkProductsFeedback("");
+  } catch (error) {
+    setBulkProductsFeedback(`No se pudieron cargar productos: ${parseAuthError(error)}`);
+  }
 }
 
 function stopBulkProductsListener() {
-  if (typeof bulkProductsState.unsubscribe === "function") {
-    bulkProductsState.unsubscribe();
-  }
   bulkProductsState.unsubscribe = null;
   bulkProductsState.products = [];
   bulkProductsState.selectedIds.clear();
@@ -2009,6 +2197,7 @@ async function onBulkApplyPriceOrMargin() {
     await batch.commit();
     setBulkProductsFeedback(`Actualización aplicada a ${selected.length} producto(s).`);
     if (el.bulkPriceValue) el.bulkPriceValue.value = "";
+    await initBulkProductsPanel();
   } catch (error) {
     setBulkProductsFeedback(parseAuthError(error));
   } finally {
@@ -2037,6 +2226,7 @@ async function onBulkApplyCategory(mode) {
     await batch.commit();
     setBulkProductsFeedback(`${mode === "assign" ? "Asignación" : "Remoción"} de categoría aplicada a ${selected.length} producto(s).`);
     if (mode === "assign" && el.bulkCategoryValue) el.bulkCategoryValue.value = "";
+    await initBulkProductsPanel();
   } catch (error) {
     setBulkProductsFeedback(parseAuthError(error));
   } finally {
@@ -2073,6 +2263,7 @@ async function onBulkSetPublishStatus(status) {
     });
     await batch.commit();
     setBulkProductsFeedback(`${status === "published" ? "Publicación" : "Despublicación"} aplicada a ${selected.length} producto(s).`);
+    await initBulkProductsPanel();
   } catch (error) {
     setBulkProductsFeedback(parseAuthError(error));
   } finally {

@@ -575,15 +575,16 @@ export const fetchFreeTierLimit = async (
 export const upsertUsageAlert = async (
   payload: UsageAlertPayload,
   db: FirebaseFirestore.Firestore
-): Promise<{ created: boolean }> => {
+): Promise<{ created: boolean; changed: boolean }> => {
   const alertRef = db
     .collection("tenants")
     .doc(payload.tenantId)
     .collection("alerts")
     .doc(payload.alertId);
 
-  const created = await db.runTransaction(async (tx) => {
+  return db.runTransaction(async (tx) => {
     const snap = await tx.get(alertRef);
+    const current = snap.data() as Record<string, unknown> | undefined;
     const data = {
       tenantId: payload.tenantId,
       metric: payload.metric,
@@ -599,27 +600,52 @@ export const upsertUsageAlert = async (
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
     if (snap.exists) {
+      const unchanged =
+        String(current?.tenantId ?? "") === payload.tenantId &&
+        String(current?.metric ?? "") === payload.metric &&
+        Number(current?.threshold ?? -1) === payload.threshold &&
+        Number(current?.percentage ?? -1) === payload.percentage &&
+        Number(current?.currentValue ?? Number.NaN) === payload.currentValue &&
+        Number(current?.limitValue ?? Number.NaN) === payload.limitValue &&
+        String(current?.severity ?? "") === payload.severity &&
+        String(current?.title ?? "") === payload.title &&
+        String(current?.message ?? "") === payload.message &&
+        String(current?.periodKey ?? "") === payload.periodKey &&
+        String(current?.status ?? "active") === "active";
+      if (unchanged) {
+        return { created: false, changed: false };
+      }
       tx.update(alertRef, data);
-      return false;
+      return { created: false, changed: true };
     }
     tx.set(alertRef, {
       ...data,
       readBy: [],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    return true;
+    return { created: true, changed: true };
   });
-
-  return { created };
 };
 
 const fetchAdminNotificationTargets = async (
   tenantId: string,
   db: FirebaseFirestore.Firestore
 ): Promise<string[]> => {
-  const usersSnapshot = await db.collection("users").where("tenantId", "==", tenantId).get();
+  const [ownersSnapshot, adminFlagSnapshot, superAdminFlagSnapshot] = await Promise.all([
+    db
+      .collection("users")
+      .where("tenantId", "==", tenantId)
+      .where("role", "in", ["owner", "superadmin"])
+      .get(),
+    db.collection("users").where("tenantId", "==", tenantId).where("isAdmin", "==", true).get(),
+    db.collection("users").where("tenantId", "==", tenantId).where("isSuperAdmin", "==", true).get(),
+  ]);
+  const uniqueDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+  [ownersSnapshot, adminFlagSnapshot, superAdminFlagSnapshot].forEach((snapshot) => {
+    snapshot.docs.forEach((doc) => uniqueDocs.set(doc.id, doc));
+  });
   const tokens = new Set<string>();
-  usersSnapshot.docs.forEach((doc) => {
+  uniqueDocs.forEach((doc) => {
     const data = doc.data() ?? {};
     const role = String(data.role ?? "").trim().toLowerCase();
     const isAdminFlag = data.isAdmin === true || data.isSuperAdmin === true;
@@ -639,9 +665,10 @@ const fetchAdminNotificationTargets = async (
 const notifyAdmins = async (
   tenantId: string,
   alertPayload: UsageAlertPayload,
-  db: FirebaseFirestore.Firestore
+  db: FirebaseFirestore.Firestore,
+  preloadedTokens?: string[]
 ): Promise<void> => {
-  const tokens = await fetchAdminNotificationTargets(tenantId, db);
+  const tokens = preloadedTokens ?? (await fetchAdminNotificationTargets(tenantId, db));
   if (tokens.length === 0) {
     console.info("No admin tokens found for usage alert", {
       tenantId,
@@ -885,6 +912,11 @@ export const createGetUsageMetricsHistoryHandler =
 export const createEvaluateUsageAlertsHandler =
   (db: FirebaseFirestore.Firestore) => async (): Promise<null> => {
     const tenantsSnapshot = await db.collection("tenants").get();
+    const adminTokensByTenant = new Map<string, string[]>();
+    let alertsCreated = 0;
+    let alertsUpdated = 0;
+    let alertsSkippedNoChange = 0;
+    let notificationsSent = 0;
     for (const tenantDoc of tenantsSnapshot.docs) {
       const tenantId = tenantDoc.id;
       const usageSnapshot = await fetchUsageSnapshot(tenantId, db);
@@ -939,11 +971,30 @@ export const createEvaluateUsageAlertsHandler =
           };
           const result = await upsertUsageAlert(payload, db);
           if (result.created) {
-            await notifyAdmins(tenantId, payload, db);
+            alertsCreated += 1;
+            let tokens = adminTokensByTenant.get(tenantId);
+            if (!tokens) {
+              tokens = await fetchAdminNotificationTargets(tenantId, db);
+              adminTokensByTenant.set(tenantId, tokens);
+            }
+            await notifyAdmins(tenantId, payload, db, tokens);
+            notificationsSent += 1;
+          } else if (result.changed) {
+            alertsUpdated += 1;
+          } else {
+            alertsSkippedNoChange += 1;
           }
         }
       }
     }
+    console.info("Usage alerts evaluation finished", {
+      tenants: tenantsSnapshot.size,
+      alertsCreated,
+      alertsUpdated,
+      alertsSkippedNoChange,
+      notificationsSent,
+      adminTargetQueryTenants: adminTokensByTenant.size,
+    });
     return null;
   };
 
@@ -1024,6 +1075,8 @@ export const createGetTenantCostDashboardHandler =
 export const createEvaluateTenantBudgetAlertsHandler =
   (db: FirebaseFirestore.Firestore) => async (): Promise<null> => {
     const tenantsSnapshot = await db.collection("tenants").get();
+    let alertsWritten = 0;
+    let alertsSkippedNoChange = 0;
 
     for (const tenantDoc of tenantsSnapshot.docs) {
       const tenantId = tenantDoc.id;
@@ -1054,31 +1107,60 @@ export const createEvaluateTenantBudgetAlertsHandler =
       const now = new Date();
       const monthKey = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
       const alertId = `budget_${monthKey}_${percent >= 100 ? "100" : "80"}`;
-
-      await db
+      const alertRef = db
         .collection("tenants")
         .doc(tenantId)
         .collection("budget_alerts")
-        .doc(alertId)
-        .set(
+        .doc(alertId);
+      const threshold = percent >= 100 ? 100 : 80;
+      const status = percent >= 100 ? "critical" : "warning";
+      const message =
+        percent >= 100
+          ? `Costo mensual excedido (${totalCost}/${budgetTotal}).`
+          : `Costo mensual en ${percent}% del presupuesto (${totalCost}/${budgetTotal}).`;
+      await db.runTransaction(async (tx) => {
+        const current = await tx.get(alertRef);
+        const currentData = current.data() as Record<string, unknown> | undefined;
+        const unchanged =
+          current.exists &&
+          String(currentData?.tenantId ?? "") === tenantId &&
+          String(currentData?.monthKey ?? "") === monthKey &&
+          Number(currentData?.threshold ?? -1) === threshold &&
+          Number(currentData?.percent ?? -1) === percent &&
+          Number(currentData?.totalCost ?? Number.NaN) === totalCost &&
+          Number(currentData?.budgetTotal ?? Number.NaN) === budgetTotal &&
+          String(currentData?.status ?? "") === status &&
+          String(currentData?.message ?? "") === message;
+
+        if (unchanged) {
+          alertsSkippedNoChange += 1;
+          return;
+        }
+
+        tx.set(
+          alertRef,
           {
             tenantId,
             monthKey,
-            threshold: percent >= 100 ? 100 : 80,
+            threshold,
             percent,
             totalCost,
             budgetTotal,
-            status: percent >= 100 ? "critical" : "warning",
-            message:
-              percent >= 100
-                ? `Costo mensual excedido (${totalCost}/${budgetTotal}).`
-                : `Costo mensual en ${percent}% del presupuesto (${totalCost}/${budgetTotal}).`,
+            status,
+            message,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
+        alertsWritten += 1;
+      });
     }
 
+    console.info("Tenant budget alerts evaluation finished", {
+      tenants: tenantsSnapshot.size,
+      alertsWritten,
+      alertsSkippedNoChange,
+    });
     return null;
   };

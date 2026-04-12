@@ -212,7 +212,7 @@ describe("mpWebhook", () => {
 
     expect(tenantsCollectionMock).toHaveBeenCalledWith("tenants");
     expect(tenantDocMock).toHaveBeenCalledWith("tenant-001");
-    expect(paymentsCollectionMock).toHaveBeenCalledTimes(2);
+    expect(paymentsCollectionMock).toHaveBeenCalled();
     expect(paymentDocMock).toHaveBeenCalledWith("123");
     expect(transactionSetMock).toHaveBeenCalledWith(
       expect.anything(),

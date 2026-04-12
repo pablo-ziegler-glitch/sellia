@@ -874,7 +874,15 @@ class ProductRepository(
                             saved.code?.let { localByCode[it] = saved }
                         }
                     } else {
-                        remote.upsert(local, loadProductImages(local.id))
+                        // Evita write-back automático cuando local es más nuevo:
+                        // ya existe sync outbox y este push directo amplifica costo en Firestore.
+                        syncOutboxDao.upsert(
+                            SyncOutboxEntity(
+                                entityType = SyncEntityType.PRODUCT.storageKey,
+                                entityId = local.id.toLong(),
+                                createdAt = System.currentTimeMillis()
+                            )
+                        )
                     }
                 }
             }

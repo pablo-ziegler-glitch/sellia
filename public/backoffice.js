@@ -8,11 +8,10 @@ import {
   getDocs,
   getFirestore,
   limit,
-  onSnapshot,
-  limit,
   orderBy,
   query,
   serverTimestamp,
+  startAfter,
   where
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -82,8 +81,6 @@ const state = {
   hasMoreTasks: false,
   lastVisibleTask: null,
   errorMessage: "",
-  unsubscribeTasks: null,
-  unsubscribePendingPayments: null,
   pendingPayments: [],
   paymentsLoading: false,
   paymentsErrorMessage: "",
@@ -147,8 +144,8 @@ async function bootstrap() {
         render();
         return;
       }
-      subscribeTasks(firestore);
-      subscribePendingPayments(firestore);
+      void loadTasks(firestore);
+      void loadPendingPayments(firestore);
     });
   } catch (error) {
     state.errorMessage = buildUiError(error);
@@ -292,36 +289,28 @@ function setStatus(message, tone) {
   statusEl.dataset.tone = tone;
 }
 
-function subscribeTasks(firestore) {
-  if (state.unsubscribeTasks) {
-    state.unsubscribeTasks();
-  }
-
+async function loadTasks(firestore) {
   state.loading = true;
   state.errorMessage = "";
   state.lastVisibleTask = null;
   state.hasMoreTasks = false;
   render();
 
-  const tasksRef = collection(firestore, "tenants", state.tenantId, "maintenance_tasks");
-  const q = query(tasksRef, orderBy("updatedAt", "desc"), limit(PAGE_SIZE));
-
-  state.unsubscribeTasks = onSnapshot(
-    q,
-    (snapshot) => {
-      state.loading = false;
-      state.errorMessage = "";
-      state.tasks = snapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() }));
-      state.lastVisibleTask = snapshot.docs.at(-1) || null;
-      state.hasMoreTasks = snapshot.docs.length === PAGE_SIZE;
-      render();
-    },
-    (error) => {
-      state.loading = false;
-      state.errorMessage = buildUiError(error);
-      render();
-    }
-  );
+  try {
+    const tasksRef = collection(firestore, "tenants", state.tenantId, "maintenance_tasks");
+    const firstPage = await getDocs(query(tasksRef, orderBy("updatedAt", "desc"), limit(PAGE_SIZE)));
+    state.tasks = firstPage.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() }));
+    state.lastVisibleTask = firstPage.docs.at(-1) || null;
+    state.hasMoreTasks = firstPage.docs.length === PAGE_SIZE;
+    state.errorMessage = "";
+    setStatus(`Se cargaron ${state.tasks.length} tareas.`, "ok");
+  } catch (error) {
+    state.errorMessage = buildUiError(error);
+    setStatus("Error al cargar tareas de mantenimiento.", "error");
+  } finally {
+    state.loading = false;
+    render();
+  }
 }
 
 function wireFilters() {
@@ -344,7 +333,10 @@ function wireRetry() {
       render();
       return;
     }
-    window.location.reload();
+    if (state.firestore) {
+      void loadTasks(state.firestore);
+      void loadPendingPayments(state.firestore);
+    }
   });
 }
 
@@ -418,6 +410,9 @@ async function createQuickTask() {
     });
 
     setStatus("Tarea creada correctamente.", "ok");
+    if (state.firestore) {
+      void loadTasks(state.firestore);
+    }
   } catch (error) {
     setStatus(buildUiError(error), "error");
   }
@@ -449,6 +444,9 @@ async function transitionTask(task, nextStatus) {
     });
 
     setStatus(`Tarea #${task.id} actualizada a ${nextStatus}.`, "ok");
+    if (state.firestore) {
+      void loadTasks(state.firestore);
+    }
   } catch (error) {
     setStatus(buildUiError(error), "error");
   }
@@ -462,37 +460,32 @@ function wirePaymentActions() {
       return;
     }
     if (state.firestore) {
-      subscribePendingPayments(state.firestore);
+      void loadPendingPayments(state.firestore);
     }
   });
 }
 
-function subscribePendingPayments(firestore) {
-  if (state.unsubscribePendingPayments) {
-    state.unsubscribePendingPayments();
-  }
-
+async function loadPendingPayments(firestore) {
   state.paymentsLoading = true;
   state.paymentsErrorMessage = "";
   renderPendingPayments();
 
-  const paymentsRef = collection(firestore, "tenants", state.tenantId, "payments");
-  const q = query(paymentsRef, where("status", "==", "PENDING"), orderBy("updatedAt", "desc"), limit(25));
-
-  state.unsubscribePendingPayments = onSnapshot(
-    q,
-    (snapshot) => {
-      state.paymentsLoading = false;
-      state.paymentsErrorMessage = "";
-      state.pendingPayments = snapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() }));
-      renderPendingPayments();
-    },
-    (error) => {
-      state.paymentsLoading = false;
-      state.paymentsErrorMessage = buildUiError(error);
-      renderPendingPayments();
-    }
-  );
+  try {
+    const paymentsRef = collection(firestore, "tenants", state.tenantId, "payments");
+    const q = query(paymentsRef, where("status", "==", "PENDING"), orderBy("updatedAt", "desc"), limit(25));
+    const snapshot = await getDocs(q);
+    state.pendingPayments = snapshot.docs.map((docSnapshot) => ({
+      id: docSnapshot.id,
+      raw: docSnapshot.data(),
+      ...docSnapshot.data(),
+    }));
+    state.paymentsErrorMessage = "";
+  } catch (error) {
+    state.paymentsErrorMessage = buildUiError(error);
+  } finally {
+    state.paymentsLoading = false;
+    renderPendingPayments();
+  }
 }
 
 function renderPendingPayments() {
@@ -585,6 +578,9 @@ async function reconcilePaymentWithProvider(paymentId) {
       `Pago #${paymentId} reconciliado. Estado provider ${providerStatus}. Recomendación: ${recommendation}. Resultado: ${result}.`,
       recommendation === "esperar" ? "ok" : "warning"
     );
+    if (state.firestore) {
+      void loadPendingPayments(state.firestore);
+    }
   } catch (error) {
     setPaymentsStatus(buildUiError(error), "error");
   }

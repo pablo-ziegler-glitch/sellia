@@ -50,7 +50,8 @@ class SyncWorker @AssistedInject constructor(
     )
 
     override suspend fun doWork(): Result {
-        Log.i(TAG, "Iniciando sincronización manual (workId=$id)")
+        val includeBackup = inputData.getBoolean(INPUT_INCLUDE_BACKUP, false)
+        Log.i(TAG, "Iniciando sincronización (workId=$id, includeBackup=$includeBackup)")
         if (tenantProvider.currentTenantId() == null) {
             Log.i(TAG, "Sin sesión activa, omitiendo sincronización (workId=$id)")
             return Result.success(
@@ -61,7 +62,7 @@ class SyncWorker @AssistedInject constructor(
             )
         }
         return try {
-            syncRepository.runSync(includeBackup = true)
+            syncRepository.runSync(includeBackup = includeBackup)
             Log.i(TAG, "Sincronización completada con éxito")
             Result.success(
                 workDataOf(
@@ -118,6 +119,7 @@ class SyncWorker @AssistedInject constructor(
         const val TAG: String = "SyncWorker"
         const val OUTPUT_STATUS: String = "status"
         const val OUTPUT_MESSAGE: String = "message"
+        const val INPUT_INCLUDE_BACKUP: String = "include_backup"
     }
 }
 @EntryPoint

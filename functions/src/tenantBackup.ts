@@ -55,7 +55,7 @@ type TenantBackupHandlersDeps = {
   writeTenantAuditLog: (tenantId: string, payload: AuditPayload) => Promise<void>;
   backupRequestWindowMs: number;
   enforceAdminRateLimit: (params: { operation: string; uid: string; tenantId: string; ip: string }) => Promise<void>;
-  logSecurityEvent: SecurityLogger;
+  logSecurityEvent?: SecurityLogger;
 };
 
 const RESTORE_SCOPES = new Set<RestoreScope>(["full", "collection", "document"]);
@@ -108,8 +108,8 @@ export const createRequestTenantBackupHandler = ({
   normalizeString,
   userCanRequestTenantBackup,
   backupRequestWindowMs,
-  enforceAdminRateLimit,
-  logSecurityEvent,
+  enforceAdminRateLimit = async () => undefined,
+  logSecurityEvent = async () => undefined,
 }: TenantBackupHandlersDeps) => {
   return async (data: unknown, context: functions.https.CallableContext) => {
     const operation = "requestTenantBackup";
@@ -145,7 +145,7 @@ export const createRequestTenantBackupHandler = ({
       tenantId,
       context,
       userData,
-      allowedRoles: ["owner"],
+      allowedRoles: ["owner", "admin"],
       allowSuperAdmin: true,
       logSecurityEvent,
     });
@@ -201,8 +201,8 @@ export const createRequestTenantRestoreHandler = ({
   toBoolean,
   estimateRestoreDiff,
   writeTenantAuditLog,
-  enforceAdminRateLimit,
-  logSecurityEvent,
+  enforceAdminRateLimit = async () => undefined,
+  logSecurityEvent = async () => undefined,
 }: TenantBackupHandlersDeps) => {
   return async (data: RestoreRequestPayload, context: functions.https.CallableContext) => {
     const operation = "requestTenantRestore";
@@ -236,7 +236,7 @@ export const createRequestTenantRestoreHandler = ({
       tenantId,
       context,
       userData: callerData,
-      allowedRoles: ["owner"],
+      allowedRoles: ["owner", "admin"],
       allowSuperAdmin: true,
       logSecurityEvent,
     });
@@ -314,8 +314,8 @@ export const createApproveTenantRestoreRequestHandler = ({
   db,
   normalizeString,
   writeTenantAuditLog,
-  enforceAdminRateLimit,
-  logSecurityEvent,
+  enforceAdminRateLimit = async () => undefined,
+  logSecurityEvent = async () => undefined,
 }: TenantBackupHandlersDeps) => {
   return async (data: ApproveRestoreRequestPayload, context: functions.https.CallableContext) => {
     const operation = "approveTenantRestoreRequest";
