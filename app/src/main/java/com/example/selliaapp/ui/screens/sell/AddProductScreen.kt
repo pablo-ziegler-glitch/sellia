@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ import com.example.selliaapp.ui.components.ImageUrlListEditor
 import com.example.selliaapp.ui.components.MultiSelectChipPicker
 import com.example.selliaapp.ui.components.NetGainChannel
 import com.example.selliaapp.ui.components.ProductNetGainPanel
+import com.example.selliaapp.ui.components.FullscreenImageViewerDialog
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel
 import com.example.selliaapp.ui.viewmodel.OffLookupViewModel.UiState
 import com.example.selliaapp.viewmodel.PrefillData
@@ -150,6 +152,8 @@ fun AddProductScreen(
     var showCloudCatalogDialog by remember { mutableStateOf(false) }
     val selectedCloudImageUrls = remember { mutableStateListOf<String>() }
     val cloudCatalogState by viewModel.cloudCatalogState.collectAsState()
+    var fullscreenImages by remember { mutableStateOf<List<Any>>(emptyList()) }
+    var fullscreenImageIndex by remember { mutableIntStateOf(0) }
 
     // Listas
     val categories: List<String> =
@@ -322,7 +326,12 @@ fun AddProductScreen(
                                         AsyncImage(
                                             model = item.downloadUrl,
                                             contentDescription = "Imagen cloud",
-                                            modifier = Modifier.size(72.dp)
+                                            modifier = Modifier
+                                                .size(72.dp)
+                                                .clickable {
+                                                    fullscreenImages = cloudCatalogState.images.map { it.downloadUrl }
+                                                    fullscreenImageIndex = cloudCatalogState.images.indexOf(item).coerceAtLeast(0)
+                                                }
                                         )
                                         Text(
                                             text = item.fullPath.substringAfterLast('/'),
@@ -544,13 +553,25 @@ fun AddProductScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(120.dp)
+                                    .clickable {
+                                        fullscreenImages = pendingImageUris.toList()
+                                        fullscreenImageIndex = index
+                                    }
                             )
                             IconButton(onClick = { pendingImageUris.removeAt(index) }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Eliminar pendiente")
-                            }
-                        }
-                    }
-                }
+            }
+        }
+    }
+
+    if (fullscreenImages.isNotEmpty()) {
+        FullscreenImageViewerDialog(
+            images = fullscreenImages,
+            initialPage = fullscreenImageIndex,
+            onDismiss = { fullscreenImages = emptyList() }
+        )
+    }
+}
             }
 
             ImageUrlListEditor(imageUrls = imageUrls)

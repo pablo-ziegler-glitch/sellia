@@ -1,8 +1,18 @@
 import { getDb } from "./firebase-admin";
 
-/** Único tenant de la tienda VALKIRJA. Configurable vía variable de entorno. */
+/**
+ * Tenant público por defecto para la web.
+ * Orden de prioridad:
+ * 1) PUBLIC_WEB_TENANT_ID
+ * 2) VALKIRJA_TENANT_ID (compat legacy)
+ * 3) NEXT_PUBLIC_TENANT_ID
+ * 4) sellia1993 (fallback operativo)
+ */
 export const VALKIRJA_TENANT_ID =
-  process.env.VALKIRJA_TENANT_ID || "valkirja";
+  process.env.PUBLIC_WEB_TENANT_ID ||
+  process.env.VALKIRJA_TENANT_ID ||
+  process.env.NEXT_PUBLIC_TENANT_ID ||
+  "sellia1993";
 
 export interface StorefrontConfig {
   storeName: string;

@@ -18,13 +18,10 @@ import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -33,8 +30,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,29 +58,18 @@ fun ConfigScreen(
     onCloudServicesAdmin: () -> Unit,
     canManageCloudServices: Boolean,
     onSecuritySettings: () -> Unit,
-    onAppVersion: () -> Unit,
     onUsageAlerts: () -> Unit,
     onManageUsers: () -> Unit,
     canManageUsers: Boolean,
-    onTenantDeactivation: () -> Unit,
-    onTenantReactivation: () -> Unit,
-    onTenantDelete: (String, String) -> Unit,
-    tenantActionFeedback: String?,
-    tenantActionError: String?,
-    onPublicCatalogConfig: () -> Unit,
     onStoreSettings: () -> Unit = {},
     onDevelopmentOptions: () -> Unit,
     showDevelopmentOptions: Boolean,
-    onSupport: () -> Unit,
     adminFeatureFlags: ConfigAdminFeatureFlags,
     isClientFinal: Boolean,
     onStorefront: () -> Unit = {},
     onBack: () -> Unit
 ) {
     var showProfileDetails by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var confirmTenantId by remember { mutableStateOf("") }
-    var confirmPhrase by remember { mutableStateOf("") }
     Scaffold(
         topBar = {
             BackTopAppBar(title = "Configuración", onBack = onBack)
@@ -162,16 +146,6 @@ fun ConfigScreen(
                     title = "Estado de cuenta",
                     onClick = onUsageAlerts
                 )
-                SettingsItem(
-                    icon = Icons.Filled.Info,
-                    title = "Soporte",
-                    onClick = onSupport
-                )
-                SettingsItem(
-                    icon = Icons.Filled.Info,
-                    title = "Versión de la app",
-                    onClick = onAppVersion
-                )
 
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -237,29 +211,6 @@ fun ConfigScreen(
                     )
                 }
 
-                if (adminFeatureFlags.tenantLifecycleEnabled) {
-                    SettingsItem(
-                        icon = Icons.Filled.Lock,
-                        title = "Solicitar desactivación tienda",
-                        onClick = onTenantDeactivation
-                    )
-                    SettingsItem(
-                        icon = Icons.Filled.Lock,
-                        title = "Solicitar reactivación tienda",
-                        onClick = onTenantReactivation
-                    )
-                    SettingsItem(
-                        icon = Icons.Filled.Lock,
-                        title = "Eliminar tienda (doble check)",
-                        onClick = { showDeleteDialog = true }
-                    )
-                }
-                tenantActionFeedback?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                }
-                tenantActionError?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
                 if (showDevelopmentOptions) {
                     SettingsItem(
                         icon = Icons.Filled.Assessment,
@@ -311,32 +262,6 @@ fun ConfigScreen(
             }
         }
     }
-
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar tienda") },
-            text = {
-                Column {
-                    Text("Esta acción es irreversible. Confirmá tenant ID y escribí ELIMINAR.")
-                    TextField(value = confirmTenantId, onValueChange = { confirmTenantId = it }, label = { Text("Tenant ID") })
-                    TextField(value = confirmPhrase, onValueChange = { confirmPhrase = it }, label = { Text("Escribí ELIMINAR") })
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onTenantDelete(confirmTenantId, confirmPhrase)
-                    showDeleteDialog = false
-                }) {
-                    Text("Eliminar")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") }
-            }
-        )
-    }
 }
 
 data class ConfigAdminFeatureFlags(
@@ -359,7 +284,7 @@ data class ConfigAdminFeatureFlags(
             usersAndRolesEnabled = true,
             cloudServicesEnabled = true,
             globalPricingEnabled = true,
-            tenantLifecycleEnabled = true,
+            tenantLifecycleEnabled = false,
             bulkAbmEnabled = true,
             marketingConfigEnabled = true,
             productQrsEnabled = true,

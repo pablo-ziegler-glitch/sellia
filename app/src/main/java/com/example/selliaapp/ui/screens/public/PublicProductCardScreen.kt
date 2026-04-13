@@ -2,6 +2,7 @@ package com.example.selliaapp.ui.screens.public
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,6 +46,7 @@ import com.example.selliaapp.R
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.repository.MarketingSettings
 import com.example.selliaapp.ui.components.BackTopAppBar
+import com.example.selliaapp.ui.components.FullscreenImageViewerDialog
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
 import java.text.NumberFormat
@@ -165,6 +167,7 @@ private fun ProductCard(
         ?: listOf(R.drawable.ic_sell)
     val pagerState = rememberPagerState { images.size }
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
+    var fullscreenImageIndex by remember { mutableStateOf(-1) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -187,7 +190,8 @@ private fun ProductCard(
                     contentDescription = "Imagen del producto ${product.name}",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(220.dp),
+                        .height(220.dp)
+                        .clickable { fullscreenImageIndex = page },
                     contentScale = ContentScale.Crop,
                     placeholder = painterResource(id = R.drawable.ic_sell),
                     error = painterResource(id = R.drawable.ic_sell)
@@ -274,6 +278,14 @@ private fun ProductCard(
                 Text(text = "Email: $storeEmail", style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
+
+    if (fullscreenImageIndex >= 0) {
+        FullscreenImageViewerDialog(
+            images = images,
+            initialPage = fullscreenImageIndex,
+            onDismiss = { fullscreenImageIndex = -1 }
+        )
     }
 }
 

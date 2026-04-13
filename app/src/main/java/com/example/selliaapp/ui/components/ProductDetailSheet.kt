@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -63,6 +64,7 @@ fun ProductDetailSheet(
     var qty by remember { mutableIntStateOf(startingQty) }
     var qtyText by remember { mutableStateOf(startingQty.toString()) }
     val images = remember(product) { product.imageUrls }
+    var fullscreenImageIndex by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(qtyText) {
         val parsed = qtyText.toIntOrNull() ?: 0
@@ -108,6 +110,7 @@ fun ProductDetailSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(180.dp)
+                                .clickable { fullscreenImageIndex = page }
                         )
                     }
                 }
@@ -224,6 +227,14 @@ fun ProductDetailSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
         }
+    }
+
+    if (fullscreenImageIndex >= 0 && images.isNotEmpty()) {
+        FullscreenImageViewerDialog(
+            images = images,
+            initialPage = fullscreenImageIndex,
+            onDismiss = { fullscreenImageIndex = -1 }
+        )
     }
 }
 

@@ -2,6 +2,7 @@ package com.example.selliaapp.ui.screens.public
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,7 @@ import coil.compose.AsyncImage
 import com.example.selliaapp.R
 import com.example.selliaapp.repository.PublicCatalogProduct
 import com.example.selliaapp.ui.components.BackTopAppBar
+import com.example.selliaapp.ui.components.FullscreenImageViewerDialog
 import com.example.selliaapp.viewmodel.ViewerCatalogViewModel
 import java.text.NumberFormat
 import java.util.Locale
@@ -64,6 +66,7 @@ fun ViewerPublicCatalogScreen(
     var selectedCatalogExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var detailProduct by remember { mutableStateOf<PublicCatalogProduct?>(null) }
+    var fullscreenImageUrl by remember { mutableStateOf<String?>(null) }
     val currencyFormatter = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
 
     val followStoreName = state.availableStores.firstOrNull { it.id == selectedStoreToFollow }?.name.orEmpty()
@@ -184,7 +187,8 @@ fun ViewerPublicCatalogScreen(
                             ViewerCatalogProductItem(
                                 product = product,
                                 currencyFormatter = currencyFormatter,
-                                onSeeDetail = { detailProduct = product }
+                                onSeeDetail = { detailProduct = product },
+                                onImageClick = { url -> fullscreenImageUrl = url }
                             )
                         }
                     }
@@ -263,6 +267,13 @@ fun ViewerPublicCatalogScreen(
         }
     }
 
+    fullscreenImageUrl?.let { url ->
+        FullscreenImageViewerDialog(
+            images = listOf(url),
+            onDismiss = { fullscreenImageUrl = null }
+        )
+    }
+
     detailProduct?.let { product ->
         AlertDialog(
             onDismissRequest = { detailProduct = null },
@@ -293,7 +304,8 @@ fun ViewerPublicCatalogScreen(
 private fun ViewerCatalogProductItem(
     product: PublicCatalogProduct,
     currencyFormatter: NumberFormat,
-    onSeeDetail: () -> Unit
+    onSeeDetail: () -> Unit,
+    onImageClick: (String) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -313,7 +325,8 @@ private fun ViewerCatalogProductItem(
                     contentDescription = "Imagen de ${product.name}",
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(MaterialTheme.shapes.medium),
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { onImageClick(imageUrl) },
                     contentScale = ContentScale.Crop,
                     placeholder = painterResource(id = R.drawable.ic_sell),
                     error = painterResource(id = R.drawable.ic_sell)

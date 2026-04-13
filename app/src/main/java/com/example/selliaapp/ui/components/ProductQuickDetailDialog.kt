@@ -1,6 +1,7 @@
 package com.example.selliaapp.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +33,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -62,6 +67,7 @@ fun ProductQuickDetailDialog(
         ?: product.imageUrl?.takeIf { it.isNotBlank() }?.let { listOf(it) }
         ?: listOf(R.drawable.ic_sell)
     val pagerState = rememberPagerState(pageCount = { images.size })
+    var fullscreenImageIndex by remember { mutableIntStateOf(-1) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -79,9 +85,9 @@ fun ProductQuickDetailDialog(
                     modifier = Modifier.weight(1f)
                 )
                 Row {
-                    if (onEdit != null) {
-                        IconButton(onClick = onEdit) {
-                            Icon(Icons.Default.Edit, contentDescription = "Editar")
+                    if (onViewMovements != null) {
+                        IconButton(onClick = { onDismiss(); onViewMovements() }) {
+                            Icon(Icons.Default.History, contentDescription = "Historial")
                         }
                     }
                     if (onDelete != null) {
@@ -123,7 +129,8 @@ fun ProductQuickDetailDialog(
                         contentDescription = "Imagen ${page + 1} de ${product.name}",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(220.dp),
+                            .height(220.dp)
+                            .clickable { fullscreenImageIndex = page },
                         contentScale = ContentScale.Crop,
                         placeholder = painterResource(id = R.drawable.ic_sell),
                         error = painterResource(id = R.drawable.ic_sell)
@@ -210,6 +217,17 @@ fun ProductQuickDetailDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (onEdit != null) {
+                        TextButton(onClick = { onDismiss(); onEdit() }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text("Editar")
+                        }
+                    }
                     if (onAdjustStock != null) {
                         TextButton(onClick = { onDismiss(); onAdjustStock() }) {
                             Icon(
@@ -219,17 +237,6 @@ fun ProductQuickDetailDialog(
                             )
                             Spacer(modifier = Modifier.size(4.dp))
                             Text("Ajustar")
-                        }
-                    }
-                    if (onViewMovements != null) {
-                        TextButton(onClick = { onDismiss(); onViewMovements() }) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.size(4.dp))
-                            Text("Historial")
                         }
                     }
                     if (onOrderFromProvider != null) {
@@ -248,6 +255,14 @@ fun ProductQuickDetailDialog(
             }
         }
     )
+
+    if (fullscreenImageIndex >= 0) {
+        FullscreenImageViewerDialog(
+            images = images,
+            initialPage = fullscreenImageIndex,
+            onDismiss = { fullscreenImageIndex = -1 }
+        )
+    }
 }
 
 @Composable

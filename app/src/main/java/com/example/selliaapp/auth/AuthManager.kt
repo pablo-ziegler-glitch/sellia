@@ -371,10 +371,6 @@ class AuthManager @Inject constructor(
         if (!tenantSnapshot.exists()) {
             throw IllegalStateException("La tienda asociada a tu cuenta ya no existe.")
         }
-        val tenantStatus = tenantSnapshot.getString("status")?.trim()?.lowercase(Locale.ROOT)
-        if (!tenantStatus.isNullOrBlank() && tenantStatus != "active") {
-            throw IllegalStateException("La tienda está temporalmente deshabilitada. Podés solicitar reactivación al administrador.")
-        }
     }
 
     private suspend fun extractAvailableTenants(snapshot: com.google.firebase.firestore.DocumentSnapshot): List<PendingTenantOption> {
@@ -402,8 +398,6 @@ class AuthManager @Inject constructor(
         return candidateIds.mapNotNull { tenantId ->
             val doc = tenantsById[tenantId] ?: return@mapNotNull null
             if (!doc.exists()) return@mapNotNull null
-            val status = doc.getString("status")?.trim()?.lowercase(Locale.ROOT)
-            if (!status.isNullOrBlank() && status != "active") return@mapNotNull null
             val name = doc.getString("name")?.trim().orEmpty().ifBlank { "Tienda" }
             PendingTenantOption(id = tenantId, name = name)
         }

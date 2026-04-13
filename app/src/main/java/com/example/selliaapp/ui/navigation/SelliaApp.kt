@@ -69,7 +69,6 @@ import com.example.selliaapp.ui.screens.config.DevelopmentOptionsScreen
 import com.example.selliaapp.ui.screens.config.ConfigScreen
 import com.example.selliaapp.ui.screens.config.CrossCatalogAdminScreen
 import com.example.selliaapp.ui.screens.config.SecuritySettingsScreen
-import com.example.selliaapp.ui.screens.config.AppVersionScreen
 import com.example.selliaapp.ui.screens.config.ConfigAdminFeatureFlags
 import com.example.selliaapp.ui.screens.config.UserProfileDetails
 import com.example.selliaapp.ui.screens.config.ManageUsersScreen
@@ -131,7 +130,6 @@ import com.example.selliaapp.viewmodel.ManageProductsViewModel
 import com.example.selliaapp.viewmodel.MarketingConfigViewModel
 import com.example.selliaapp.viewmodel.ManageCustomersViewModel
 import com.example.selliaapp.viewmodel.PublicCatalogConfigViewModel
-import com.example.selliaapp.viewmodel.TenantManagementViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.ProductPriceAuditViewModel
 import com.example.selliaapp.viewmodel.QuickReorderViewModel
@@ -140,7 +138,6 @@ import com.example.selliaapp.viewmodel.ReportsViewModel
 import com.example.selliaapp.viewmodel.SellViewModel
 import com.example.selliaapp.viewmodel.SellDraftFabViewModel
 import com.example.selliaapp.viewmodel.StockImportViewModel
-import com.example.selliaapp.viewmodel.AppVersionViewModel
 import com.example.selliaapp.viewmodel.UserViewModel
 import com.example.selliaapp.viewmodel.StockMovementsViewModel
 import com.example.selliaapp.viewmodel.AccessControlViewModel
@@ -465,7 +462,13 @@ fun SelliaApp(
                     method = method,
                     customerName = customerName,
                     onNewSale = { navController.navigate(Routes.Pos.route) },
-                    onViewSale = { navController.navigate(Routes.SalesInvoiceDetail.withId(invoiceId)) }
+                    onViewSale = { navController.navigate(Routes.SalesInvoiceDetail.withId(invoiceId)) },
+                    onGoHome = {
+                        navController.navigate(Routes.Home.route) {
+                            popUpTo(Routes.Home.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
 
@@ -902,8 +905,6 @@ fun SelliaApp(
 
             // -------------------- CONFIGURACIÓN ------------------------
             composable(Routes.Config.route) {
-                val tenantManagementVm: TenantManagementViewModel = hiltViewModel()
-                val tenantManagementState by tenantManagementVm.uiState.collectAsStateWithLifecycle()
                 val userProfile = remember(authState, accessState) {
                     val session = (authState as? AuthState.Authenticated)?.session
                     UserProfileDetails(
@@ -926,19 +927,11 @@ fun SelliaApp(
                     onManageUsers = { navController.navigate(Routes.AddUser.route) },
                     onUsageAlerts = { navController.navigate(Routes.UsageAlerts.route) },
                     onSecuritySettings = { navController.navigate(Routes.SecuritySettings.route) },
-                    onAppVersion = { navController.navigate(Routes.AppVersion.route) },
                     canManageCloudServices = accessState.permissions.contains(Permission.MANAGE_CLOUD_SERVICES),
                     canManageUsers = accessState.permissions.contains(Permission.MANAGE_USERS),
-                    onTenantDeactivation = tenantManagementVm::requestDeactivation,
-                    onTenantReactivation = tenantManagementVm::requestReactivation,
-                    onTenantDelete = tenantManagementVm::deleteTenant,
-                    tenantActionFeedback = tenantManagementState.message,
-                    tenantActionError = tenantManagementState.error,
-                    onPublicCatalogConfig = { navController.navigate(Routes.PublicCatalogConfig.route) },
                     onStoreSettings = { navController.navigate(Routes.StoreSettings.route) },
                     onDevelopmentOptions = { navController.navigate(Routes.DevelopmentOptions.route) },
                     showDevelopmentOptions = true,
-                    onSupport = { navController.navigate(Routes.AppVersion.route) },
                     adminFeatureFlags = ConfigAdminFeatureFlags.MobileFieldOnly,
                     isClientFinal = isClientFinal,
                     onStorefront = { navController.navigate(Routes.Storefront.route) },
@@ -1005,14 +998,6 @@ fun SelliaApp(
             composable(Routes.SecuritySettings.route) {
                 val vm: SecuritySettingsViewModel = hiltViewModel()
                 SecuritySettingsScreen(
-                    viewModel = vm,
-                    onBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(Routes.AppVersion.route) {
-                val vm: AppVersionViewModel = hiltViewModel()
-                AppVersionScreen(
                     viewModel = vm,
                     onBack = { navController.popBackStack() }
                 )
