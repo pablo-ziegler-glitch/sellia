@@ -53,6 +53,7 @@ import com.example.selliaapp.domain.product.ProductFilterParams
 import com.example.selliaapp.domain.product.ProductSortOption
 import com.example.selliaapp.domain.product.filterAndSortProducts
 import com.example.selliaapp.ui.components.BackTopAppBar
+import com.example.selliaapp.ui.components.FullscreenImageViewerDialog
 import com.example.selliaapp.viewmodel.ProductViewModel
 import java.text.NumberFormat
 import java.util.Locale
@@ -66,7 +67,11 @@ fun PublicProductCatalogScreen(
     vm: ProductViewModel = hiltViewModel()
 ) {
     val products by vm.products.collectAsStateWithLifecycle(emptyList())
+    val publishedProducts = remember(products) {
+        products.filter { it.publicStatus.equals("published", ignoreCase = true) }
+    }
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
+    var fullscreenImage by remember { mutableStateOf<Any?>(null) }
 
     var query by remember { mutableStateOf("") }
     var parentCategory by remember { mutableStateOf("") }
@@ -81,7 +86,7 @@ fun PublicProductCatalogScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val filteredProducts = remember(
-        products,
+        publishedProducts,
         query,
         parentCategory,
         category,
@@ -92,7 +97,7 @@ fun PublicProductCatalogScreen(
         sort
     ) {
         filterAndSortProducts(
-            products,
+            publishedProducts,
             ProductFilterParams(
                 query = query,
                 parentCategory = parentCategory.ifBlank { null },
@@ -239,7 +244,7 @@ fun PublicProductCatalogScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "No hay productos que coincidan con los filtros.",
+                            text = "No hay productos publicados que coincidan con los filtros.",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
@@ -258,7 +263,8 @@ fun PublicProductCatalogScreen(
                             PublicCatalogItem(
                                 product = product,
                                 currency = currency,
-                                onClick = { onProductSelected(product.id) }
+                                onClick = { onProductSelected(product.id) },
+                                onImageClick = { image -> fullscreenImage = image }
                             )
                         }
                     }
@@ -266,13 +272,21 @@ fun PublicProductCatalogScreen(
             }
         }
     }
+
+    fullscreenImage?.let { image ->
+        FullscreenImageViewerDialog(
+            images = listOf(image),
+            onDismiss = { fullscreenImage = null }
+        )
+    }
 }
 
 @Composable
 private fun PublicCatalogItem(
     product: ProductEntity,
     currency: NumberFormat,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onImageClick: (Any) -> Unit
 ) {
     val imageModel: Any = product.imageUrls.firstOrNull()?.takeIf { it.isNotBlank() }
         ?: product.imageUrl?.takeIf { it.isNotBlank() }
@@ -296,7 +310,8 @@ private fun PublicCatalogItem(
                 contentDescription = "Imagen del producto ${product.name}",
                 modifier = Modifier
                     .size(72.dp)
-                    .padding(2.dp),
+                    .padding(2.dp)
+                    .clickable { onImageClick(imageModel) },
                 contentScale = ContentScale.Crop,
                 placeholder = painterResource(id = R.drawable.ic_sell),
                 error = painterResource(id = R.drawable.ic_sell)

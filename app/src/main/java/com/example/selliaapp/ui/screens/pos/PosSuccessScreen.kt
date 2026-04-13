@@ -63,7 +63,8 @@ fun PosSuccessScreen(
     method: String,
     customerName: String? = null,
     onNewSale: () -> Unit,
-    onViewSale: () -> Unit
+    onViewSale: () -> Unit,
+    onGoHome: () -> Unit
 ) {
     val currency = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
 
@@ -213,6 +214,12 @@ fun PosSuccessScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Ver detalle de la venta")
+                }
+                OutlinedButton(
+                    onClick = onGoHome,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Volver al inicio")
                 }
             }
         }

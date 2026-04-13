@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,7 +21,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -35,6 +38,7 @@ import coil.compose.AsyncImage
 import com.example.selliaapp.R
 import com.example.selliaapp.repository.PublicCatalogProduct
 import com.example.selliaapp.ui.components.BackTopAppBar
+import com.example.selliaapp.ui.components.FullscreenImageViewerDialog
 import com.example.selliaapp.ui.components.StoreBanner
 import com.example.selliaapp.viewmodel.CustomerHomeViewModel
 import com.example.selliaapp.viewmodel.StoreDetailViewModel
@@ -53,6 +57,7 @@ fun StoreDetailScreen(
     val state by customerHomeVm.uiState.collectAsStateWithLifecycle()
     val detailState by storeDetailVm.uiState.collectAsStateWithLifecycle()
     val config = state.selectedStoreConfig
+    var fullscreenImageUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(tenantId, state.stores) {
         val store = state.stores.firstOrNull { it.id == tenantId }
@@ -188,19 +193,28 @@ fun StoreDetailScreen(
                     items(detailState.catalog, key = { it.id }) { product ->
                         StoreCatalogProductItem(
                             product = product,
-                            onOpenProduct = onOpenProduct
+                            onOpenProduct = onOpenProduct,
+                            onImageClick = { url -> fullscreenImageUrl = url }
                         )
                     }
                 }
             }
         }
     }
+
+    fullscreenImageUrl?.let { url ->
+        FullscreenImageViewerDialog(
+            images = listOf(url),
+            onDismiss = { fullscreenImageUrl = null }
+        )
+    }
 }
 
 @Composable
 private fun StoreCatalogProductItem(
     product: PublicCatalogProduct,
-    onOpenProduct: (Int) -> Unit
+    onOpenProduct: (Int) -> Unit,
+    onImageClick: (String) -> Unit
 ) {
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
     val imageModel: Any = product.imageUrl?.takeIf { it.isNotBlank() } ?: R.drawable.ic_sell
@@ -220,7 +234,11 @@ private fun StoreCatalogProductItem(
             AsyncImage(
                 model = imageModel,
                 contentDescription = "Imagen del producto ${product.name}",
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier
+                    .size(72.dp)
+                    .clickable {
+                        product.imageUrl?.takeIf { it.isNotBlank() }?.let(onImageClick)
+                    },
                 contentScale = ContentScale.Crop,
                 placeholder = painterResource(id = R.drawable.ic_sell),
                 error = painterResource(id = R.drawable.ic_sell)

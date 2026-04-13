@@ -442,9 +442,9 @@ class SellViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val requiresCashSession = BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS &&
-                    current.paymentMethod == PaymentMethod.EFECTIVO
-                val openSession = if (requiresCashSession) {
+                val isCashPayment = current.paymentMethod == PaymentMethod.EFECTIVO
+                val requiresCashSession = BuildConfig.REQUIRE_CASH_SESSION_FOR_CASH_PAYMENTS && isCashPayment
+                val openSession = if (isCashPayment) {
                     cashRepository.getOpenSession()
                 } else {
                     null
@@ -456,7 +456,7 @@ class SellViewModel @Inject constructor(
                 val resolvedCustomerId = customerId ?: current.selectedCustomerId?.toLong()
                 val resolvedCustomerName = customerName
                     ?: current.selectedCustomerName
-                    ?: "Consumidor final"
+                    ?: "Consumidor Final"
                 val draft = InvoiceDraft(
                     items = current.items.map { item ->
                         CartItem(
