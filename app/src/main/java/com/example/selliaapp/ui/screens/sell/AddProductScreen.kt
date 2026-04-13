@@ -560,18 +560,10 @@ fun AddProductScreen(
                             )
                             IconButton(onClick = { pendingImageUris.removeAt(index) }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Eliminar pendiente")
-            }
-        }
-    }
-
-    if (fullscreenImages.isNotEmpty()) {
-        FullscreenImageViewerDialog(
-            images = fullscreenImages,
-            initialPage = fullscreenImageIndex,
-            onDismiss = { fullscreenImages = emptyList() }
-        )
-    }
-}
+                            }
+                        }
+                    }
+                }
             }
 
             ImageUrlListEditor(imageUrls = imageUrls)
@@ -804,6 +796,14 @@ fun AddProductScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
         }
+    }
+
+    if (fullscreenImages.isNotEmpty()) {
+        FullscreenImageViewerDialog(
+            images = fullscreenImages,
+            initialPage = fullscreenImageIndex,
+            onDismiss = { fullscreenImages = emptyList() }
+        )
     }
 }
 
