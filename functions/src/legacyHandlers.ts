@@ -152,6 +152,7 @@ const PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS = 60_000;
 const PUBLIC_CATALOG_RATE_LIMIT_MAX = 90;
 const PUBLIC_CATALOG_MAX_PAGE_SIZE = 100;
 const PUBLIC_CATALOG_DEFAULT_PAGE_SIZE = 25;
+const FORCED_PUBLIC_CATALOG_TENANT_ID = "61eac2a5-f9e7-471e-9dfd-a419486a6369";
 const PUBLIC_CATALOG_SORT_ALLOWLIST = new Set(["name_asc", "name_desc", "updated_desc"]);
 
 let cachedWebhookSecrets: {
@@ -255,13 +256,9 @@ const parsePublicCatalogSort = (value: unknown): PublicCatalogSort => {
 };
 
 const parsePublicCatalogParams = (query: functions.https.Request["query"]): PublicCatalogRequestParams => {
-  const tenantId = normalizeString(String(query.tenantId ?? ""));
-  if (!tenantId || !/^[a-zA-Z0-9_-]{3,80}$/.test(tenantId)) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "tenantId es requerido y debe ser alfanumérico (3-80, permitidos: _ -)."
-    );
-  }
+  // Tenant fijo solicitado para catálogo público.
+  // Ignora tenantId recibido por query para evitar respuestas vacías por tenant erróneo.
+  const tenantId = FORCED_PUBLIC_CATALOG_TENANT_ID;
 
   const pageToken = normalizeString(String(query.pageToken ?? ""));
   if (pageToken.length > 1024) {

@@ -3,16 +3,12 @@ const CONFIG_PLACEHOLDER = "REEMPLAZAR";
 const config = window.STORE_CONFIG || {};
 const firebaseConfig = config.firebase || {};
 const catalogApiBaseUrl = (config.publicCatalogApiBaseUrl || "/public/catalog").trim();
-const catalogLimit = Number(config.publicCatalogLimit) > 0 ? Number(config.publicCatalogLimit) : 1000;
 const catalogPageSize = Math.min(100, Number(config.publicCatalogPageSize) > 0 ? Number(config.publicCatalogPageSize) : 50);
 const catalogSort = String(config.publicCatalogSort || "name_asc").trim();
+const FORCED_CATALOG_TENANT_ID = "61eac2a5-f9e7-471e-9dfd-a419486a6369";
+const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
+const CATALOG_CACHE_VERSION = "v1";
 const queryParams = new URLSearchParams(window.location.search || "");
-const tenantFromQuery = (
-  queryParams.get("tenantId") ||
-  queryParams.get("tienda") ||
-  queryParams.get("TIENDA") ||
-  ""
-).trim();
 
 const { sanitizeText } = window.SafeDom || {};
 
@@ -78,8 +74,45 @@ function normalizeProduct(raw) {
 }
 
 function getCatalogTenantId() {
-  if (tenantFromQuery) return tenantFromQuery;
-  return (config.tenantId || "").trim();
+  return FORCED_CATALOG_TENANT_ID;
+}
+
+function getCatalogCacheKey() {
+  return `public_catalog_cache:${CATALOG_CACHE_VERSION}:${getCatalogTenantId()}:${catalogSort}`;
+}
+
+function loadCatalogCache() {
+  try {
+    const raw = localStorage.getItem(getCatalogCacheKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!Array.isArray(parsed.products)) return null;
+    if (typeof parsed.cachedAt !== "number") return null;
+    const isFresh = Date.now() - parsed.cachedAt < CATALOG_CACHE_TTL_MS;
+    return {
+      isFresh,
+      products: parsed.products,
+      storeMeta: parsed.storeMeta || null
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function saveCatalogCache(payload) {
+  try {
+    localStorage.setItem(
+      getCatalogCacheKey(),
+      JSON.stringify({
+        cachedAt: Date.now(),
+        products: payload.products || [],
+        storeMeta: payload.storeMeta || null
+      })
+    );
+  } catch (_error) {
+    // Ignorar errores de cuota/localStorage bloqueado
+  }
 }
 
 function buildCatalogEndpointUrl(pageToken = "") {
@@ -117,8 +150,11 @@ async function fetchCatalogProductsFromBackend() {
 
   const items = [];
   let pageToken = "";
+  const MAX_PAGES = 2000;
+  let page = 0;
 
-  while (items.length < catalogLimit) {
+  while (page < MAX_PAGES) {
+    page += 1;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -147,7 +183,7 @@ async function fetchCatalogProductsFromBackend() {
     pageToken = String(data.nextPageToken);
   }
 
-  return items.slice(0, catalogLimit);
+  return items;
 }
 
 function applyStoreMeta(meta) {
@@ -285,6 +321,17 @@ function renderProducts() {
 }
 
 async function loadCatalog() {
+  const cached = loadCatalogCache();
+  if (cached?.isFresh) {
+    state.products = cached.products;
+    state.storeMeta = cached.storeMeta;
+    applyStoreMeta(state.storeMeta);
+    setStatus("");
+    renderStoreFilter();
+    renderProducts();
+    return;
+  }
+
   try {
     const catalogTenantId = getCatalogTenantId();
     const tenantLabel = catalogTenantId
@@ -298,12 +345,23 @@ async function loadCatalog() {
     } else {
       setStatus("");
     }
+    saveCatalogCache({
+      products: state.products,
+      storeMeta: state.storeMeta
+    });
     renderStoreFilter();
     renderProducts();
   } catch (error) {
     console.error("No se pudo cargar el catálogo", error);
-    setStatus(buildFriendlyCatalogError(error), true);
-    state.products = [];
+    if (cached?.products?.length) {
+      state.products = cached.products;
+      state.storeMeta = cached.storeMeta;
+      applyStoreMeta(state.storeMeta);
+      setStatus("Mostrando catálogo cacheado por falla temporal de red.", false);
+    } else {
+      setStatus(buildFriendlyCatalogError(error), true);
+      state.products = [];
+    }
     renderStoreFilter();
     renderProducts();
   }
