@@ -35,6 +35,7 @@ object InvoiceFirestoreMappers {
         "status" to invoice.status.name,
         "canceledAt" to invoice.canceledAt,
         "canceledReason" to invoice.canceledReason,
+        "updatedAtMillis" to System.currentTimeMillis(),
         "breakdown" to breakdown?.toFirestoreMap(),
         "items" to items.map { item ->
             mapOf(

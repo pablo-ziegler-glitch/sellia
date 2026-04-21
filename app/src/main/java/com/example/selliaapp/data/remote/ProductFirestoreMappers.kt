@@ -23,6 +23,7 @@ object ProductFirestoreMappers {
         tenantId: String
     ): Map<String, Any?> {
         val normalizedUrls = imageUrls.ifEmpty { product.imageUrls }
+        val now = System.currentTimeMillis()
         return mapOf(
             "id"           to product.id,               // también guardamos id para depuración (docId será el id string)
             "tenantId"     to tenantId,
@@ -55,7 +56,8 @@ object ProductFirestoreMappers {
             "gainTargetPercent" to product.gainTargetPercent,
             "publicStatus" to product.publicStatus,
             "isPublic"     to (product.publicStatus == "published"),
-            "updatedAt"    to product.updatedAt.format(ISO_DATE)
+            "updatedAt"    to product.updatedAt.format(ISO_DATE),
+            "updatedAtEpochMs" to now
         )
     }
 

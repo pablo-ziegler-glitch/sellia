@@ -75,6 +75,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+private const val FINAL_CONSUMER_NAME = "Consumidor Final"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CheckoutScreen(
@@ -307,9 +309,12 @@ fun CheckoutScreen(
                         }
                     }
                     item {
-                        if (!state.selectedCustomerName.isNullOrBlank()) {
+                        val selectedCustomerName = state.selectedCustomerName
+                        if (!selectedCustomerName.isNullOrBlank() &&
+                            !selectedCustomerName.equals(FINAL_CONSUMER_NAME, ignoreCase = true)
+                        ) {
                             CustomerSummaryCard(
-                                customerName = state.selectedCustomerName ?: "",
+                                customerName = selectedCustomerName,
                                 summary = state.customerSummary,
                                 moneda = moneda,
                                 dateFormatter = dateFormatter
@@ -318,7 +323,10 @@ fun CheckoutScreen(
                         }
                     }
                     item {
-                        if (!state.selectedCustomerName.isNullOrBlank()) {
+                        val selectedCustomerName = state.selectedCustomerName
+                        if (!selectedCustomerName.isNullOrBlank() &&
+                            !selectedCustomerName.equals(FINAL_CONSUMER_NAME, ignoreCase = true)
+                        ) {
                             Card(elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
                                 Column(Modifier.padding(16.dp)) {
                                     Text("Descuento por cliente", style = MaterialTheme.typography.titleMedium)

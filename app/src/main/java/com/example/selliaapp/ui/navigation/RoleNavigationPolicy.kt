@@ -5,31 +5,11 @@ import com.example.selliaapp.domain.security.AppRole
 object RoleNavigationPolicy {
 
     fun primaryRoutesForRole(role: AppRole, usageByRoute: Map<String, Int>): List<String> {
-        return listOf(Routes.Home.route) + pickTopRoutes(
-            usageByRoute = usageByRoute,
-            candidates = listOf(
-                Routes.Pos.route,
-                Routes.ClientsHub.route,
-                Routes.Stock.route,
-                Routes.Cash.route
-            ),
-            max = 3
+        return listOf(
+            Routes.Home.route,
+            Routes.Pos.route,
+            Routes.Stock.route
         )
-    }
-
-    private fun pickTopRoutes(
-        usageByRoute: Map<String, Int>,
-        candidates: List<String>,
-        max: Int
-    ): List<String> {
-        return candidates
-            .withIndex()
-            .sortedWith(
-                compareByDescending<IndexedValue<String>> { usageByRoute[it.value] ?: 0 }
-                    .thenBy { it.index }
-            )
-            .take(max)
-            .map { it.value }
     }
 }
 

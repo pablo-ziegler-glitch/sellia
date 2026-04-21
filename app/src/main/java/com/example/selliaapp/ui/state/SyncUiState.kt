@@ -43,7 +43,7 @@ data class SellUiState(
     val paymentNotes: String = "",
     val orderType: OrderType = OrderType.INMEDIATA,
     val selectedCustomerId: Int? = null,
-    val selectedCustomerName: String? = null,
+    val selectedCustomerName: String? = "Consumidor Final",
     val customerSummary: CustomerSummaryUi? = null,
     val breakdown: SaleBreakdown? = null
 ) {

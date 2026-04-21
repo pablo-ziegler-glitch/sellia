@@ -810,6 +810,41 @@ class ProductRepository(
         }
     }
 
+    suspend fun applyRemoteDelta(
+        remoteList: List<com.example.selliaapp.data.remote.ProductFirestoreMappers.RemoteProduct>,
+        deletedIds: Set<Int>
+    ): Int = withContext(io) {
+        if (deletedIds.isNotEmpty()) {
+            db.withTransaction {
+                productDao.deleteByIds(deletedIds.toList())
+                syncOutboxDao.deleteByTypeAndIds(
+                    SyncEntityType.PRODUCT.storageKey,
+                    deletedIds.map(Int::toLong)
+                )
+                lastCache = productDao.getAllOnce()
+            }
+        }
+        if (remoteList.isEmpty()) {
+            return@withContext deletedIds.size
+        }
+        val applied = try {
+            syncDownIncremental(remoteList)
+        } catch (t: Throwable) {
+            val mustRestoreFromBackup = t is SQLiteConstraintException ||
+                t.message?.contains("SQLITE_CONSTRAINT", ignoreCase = true) == true
+            if (!mustRestoreFromBackup) {
+                throw t
+            }
+            Log.e(
+                "ProductRepository",
+                "Conflicto de unicidad detectado en delta sync. Se ejecuta restauración de stock.",
+                t
+            )
+            restoreStockFromBackup(remoteList)
+        }
+        deletedIds.size + applied
+    }
+
     private suspend fun syncDownIncremental(
         remoteList: List<com.example.selliaapp.data.remote.ProductFirestoreMappers.RemoteProduct>
     ): Int {

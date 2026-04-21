@@ -351,22 +351,7 @@ export const createTriggerStoreProductsSyncHandler = (
       throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
     }
 
-    const userDoc = await db.collection("users").doc(context.auth.uid).get();
-    if (!userDoc.exists) {
-      throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
-    }
-    const userData = userDoc.data() || {};
-    const isSuperAdmin =
-      context.auth.token?.superAdmin === true || userData.isSuperAdmin === true;
-    const userTenantId = normalizeString(userData.tenantId);
-    const userRole = normalizeString(userData.role).toLowerCase();
-
-    if (!isSuperAdmin && (userTenantId !== tenantId || userRole !== "owner")) {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "sin permisos sobre este tenant"
-      );
-    }
+    await assertTenantManagePermission(db, context, tenantId, normalizeString);
 
     const syncedCount = await syncPublicProductsForTenant(tenantId, db);
 
@@ -384,5 +369,100 @@ export const createTriggerStoreProductsSyncHandler = (
       );
 
     return { ok: true, tenantId, syncedCount };
+  };
+};
+
+const assertTenantManagePermission = async (
+  db: FirebaseFirestore.Firestore,
+  context: functions.https.CallableContext,
+  tenantId: string,
+  normalizeString: (value: unknown) => string
+): Promise<void> => {
+  const uid = context.auth?.uid;
+  if (!uid) {
+    throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+  }
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "usuario sin perfil");
+  }
+  const userData = userDoc.data() || {};
+  const isSuperAdmin =
+    context.auth?.token?.superAdmin === true || userData.isSuperAdmin === true;
+  const userTenantId = normalizeString(userData.tenantId);
+  const userRole = normalizeString(userData.role).toLowerCase();
+
+  if (!isSuperAdmin && (userTenantId !== tenantId || userRole !== "owner")) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "sin permisos sobre este tenant"
+    );
+  }
+};
+
+export const createGetPublicCatalogSyncDiagnosticsHandler = (
+  db: FirebaseFirestore.Firestore,
+  normalizeString: (value: unknown) => string
+) => {
+  return async (data: unknown, context: functions.https.CallableContext) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError("unauthenticated", "auth requerido");
+    }
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const tenantId = normalizeString(payload.tenantId);
+    if (!tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "tenantId requerido");
+    }
+    await assertTenantManagePermission(db, context, tenantId, normalizeString);
+
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const productsRef = tenantRef.collection("products");
+    const publicProductsRef = tenantRef.collection("public_products");
+
+    const [publishedSnap, legacyPublishedSnap, draftCountAgg, publicSnap] = await Promise.all([
+      productsRef.where("publicStatus", "==", "published").get(),
+      productsRef.where("isPublic", "==", true).get(),
+      productsRef.where("publicStatus", "==", "draft").count().get(),
+      publicProductsRef.get(),
+    ]);
+
+    const publishedIds = new Set<string>();
+    for (const doc of publishedSnap.docs) {
+      if (isProductPublished(doc.data())) {
+        publishedIds.add(doc.id);
+      }
+    }
+    for (const doc of legacyPublishedSnap.docs) {
+      if (isProductPublished(doc.data())) {
+        publishedIds.add(doc.id);
+      }
+    }
+    const publicIds = new Set(publicSnap.docs.map((doc) => doc.id));
+
+    const missingInPublic = [...publishedIds].filter((id) => !publicIds.has(id));
+    const orphanInPublic = [...publicIds].filter((id) => !publishedIds.has(id));
+
+    const nowIso = new Date().toISOString();
+    return {
+      ok: true,
+      tenantId,
+      analyzedAt: nowIso,
+      counts: {
+        publishedProducts: publishedIds.size,
+        draftProducts: draftCountAgg.data().count,
+        publicProducts: publicIds.size,
+        missingInPublic: missingInPublic.length,
+        orphanInPublic: orphanInPublic.length,
+      },
+      sample: {
+        missingInPublic: missingInPublic.slice(0, 50),
+        orphanInPublic: orphanInPublic.slice(0, 50),
+      },
+      notes: [
+        "missingInPublic: productos publicados que no están en public_products",
+        "orphanInPublic: productos en public_products que ya no están publicados",
+      ],
+    };
   };
 };

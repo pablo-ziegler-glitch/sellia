@@ -531,7 +531,7 @@ class SellViewModel @Inject constructor(
             paymentNotes = draft.paymentNotes,
             orderType = runCatching { OrderType.valueOf(draft.orderType) }.getOrDefault(OrderType.INMEDIATA),
             selectedCustomerId = draft.selectedCustomerId,
-            selectedCustomerName = draft.selectedCustomerName
+            selectedCustomerName = draft.selectedCustomerName?.takeIf { it.isNotBlank() } ?: "Consumidor Final"
         )
         _state.value = recalc(restoredState)
     }

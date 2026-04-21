@@ -1,7 +1,10 @@
 package com.example.selliaapp.sync
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Base64
 import android.util.Log
+import androidx.core.content.edit
 import androidx.room.withTransaction
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.InvoiceDao
@@ -19,9 +22,12 @@ import com.example.selliaapp.data.remote.ProductFirestoreMappers
 import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier real del ZIP está dentro de AppModule
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.PricingConfigRepository
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -45,12 +51,16 @@ class SyncRepositoryImpl @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val tenantProvider: TenantProvider,
     private val sessionCoordinator: FirebaseSessionCoordinator,
+    @ApplicationContext private val context: Context,
     /* [ANTERIOR]
     import com.example.selliaapp.di.IoDispatcher
     @IoDispatcher private val io: CoroutineDispatcher
     */
     @IoDispatcher private val io: CoroutineDispatcher
 ) : SyncRepository {
+    private val syncPrefs: SharedPreferences by lazy {
+        context.getSharedPreferences(SYNC_PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     override suspend fun pushPending() = withContext(io) {
         sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
@@ -64,44 +74,27 @@ class SyncRepositoryImpl @Inject constructor(
 
     override suspend fun pullRemote() {
         withContext(io) {
-        sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
-            productRepository.syncDown()
-
-        val invoicesCollection = firestore.collection("tenants")
-            .document(tenantProvider.requireTenantId())
-            .collection("invoices")
-        val cutoffMillis = System.currentTimeMillis() - 180L * 24 * 60 * 60 * 1000
-        val snapshot = invoicesCollection
-            .whereGreaterThanOrEqualTo("dateMillis", cutoffMillis)
-            .get().await()
-        if (!snapshot.isEmpty) {
-            val remoteInvoices = snapshot.documents.mapNotNull { doc ->
-                InvoiceFirestoreMappers.fromDocument(doc)
-            }
-
-            if (remoteInvoices.isNotEmpty()) {
-                db.withTransaction {
-                    remoteInvoices.forEach { remote ->
-                        val invoice = remote.invoice
-                        invoiceDao.insertInvoice(invoice)
-                        invoiceItemDao.deleteByInvoiceId(invoice.id)
-                        if (remote.items.isNotEmpty()) {
-                            invoiceItemDao.insertAll(remote.items)
-                        }
-                    }
+            sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
+                val tenantId = tenantProvider.requireTenantId()
+                if (!shouldPullNow(tenantId)) {
+                    Log.i(TAG, "Pull omitido por intervalo (tenant=$tenantId)")
+                    return@runWithFreshSession
                 }
+                runIncrementalPull(tenantId)
             }
         }
-
-            syncCustomersFromRemote()
-            pricingConfigRepository.pullPricingConfigFromCloud()
-        }
-    }
     }
 
     override suspend fun runSync(includeBackup: Boolean) = withContext(io) {
         pushPending()
-        pullRemote()
+        if (includeBackup) {
+            sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
+                val tenantId = tenantProvider.requireTenantId()
+                runIncrementalPull(tenantId, force = true)
+            }
+        } else {
+            pullRemote()
+        }
         if (includeBackup) {
             pushAllLocalTables()
         }
@@ -149,20 +142,22 @@ class SyncRepositoryImpl @Inject constructor(
         val productsCollection = firestore.collection("tenants")
             .document(tenantId)
             .collection("products")
-        val batch = firestore.batch()
-        entities.forEach { product ->
-            if (product.id == 0) return@forEach
-            val doc = productsCollection.document(product.id.toString())
-            val imageUrls = imageUrlsByProductId[product.id].orEmpty()
-            batch.set(
-                doc,
-                ProductFirestoreMappers.toMap(product, imageUrls, tenantId),
-                SetOptions.merge()
-            )
-        }
 
         try {
-            batch.commit().await()
+            entities.chunked(MAX_BATCH_OPS).forEach { chunk ->
+                val batch = firestore.batch()
+                chunk.forEach { product ->
+                    if (product.id == 0) return@forEach
+                    val doc = productsCollection.document(product.id.toString())
+                    val imageUrls = imageUrlsByProductId[product.id].orEmpty()
+                    batch.set(
+                        doc,
+                        ProductFirestoreMappers.toMap(product, imageUrls, tenantId),
+                        SetOptions.merge()
+                    )
+                }
+                batch.commit().await()
+            }
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.PRODUCT.storageKey,
                 entities.map { it.id.toLong() }
@@ -196,26 +191,26 @@ class SyncRepositoryImpl @Inject constructor(
         val invoicesCollection = firestore.collection("tenants")
             .document(tenantId)
             .collection("invoices")
-        val batch = firestore.batch()
-        relations.forEach { relation ->
-            val invoice = relation.invoice
-            val doc = invoicesCollection.document(invoice.id.toString())
-
-            // [NUEVO] toMap requiere (invoice, number:String, items:List<InvoiceItem>, tenantId:String)
-            batch.set(
-                doc,
-                InvoiceFirestoreMappers.toMap(
-                    invoice = invoice,
-                    number = formatInvoiceNumber(invoice.id),
-                    items = relation.items,
-                    tenantId = tenantId
-                ),
-                SetOptions.merge()
-            )
-        }
 
         try {
-            batch.commit().await()
+            relations.chunked(MAX_BATCH_OPS).forEach { chunk ->
+                val batch = firestore.batch()
+                chunk.forEach { relation ->
+                    val invoice = relation.invoice
+                    val doc = invoicesCollection.document(invoice.id.toString())
+                    batch.set(
+                        doc,
+                        InvoiceFirestoreMappers.toMap(
+                            invoice = invoice,
+                            number = formatInvoiceNumber(invoice.id),
+                            items = relation.items,
+                            tenantId = tenantId
+                        ),
+                        SetOptions.merge()
+                    )
+                }
+                batch.commit().await()
+            }
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.INVOICE.storageKey,
                 relations.map { it.invoice.id }
@@ -246,20 +241,38 @@ class SyncRepositoryImpl @Inject constructor(
         val foundIds = existingCustomers.map { it.id.toLong() }.toSet()
         val deletedIds = pending.map { it.entityId }.filterNot { it in foundIds }
 
-        val batch = firestore.batch()
-        existingCustomers.forEach { customer ->
-            val docRef = customersCollection.document(customer.id.toString())
-            batch.set(docRef, CustomerFirestoreMappers.toMap(customer, tenantId), SetOptions.merge())
-        }
-        deletedIds.forEach { customerId ->
-            val docRef = customersCollection.document(customerId.toString())
-            batch.delete(docRef)
-        }
-
         if (existingCustomers.isEmpty() && deletedIds.isEmpty()) return
 
         try {
-            batch.commit().await()
+            val writes = buildList {
+                existingCustomers.forEach { customer ->
+                    add(
+                        CustomerWrite.Upsert(
+                            id = customer.id.toLong(),
+                            payload = CustomerFirestoreMappers.toMap(customer, tenantId)
+                        )
+                    )
+                }
+                deletedIds.forEach { customerId ->
+                    add(CustomerWrite.Delete(customerId))
+                }
+            }
+            writes.chunked(MAX_BATCH_OPS).forEach { chunk ->
+                val batch = firestore.batch()
+                chunk.forEach { op ->
+                    when (op) {
+                        is CustomerWrite.Upsert -> {
+                            val docRef = customersCollection.document(op.id.toString())
+                            batch.set(docRef, op.payload, SetOptions.merge())
+                        }
+                        is CustomerWrite.Delete -> {
+                            val docRef = customersCollection.document(op.id.toString())
+                            batch.delete(docRef)
+                        }
+                    }
+                }
+                batch.commit().await()
+            }
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.CUSTOMER.storageKey,
                 pending.map { it.entityId }
@@ -275,6 +288,270 @@ class SyncRepositoryImpl @Inject constructor(
             throw t
         }
     }
+
+    private suspend fun runIncrementalPull(tenantId: String, force: Boolean = false) {
+        try {
+            val productApplied = pullProductsIncremental(tenantId)
+            val invoiceApplied = pullInvoicesIncremental(tenantId)
+            val customerApplied = pullCustomersIncremental(tenantId)
+            pricingConfigRepository.pullPricingConfigFromCloud()
+            markPullCompleted(tenantId)
+            Log.i(
+                TAG,
+                "Pull remoto aplicado tenant=$tenantId products=$productApplied invoices=$invoiceApplied customers=$customerApplied force=$force"
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error en pull incremental tenant=$tenantId", t)
+            throw t
+        }
+    }
+
+    private suspend fun pullProductsIncremental(tenantId: String): Int {
+        if (!isProductsBaselineDone(tenantId)) {
+            val synced = productRepository.syncDown()
+            val latestProductUpdatedMs = fetchMaxTimestamp(
+                collection = firestore.collection("tenants").document(tenantId).collection("products"),
+                field = "updatedAtEpochMs"
+            )
+            val latestDeletionMs = fetchMaxTimestamp(
+                collection = firestore.collection("tenants").document(tenantId).collection("product_deletions"),
+                field = "deletedAtEpochMs"
+            )
+            saveProductsCursor(tenantId, latestProductUpdatedMs, latestDeletionMs)
+            setProductsBaselineDone(tenantId)
+            return synced
+        }
+
+        val sinceUpdatedMs = getProductsUpdatedCursor(tenantId)
+        val sinceDeletedMs = getProductsDeletedCursor(tenantId)
+
+        val productsCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("products")
+        val changedDocs = fetchPagedSince(
+            baseQuery = productsCollection
+                .whereGreaterThan("updatedAtEpochMs", sinceUpdatedMs)
+                .orderBy("updatedAtEpochMs", Query.Direction.ASCENDING)
+                .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+        )
+        val remoteProducts = changedDocs.mapNotNull { doc ->
+            @Suppress("UNCHECKED_CAST")
+            val data = doc.data as? Map<String, Any?> ?: return@mapNotNull null
+            ProductFirestoreMappers.fromMap(doc.id, data)
+        }
+
+        val deletionsCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("product_deletions")
+        val deletionDocs = fetchPagedSince(
+            baseQuery = deletionsCollection
+                .whereGreaterThan("deletedAtEpochMs", sinceDeletedMs)
+                .orderBy("deletedAtEpochMs", Query.Direction.ASCENDING)
+                .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+        )
+        val deletedIds = deletionDocs
+            .mapNotNull { doc -> doc.getLong("productId")?.toInt() ?: doc.id.toIntOrNull() }
+            .toSet()
+
+        val applied = productRepository.applyRemoteDelta(remoteProducts, deletedIds)
+        val maxUpdatedSeen = changedDocs.maxOfOrNull { doc -> doc.getLong("updatedAtEpochMs") ?: sinceUpdatedMs }
+            ?: sinceUpdatedMs
+        val maxDeletedSeen = deletionDocs.maxOfOrNull { doc -> doc.getLong("deletedAtEpochMs") ?: sinceDeletedMs }
+            ?: sinceDeletedMs
+        saveProductsCursor(tenantId, maxUpdatedSeen, maxDeletedSeen)
+        return applied
+    }
+
+    private suspend fun pullInvoicesIncremental(tenantId: String): Int {
+        val invoicesCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("invoices")
+        val baselineDone = isInvoicesBaselineDone(tenantId)
+        val docs = if (!baselineDone) {
+            val cutoffMillis = System.currentTimeMillis() - 180L * 24 * 60 * 60 * 1000
+            fetchPaged(
+                invoicesCollection
+                    .whereGreaterThanOrEqualTo("dateMillis", cutoffMillis)
+                    .orderBy("dateMillis", Query.Direction.ASCENDING)
+                    .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+            )
+        } else {
+            val cursor = getInvoicesCursor(tenantId)
+            fetchPagedSince(
+                invoicesCollection
+                    .whereGreaterThan("updatedAtMillis", cursor)
+                    .orderBy("updatedAtMillis", Query.Direction.ASCENDING)
+                    .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+            )
+        }
+
+        if (docs.isEmpty()) {
+            if (!baselineDone) setInvoicesBaselineDone(tenantId)
+            return 0
+        }
+
+        val remoteInvoices = docs.mapNotNull { doc -> InvoiceFirestoreMappers.fromDocument(doc) }
+        if (remoteInvoices.isNotEmpty()) {
+            db.withTransaction {
+                remoteInvoices.forEach { remote ->
+                    val invoice = remote.invoice
+                    invoiceDao.insertInvoice(invoice)
+                    invoiceItemDao.deleteByInvoiceId(invoice.id)
+                    if (remote.items.isNotEmpty()) {
+                        invoiceItemDao.insertAll(remote.items)
+                    }
+                }
+            }
+        }
+
+        val currentCursor = getInvoicesCursor(tenantId)
+        val maxUpdatedSeen = docs.maxOfOrNull { it.getLong("updatedAtMillis") ?: currentCursor } ?: currentCursor
+        saveInvoicesCursor(tenantId, maxUpdatedSeen)
+        if (!baselineDone) setInvoicesBaselineDone(tenantId)
+        return remoteInvoices.size
+    }
+
+    private suspend fun pullCustomersIncremental(tenantId: String): Int {
+        val customersCollection = firestore.collection("tenants")
+            .document(tenantId)
+            .collection("customers")
+        val baselineDone = isCustomersBaselineDone(tenantId)
+        val docs = if (!baselineDone) {
+            fetchPaged(
+                customersCollection
+                    .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+            )
+        } else {
+            val cursor = getCustomersCursor(tenantId)
+            fetchPagedSince(
+                customersCollection
+                    .whereGreaterThan("updatedAtMillis", cursor)
+                    .orderBy("updatedAtMillis", Query.Direction.ASCENDING)
+                    .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+            )
+        }
+        if (docs.isEmpty()) {
+            if (!baselineDone) setCustomersBaselineDone(tenantId)
+            return 0
+        }
+
+        var applied = 0
+        docs.mapNotNull { doc -> doc.toCustomerEntityOrNull() }.forEach { customer ->
+            customerDao.upsert(customer)
+            applied++
+        }
+        val currentCursor = getCustomersCursor(tenantId)
+        val maxUpdatedSeen = docs.maxOfOrNull { it.getLong("updatedAtMillis") ?: currentCursor } ?: currentCursor
+        saveCustomersCursor(tenantId, maxUpdatedSeen)
+        if (!baselineDone) setCustomersBaselineDone(tenantId)
+        return applied
+    }
+
+    private suspend fun fetchPaged(baseQuery: Query): List<DocumentSnapshot> {
+        val docs = mutableListOf<DocumentSnapshot>()
+        var lastDoc: DocumentSnapshot? = null
+        do {
+            val query = if (lastDoc == null) {
+                baseQuery.limit(PAGE_SIZE)
+            } else {
+                baseQuery.startAfter(lastDoc).limit(PAGE_SIZE)
+            }
+            val page = query.get().await()
+            docs.addAll(page.documents)
+            lastDoc = page.documents.lastOrNull()
+        } while (lastDoc != null)
+        return docs
+    }
+
+    private suspend fun fetchPagedSince(baseQuery: Query): List<DocumentSnapshot> =
+        fetchPaged(baseQuery)
+
+    private suspend fun fetchMaxTimestamp(
+        collection: com.google.firebase.firestore.CollectionReference,
+        field: String
+    ): Long {
+        val doc = collection
+            .orderBy(field, Query.Direction.DESCENDING)
+            .limit(1)
+            .get()
+            .await()
+            .documents
+            .firstOrNull()
+        return doc?.getLong(field) ?: 0L
+    }
+
+    private fun shouldPullNow(tenantId: String): Boolean {
+        val lastPull = syncPrefs.getLong(keyFor(tenantId, KEY_LAST_PULL_MS), 0L)
+        if (lastPull <= 0L) return true
+        val intervalMs = SyncScheduler.getIntervalMinutes(context).toLong() * 60_000L
+        return System.currentTimeMillis() - lastPull >= intervalMs
+    }
+
+    private fun markPullCompleted(tenantId: String) {
+        syncPrefs.edit {
+            putLong(keyFor(tenantId, KEY_LAST_PULL_MS), System.currentTimeMillis())
+        }
+    }
+
+    private fun saveProductsCursor(tenantId: String, updatedMs: Long, deletedMs: Long) {
+        syncPrefs.edit {
+            putLong(keyFor(tenantId, KEY_PRODUCTS_UPDATED_CURSOR_MS), updatedMs.coerceAtLeast(0L))
+            putLong(keyFor(tenantId, KEY_PRODUCTS_DELETED_CURSOR_MS), deletedMs.coerceAtLeast(0L))
+        }
+    }
+
+    private fun getProductsUpdatedCursor(tenantId: String): Long =
+        syncPrefs.getLong(keyFor(tenantId, KEY_PRODUCTS_UPDATED_CURSOR_MS), 0L)
+
+    private fun getProductsDeletedCursor(tenantId: String): Long =
+        syncPrefs.getLong(keyFor(tenantId, KEY_PRODUCTS_DELETED_CURSOR_MS), 0L)
+
+    private fun saveInvoicesCursor(tenantId: String, updatedMs: Long) {
+        syncPrefs.edit {
+            putLong(keyFor(tenantId, KEY_INVOICES_UPDATED_CURSOR_MS), updatedMs.coerceAtLeast(0L))
+        }
+    }
+
+    private fun getInvoicesCursor(tenantId: String): Long =
+        syncPrefs.getLong(keyFor(tenantId, KEY_INVOICES_UPDATED_CURSOR_MS), 0L)
+
+    private fun saveCustomersCursor(tenantId: String, updatedMs: Long) {
+        syncPrefs.edit {
+            putLong(keyFor(tenantId, KEY_CUSTOMERS_UPDATED_CURSOR_MS), updatedMs.coerceAtLeast(0L))
+        }
+    }
+
+    private fun getCustomersCursor(tenantId: String): Long =
+        syncPrefs.getLong(keyFor(tenantId, KEY_CUSTOMERS_UPDATED_CURSOR_MS), 0L)
+
+    private fun isProductsBaselineDone(tenantId: String): Boolean =
+        syncPrefs.getBoolean(keyFor(tenantId, KEY_PRODUCTS_BASELINE_DONE), false)
+
+    private fun setProductsBaselineDone(tenantId: String) {
+        syncPrefs.edit {
+            putBoolean(keyFor(tenantId, KEY_PRODUCTS_BASELINE_DONE), true)
+        }
+    }
+
+    private fun isInvoicesBaselineDone(tenantId: String): Boolean =
+        syncPrefs.getBoolean(keyFor(tenantId, KEY_INVOICES_BASELINE_DONE), false)
+
+    private fun setInvoicesBaselineDone(tenantId: String) {
+        syncPrefs.edit {
+            putBoolean(keyFor(tenantId, KEY_INVOICES_BASELINE_DONE), true)
+        }
+    }
+
+    private fun isCustomersBaselineDone(tenantId: String): Boolean =
+        syncPrefs.getBoolean(keyFor(tenantId, KEY_CUSTOMERS_BASELINE_DONE), false)
+
+    private fun setCustomersBaselineDone(tenantId: String) {
+        syncPrefs.edit {
+            putBoolean(keyFor(tenantId, KEY_CUSTOMERS_BASELINE_DONE), true)
+        }
+    }
+
+    private fun keyFor(tenantId: String, key: String): String = "$tenantId:$key"
 
     private suspend fun pushAllLocalTables() {
         val tenantId = tenantProvider.requireTenantId()
@@ -398,12 +675,27 @@ class SyncRepositoryImpl @Inject constructor(
 
     companion object {
         private const val MAX_BATCH_OPS = 450
+        private const val PAGE_SIZE = 500L
         private const val TAG = "SyncRepository"
+        private const val SYNC_PREFS_NAME = "sync_repository_preferences"
+        private const val KEY_LAST_PULL_MS = "last_pull_ms"
+        private const val KEY_PRODUCTS_UPDATED_CURSOR_MS = "products_updated_cursor_ms"
+        private const val KEY_PRODUCTS_DELETED_CURSOR_MS = "products_deleted_cursor_ms"
+        private const val KEY_INVOICES_UPDATED_CURSOR_MS = "invoices_updated_cursor_ms"
+        private const val KEY_CUSTOMERS_UPDATED_CURSOR_MS = "customers_updated_cursor_ms"
+        private const val KEY_PRODUCTS_BASELINE_DONE = "products_baseline_done"
+        private const val KEY_INVOICES_BASELINE_DONE = "invoices_baseline_done"
+        private const val KEY_CUSTOMERS_BASELINE_DONE = "customers_baseline_done"
         private val EXCLUDED_SYNC_TABLES = setOf(
             "android_metadata",
             "room_master_table",
             "sqlite_sequence",
             "sync_outbox"
         )
+    }
+
+    private sealed interface CustomerWrite {
+        data class Upsert(val id: Long, val payload: Map<String, Any?>) : CustomerWrite
+        data class Delete(val id: Long) : CustomerWrite
     }
 }
