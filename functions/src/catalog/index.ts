@@ -8,3 +8,4 @@ export const syncPublicProductOnWrite = legacy.syncPublicProductOnWrite;
 export const refreshPublicProducts = legacy.refreshPublicProducts;
 export const publicCatalog = legacy.publicCatalog;
 export const triggerStoreProductsSync = legacy.triggerStoreProductsSync;
+export const getPublicCatalogSyncDiagnostics = legacy.getPublicCatalogSyncDiagnostics;

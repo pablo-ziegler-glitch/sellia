@@ -43,9 +43,11 @@ import {
   summarizeError,
 } from "./reportsDashboard";
 import {
+  createGetPublicCatalogSyncDiagnosticsHandler,
   createRefreshPublicProductsHandler,
   createSyncPublicProductOnWriteHandler,
   createTriggerStoreProductsSyncHandler,
+  syncPublicProductsForTenant,
   type PublicProductPayload,
 } from "./publicStore";
 import {
@@ -2084,18 +2086,16 @@ export const publicCatalog = runWithOnRequestCompat(
       }
 
       const token = decodePublicCatalogPageToken(params.pageToken, params.sort);
-      let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = db
+      const publicProductsRef = db
         .collection("tenants")
         .doc(params.tenantId)
-        .collection("public_products")
+        .collection("public_products");
+      let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = publicProductsRef
         .select(...PUBLIC_CATALOG_FIELDS)
         .orderBy("name", getFirestoreOrderBy(params.sort));
 
       if (params.sort === "updated_desc") {
-        query = db
-          .collection("tenants")
-          .doc(params.tenantId)
-          .collection("public_products")
+        query = publicProductsRef
           .select(...PUBLIC_CATALOG_FIELDS)
           .orderBy("updatedAt", "desc")
           .orderBy("name", "asc");
@@ -2114,18 +2114,19 @@ export const publicCatalog = runWithOnRequestCompat(
         }
       }
 
-      const snapshot = await query.limit(params.pageSize + 1).get();
+      let snapshot = await query.limit(params.pageSize + 1).get();
+      let totalAgg = await publicProductsRef.count().get();
+      if (!params.pageToken && totalAgg.data().count === 0) {
+        const recoveredCount = await syncPublicProductsForTenant(params.tenantId, db);
+        if (recoveredCount > 0) {
+          snapshot = await query.limit(params.pageSize + 1).get();
+          totalAgg = await publicProductsRef.count().get();
+        }
+      }
       const docs = snapshot.docs;
       const hasMore = docs.length > params.pageSize;
       const pageDocs = hasMore ? docs.slice(0, params.pageSize) : docs;
       const items = pageDocs.map(toPublicCatalogResponseItem);
-
-      const totalAgg = await db
-        .collection("tenants")
-        .doc(params.tenantId)
-        .collection("public_products")
-        .count()
-        .get();
 
       let nextPageToken: string | null = null;
       if (hasMore && pageDocs.length > 0) {
@@ -4508,3 +4509,7 @@ export const removeStoreDomain = functions
 export const triggerStoreProductsSync = functions
   .runWith({ enforceAppCheck: false, timeoutSeconds: 120, memory: "512MB" })
   .https.onCall(createTriggerStoreProductsSyncHandler(db, normalizeString));
+
+export const getPublicCatalogSyncDiagnostics = functions
+  .runWith({ enforceAppCheck: false, timeoutSeconds: 120, memory: "512MB" })
+  .https.onCall(createGetPublicCatalogSyncDiagnosticsHandler(db, normalizeString));

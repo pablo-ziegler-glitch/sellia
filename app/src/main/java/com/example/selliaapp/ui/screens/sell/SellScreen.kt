@@ -32,9 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,11 +71,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.selliaapp.data.local.entity.ProductEntity
-import com.example.selliaapp.ui.components.CustomerPickerSheet
 import com.example.selliaapp.ui.components.ProductDetailSheet
-import com.example.selliaapp.ui.components.ProductPickerSheet
 import com.example.selliaapp.ui.navigation.Routes
-import com.example.selliaapp.viewmodel.CustomersViewModel
 import com.example.selliaapp.viewmodel.ProductViewModel
 import com.example.selliaapp.viewmodel.SellViewModel
 import kotlinx.coroutines.launch
@@ -95,14 +91,12 @@ import kotlin.math.roundToInt
 fun SellScreen(
     sellVm: SellViewModel = hiltViewModel(),
     productVm: ProductViewModel = hiltViewModel(),
-    customersVm: CustomersViewModel = hiltViewModel(),
     onScanClick: () -> Unit,
     onBack: () -> Boolean,
     navController: NavController
 ) {
     val ui by sellVm.state.collectAsState()
     val allProducts by productVm.products.collectAsState(initial = emptyList())
-    val customers by customersVm.customers.collectAsState(initial = emptyList())
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
 
     var descuentoAdicionalActivo by remember { mutableStateOf(false) }
@@ -128,12 +122,42 @@ fun SellScreen(
     }
 
     // Selección de productos
-    var showPicker by remember { mutableStateOf(false) }
-    var showAddOptions by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+    var searchQuery by remember { mutableStateOf("") }
     var detailFor by remember { mutableStateOf<ProductEntity?>(null) }
-    var showCustomerPicker by remember { mutableStateOf(false) }
     var showCancelPreSaleDialog by remember { mutableStateOf(false) }
     var variantSelectionProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    val searchableByProductId = remember(allProducts) {
+        allProducts.associate { product ->
+            product.id to buildString {
+                append(product.name.lowercase())
+                append('|')
+                append(product.barcode?.lowercase().orEmpty())
+                append('|')
+                append(product.code?.lowercase().orEmpty())
+            }
+        }
+    }
+    val filteredProducts by remember(allProducts, remainingById, searchableByProductId, searchQuery) {
+        derivedStateOf {
+            val q = searchQuery.trim().lowercase()
+            allProducts.asSequence()
+                .filter { (remainingById[it.id] ?: 0) > 0 }
+                .let { sequence ->
+                    if (q.isBlank()) sequence else sequence.filter { searchableByProductId[it.id]?.contains(q) == true }
+                }
+                .toList()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        searchFocusRequester.requestFocus()
+    }
+    LaunchedEffect(ui.selectedCustomerId, ui.selectedCustomerName) {
+        if (ui.selectedCustomerId != null || !ui.selectedCustomerName.equals("Consumidor Final", ignoreCase = true)) {
+            sellVm.setCustomer(null, "Consumidor Final")
+        }
+    }
 
     val currentEntry = navController.currentBackStackEntry
     val pendingProductId by currentEntry
@@ -153,17 +177,6 @@ fun SellScreen(
         }
     }
 
-    if (showPicker) {
-        ProductPickerSheet(
-            products = allProducts.filter { (remainingById[it.id] ?: 0) > 0 },
-            onPick = { p ->
-                showPicker = false
-                if (p.sizes.isNotEmpty()) variantSelectionProduct = p else detailFor = p
-            },
-            onDismiss = { showPicker = false }
-        )
-    }
-
     variantSelectionProduct?.let { product ->
         VariantSelectorDialog(
             product = product,
@@ -172,56 +185,6 @@ fun SellScreen(
                 variantSelectionProduct = null
                 detailFor = product
             }
-        )
-    }
-
-    if (showAddOptions) {
-        AlertDialog(
-            onDismissRequest = { showAddOptions = false },
-            title = { Text("Agregar producto") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = {
-                            showAddOptions = false
-                            showPicker = true
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Seleccionar manualmente")
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            showAddOptions = false
-                            onScanClick()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Escanear código")
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showAddOptions = false }) {
-                    Text("Cerrar")
-                }
-            }
-        )
-    }
-
-    if (showCustomerPicker) {
-        CustomerPickerSheet(
-            customers = customers,
-            onPick = { customer ->
-                showCustomerPicker = false
-                sellVm.setCustomer(customer.id, customer.name)
-            },
-            onQuickPick = { name ->
-                showCustomerPicker = false
-                sellVm.setCustomer(null, name)
-            },
-            onDismiss = { showCustomerPicker = false }
         )
     }
 
@@ -291,11 +254,6 @@ fun SellScreen(
                 }
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { showAddOptions = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Escanear/Agregar")
-            }
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
@@ -310,44 +268,81 @@ fun SellScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Cliente",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    if (ui.selectedCustomerName.isNullOrBlank()) {
-                        Text(
-                            text = "Sin cliente seleccionado.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        OutlinedButton(onClick = { showCustomerPicker = true }) {
-                            Text("Elegir cliente")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { searchFocusRequester.requestFocus() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Buscar producto")
                         }
-                    } else {
-                        Text(ui.selectedCustomerName!!, style = MaterialTheme.typography.bodyMedium)
-                        if (ui.customerDiscountPercent > 0) {
+                        Button(
+                            onClick = onScanClick,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Scanear producto")
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(searchFocusRequester),
+                        singleLine = true,
+                        label = { Text("Buscar producto") },
+                        placeholder = { Text("Nombre, código o código de barras") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    when {
+                        filteredProducts.isEmpty() -> {
                             Text(
-                                text = "Descuento cliente: ${ui.customerDiscountPercent}%",
+                                text = "Sin resultados.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF2E7D32)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { showCustomerPicker = true }) {
-                                Text("Cambiar")
-                            }
-                            TextButton(onClick = { sellVm.setCustomer(null, null) }) {
-                                Text("Quitar")
+                        else -> {
+                            LazyColumn(
+                                modifier = Modifier.height(220.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                items(filteredProducts, key = { it.id }) { product ->
+                                    TextButton(
+                                        onClick = {
+                                            if (product.sizes.isNotEmpty()) {
+                                                variantSelectionProduct = product
+                                            } else {
+                                                detailFor = product
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalAlignment = Alignment.Start
+                                        ) {
+                                            Text(
+                                                text = product.name,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Stock: ${remainingById[product.id] ?: 0} · ${product.barcode ?: product.code ?: "Sin código"}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = { showPicker = true }) { Text("Agregar producto") }
             Spacer(Modifier.height(8.dp))
 
             if (ui.items.isEmpty()) {

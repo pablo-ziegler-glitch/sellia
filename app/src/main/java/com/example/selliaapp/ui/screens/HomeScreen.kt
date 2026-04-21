@@ -16,15 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Money
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
-import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -59,7 +56,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -94,7 +90,6 @@ fun HomeScreen(
     vm: HomeViewModel,
     onNewSale: () -> Unit,
     onStock: () -> Unit,
-    onClientes: () -> Unit,
     onConfig: () -> Unit,
     onReports: () -> Unit,
     onProviders: () -> Unit,
@@ -468,20 +463,6 @@ fun HomeScreen(
                 }
             }
 
-            // Cambio 3: Adaptive quick actions (top 3 by usage frequency)
-            item {
-                AdaptiveShortcutsSection(
-                    routeCounts = routeCounts,
-                    onNewSale = onNewSale,
-                    onStock = onStock,
-                    onClientes = onClientes,
-                    onReports = onReports,
-                    onPricingSimulator = onPricingSimulator,
-                    onProviders = onProviders,
-                    onExpenses = onExpenses,
-                    onLatestSales = onLatestSales
-                )
-            }
         }
     }
 }
@@ -643,54 +624,6 @@ private fun DailySummaryItem(label: String, value: String, modifier: Modifier = 
     }
 }
 
-// Cambio 3: Adaptive shortcuts – top 3 by usage frequency from routeCounts
-@Composable
-private fun AdaptiveShortcutsSection(
-    routeCounts: Map<String, Int>,
-    onNewSale: () -> Unit,
-    onStock: () -> Unit,
-    onClientes: () -> Unit,
-    onReports: () -> Unit,
-    onPricingSimulator: () -> Unit,
-    onProviders: () -> Unit,
-    onExpenses: () -> Unit,
-    onLatestSales: () -> Unit
-) {
-    val allShortcuts = listOf(
-        ShortcutItem("Vender", Icons.Default.PointOfSale, "sell", onNewSale),
-        ShortcutItem("Stock", Icons.Default.Inventory2, "stock", onStock),
-        ShortcutItem("Clientes", Icons.Default.People, "clients_hub", onClientes),
-        ShortcutItem("Reportes", Icons.Default.QueryStats, "reports", onReports),
-        ShortcutItem("Sim. costos", Icons.Default.Calculate, "pricing_simulator", onPricingSimulator),
-        ShortcutItem("Proveedores", Icons.AutoMirrored.Filled.ReceiptLong, "providers_hub", onProviders),
-        ShortcutItem("Gastos", Icons.Default.Money, "expenses_hub", onExpenses),
-        ShortcutItem("Últimas ventas", Icons.Default.CheckCircle, "sales_invoices", onLatestSales)
-    )
-
-    val top3 = allShortcuts
-        .sortedByDescending { routeCounts[it.route] ?: 0 }
-        .take(3)
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Accesos rápidos", style = MaterialTheme.typography.titleMedium)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            top3.forEach { item ->
-                ShortcutButton(item.label, item.icon, item.onClick, Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-private data class ShortcutItem(
-    val label: String,
-    val icon: ImageVector,
-    val route: String,
-    val onClick: () -> Unit
-)
-
 @Composable
 private fun StoreLogo(
     logoUrl: String,
@@ -721,20 +654,6 @@ private fun StoreLogo(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    }
-}
-
-@Composable
-private fun ShortcutButton(
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    OutlinedButton(onClick = onClick, modifier = modifier.height(52.dp)) {
-        Icon(icon, contentDescription = null)
-        Spacer(Modifier.width(6.dp))
-        Text(label)
     }
 }
 

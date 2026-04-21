@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
@@ -37,6 +38,7 @@ import com.example.selliaapp.ui.components.AccountSummary
 @Composable
 fun MoreScreen(
     onStockHistory: () -> Unit,
+    onClients: () -> Unit,
     onProviders: () -> Unit,
     onExpenses: () -> Unit,
     onReports: () -> Unit,
@@ -69,6 +71,17 @@ fun MoreScreen(
 
 
             SectionTitle("Operación diaria")
+            ListItem(
+                headlineContent = { Text("Clientes") },
+                leadingContent = { Icon(Icons.Default.People, contentDescription = null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClients),
+                supportingContent = { Text("Hub, historial y métricas") },
+                trailingContent = null,
+                overlineContent = null
+            )
+
             ListItem(
                 headlineContent = { Text("Proveedores") },
                 leadingContent = { Icon(Icons.Default.Store, contentDescription = null) },

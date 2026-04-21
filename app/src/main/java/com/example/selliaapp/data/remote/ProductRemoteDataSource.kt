@@ -52,23 +52,25 @@ class ProductRemoteDataSource(
         val tenantId = tenantProvider.requireTenantId()
         val col = firestore.collection("tenants").document(tenantId).collection("products")
         val deletionsCol = firestore.collection("tenants").document(tenantId).collection("product_deletions")
-        val batch = firestore.batch()
-        products.forEach { product ->
-            if (product.id == 0) return@forEach
-            val doc = col.document(product.id.toString())
-            val imageUrls = imageUrlsByProductId[product.id].orEmpty()
-            batch.set(
-                doc,
-                ProductFirestoreMappers.toMap(
-                    product = product,
-                    imageUrls = imageUrls,
-                    tenantId = tenantId
-                ),
-                SetOptions.merge()
-            )
-            batch.delete(deletionsCol.document(product.id.toString()))
+        products.chunked(MAX_BATCH_OPS).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { product ->
+                if (product.id == 0) return@forEach
+                val doc = col.document(product.id.toString())
+                val imageUrls = imageUrlsByProductId[product.id].orEmpty()
+                batch.set(
+                    doc,
+                    ProductFirestoreMappers.toMap(
+                        product = product,
+                        imageUrls = imageUrls,
+                        tenantId = tenantId
+                    ),
+                    SetOptions.merge()
+                )
+                batch.delete(deletionsCol.document(product.id.toString()))
+            }
+            batch.commit().await()
         }
-        batch.commit().await()
     }
 
     suspend fun deleteById(id: Int) {
@@ -115,5 +117,6 @@ class ProductRemoteDataSource(
 
     companion object {
         private const val PAGE_SIZE = 500L
+        private const val MAX_BATCH_OPS = 450
     }
 }
