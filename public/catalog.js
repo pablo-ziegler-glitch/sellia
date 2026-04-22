@@ -57,7 +57,10 @@ function setStatus(message, isError = false) {
 }
 
 function getStoreLabel(product) {
-  return product.storeName || product.tenantId || "Sin tienda";
+  const normalized = sanitizeText
+    ? sanitizeText(product.storeName || "")
+    : String(product.storeName || "");
+  return normalized.trim() || "Tienda sin nombre";
 }
 
 function normalizeProduct(raw) {
@@ -71,6 +74,19 @@ function normalizeProduct(raw) {
     listPrice: raw.listPrice,
     cashPrice: raw.cashPrice
   };
+}
+
+function dedupeProducts(products) {
+  const unique = new Map();
+  products.forEach((product, index) => {
+    const stableId = String(product.id || "").trim();
+    const fallbackKey = `${String(product.name || "").trim().toLowerCase()}|${String(product.sku || "").trim().toLowerCase()}`;
+    const key = stableId || fallbackKey || `row-${index}`;
+    if (!unique.has(key)) {
+      unique.set(key, product);
+    }
+  });
+  return [...unique.values()];
 }
 
 function getCatalogTenantId() {
@@ -131,7 +147,7 @@ function buildCatalogEndpointUrl(pageToken = "") {
 function buildFriendlyCatalogError(error) {
   const message = String(error?.message || "");
   if (message.includes("tenantId es requerido")) {
-    return "Falta tenantId en la URL. Usá ?tenantId=<id_tienda>.";
+    return "Falta configuración de tienda para consultar el catálogo.";
   }
   if (message.includes("Rate limit")) {
     return "Demasiadas solicitudes al catálogo. Reintentá en unos segundos.";
@@ -145,7 +161,7 @@ function buildFriendlyCatalogError(error) {
 async function fetchCatalogProductsFromBackend() {
   const catalogTenantId = getCatalogTenantId();
   if (!catalogTenantId) {
-    throw new Error("tenantId es requerido para consultar el catálogo público");
+    throw new Error("Se requiere una tienda para consultar el catálogo público");
   }
 
   const items = [];
@@ -183,7 +199,7 @@ async function fetchCatalogProductsFromBackend() {
     pageToken = String(data.nextPageToken);
   }
 
-  return items;
+  return dedupeProducts(items);
 }
 
 function applyStoreMeta(meta) {
@@ -249,8 +265,9 @@ function renderStoreFilter() {
 
   const stores = new Map();
   state.products.forEach((product) => {
-    const key = product.tenantId || getStoreLabel(product);
-    stores.set(key, getStoreLabel(product));
+    const label = getStoreLabel(product);
+    const key = product.tenantId || label.toLowerCase();
+    stores.set(key, label);
   });
 
   elements.storeFilter.replaceChildren();
@@ -323,7 +340,7 @@ function renderProducts() {
 async function loadCatalog() {
   const cached = loadCatalogCache();
   if (cached?.isFresh) {
-    state.products = cached.products;
+    state.products = dedupeProducts(cached.products);
     state.storeMeta = cached.storeMeta;
     applyStoreMeta(state.storeMeta);
     setStatus("");
@@ -333,12 +350,8 @@ async function loadCatalog() {
   }
 
   try {
-    const catalogTenantId = getCatalogTenantId();
-    const tenantLabel = catalogTenantId
-      ? ` de la tienda ${catalogTenantId}`
-      : " de todas las tiendas";
-    setStatus(`Cargando catálogo${tenantLabel} desde backend...`);
-    state.products = await fetchCatalogProductsFromBackend();
+    setStatus("Cargando catálogo desde backend...");
+    state.products = dedupeProducts(await fetchCatalogProductsFromBackend());
     applyStoreMeta(state.storeMeta);
     if (!state.products.length) {
       setStatus("Catálogo en construcción.");
@@ -354,7 +367,7 @@ async function loadCatalog() {
   } catch (error) {
     console.error("No se pudo cargar el catálogo", error);
     if (cached?.products?.length) {
-      state.products = cached.products;
+      state.products = dedupeProducts(cached.products);
       state.storeMeta = cached.storeMeta;
       applyStoreMeta(state.storeMeta);
       setStatus("Mostrando catálogo cacheado por falla temporal de red.", false);

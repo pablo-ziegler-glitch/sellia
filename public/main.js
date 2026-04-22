@@ -267,7 +267,7 @@ function resolvePreviewImageByTenant(item, tenantId) {
 async function fetchCatalogPreviewProducts() {
   const tenantId = resolveCatalogTenantId();
   if (!tenantId) {
-    throw new Error("No se detectó tenantId para cargar la vitrina pública.");
+    throw new Error("No se detectó tienda para cargar la vitrina pública.");
   }
 
   const endpoint = new URL((config.publicCatalogApiBaseUrl || "/public/catalog").trim(), window.location.origin);
@@ -293,11 +293,20 @@ async function fetchCatalogPreviewProducts() {
 
     const payload = await response.json();
     const items = Array.isArray(payload.items) ? payload.items : [];
-    return items.slice(0, 6).map((item) => ({
+    const uniqueItems = [];
+    const seen = new Set();
+    items.forEach((item) => {
+      const key = String(item?.id || item?.sku || item?.name || "").trim().toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      uniqueItems.push(item);
+    });
+
+    return uniqueItems.slice(0, 6).map((item) => ({
       name: item.name || "Producto",
       desc: item.sku ? `SKU: ${item.sku}` : "Disponible en catálogo público.",
       image: resolvePreviewImageByTenant(item, tenantId),
-      tag: item.storeName || item.tenantId || "Colección"
+      tag: item.storeName || "Colección"
     }));
   } finally {
     clearTimeout(timeoutId);

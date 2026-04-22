@@ -109,37 +109,27 @@ export default async function ProductPage({ params }: Props) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Breadcrumb */}
-        <nav className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-          <Link
-            href="/"
-            className="transition-colors hover:underline"
-            style={{ color: "var(--gold)" }}
-          >
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <nav className="mb-6 flex items-center gap-1 text-sm text-[var(--muted)]">
+          <Link href="/" className="hover:text-[var(--primary-container)]">
             Inicio
           </Link>
-          {" / "}
-          <Link
-            href="/catalogo"
-            className="transition-colors hover:underline"
-            style={{ color: "var(--gold)" }}
-          >
+          <span className="material-symbols-outlined text-sm">chevron_right</span>
+          <Link href="/catalogo" className="hover:text-[var(--primary-container)]">
             Catálogo
           </Link>
-          {" / "}
-          <span style={{ color: "var(--foreground)" }}>{product.name}</span>
+          <span className="material-symbols-outlined text-sm">chevron_right</span>
+          <span className="line-clamp-1 font-medium text-[var(--foreground)]">{product.name}</span>
         </nav>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          {/* Imagen */}
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
           <div>
             {product.imageUrl ? (
               <div
-                className="relative w-full aspect-square rounded-xl overflow-hidden"
+                className="relative w-full aspect-square overflow-hidden rounded-2xl"
                 style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
+                  background: "var(--surface-pop)",
+                  boxShadow: "var(--ambient-shadow)",
                 }}
               >
                 <Image
@@ -153,11 +143,10 @@ export default async function ProductPage({ params }: Props) {
               </div>
             ) : (
               <div
-                className="w-full aspect-square rounded-xl flex items-center justify-center text-sm"
+                className="flex w-full aspect-square items-center justify-center rounded-2xl text-sm"
                 style={{
-                  background: "var(--surface)",
+                  background: "var(--surface-high)",
                   color: "var(--muted)",
-                  border: "1px solid var(--border)",
                 }}
               >
                 Sin imagen
@@ -165,39 +154,29 @@ export default async function ProductPage({ params }: Props) {
             )}
           </div>
 
-          {/* Info */}
           <div>
             {product.category && (
-              <p
-                className="text-xs tracking-widest uppercase mb-2"
-                style={{ color: "var(--gold)" }}
-              >
+              <p className="mb-2 text-xs uppercase tracking-widest text-[var(--primary-container)]">
                 {product.category}
               </p>
             )}
-            <h1
-              className="text-2xl sm:text-3xl font-bold mb-6"
-              style={{ color: "var(--foreground)" }}
-            >
+            <h1 className="mb-6 font-plus-jakarta text-3xl font-extrabold text-[var(--foreground)] sm:text-4xl">
               {product.name}
             </h1>
 
-            {/* Precios */}
             <div
-              className="rounded-xl p-5 space-y-3 mb-6"
+              className="mb-6 space-y-3 rounded-2xl bg-[var(--surface-low)] p-6"
               style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
+                boxShadow: "var(--ambient-shadow)",
               }}
             >
               {product.listPrice != null && (
                 <div className="flex justify-between items-center">
-                  <span style={{ color: "var(--muted)" }} className="text-sm">
+                  <span className="text-sm text-[var(--muted)]">
                     Precio lista
                   </span>
                   <span
-                    className="text-2xl font-bold"
-                    style={{ color: "var(--gold)" }}
+                    className="font-plus-jakarta text-2xl font-extrabold text-[var(--primary)]"
                   >
                     {formatPrice(product.listPrice)}
                   </span>
@@ -207,15 +186,15 @@ export default async function ProductPage({ params }: Props) {
                 product.cashPrice !== product.listPrice && (
                   <div
                     className="flex justify-between items-center pt-3"
-                    style={{ borderTop: "1px solid var(--border)" }}
+                    style={{
+                      borderTop:
+                        "1px solid color-mix(in srgb, var(--border) 30%, transparent)",
+                    }}
                   >
-                    <span style={{ color: "var(--muted)" }} className="text-sm">
+                    <span className="text-sm text-[var(--muted)]">
                       Efectivo
                     </span>
-                    <span
-                      className="text-lg font-semibold"
-                      style={{ color: "#4ade80" }}
-                    >
+                    <span className="text-lg font-semibold text-[var(--secondary)]">
                       {formatPrice(product.cashPrice)}
                     </span>
                   </div>
@@ -224,42 +203,33 @@ export default async function ProductPage({ params }: Props) {
                 product.transferPrice !== product.listPrice && (
                   <div
                     className="flex justify-between items-center pt-3"
-                    style={{ borderTop: "1px solid var(--border)" }}
+                    style={{
+                      borderTop:
+                        "1px solid color-mix(in srgb, var(--border) 30%, transparent)",
+                    }}
                   >
-                    <span style={{ color: "var(--muted)" }} className="text-sm">
+                    <span className="text-sm text-[var(--muted)]">
                       Transferencia
                     </span>
-                    <span
-                      className="text-lg font-semibold"
-                      style={{ color: "var(--foreground)" }}
-                    >
+                    <span className="text-lg font-semibold text-[var(--foreground)]">
                       {formatPrice(product.transferPrice)}
                     </span>
                   </div>
                 )}
             </div>
 
-            {/* Descripción */}
             {product.description && (
               <div className="mb-6">
-                <h2
-                  className="text-xs font-semibold tracking-widest uppercase mb-2"
-                  style={{ color: "var(--muted)" }}
-                >
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
                   Descripción
                 </h2>
-                <p
-                  className="text-sm leading-relaxed whitespace-pre-line"
-                  style={{ color: "var(--foreground)", opacity: 0.85 }}
-                >
+                <p className="whitespace-pre-line text-sm leading-relaxed text-[var(--foreground)]">
                   {product.description}
                 </p>
               </div>
             )}
 
-            {/* Acciones — en mobile: ShareButton primero como CTA principal */}
             <div className="flex flex-col gap-3">
-              {/* ShareButton: primer lugar en mobile, último en desktop */}
               <div className="md:order-last">
                 <ShareButton
                   url={productUrl}
@@ -272,8 +242,7 @@ export default async function ProductPage({ params }: Props) {
                   href={whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center w-full rounded py-3 px-6 text-sm font-semibold transition-opacity hover:opacity-80"
-                  style={{ background: "#25D366", color: "#fff" }}
+                  className="inline-flex w-full items-center justify-center rounded-full bg-[#25D366] px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-85"
                 >
                   Consultar por WhatsApp
                 </a>
@@ -292,7 +261,7 @@ export default async function ProductPage({ params }: Props) {
           className="fixed bottom-5 right-5 z-50 inline-flex items-center justify-center rounded-full shadow-lg"
           style={{ background: "#25D366", color: "#fff", width: 58, height: 58 }}
         >
-          WA
+          <span className="material-symbols-outlined text-[24px]">chat</span>
         </a>
       )}
     </>

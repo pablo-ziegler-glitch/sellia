@@ -62,50 +62,39 @@ export default async function CatalogoPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <div className="px-4 pt-8 pb-16 max-w-6xl mx-auto">
-        {/* Breadcrumb */}
-        <nav className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-          <Link
-            href="/"
-            className="transition-colors hover:underline"
-            style={{ color: "var(--gold)" }}
-          >
+      <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6">
+        <nav className="mb-6 flex items-center gap-1 text-sm text-[var(--muted)]">
+          <Link href="/" className="hover:text-[var(--primary-container)]">
             Inicio
           </Link>
-          {" / "}
-          <span style={{ color: "var(--foreground)" }}>Catálogo</span>
+          <span className="material-symbols-outlined text-sm">chevron_right</span>
+          <span className="font-medium text-[var(--foreground)]">Catálogo</span>
         </nav>
 
-        {/* Banner */}
         {storefront.bannerImageUrl ? (
-          <div className="relative w-full h-48 sm:h-64 rounded-xl overflow-hidden mb-6">
+          <div className="relative mb-8 h-52 w-full overflow-hidden rounded-xl bg-[var(--surface-low)] md:h-64">
             <Image
               src={storefront.bannerImageUrl}
               alt={storefront.storeName}
               fill
               className="object-cover"
               priority
-              style={{ opacity: 0.5 }}
+              style={{ opacity: 0.62 }}
             />
             <div
               className="absolute inset-0 flex items-end p-6"
               style={{
-                background:
-                  "linear-gradient(to top, rgba(10,10,10,0.95) 0%, transparent 60%)",
+                background: "linear-gradient(to top, rgba(26,28,27,0.68) 0%, transparent 62%)",
               }}
             >
               <div>
                 <h1
-                  className="text-3xl font-black tracking-wide uppercase"
-                  style={{ color: "var(--gold)" }}
+                  className="font-plus-jakarta text-3xl font-extrabold tracking-tight text-white md:text-4xl"
                 >
                   {storefront.storeName}
                 </h1>
                 {storefront.tagline && (
-                  <p
-                    className="text-sm mt-1"
-                    style={{ color: "var(--foreground)", opacity: 0.75 }}
-                  >
+                  <p className="mt-1 text-sm text-white/90">
                     {storefront.tagline}
                   </p>
                 )}
@@ -113,31 +102,26 @@ export default async function CatalogoPage() {
             </div>
           </div>
         ) : (
-          <div className="mb-6">
-            <h1
-              className="text-3xl font-black tracking-wide uppercase"
-              style={{ color: "var(--gold)" }}
-            >
+          <div className="mb-8">
+            <h1 className="font-plus-jakarta text-4xl font-extrabold tracking-tight text-[var(--foreground)]">
               {storefront.storeName}
             </h1>
             {storefront.tagline && (
-              <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-                {storefront.tagline}
-              </p>
+              <p className="mt-1 text-[var(--muted)]">{storefront.tagline}</p>
             )}
           </div>
         )}
 
-        {/* Contacto rápido */}
-        {(storefront.contactWhatsapp || storefront.contactInstagram || storefront.contactAddress) && (
-          <div className="flex flex-wrap gap-2 mb-8">
+        {(storefront.contactWhatsapp ||
+          storefront.contactInstagram ||
+          storefront.contactAddress) && (
+          <div className="mb-8 flex flex-wrap gap-2">
             {storefront.contactWhatsapp && (
               <a
                 href={`https://wa.me/${storefront.contactWhatsapp.replace(/\D/g, "")}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 rounded-full text-xs font-medium transition-opacity hover:opacity-80"
-                style={{ background: "#25D366", color: "#fff" }}
+                className="rounded-full bg-[#25D366] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-85"
               >
                 WhatsApp
               </a>
@@ -147,11 +131,10 @@ export default async function CatalogoPage() {
                 href={`https://instagram.com/${storefront.contactInstagram.replace("@", "")}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 rounded-full text-xs font-medium transition-opacity hover:opacity-80"
+                className="rounded-full px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-85"
                 style={{
                   background:
                     "linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)",
-                  color: "#fff",
                 }}
               >
                 Instagram
@@ -159,11 +142,9 @@ export default async function CatalogoPage() {
             )}
             {storefront.contactAddress && (
               <span
-                className="px-4 py-2 rounded-full text-xs"
+                className="rounded-full bg-[var(--surface-low)] px-4 py-2 text-xs text-[var(--muted)]"
                 style={{
-                  background: "var(--surface-2)",
-                  color: "var(--muted)",
-                  border: "1px solid var(--border)",
+                  border: "1px solid color-mix(in srgb, var(--border) 25%, transparent)",
                 }}
               >
                 {storefront.contactAddress}
@@ -172,7 +153,6 @@ export default async function CatalogoPage() {
           </div>
         )}
 
-        {/* Grid de productos — Suspense requerido por useSearchParams en ProductGrid */}
         {products.length === 0 ? (
           <EmptyCatalog storefront={storefront} />
         ) : (
@@ -181,6 +161,7 @@ export default async function CatalogoPage() {
               products={products}
               showPrices={catalogConfig.showPrices}
               showCashPrice={catalogConfig.showCashPrice}
+              storeName={storefront.storeName}
             />
           </Suspense>
         )}
@@ -191,20 +172,11 @@ export default async function CatalogoPage() {
 
 function EmptyCatalog({ storefront }: { storefront: { contactWhatsapp?: string } }) {
   return (
-    <div
-      className="text-center py-20 rounded-xl"
-      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-    >
-      <p className="text-4xl mb-4" style={{ color: "var(--gold)" }}>
-        ◈
-      </p>
-      <p
-        className="text-lg font-semibold mb-2"
-        style={{ color: "var(--foreground)" }}
-      >
+    <div className="rounded-2xl bg-[var(--surface-low)] px-6 py-20 text-center">
+      <p className="mb-4 font-plus-jakarta text-2xl font-bold text-[var(--foreground)]">
         El catálogo se está preparando
       </p>
-      <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
+      <p className="mb-6 text-sm text-[var(--muted)]">
         Pronto vas a encontrar todos nuestros productos aquí.
       </p>
       {storefront.contactWhatsapp && (
@@ -212,9 +184,9 @@ function EmptyCatalog({ storefront }: { storefront: { contactWhatsapp?: string }
           href={`https://wa.me/${storefront.contactWhatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Hola, quiero consultar sobre sus productos")}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block px-6 py-3 rounded text-sm font-medium transition-opacity hover:opacity-80"
-          style={{ background: "#25D366", color: "#fff" }}
+          className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-6 py-3 text-sm font-medium text-white transition-opacity hover:opacity-85"
         >
+          <span className="material-symbols-outlined text-[18px]">chat</span>
           Consultar por WhatsApp
         </a>
       )}

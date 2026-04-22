@@ -5,7 +5,7 @@ export default function ProductNotFound() {
     <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 text-center">
       <p
         className="text-6xl font-black tracking-widest mb-4"
-        style={{ color: "var(--gold)", opacity: 0.3 }}
+        style={{ color: "var(--primary-container)", opacity: 0.2 }}
       >
         ◈
       </p>
@@ -20,8 +20,7 @@ export default function ProductNotFound() {
       </p>
       <Link
         href="/catalogo"
-        className="px-6 py-3 rounded text-sm font-semibold tracking-widest uppercase transition-all"
-        style={{ background: "var(--gold)", color: "#0a0a0a" }}
+        className="brand-gradient rounded-full px-6 py-3 text-sm font-semibold tracking-widest uppercase text-white transition-all"
       >
         Ver catálogo
       </Link>
