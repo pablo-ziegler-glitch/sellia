@@ -22,12 +22,12 @@ export default async function FeaturedProductsPage() {
   ).slice(0, 24);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-10">
+    <div className="max-w-7xl mx-auto px-4 py-10 sm:px-6">
       <div className="mb-8">
-        <p className="text-xs tracking-[0.3em] uppercase mb-2" style={{ color: "var(--gold)" }}>
+        <p className="mb-2 text-xs uppercase tracking-[0.3em] text-[var(--primary-container)]">
           Catálogo
         </p>
-        <h1 className="text-3xl sm:text-4xl font-bold" style={{ color: "var(--foreground)" }}>
+        <h1 className="font-plus-jakarta text-3xl font-extrabold sm:text-4xl text-[var(--foreground)]">
           {catalogConfig.featuredTitle || "Productos destacados"}
         </h1>
       </div>
@@ -40,14 +40,13 @@ export default async function FeaturedProductsPage() {
             <Link
               key={product.id}
               href={`/catalogo/producto/${product.id}`}
-              className="rounded-xl overflow-hidden"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+              className="rounded-xl overflow-hidden bg-[var(--surface-pop)] soft-pop"
             >
               <div className="relative w-full aspect-square">
                 {product.imageUrl ? (
                   <Image src={product.imageUrl} alt={product.name} fill className="object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-xs" style={{ color: "var(--muted)" }}>
+                  <div className="w-full h-full flex items-center justify-center text-xs bg-[var(--surface-high)]" style={{ color: "var(--muted)" }}>
                     Sin imagen
                   </div>
                 )}
@@ -55,7 +54,7 @@ export default async function FeaturedProductsPage() {
               <div className="p-3">
                 <p className="text-sm font-semibold line-clamp-2" style={{ color: "var(--foreground)" }}>{product.name}</p>
                 {product.listPrice != null && (
-                  <p className="text-sm mt-1" style={{ color: "var(--gold)" }}>{formatPrice(product.listPrice)}</p>
+                  <p className="text-sm mt-1 font-semibold text-[var(--primary)]">{formatPrice(product.listPrice)}</p>
                 )}
               </div>
             </Link>

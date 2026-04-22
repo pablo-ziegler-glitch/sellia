@@ -580,7 +580,7 @@ function init() {
   state.sku = params.get("q")?.trim() || "";
   state.mode = params.get("mode")?.trim().toLowerCase() || "public";
   if (!getTenantId()) {
-    setStatus("Falta configurar tenantId en config.js.", true);
+    setStatus("Falta configurar la tienda en config.js.", true);
   }
   initViewModeToggle();
   maybeEnableOwnerAppRedirect();

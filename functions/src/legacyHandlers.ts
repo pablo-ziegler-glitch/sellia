@@ -177,6 +177,7 @@ type PublicCatalogPageToken = {
   cursorName: string;
   cursorUpdatedAtMs: number | null;
   cursorProductName: string;
+  cursorDocId?: string;
 };
 
 type PublicCatalogResponseItem = {
@@ -285,6 +286,7 @@ const decodePublicCatalogPageToken = (
       decoded.sort !== expectedSort ||
       typeof decoded.cursorName !== "string" ||
       typeof decoded.cursorProductName !== "string" ||
+      (decoded.cursorDocId !== undefined && typeof decoded.cursorDocId !== "string") ||
       (decoded.cursorUpdatedAtMs !== null && !Number.isFinite(decoded.cursorUpdatedAtMs))
     ) {
       throw new Error("invalid token");
@@ -2089,25 +2091,29 @@ export const publicCatalog = runWithOnRequestCompat(
         .collection("public_products");
       let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = publicProductsRef
         .select(...PUBLIC_CATALOG_FIELDS)
-        .orderBy("name", getFirestoreOrderBy(params.sort));
+        .orderBy("name", getFirestoreOrderBy(params.sort))
+        .orderBy(admin.firestore.FieldPath.documentId(), "asc");
 
       if (params.sort === "updated_desc") {
         query = publicProductsRef
           .select(...PUBLIC_CATALOG_FIELDS)
           .orderBy("updatedAt", "desc")
-          .orderBy("name", "asc");
+          .orderBy("name", "asc")
+          .orderBy(admin.firestore.FieldPath.documentId(), "asc");
       }
 
       if (token) {
+        const cursorDocId = normalizeString(token.cursorDocId || token.cursorProductName);
         if (params.sort === "updated_desc") {
           query = query.startAfter(
             token.cursorUpdatedAtMs !== null
               ? admin.firestore.Timestamp.fromMillis(token.cursorUpdatedAtMs)
               : null,
-            token.cursorName
+            token.cursorName,
+            cursorDocId || token.cursorName
           );
         } else {
-          query = query.startAfter(token.cursorName);
+          query = query.startAfter(token.cursorName, cursorDocId || token.cursorName);
         }
       }
 
@@ -2134,6 +2140,7 @@ export const publicCatalog = runWithOnRequestCompat(
           sort: params.sort,
           cursorName: normalizeString(lastData.name) || last.id,
           cursorProductName: normalizeString(lastData.name) || last.id,
+          cursorDocId: last.id,
           cursorUpdatedAtMs:
             updatedAtTs && typeof updatedAtTs.toMillis === "function"
               ? updatedAtTs.toMillis()

@@ -17,7 +17,7 @@ export default function NavLink({ href, children }: NavLinkProps) {
     <Link
       href={href}
       className="nav-link text-sm"
-      style={isActive ? { color: "var(--gold)" } : undefined}
+      style={isActive ? { color: "var(--primary)" } : undefined}
     >
       {children}
     </Link>

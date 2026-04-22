@@ -32,10 +32,10 @@ export default function ShareButton({ url, title, text }: Props) {
   return (
     <button
       onClick={handleShare}
-      className="inline-flex items-center justify-center gap-2 w-full rounded py-3 px-6 text-sm font-semibold transition-all border"
+      className="inline-flex w-full items-center justify-center gap-2 rounded-full border px-6 py-3 text-sm font-semibold transition-all"
       style={{
-        borderColor: "var(--gold)",
-        color: "var(--gold)",
+        borderColor: "var(--primary)",
+        color: "var(--primary)",
         background: "transparent",
       }}
     >

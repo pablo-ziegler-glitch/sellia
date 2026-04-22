@@ -5,7 +5,7 @@ export default function NotFound() {
     <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 text-center">
       <p
         className="text-8xl font-black tracking-widest mb-2"
-        style={{ color: "var(--gold)", opacity: 0.3 }}
+        style={{ color: "var(--primary-container)", opacity: 0.18 }}
       >
         404
       </p>
@@ -21,15 +21,14 @@ export default function NotFound() {
       <div className="flex flex-col sm:flex-row gap-3">
         <Link
           href="/"
-          className="px-6 py-3 rounded text-sm font-semibold tracking-widest uppercase transition-all"
-          style={{ background: "var(--gold)", color: "#0a0a0a" }}
+          className="brand-gradient px-6 py-3 rounded-full text-sm font-semibold tracking-widest uppercase text-white transition-all"
         >
           Ir al inicio
         </Link>
         <Link
           href="/catalogo"
-          className="px-6 py-3 rounded text-sm font-semibold tracking-widest uppercase border transition-all"
-          style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
+          className="px-6 py-3 rounded-full text-sm font-semibold tracking-widest uppercase border transition-all"
+          style={{ borderColor: "var(--primary)", color: "var(--primary)" }}
         >
           Ver catálogo
         </Link>

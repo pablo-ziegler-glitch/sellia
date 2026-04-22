@@ -5,11 +5,11 @@ export default function ProductGridSkeleton({ count = 12 }: { count?: number }) 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div
           className="flex-1 h-10 rounded-lg animate-pulse"
-          style={{ background: "var(--surface)" }}
+          style={{ background: "var(--surface-high)" }}
         />
         <div
           className="h-10 w-40 rounded-lg animate-pulse"
-          style={{ background: "var(--surface)" }}
+          style={{ background: "var(--surface-high)" }}
         />
       </div>
 
@@ -19,39 +19,40 @@ export default function ProductGridSkeleton({ count = 12 }: { count?: number }) 
           <div
             key={i}
             className="h-7 rounded-full animate-pulse flex-shrink-0"
-            style={{ width: w, background: "var(--surface)" }}
+            style={{ width: w, background: "var(--surface-high)" }}
           />
         ))}
       </div>
 
-      {/* Grid skeleton */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {Array.from({ length: count }).map((_, i) => (
           <div
             key={i}
             className="rounded-xl overflow-hidden"
             style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
+              background: "var(--surface-pop)",
+              boxShadow: "var(--ambient-shadow)",
             }}
           >
-            <div
-              className="w-full aspect-square animate-pulse"
-              style={{ background: "var(--surface-2)" }}
-            />
-            <div className="p-3 space-y-2">
+            <div className="flex flex-col sm:flex-row">
               <div
-                className="h-3.5 rounded animate-pulse"
-                style={{ background: "var(--surface-2)", width: "85%" }}
+                className="w-full sm:w-64 md:w-72 aspect-square animate-pulse"
+                style={{ background: "var(--surface-highest)" }}
               />
-              <div
-                className="h-3 rounded animate-pulse"
-                style={{ background: "var(--surface-2)", width: "55%" }}
-              />
-              <div
-                className="h-4 rounded animate-pulse mt-1"
-                style={{ background: "var(--surface-2)", width: "45%" }}
-              />
+              <div className="p-4 sm:p-6 flex-1 space-y-3">
+                <div
+                  className="h-4 rounded animate-pulse"
+                  style={{ background: "var(--surface-highest)", width: "35%" }}
+                />
+                <div
+                  className="h-6 rounded animate-pulse"
+                  style={{ background: "var(--surface-highest)", width: "78%" }}
+                />
+                <div
+                  className="h-6 rounded animate-pulse"
+                  style={{ background: "var(--surface-highest)", width: "24%" }}
+                />
+              </div>
             </div>
           </div>
         ))}

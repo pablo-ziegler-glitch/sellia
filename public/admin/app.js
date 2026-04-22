@@ -394,7 +394,32 @@ async function onGoogleLogin() {
 async function loadProfile(db, uid) {
   const snapshot = await getDoc(doc(db, "users", uid));
   if (!snapshot.exists()) throw new Error("No existe perfil de usuario en users/{uid}.");
-  return snapshot.data();
+  const profile = snapshot.data();
+  const tenantId = String(profile?.tenantId || "").trim();
+  if (!tenantId) return profile;
+
+  try {
+    const tenantSnapshot = await getDoc(doc(db, "tenants", tenantId));
+    const tenantData = tenantSnapshot.exists() ? tenantSnapshot.data() : {};
+    const storeDisplayName =
+      String(profile?.storeName || "").trim() ||
+      String(profile?.tenantName || "").trim() ||
+      String(profile?.businessName || "").trim() ||
+      String(tenantData?.storeName || "").trim() ||
+      String(tenantData?.tenantName || "").trim() ||
+      String(tenantData?.name || "").trim();
+
+    if (storeDisplayName) {
+      return {
+        ...profile,
+        storeDisplayName,
+      };
+    }
+  } catch (_error) {
+    // Si falla la lectura de tenant, mantenemos el perfil base.
+  }
+
+  return profile;
 }
 
 function validateProfile(profile) {
@@ -416,7 +441,12 @@ function renderDefaultAdminPermissions() {
 }
 
 function renderSession(profile) {
-  el.tenantBadge.textContent = profile.tenantId;
+  const storeDisplayName =
+    String(profile?.storeDisplayName || "").trim() ||
+    String(profile?.storeName || "").trim() ||
+    String(profile?.tenantName || "").trim() ||
+    "Tienda asignada";
+  el.tenantBadge.textContent = storeDisplayName;
   const normalizedRole = normalizeInternalRole(profile?.role);
   el.roleBadge.textContent = normalizedRole || "-";
   el.statusBadge.textContent = profile.status;
