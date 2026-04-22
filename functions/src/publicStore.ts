@@ -26,9 +26,22 @@ export type PublicProductPayload = {
   publicUpdatedAt: admin.firestore.FieldValue;
 };
 
+type PublicCatalogInventoryItem = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  listPrice: number | null;
+  cashPrice: number | null;
+  transferPrice: number | null;
+  parentCategory: string | null;
+  category: string | null;
+  description: string | null;
+};
+
 export const PUBLIC_PRODUCT_IMAGES_ROOT = "public_products";
 export const FIREBASE_STORAGE_HOST = "firebasestorage.googleapis.com";
 export const BATCH_MAX_OPS = 450;
+const PUBLIC_CATALOG_INVENTORY_COLLECTION = "public_catalog_inventory";
 
 export const isProductPublished = (data: FirebaseFirestore.DocumentData): boolean => {
   const publicStatus =
@@ -184,6 +197,52 @@ export const buildPublicProductPayload = (
   };
 };
 
+const toInventoryItem = (payload: PublicProductPayload): PublicCatalogInventoryItem => ({
+  id: payload.id,
+  name: payload.name,
+  imageUrl: payload.imageUrl ?? null,
+  listPrice: typeof payload.listPrice === "number" ? payload.listPrice : null,
+  cashPrice: typeof payload.cashPrice === "number" ? payload.cashPrice : null,
+  transferPrice:
+    typeof payload.transferPrice === "number" ? payload.transferPrice : null,
+  parentCategory: payload.parentCategory ?? null,
+  category: payload.category ?? null,
+  description: payload.description ?? null,
+});
+
+const upsertInventoryItem = async (
+  db: FirebaseFirestore.Firestore,
+  tenantId: string,
+  productId: string,
+  payload: PublicProductPayload
+): Promise<void> => {
+  const inventoryRef = db.collection(PUBLIC_CATALOG_INVENTORY_COLLECTION).doc(tenantId);
+  await inventoryRef.set(
+    {
+      tenantId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      [`items.${productId}`]: toInventoryItem(payload),
+    },
+    { merge: true }
+  );
+};
+
+const removeInventoryItem = async (
+  db: FirebaseFirestore.Firestore,
+  tenantId: string,
+  productId: string
+): Promise<void> => {
+  const inventoryRef = db.collection(PUBLIC_CATALOG_INVENTORY_COLLECTION).doc(tenantId);
+  await inventoryRef.set(
+    {
+      tenantId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      [`items.${productId}`]: admin.firestore.FieldValue.delete(),
+    },
+    { merge: true }
+  );
+};
+
 export const syncPublicProductsForTenant = async (
   tenantId: string,
   db: FirebaseFirestore.Firestore
@@ -219,6 +278,7 @@ export const syncPublicProductsForTenant = async (
   }
 
   const publishedIds = new Set<string>();
+  const inventoryItems: Record<string, PublicCatalogInventoryItem> = {};
 
   let syncBatch = db.batch();
   let batchCount = 0;
@@ -231,6 +291,7 @@ export const syncPublicProductsForTenant = async (
     }
     publishedIds.add(productDoc.id);
     const productPayload = buildPublicProductPayload(tenantId, productDoc.id, productData);
+    inventoryItems[productDoc.id] = toInventoryItem(productPayload);
     const publicRef = db
       .collection("tenants")
       .doc(tenantId)
@@ -263,6 +324,18 @@ export const syncPublicProductsForTenant = async (
     await syncBatch.commit();
   }
 
+  await db
+    .collection(PUBLIC_CATALOG_INVENTORY_COLLECTION)
+    .doc(tenantId)
+    .set(
+      {
+        tenantId,
+        items: inventoryItems,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: false }
+    );
+
   return syncedCount;
 };
 
@@ -279,7 +352,10 @@ export const createSyncPublicProductOnWriteHandler = (db: FirebaseFirestore.Fire
       .doc(productId);
 
     if (!change.after.exists) {
-      await publicRef.delete();
+      await Promise.all([
+        publicRef.delete(),
+        removeInventoryItem(db, tenantId, productId),
+      ]);
       return null;
     }
 
@@ -289,12 +365,18 @@ export const createSyncPublicProductOnWriteHandler = (db: FirebaseFirestore.Fire
     }
 
     if (!isProductPublished(afterData)) {
-      await publicRef.delete();
+      await Promise.all([
+        publicRef.delete(),
+        removeInventoryItem(db, tenantId, productId),
+      ]);
       return null;
     }
 
     const payload = buildPublicProductPayload(tenantId, productId, afterData);
-    await publicRef.set(payload, { merge: true });
+    await Promise.all([
+      publicRef.set(payload, { merge: true }),
+      upsertInventoryItem(db, tenantId, productId, payload),
+    ]);
     return null;
   };
 };

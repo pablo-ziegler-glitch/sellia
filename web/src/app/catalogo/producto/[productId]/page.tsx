@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   VALKIRJA_TENANT_ID,
-  getPublicProducts,
   getPublicProduct,
   getStorefront,
 } from "@/lib/catalog";
@@ -13,11 +12,6 @@ import ShareButton from "./ShareButton";
 import ProductInquiryForm from "./ProductInquiryForm";
 
 export const revalidate = 300;
-
-export async function generateStaticParams() {
-  const products = await getPublicProducts(VALKIRJA_TENANT_ID);
-  return products.map((p) => ({ productId: p.id }));
-}
 
 type Props = { params: Promise<{ productId: string }> };
 

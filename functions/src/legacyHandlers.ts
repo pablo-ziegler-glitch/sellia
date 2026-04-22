@@ -66,6 +66,7 @@ admin.initializeApp();
 const db = admin.firestore();
 const storage = admin.storage();
 const paymentsCore = new PaymentsCoreService(db);
+const ENABLE_SCHEDULED_BACKGROUND_JOBS = process.env.ENABLE_SCHEDULED_BACKGROUND_JOBS === "true";
 
 type MpConfig = {
   accessToken: string;
@@ -147,13 +148,14 @@ const TENANT_ACTIVATION_MODE_AUTO = "auto";
 const TENANT_ACTIVATION_MODE_MANUAL = "manual";
 
 const WEBHOOK_SECRET_CACHE_TTL_MS = 60_000;
-const PUBLIC_CATALOG_CACHE_TTL_MS = 60_000;
+const PUBLIC_CATALOG_CACHE_TTL_MS = 300_000;
 const PUBLIC_CATALOG_RATE_LIMIT_WINDOW_MS = 60_000;
 const PUBLIC_CATALOG_RATE_LIMIT_MAX = 90;
 const PUBLIC_CATALOG_MAX_PAGE_SIZE = 100;
 const PUBLIC_CATALOG_DEFAULT_PAGE_SIZE = 25;
 const FORCED_PUBLIC_CATALOG_TENANT_ID = "61eac2a5-f9e7-471e-9dfd-a419486a6369";
 const PUBLIC_CATALOG_SORT_ALLOWLIST = new Set(["name_asc", "name_desc", "updated_desc"]);
+const PUBLIC_CATALOG_INVENTORY_COLLECTION = "public_catalog_inventory";
 
 let cachedWebhookSecrets: {
   expiresAtMs: number;
@@ -210,6 +212,18 @@ type PublicCatalogResponse = {
   nextPageToken: string | null;
   totalApprox: number;
   storeMeta?: PublicCatalogStoreMeta | null;
+};
+
+type PublicCatalogInventoryItem = {
+  id?: string;
+  name?: string;
+  imageUrl?: string | null;
+  listPrice?: number | null;
+  cashPrice?: number | null;
+  transferPrice?: number | null;
+  parentCategory?: string | null;
+  category?: string | null;
+  description?: string | null;
 };
 
 const PUBLIC_CATALOG_FIELDS = [
@@ -372,6 +386,39 @@ const toPublicCatalogResponseItem = (
     cashPrice: Number.isFinite(Number(data.cashPrice)) ? Number(data.cashPrice) : null,
     updatedAt,
   };
+};
+
+const toPublicCatalogResponseItemFromInventory = (
+  tenantId: string,
+  id: string,
+  item: PublicCatalogInventoryItem
+): PublicCatalogResponseItem => ({
+  id,
+  tenantId,
+  storeName: "",
+  name: normalizeString(item.name) || "Producto",
+  sku: "",
+  code: "",
+  barcode: "",
+  listPrice: typeof item.listPrice === "number" ? item.listPrice : null,
+  cashPrice: typeof item.cashPrice === "number" ? item.cashPrice : null,
+  updatedAt: null,
+});
+
+const getPublicCatalogInventoryItems = async (
+  tenantId: string
+): Promise<PublicCatalogResponseItem[] | null> => {
+  const inventoryDoc = await db
+    .collection(PUBLIC_CATALOG_INVENTORY_COLLECTION)
+    .doc(tenantId)
+    .get();
+  if (!inventoryDoc.exists) return null;
+  const rawItems = inventoryDoc.get("items");
+  if (!rawItems || typeof rawItems !== "object") return null;
+
+  return Object.entries(rawItems as Record<string, PublicCatalogInventoryItem>)
+    .map(([id, item]) => toPublicCatalogResponseItemFromInventory(tenantId, id, item))
+    .filter((item) => item.name.trim().length > 0);
 };
 
 const fetchPublicCatalogStoreMeta = async (
@@ -1445,6 +1492,13 @@ const runScheduledBackgroundJob = async (params: {
   jobId: BackgroundJobId;
   runner: () => Promise<unknown>;
 }): Promise<null> => {
+  if (!ENABLE_SCHEDULED_BACKGROUND_JOBS) {
+    console.info("Scheduled background jobs are disabled. Skipping run.", {
+      jobId: params.jobId,
+      reason: "ENABLE_SCHEDULED_BACKGROUND_JOBS=false",
+    });
+    return null;
+  }
   const config = await getBackgroundJobConfig(db, params.jobId);
   const decision = shouldRunBackgroundJobNow({ config });
   if (!decision.shouldRun) {
@@ -1791,7 +1845,7 @@ const reconcilePendingPaymentsJobRunner = async (): Promise<null> => {
     const runId = runRef.id;
 
     const statusVariants = ["PENDING", "pending"];
-    const candidateRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+    const candidateDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
 
     for (const status of statusVariants) {
       const snapshot = await db
@@ -1802,18 +1856,18 @@ const reconcilePendingPaymentsJobRunner = async (): Promise<null> => {
         .get();
 
       for (const doc of snapshot.docs) {
-        candidateRefs.set(doc.ref.path, doc.ref);
-        if (candidateRefs.size >= batchSize) {
+        candidateDocs.set(doc.ref.path, doc);
+        if (candidateDocs.size >= batchSize) {
           break;
         }
       }
 
-      if (candidateRefs.size >= batchSize) {
+      if (candidateDocs.size >= batchSize) {
         break;
       }
     }
 
-    const candidates = await Promise.all(Array.from(candidateRefs.values()).map((ref) => ref.get()));
+    const candidates = Array.from(candidateDocs.values());
 
     const summary = {
       runId,
@@ -2079,12 +2133,58 @@ export const publicCatalog = runWithOnRequestCompat(
       const cacheKey = `${params.tenantId}|${params.sort}|${params.pageSize}|${params.pageToken}`;
       const cached = getPublicCatalogCached(cacheKey);
       if (cached) {
-        res.set("Cache-Control", "public, max-age=30");
+        res.set("Cache-Control", "public, max-age=300");
         res.status(200).json(cached);
         return;
       }
 
       const token = decodePublicCatalogPageToken(params.pageToken, params.sort);
+      let inventoryItems = await getPublicCatalogInventoryItems(params.tenantId);
+      if ((!inventoryItems || inventoryItems.length === 0) && !params.pageToken) {
+        const syncedCount = await syncPublicProductsForTenant(params.tenantId, db);
+        if (syncedCount > 0) {
+          inventoryItems = await getPublicCatalogInventoryItems(params.tenantId);
+        }
+      }
+      if (inventoryItems && inventoryItems.length > 0) {
+        const sorted = [...inventoryItems].sort((a, b) => {
+          const nameDiff = a.name.localeCompare(b.name, "es");
+          if (params.sort === "name_desc") return -nameDiff;
+          return nameDiff;
+        });
+        let startIndex = 0;
+        if (token) {
+          const cursor = normalizeString(token.cursorDocId || token.cursorProductName);
+          const idx = sorted.findIndex((item) => item.id === cursor || item.name === token.cursorName);
+          if (idx >= 0) startIndex = idx + 1;
+        }
+        const pageItems = sorted.slice(startIndex, startIndex + params.pageSize);
+        const hasMore = startIndex + params.pageSize < sorted.length;
+        const last = pageItems[pageItems.length - 1];
+        const nextPageToken = hasMore && last
+          ? encodePublicCatalogPageToken({
+            sort: params.sort,
+            cursorName: last.name,
+            cursorProductName: last.name,
+            cursorDocId: last.id,
+            cursorUpdatedAtMs: null,
+          })
+          : null;
+        const storeMeta = !params.pageToken
+          ? await fetchPublicCatalogStoreMeta(params.tenantId)
+          : null;
+        const response: PublicCatalogResponse = {
+          items: pageItems,
+          nextPageToken,
+          totalApprox: sorted.length,
+          storeMeta,
+        };
+        setPublicCatalogCached(cacheKey, response);
+        res.set("Cache-Control", "public, max-age=300");
+        res.status(200).json(response);
+        return;
+      }
+
       const publicProductsRef = db
         .collection("tenants")
         .doc(params.tenantId)
@@ -2117,13 +2217,19 @@ export const publicCatalog = runWithOnRequestCompat(
         }
       }
 
+      const isFirstPage = !params.pageToken;
       let snapshot = await query.limit(params.pageSize + 1).get();
-      let totalAgg = await publicProductsRef.count().get();
-      if (!params.pageToken && totalAgg.data().count === 0) {
-        const recoveredCount = await syncPublicProductsForTenant(params.tenantId, db);
-        if (recoveredCount > 0) {
-          snapshot = await query.limit(params.pageSize + 1).get();
-          totalAgg = await publicProductsRef.count().get();
+      let totalApprox = 0;
+      if (isFirstPage) {
+        let totalAgg = await publicProductsRef.count().get();
+        totalApprox = totalAgg.data().count;
+        if (totalApprox === 0) {
+          const recoveredCount = await syncPublicProductsForTenant(params.tenantId, db);
+          if (recoveredCount > 0) {
+            snapshot = await query.limit(params.pageSize + 1).get();
+            totalAgg = await publicProductsRef.count().get();
+            totalApprox = totalAgg.data().count;
+          }
         }
       }
       const docs = snapshot.docs;
@@ -2148,7 +2254,6 @@ export const publicCatalog = runWithOnRequestCompat(
         });
       }
 
-      const isFirstPage = !params.pageToken;
       const storeMeta = isFirstPage
         ? await fetchPublicCatalogStoreMeta(params.tenantId)
         : null;
@@ -2156,7 +2261,7 @@ export const publicCatalog = runWithOnRequestCompat(
       const response: PublicCatalogResponse = {
         items,
         nextPageToken,
-        totalApprox: totalAgg.data().count,
+        totalApprox,
         storeMeta,
       };
 

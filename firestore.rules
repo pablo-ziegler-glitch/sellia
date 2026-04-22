@@ -385,6 +385,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /public_catalog_inventory/{tenantId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // --- Vidriera pública: banner messages globales ---
     match /public_banner_messages/{messageId} {
       allow read: if true;

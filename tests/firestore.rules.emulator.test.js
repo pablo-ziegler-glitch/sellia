@@ -22,7 +22,12 @@ function roleUserId(role) {
 }
 
 function dbWithClaims(uid, claims = {}) {
-  const { uid: _ignoredUid, ...safeClaims } = claims;
+  const {
+    uid: _ignoredUid,
+    sub: _ignoredSub,
+    user_id: _ignoredUserId,
+    ...safeClaims
+  } = claims;
   return testEnv.authenticatedContext(uid, safeClaims).firestore();
 }
 

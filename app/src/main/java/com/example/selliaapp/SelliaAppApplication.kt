@@ -47,9 +47,8 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         // AppCheck antes de usar Firebase “en serio”
         initAppCheck(
             onReady = {
-                // Evita spam mientras AppCheck está roto/no registrado
-                enqueuePeriodicSync()
-                PricingScheduler.enqueuePeriodic(this)
+                // Costo mínimo: deshabilitar trabajos periódicos y usar solo ejecución manual.
+                disableAutomaticPeriodicWork()
                 trackInstalledVersion()
             }
         )
@@ -134,8 +133,9 @@ class SelliaAppApplication : Application(), Configuration.Provider {
         }
     }
 
-    private fun enqueuePeriodicSync() {
-        SyncScheduler.enqueuePeriodic(this)
+    private fun disableAutomaticPeriodicWork() {
+        SyncScheduler.cancelPeriodic(this)
+        PricingScheduler.cancelPeriodic(this)
     }
 
     private companion object {
