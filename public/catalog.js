@@ -14,12 +14,15 @@ const { sanitizeText } = window.SafeDom || {};
 
 const elements = {
   storeFilter: document.getElementById("storeFilter"),
+  catalogSearchInput: document.getElementById("catalogSearchInput"),
+  catalogGrid: document.getElementById("catalogGrid"),
   catalogRows: document.getElementById("catalogRows"),
   catalogStatus: document.getElementById("catalogStatus"),
   catalogCount: document.getElementById("catalogCount"),
   catalogHeader: document.getElementById("catalogHeader"),
   catalogLogo: document.getElementById("catalogLogo"),
   catalogStoreName: document.getElementById("catalogStoreName"),
+  catalogWhatsappTop: document.getElementById("catalogWhatsappTop"),
   catalogHero: document.getElementById("catalogHero"),
   catalogHeroTitle: document.getElementById("catalogHeroTitle"),
   catalogHeroSubtitle: document.getElementById("catalogHeroSubtitle"),
@@ -33,7 +36,8 @@ const elements = {
 const state = {
   products: [],
   activeStore: "all",
-  storeMeta: null
+  storeMeta: null,
+  searchTerm: ""
 };
 
 function isConfiguredValue(value) {
@@ -71,6 +75,8 @@ function normalizeProduct(raw) {
     storeName: raw.storeName || "",
     name: raw.name || "Producto sin nombre",
     sku,
+    imageUrl: raw.imageUrl || "",
+    category: raw.category || "",
     listPrice: raw.listPrice,
     cashPrice: raw.cashPrice
   };
@@ -225,6 +231,12 @@ function applyStoreMeta(meta) {
     }
   }
 
+  const whatsappCandidate = config.contact?.whatsapp;
+  if (elements.catalogWhatsappTop && isConfiguredValue(whatsappCandidate)) {
+    elements.catalogWhatsappTop.href = whatsappCandidate;
+    elements.catalogWhatsappTop.hidden = false;
+  }
+
   if (meta.heroTitle) {
     if (elements.catalogHero) elements.catalogHero.hidden = false;
     if (elements.catalogHeroTitle) elements.catalogHeroTitle.textContent = safe(meta.heroTitle);
@@ -288,49 +300,109 @@ function renderStoreFilter() {
 }
 
 function getVisibleProducts() {
-  if (state.activeStore === "all") return state.products;
-  return state.products.filter((product) => (product.tenantId || getStoreLabel(product)) === state.activeStore);
+  const normalizedSearch = state.searchTerm.trim().toLowerCase();
+  return state.products.filter((product) => {
+    const matchesStore =
+      state.activeStore === "all" ||
+      (product.tenantId || getStoreLabel(product)) === state.activeStore;
+    if (!matchesStore) return false;
+    if (!normalizedSearch) return true;
+    const haystack = [
+      product.name,
+      product.sku,
+      product.id,
+      product.category,
+      getStoreLabel(product),
+    ]
+      .map((value) => String(value || "").toLowerCase())
+      .join(" ");
+    return haystack.includes(normalizedSearch);
+  });
+}
+
+function createCatalogCard(product, hidePrices, hideCashPrice) {
+  const article = document.createElement("article");
+  article.className = "catalog-card";
+
+  const media = document.createElement("div");
+  media.className = "catalog-card-media";
+  const image = document.createElement("img");
+  image.loading = "lazy";
+  image.alt = sanitizeText
+    ? sanitizeText(product.name || "Producto")
+    : String(product.name || "Producto");
+  const fallback = "https://images.unsplash.com/photo-1557821552-17105176677c?q=80&w=1200&auto=format&fit=crop";
+  image.src = String(product.imageUrl || "").startsWith("https://") ? product.imageUrl : fallback;
+  media.appendChild(image);
+
+  const body = document.createElement("div");
+  body.className = "catalog-card-body";
+
+  const category = document.createElement("p");
+  category.className = "catalog-card-category";
+  category.textContent = sanitizeText
+    ? sanitizeText(product.category || getStoreLabel(product))
+    : String(product.category || getStoreLabel(product));
+
+  const title = document.createElement("h3");
+  title.className = "catalog-card-title";
+  title.textContent = sanitizeText
+    ? sanitizeText(product.name || "Producto")
+    : String(product.name || "Producto");
+
+  const sku = document.createElement("p");
+  sku.className = "catalog-card-sku";
+  sku.textContent = sanitizeText
+    ? sanitizeText(product.sku || "Sin SKU")
+    : String(product.sku || "Sin SKU");
+
+  const prices = document.createElement("div");
+  prices.className = "catalog-card-prices";
+  if (hidePrices) {
+    const muted = document.createElement("span");
+    muted.className = "muted";
+    muted.textContent = "Precios ocultos";
+    prices.appendChild(muted);
+  } else {
+    const listPrice = document.createElement("strong");
+    listPrice.textContent = formatCurrency(product.listPrice);
+    prices.appendChild(listPrice);
+    if (!hideCashPrice) {
+      const cashPrice = document.createElement("span");
+      cashPrice.textContent = `Efectivo: ${formatCurrency(product.cashPrice)}`;
+      prices.appendChild(cashPrice);
+    }
+  }
+
+  body.appendChild(category);
+  body.appendChild(title);
+  body.appendChild(sku);
+  body.appendChild(prices);
+  article.appendChild(media);
+  article.appendChild(body);
+  return article;
 }
 
 function renderProducts() {
-  if (!elements.catalogRows || !elements.catalogCount) return;
+  if (!elements.catalogGrid || !elements.catalogCount) return;
 
   const meta = state.storeMeta;
   const hidePrices = meta?.showPrices === false;
   const hideCashPrice = meta?.showCashPrice === false;
 
   const visibleProducts = getVisibleProducts();
-  elements.catalogRows.replaceChildren();
+  elements.catalogGrid.replaceChildren();
 
   if (visibleProducts.length === 0) {
-    const emptyRow = document.createElement("tr");
-    const emptyCell = document.createElement("td");
-    emptyCell.setAttribute("colspan", hidePrices ? "2" : hideCashPrice ? "3" : "4");
-    emptyCell.className = "muted";
-    emptyCell.textContent = state.products.length === 0
+    const emptyState = document.createElement("article");
+    emptyState.className = "catalog-empty-state";
+    emptyState.textContent = state.products.length === 0
       ? "Catálogo en construcción. Los productos estarán disponibles pronto."
       : "No hay productos para el filtro seleccionado.";
-    emptyRow.appendChild(emptyCell);
-    elements.catalogRows.appendChild(emptyRow);
+    elements.catalogGrid.appendChild(emptyState);
   } else {
     visibleProducts.forEach((product) => {
-      const row = document.createElement("tr");
-      const cells = [
-        sanitizeText ? sanitizeText(product.name) : String(product.name),
-        sanitizeText ? sanitizeText(product.sku) : String(product.sku)
-      ];
-      if (!hidePrices) {
-        cells.push(formatCurrency(product.listPrice));
-        if (!hideCashPrice) {
-          cells.push(formatCurrency(product.cashPrice));
-        }
-      }
-      cells.forEach((value) => {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        row.appendChild(cell);
-      });
-      elements.catalogRows.appendChild(row);
+      elements.catalogGrid.appendChild(createCatalogCard(product, hidePrices, hideCashPrice));
     });
   }
 
@@ -383,6 +455,13 @@ async function loadCatalog() {
 if (elements.storeFilter) {
   elements.storeFilter.addEventListener("change", (event) => {
     state.activeStore = event.target.value || "all";
+    renderProducts();
+  });
+}
+
+if (elements.catalogSearchInput) {
+  elements.catalogSearchInput.addEventListener("input", (event) => {
+    state.searchTerm = String(event.target.value || "");
     renderProducts();
   });
 }

@@ -190,6 +190,8 @@ type PublicCatalogResponseItem = {
   sku: string;
   code: string;
   barcode: string;
+  imageUrl?: string | null;
+  category?: string | null;
   listPrice: number | null;
   cashPrice: number | null;
   updatedAt: string | null;
@@ -233,6 +235,9 @@ const PUBLIC_CATALOG_FIELDS = [
   "sku",
   "code",
   "barcode",
+  "imageUrl",
+  "parentCategory",
+  "category",
   "listPrice",
   "cashPrice",
   "updatedAt",
@@ -382,6 +387,11 @@ const toPublicCatalogResponseItem = (
     sku: normalizeString(data.sku),
     code: normalizeString(data.code),
     barcode: normalizeString(data.barcode),
+    imageUrl: normalizeString(data.imageUrl) || null,
+    category:
+      normalizeString(data.parentCategory) ||
+      normalizeString(data.category) ||
+      null,
     listPrice: Number.isFinite(Number(data.listPrice)) ? Number(data.listPrice) : null,
     cashPrice: Number.isFinite(Number(data.cashPrice)) ? Number(data.cashPrice) : null,
     updatedAt,
@@ -400,6 +410,11 @@ const toPublicCatalogResponseItemFromInventory = (
   sku: "",
   code: "",
   barcode: "",
+  imageUrl: normalizeString(item.imageUrl) || null,
+  category:
+    normalizeString(item.parentCategory) ||
+    normalizeString(item.category) ||
+    null,
   listPrice: typeof item.listPrice === "number" ? item.listPrice : null,
   cashPrice: typeof item.cashPrice === "number" ? item.cashPrice : null,
   updatedAt: null,

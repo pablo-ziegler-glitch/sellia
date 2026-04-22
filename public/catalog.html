@@ -8,51 +8,81 @@
       name="description"
       content="Catálogo público con todos los productos de las tiendas, filtrable por tienda."
     />
-    <link rel="stylesheet" href="/styles.css?v=20260422" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css?v=20260422b" />
   </head>
-  <body>
-    <header id="catalogHeader" class="catalog-header" hidden>
-      <div class="catalog-header-inner">
-        <img id="catalogLogo" class="catalog-logo" src="" alt="" hidden />
-        <span id="catalogStoreName" class="catalog-store-name"></span>
+  <body class="catalog-body">
+    <header id="catalogHeader" class="catalog-topbar">
+      <div class="catalog-topbar-inner">
+        <a class="catalog-brand" href="/index.html">
+          <img id="catalogLogo" class="catalog-logo" src="" alt="" hidden />
+          <span id="catalogStoreName" class="catalog-store-name">VALKIRJA</span>
+        </a>
+        <nav class="catalog-nav">
+          <a href="/index.html">Inicio</a>
+          <a href="/catalog.html" aria-current="page">Catálogo</a>
+          <a href="/index.html#redes">Redes</a>
+          <a href="/index.html#contacto">Contacto</a>
+        </nav>
+        <a id="catalogWhatsappTop" class="catalog-top-cta" href="#" hidden>WhatsApp</a>
       </div>
     </header>
 
-    <main id="contenido" class="catalog-page">
+    <main id="contenido" class="catalog-main">
       <section id="catalogHero" class="catalog-hero" hidden>
         <h1 id="catalogHeroTitle"></h1>
         <p id="catalogHeroSubtitle"></p>
       </section>
 
-      <section class="section" aria-labelledby="catalog-title">
-        <div class="section-header" id="catalogDefaultHeader">
-          <h1 id="catalog-title">Catálogo por tiendas</h1>
-          <p>Productos públicos cargados desde Firestore Firebase.</p>
-          <p><a class="text-link" href="/index.html">← Volver a la landing</a></p>
-        </div>
+      <section class="catalog-heading" id="catalogDefaultHeader">
+        <h1 id="catalog-title">Catálogo de Productos</h1>
+        <p>Mostrando productos publicados y actualizados en tiempo real.</p>
+      </section>
 
-        <div class="catalog-toolbar">
-          <label for="storeFilter">Tienda</label>
+      <section class="catalog-toolbar">
+        <div class="catalog-toolbar-main">
+          <label for="catalogSearchInput" class="sr-only">Buscar productos</label>
+          <input
+            id="catalogSearchInput"
+            class="catalog-search"
+            type="search"
+            placeholder="Buscar por nombre, código o SKU..."
+            autocomplete="off"
+          />
+          <label for="storeFilter" class="sr-only">Filtrar por tienda</label>
           <select id="storeFilter" aria-label="Filtrar productos por tienda">
             <option value="all">Todas las tiendas</option>
           </select>
-          <p class="muted" id="catalogCount">Cargando productos...</p>
         </div>
+        <p class="muted" id="catalogCount">Cargando productos...</p>
+        <p id="catalogStatus" class="muted"></p>
+      </section>
 
-        <div class="catalog-table-shell" role="region" aria-live="polite" aria-label="Listado de productos">
-          <table class="catalog-table">
-            <thead>
-              <tr>
-                <th scope="col">Nombre</th>
-                <th scope="col">SKU</th>
-                <th scope="col" id="colHeaderListPrice">Precio lista</th>
-                <th scope="col" id="colHeaderCashPrice">Precio efectivo</th>
-              </tr>
-            </thead>
-            <tbody id="catalogRows"></tbody>
-          </table>
-          <p id="catalogStatus" class="muted"></p>
-        </div>
+      <section
+        id="catalogGrid"
+        class="catalog-grid"
+        role="region"
+        aria-live="polite"
+        aria-label="Listado de productos"
+      ></section>
+
+      <section class="catalog-table-shell" hidden>
+        <table class="catalog-table">
+          <thead>
+            <tr>
+              <th scope="col">Nombre</th>
+              <th scope="col">SKU</th>
+              <th scope="col" id="colHeaderListPrice">Precio lista</th>
+              <th scope="col" id="colHeaderCashPrice">Precio efectivo</th>
+            </tr>
+          </thead>
+          <tbody id="catalogRows"></tbody>
+        </table>
       </section>
 
       <footer id="catalogFooter" class="catalog-footer" hidden>
@@ -60,8 +90,8 @@
       </footer>
     </main>
 
-    <script src="/config.js?v=20260422"></script>
-    <script src="/safe-dom.js?v=20260422" defer></script>
-    <script src="/catalog.js?v=20260422" defer></script>
+    <script src="/config.js?v=20260422b"></script>
+    <script src="/safe-dom.js?v=20260422b" defer></script>
+    <script src="/catalog.js?v=20260422b" defer></script>
   </body>
 </html>

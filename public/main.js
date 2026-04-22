@@ -73,7 +73,10 @@ const TENANT_LANDING_PRESETS = {
 const elements = {
   year: document.getElementById("year"),
   secondarySectionsMount: document.getElementById("secondarySectionsMount"),
-  secondarySectionsTemplate: document.getElementById("secondarySectionsTemplate")
+  secondarySectionsTemplate: document.getElementById("secondarySectionsTemplate"),
+  mobileMenuOpen: document.getElementById("mobileMenuOpen"),
+  mobileMenuClose: document.getElementById("mobileMenuClose"),
+  mobileMenuOverlay: document.getElementById("mobileMenuOverlay")
 };
 
 
@@ -453,11 +456,36 @@ function dismissSplash() {
   splash.addEventListener("transitionend", () => splash.remove(), { once: true });
 }
 
+function setupMobileMenu() {
+  if (!elements.mobileMenuOverlay || !elements.mobileMenuOpen || !elements.mobileMenuClose) return;
+
+  const openMenu = () => {
+    elements.mobileMenuOverlay.hidden = false;
+    document.body.style.overflow = "hidden";
+  };
+  const closeMenu = () => {
+    elements.mobileMenuOverlay.hidden = true;
+    document.body.style.overflow = "";
+  };
+
+  elements.mobileMenuOpen.addEventListener("click", openMenu);
+  elements.mobileMenuClose.addEventListener("click", closeMenu);
+  elements.mobileMenuOverlay.addEventListener("click", (event) => {
+    if (event.target === elements.mobileMenuOverlay) {
+      closeMenu();
+    }
+  });
+  elements.mobileMenuOverlay.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", closeMenu);
+  });
+}
+
 async function bootstrap() {
   // Start brand-exposure timer concurrently with config loading (min 1.2s)
   const minDisplay = new Promise(r => setTimeout(r, 1200));
 
   setupBrandAndYear();
+  setupMobileMenu();
   observeWebVitals();
   scheduleSecondaryRender();
 

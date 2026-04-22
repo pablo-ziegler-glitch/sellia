@@ -34,10 +34,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260422" />
+    <link rel="stylesheet" href="/styles.css?v=20260422b" />
   </head>
   <body>
     <!-- Splash screen / preloader — removed by JS after bootstrap; hidden if JS unavailable -->
@@ -61,8 +61,26 @@
         <a class="button ghost nav-login" href="/admin/index.html" aria-label="Iniciar sesión en el backoffice">
           Inicio Sesión
         </a>
+        <button id="mobileMenuOpen" class="mobile-menu-open" aria-label="Abrir menú" type="button">
+          ☰
+        </button>
       </nav>
     </header>
+    <aside id="mobileMenuOverlay" class="mobile-menu-overlay" hidden>
+      <div class="mobile-menu-panel">
+        <div class="mobile-menu-head">
+          <strong>VALKIRJA</strong>
+          <button id="mobileMenuClose" aria-label="Cerrar menú" type="button">✕</button>
+        </div>
+        <nav class="mobile-menu-links">
+          <a href="#historia">Historia</a>
+          <a href="#productos">Catálogo</a>
+          <a href="#redes">Redes</a>
+          <a href="#contacto">Contacto</a>
+          <a href="/admin/index.html">Inicio sesión</a>
+        </nav>
+      </div>
+    </aside>
 
     <main id="contenido">
       <section class="hero" aria-labelledby="hero-title">
@@ -124,9 +142,9 @@
       <p class="muted">© <span id="year"></span></p>
     </footer>
 
-    <script src="/config.js?v=20260422"></script>
+    <script src="/config.js?v=20260422b"></script>
     <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous" defer></script>
-    <script src="/safe-dom.js?v=20260422" defer></script>
-    <script src="/main.js?v=20260422" defer></script>
+    <script src="/safe-dom.js?v=20260422b" defer></script>
+    <script src="/main.js?v=20260422b" defer></script>
   </body>
 </html>
