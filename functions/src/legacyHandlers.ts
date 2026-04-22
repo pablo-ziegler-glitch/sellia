@@ -2169,8 +2169,11 @@ export const publicCatalog = runWithOnRequestCompat(
         });
         let startIndex = 0;
         if (token) {
-          const cursor = normalizeString(token.cursorDocId || token.cursorProductName);
-          const idx = sorted.findIndex((item) => item.id === cursor || item.name === token.cursorName);
+          const cursorDocId = normalizeString(token.cursorDocId);
+          const cursorName = normalizeString(token.cursorName || token.cursorProductName);
+          const idx = cursorDocId
+            ? sorted.findIndex((item) => item.id === cursorDocId)
+            : sorted.findIndex((item) => item.name === cursorName);
           if (idx >= 0) startIndex = idx + 1;
         }
         const pageItems = sorted.slice(startIndex, startIndex + params.pageSize);

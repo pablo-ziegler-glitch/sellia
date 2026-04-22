@@ -90,9 +90,30 @@ function normalizeProduct(raw) {
 function dedupeProducts(products) {
   const unique = new Map();
   products.forEach((product, index) => {
-    const stableId = String(product.id || "").trim();
-    const fallbackKey = `${String(product.name || "").trim().toLowerCase()}|${String(product.sku || "").trim().toLowerCase()}`;
-    const key = stableId || fallbackKey || `row-${index}`;
+    const normalizedSku = String(product.sku || "")
+      .trim()
+      .toLowerCase();
+    const hasMeaningfulSku =
+      normalizedSku !== "" &&
+      normalizedSku !== "sin sku" &&
+      normalizedSku !== "null" &&
+      normalizedSku !== "undefined";
+
+    const normalizedName = String(product.name || "").trim().toLowerCase();
+    const normalizedCategory = String(product.category || "").trim().toLowerCase();
+    const normalizedList = Number.isFinite(Number(product.listPrice))
+      ? Number(product.listPrice)
+      : "na";
+    const normalizedCash = Number.isFinite(Number(product.cashPrice))
+      ? Number(product.cashPrice)
+      : "na";
+
+    const businessKey = hasMeaningfulSku
+      ? `sku:${normalizedSku}`
+      : `name:${normalizedName}|cat:${normalizedCategory}|list:${normalizedList}|cash:${normalizedCash}`;
+    const stableId = String(product.id || "").trim().toLowerCase();
+    const key = businessKey || stableId || `row-${index}`;
+
     if (!unique.has(key)) {
       unique.set(key, product);
     }
@@ -177,7 +198,8 @@ async function fetchCatalogProductsFromBackend() {
 
   const items = [];
   let pageToken = "";
-  const MAX_PAGES = 2000;
+  const seenTokens = new Set();
+  const MAX_PAGES = 200;
   let page = 0;
 
   while (page < MAX_PAGES) {
@@ -207,7 +229,14 @@ async function fetchCatalogProductsFromBackend() {
     }
 
     if (!data.nextPageToken) break;
-    pageToken = String(data.nextPageToken);
+    const nextToken = String(data.nextPageToken || "");
+    if (!nextToken) break;
+    if (seenTokens.has(nextToken)) {
+      console.warn("Se detectó pageToken repetido en catálogo público. Se corta paginación para evitar duplicados.");
+      break;
+    }
+    seenTokens.add(nextToken);
+    pageToken = nextToken;
   }
 
   return dedupeProducts(items);
