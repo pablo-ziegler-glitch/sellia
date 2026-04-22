@@ -39,7 +39,7 @@
     />
     <link rel="stylesheet" href="/styles.css?v=20260422b" />
   </head>
-  <body>
+  <body class="landing-body">
     <!-- Splash screen / preloader — removed by JS after bootstrap; hidden if JS unavailable -->
     <noscript><style>#floki-splash { display: none !important; }</style></noscript>
     <div id="floki-splash" class="floki-splash" aria-hidden="true">
@@ -48,19 +48,25 @@
 
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-    <header class="site-header">
+    <header class="site-header landing-header">
       <nav class="nav" aria-label="Secciones">
-        <a class="nav-brand" href="/" aria-label="FLOKI — Inicio">
+        <a class="nav-brand" href="/" aria-label="VALKIRJA — Inicio">
           <img src="/assets/logo.svg" class="nav-logo" alt="FLOKI" />
         </a>
         <div class="nav-links">
           <a class="nav-link" href="#historia">Historia</a>
-          <a class="nav-link" href="#productos">Colección</a>
+          <a class="nav-link" href="#catalogo">Catálogo</a>
+          <a class="nav-link" href="#redes">Redes</a>
           <a class="nav-link" href="#contacto">Contacto</a>
         </div>
-        <a class="button ghost nav-login" href="/admin/index.html" aria-label="Iniciar sesión en el backoffice">
-          Inicio Sesión
-        </a>
+        <div class="landing-header-actions">
+          <a class="button ghost nav-login" href="/catalog.html" aria-label="Ver catálogo">
+            Ver catálogo
+          </a>
+          <a class="button primary nav-login" data-contact="whatsapp" href="#" aria-label="Contactar por WhatsApp">
+            WhatsApp
+          </a>
+        </div>
         <button id="mobileMenuOpen" class="mobile-menu-open" aria-label="Abrir menú" type="button">
           ☰
         </button>
@@ -74,22 +80,33 @@
         </div>
         <nav class="mobile-menu-links">
           <a href="#historia">Historia</a>
-          <a href="#productos">Catálogo</a>
+          <a href="#catalogo">Catálogo</a>
           <a href="#redes">Redes</a>
           <a href="#contacto">Contacto</a>
-          <a href="/admin/index.html">Inicio sesión</a>
+          <a href="/catalog.html">Ver catálogo</a>
         </nav>
       </div>
     </aside>
 
     <main id="contenido">
-      <section class="hero" aria-labelledby="hero-title">
+      <section class="hero landing-hero" aria-labelledby="hero-title">
+        <div class="landing-hero-media">
+          <img
+            src="/assets/og-image.v1.svg"
+            alt="Vista principal de tienda"
+            loading="eager"
+          />
+        </div>
         <div class="hero-content">
+          <div class="hero-live-pill">
+            <span></span>
+            Abierto ahora
+          </div>
           <h1 id="hero-title" data-landing="hero.title">Tu negocio, listo para crecer online</h1>
           <p class="hero-subtitle" data-landing="hero.subtitle">Mostrá tus productos, captá clientes y centralizá tu operación en una sola plataforma.</p>
           <div class="hero-actions">
-            <a class="button primary" href="#historia" aria-label="Ver la historia" data-landing="cta.primary">CONOCÉ LA SOLUCIÓN</a>
-            <a class="button ghost" href="#productos" aria-label="Ver la colección" data-landing="cta.secondary">VER COLECCIÓN</a>
+            <a class="button primary" href="#catalogo" aria-label="Ver catálogo" data-landing="cta.primary">VER CATÁLOGO</a>
+            <a class="button ghost" data-contact="whatsapp" href="#" aria-label="Consultar por WhatsApp" data-landing="cta.secondary">WHATSAPP</a>
           </div>
         </div>
       </section>
@@ -110,14 +127,28 @@
           </div>
         </section>
 
-        <section id="productos" class="section" aria-labelledby="productos-title">
+        <section id="catalogo" class="section" aria-labelledby="productos-title">
           <div class="section-header">
-            <h2 id="productos-title">Una parte de lo que hacemos hoy</h2>
-            <p>Vista previa de productos públicos. Para ver el catálogo completo hacé click abajo.</p>
+            <h2 id="productos-title">Destacados de la semana</h2>
+            <p>Nuestros productos más elegidos por el barrio.</p>
           </div>
           <div class="product-grid" id="productGrid" aria-live="polite"></div>
           <div class="section-footer">
             <a class="button primary" href="/catalog.html" aria-label="Ver catálogo completo de todas las tiendas" data-landing="cta.catalog">Ver catálogo completo →</a>
+          </div>
+        </section>
+
+        <section id="redes" class="section" aria-labelledby="redes-title">
+          <div class="section-header">
+            <h2 id="redes-title">Seguinos y mantenete cerca</h2>
+            <p>Novedades de productos, reposiciones y promociones de la tienda.</p>
+          </div>
+          <div class="contact-card">
+            <div class="contact-actions">
+              <a class="button primary" data-contact="instagram" data-utm-link href="#" aria-label="Abrir Instagram">Instagram</a>
+              <a class="button ghost" data-contact="whatsapp" data-utm-link href="#" aria-label="Abrir WhatsApp">WhatsApp</a>
+              <a class="button ghost" data-contact="maps" data-utm-link href="#" aria-label="Abrir ubicación">Ubicación</a>
+            </div>
           </div>
         </section>
 
@@ -138,7 +169,7 @@
     </main>
 
     <footer class="site-footer">
-      <p class="footer-brand" data-brand>FLOKI — Hecho con pasión.</p>
+      <p class="footer-brand" data-brand>VALKIRJA — Hecho con pasión.</p>
       <p class="muted">© <span id="year"></span></p>
     </footer>
 

@@ -58,6 +58,11 @@ function setStatus(message, isError = false) {
   if (!elements.catalogStatus) return;
   elements.catalogStatus.textContent = message;
   elements.catalogStatus.classList.toggle("error", isError);
+  elements.catalogStatus.dataset.tone = isError
+    ? "error"
+    : message.toLowerCase().includes("cargando")
+      ? "loading"
+      : "ok";
 }
 
 function getStoreLabel(product) {
@@ -383,6 +388,25 @@ function createCatalogCard(product, hidePrices, hideCashPrice) {
   return article;
 }
 
+function renderLoadingCards(count = 8) {
+  if (!elements.catalogGrid) return;
+  elements.catalogGrid.replaceChildren();
+  for (let index = 0; index < count; index += 1) {
+    const skeleton = document.createElement("article");
+    skeleton.className = "catalog-card catalog-card-skeleton";
+    skeleton.innerHTML = `
+      <div class="catalog-card-media"></div>
+      <div class="catalog-card-body">
+        <p class="catalog-card-category">&nbsp;</p>
+        <h3 class="catalog-card-title">&nbsp;</h3>
+        <p class="catalog-card-sku">&nbsp;</p>
+        <div class="catalog-card-prices"><strong>&nbsp;</strong><span>&nbsp;</span></div>
+      </div>
+    `;
+    elements.catalogGrid.appendChild(skeleton);
+  }
+}
+
 function renderProducts() {
   if (!elements.catalogGrid || !elements.catalogCount) return;
 
@@ -423,6 +447,7 @@ async function loadCatalog() {
 
   try {
     setStatus("Cargando catálogo desde backend...");
+    renderLoadingCards();
     state.products = dedupeProducts(await fetchCatalogProductsFromBackend());
     applyStoreMeta(state.storeMeta);
     if (!state.products.length) {

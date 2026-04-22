@@ -1347,6 +1347,72 @@ body {
   color: #0e5bd8;
 }
 
+.landing-body {
+  background:
+    radial-gradient(900px 480px at -10% -8%, rgba(0, 68, 170, 0.14), transparent 70%),
+    radial-gradient(760px 420px at 120% 0%, rgba(0, 106, 99, 0.12), transparent 66%),
+    #faf9f7;
+}
+
+.landing-header .nav {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.landing-header-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.landing-hero {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 1.6rem;
+}
+
+.landing-hero-media {
+  border-radius: 1.7rem;
+  overflow: hidden;
+  min-height: 320px;
+  background: #f4f3f1;
+}
+
+.landing-hero-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hero-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  background: #99efe5;
+  color: #006f67;
+  font-size: 0.82rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.hero-live-pill span {
+  width: 0.46rem;
+  height: 0.46rem;
+  border-radius: 999px;
+  background: #006a63;
+  animation: pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
 .catalog-body {
   background: #faf9f7;
 }
@@ -1547,6 +1613,29 @@ body {
   font-weight: 600;
 }
 
+.catalog-card-skeleton {
+  pointer-events: none;
+  animation: pulse-skeleton 1.3s ease-in-out infinite;
+}
+
+.catalog-card-skeleton .catalog-card-media,
+.catalog-card-skeleton .catalog-card-category,
+.catalog-card-skeleton .catalog-card-title,
+.catalog-card-skeleton .catalog-card-sku,
+.catalog-card-skeleton .catalog-card-prices strong,
+.catalog-card-skeleton .catalog-card-prices span {
+  color: transparent;
+  background: linear-gradient(90deg, #eef2f8 25%, #dde6f3 45%, #eef2f8 65%);
+  background-size: 180% 100%;
+  border-radius: 0.4rem;
+}
+
+@keyframes pulse-skeleton {
+  0% { opacity: 0.85; }
+  50% { opacity: 1; }
+  100% { opacity: 0.85; }
+}
+
 .catalog-empty-state {
   grid-column: 1 / -1;
   padding: 2rem 1rem;
@@ -1585,6 +1674,19 @@ body {
 
   .mobile-menu-open {
     display: inline-block;
+  }
+
+  .landing-header-actions {
+    display: none;
+  }
+
+  .landing-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-hero-media {
+    min-height: 240px;
+    order: 2;
   }
 }
 
