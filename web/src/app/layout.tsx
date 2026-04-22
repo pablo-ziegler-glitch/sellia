@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import Link from "next/link";
 import SiteHeader from "./SiteHeader";
-import { getStorefront, VALKIRJA_TENANT_ID } from "@/lib/catalog";
 import "./globals.css";
 
 const inter = Inter({
@@ -28,31 +27,24 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const storefrontPromise = getStorefront(VALKIRJA_TENANT_ID);
   return (
     <html lang="es">
       <body
         className={`${inter.variable} ${plusJakarta.variable} antialiased`}
       >
-        <LayoutContent storefrontPromise={storefrontPromise}>{children}</LayoutContent>
+        <LayoutContent>{children}</LayoutContent>
       </body>
     </html>
   );
 }
 
-async function LayoutContent({
+function LayoutContent({
   children,
-  storefrontPromise,
 }: Readonly<{
   children: React.ReactNode;
-  storefrontPromise: ReturnType<typeof getStorefront>;
 }>) {
-  const storefront = await storefrontPromise;
-  const storeName = storefront?.storeName || "VALKIRJA";
-  const whatsapp =
-    storefront?.contactWhatsapp && storefront.contactWhatsapp.trim()
-      ? `https://wa.me/${storefront.contactWhatsapp.replace(/\D/g, "")}`
-      : null;
+  const storeName = "VALKIRJA";
+  const whatsapp = null;
 
   return (
     <>

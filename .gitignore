@@ -1,6 +1,8 @@
 *.iml
 .gradle
 /local.properties
+/.firebase/
+/.idea/
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -13,6 +15,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+node_modules/
 functions/lib/
 
 # Web (Next.js)

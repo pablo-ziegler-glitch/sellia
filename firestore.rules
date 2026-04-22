@@ -10,48 +10,64 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    function requesterUserDocExists() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function tokenBoolClaim(key) {
+      return isAuthenticated() && request.auth.token.get(key, false) == true;
+    }
+
+    function tokenStringClaim(key) {
+      return isAuthenticated() && request.auth.token.get(key, '') is string
+        ? request.auth.token.get(key, '')
+        : '';
+    }
+
     function requesterData() {
       return requesterUserDoc().data;
     }
 
     function normalizeRole(value) {
-      return lower(trim(value is string ? value : ''));
+      return value is string ? value : '';
     }
 
     // ─── Admin Claims Validation ───────────────────────────────────────────
 
     function hasSuperAdminClaim() {
       return isAuthenticated() && (
-        request.auth.token.superAdmin == true ||
-        request.auth.token.isSuperAdmin == true
+        tokenBoolClaim('superAdmin') ||
+        tokenBoolClaim('isSuperAdmin')
       );
     }
 
     function hasSuperAdminUserFlag() {
-      return isAuthenticated() && requesterUserDoc().exists && requesterData().isSuperAdmin == true;
+      return isAuthenticated() && requesterUserDocExists() &&
+        requesterData().get('isSuperAdmin', false) == true;
     }
 
     function hasOwnerBypass() {
       return isAuthenticated() && (
-        (request.auth.token.role is string && normalizeRole(request.auth.token.role) == 'owner') ||
+        (normalizeRole(tokenStringClaim('role')) == 'owner') ||
         (
-          requesterUserDoc().exists &&
-          requesterData().role is string &&
-          normalizeRole(requesterData().role) == 'owner' &&
-          requesterData().isAdmin == true
+          requesterUserDocExists() &&
+          normalizeRole(requesterData().get('role', '')) == 'owner' &&
+          requesterData().get('isAdmin', false) == true
         )
       );
     }
 
     function hasAdminClaim() {
       return isAuthenticated() && (
-        request.auth.token.admin == true ||
-        request.auth.token.isAdmin == true
+        tokenBoolClaim('admin') ||
+        tokenBoolClaim('isAdmin')
       );
     }
 
     function hasAdminUserFlag() {
-      return isAuthenticated() && requesterUserDoc().exists && requesterData().isAdmin == true;
+      return isAuthenticated() && requesterUserDocExists() &&
+        requesterData().get('isAdmin', false) == true;
     }
 
     function hasAdministrativeBypass() {
@@ -69,20 +85,22 @@ service cloud.firestore {
      * 4. /users/{uid} debe existir con role admin/owner
      */
     function isValidAdminUser(userId) {
-      let userDoc = get(/databases/$(database)/documents/users/$(userId));
-      return userDoc.exists &&
-        userDoc.data.isAdmin == true &&
-        userDoc.data.role is string &&
-        userDoc.data.status == 'active' &&
-        normalizeRole(userDoc.data.role) == 'owner';
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return exists(userPath) &&
+        get(userPath).data.isAdmin == true &&
+        get(userPath).data.role is string &&
+        get(userPath).data.status == 'active' &&
+        normalizeRole(get(userPath).data.role) == 'owner';
     }
 
     /**
      * Valida que el admin tenga un tenantId definido de forma consistente
      */
     function hasValidTenantIdForAdmin(userId) {
-      let userDoc = get(/databases/$(database)/documents/users/$(userId));
-      return userDoc.exists && userDoc.data.tenantId is string && userDoc.data.tenantId != '';
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return exists(userPath) &&
+        get(userPath).data.tenantId is string &&
+        get(userPath).data.tenantId != '';
     }
 
     /**
@@ -107,27 +125,26 @@ service cloud.firestore {
     function effectiveTenantId() {
       return isAuthenticated()
         ? (
-            requesterUserDoc().exists && requesterData().tenantId is string
-              ? requesterData().tenantId
-              : (request.auth.token.tenantId is string ? request.auth.token.tenantId : '')
+            requesterUserDocExists() && requesterData().get('tenantId', '') is string
+              ? requesterData().get('tenantId', '')
+              : tokenStringClaim('tenantId')
           )
         : '';
     }
 
     function isActiveUser() {
       return isAuthenticated() && (
-        !requesterUserDoc().exists ||
-        !(requesterData().status is string) ||
-        normalizeRole(requesterData().status) == 'active'
+        !requesterUserDocExists() ||
+        normalizeRole(requesterData().get('status', 'active')) == 'active'
       );
     }
 
     function normalizedRole() {
       return isAuthenticated()
         ? (
-            requesterUserDoc().exists && requesterData().role is string
-              ? normalizeRole(requesterData().role)
-              : (request.auth.token.role is string ? normalizeRole(request.auth.token.role) : '')
+            requesterUserDocExists() && requesterData().get('role', '') is string
+              ? normalizeRole(requesterData().get('role', ''))
+              : normalizeRole(tokenStringClaim('role'))
           )
         : '';
     }
@@ -135,35 +152,35 @@ service cloud.firestore {
     function requesterEmail() {
       return isAuthenticated()
         ? (
-            request.auth.token.email is string
-              ? lower(trim(request.auth.token.email))
-              : (requesterUserDoc().exists && requesterData().email is string ? lower(trim(requesterData().email)) : '')
+            tokenStringClaim('email') != ''
+              ? tokenStringClaim('email')
+              : (requesterUserDocExists() && requesterData().get('email', '') is string
+                ? requesterData().get('email', '')
+                : '')
           )
         : '';
     }
 
     function hasTenantMembershipDoc(tenantId) {
-      let legacyUidDoc = get(/databases/$(database)/documents/tenant_users/$(request.auth.uid));
-      let legacyEmailDoc = requesterEmail() != ''
-        ? get(/databases/$(database)/documents/tenant_users/$(requesterEmail()))
-        : null;
+      let legacyUidPath = /databases/$(database)/documents/tenant_users/$(request.auth.uid);
+      let legacyEmailPath = /databases/$(database)/documents/tenant_users/$(requesterEmail());
 
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + request.auth.uid)) ||
-        (legacyUidDoc.exists && legacyUidDoc.data.tenantId == tenantId) ||
+        (exists(legacyUidPath) && get(legacyUidPath).data.tenantId == tenantId) ||
         (requesterEmail() != '' && (
           exists(/databases/$(database)/documents/tenant_users/$(tenantId + '_' + requesterEmail())) ||
-          (legacyEmailDoc != null && legacyEmailDoc.exists && legacyEmailDoc.data.tenantId == tenantId)
+          (exists(legacyEmailPath) && get(legacyEmailPath).data.tenantId == tenantId)
         ))
       );
     }
 
     function hasTenantInUserProfile(tenantId) {
-      return requesterUserDoc().exists && (
-        requesterData().tenantId == tenantId ||
+      return requesterUserDocExists() && (
+        requesterData().get('tenantId', '') == tenantId ||
         (
-          requesterData().tenantIds is list &&
-          requesterData().tenantIds.hasAny([tenantId])
+          requesterData().get('tenantIds', []) is list &&
+          requesterData().get('tenantIds', []).hasAny([tenantId])
         )
       );
     }
@@ -178,7 +195,7 @@ service cloud.firestore {
     }
 
     function isAdminRole() {
-      return normalizedRole() == 'owner';
+      return normalizedRole() in ['owner', 'admin'];
     }
 
     function hasTenantAdminSignal() {
@@ -207,7 +224,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         (tenantData.ownerUid is string && tenantData.ownerUid == request.auth.uid) ||
         (tenantData.ownerUids is list && tenantData.ownerUids.hasAny([request.auth.uid])) ||
-        (requesterEmail() != '' && tenantData.ownerEmail is string && lower(trim(tenantData.ownerEmail)) == requesterEmail())
+        (requesterEmail() != '' && tenantData.ownerEmail is string && tenantData.ownerEmail == requesterEmail())
       );
     }
 
@@ -226,12 +243,24 @@ service cloud.firestore {
         request.resource.data.tenantId != '';
     }
 
+    function isFinalCustomerSelfCreate(userId) {
+      return isOwnUserDoc(userId) &&
+        request.resource.data.accountType == 'final_customer' &&
+        request.resource.data.role == 'viewer' &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.isAdmin == false &&
+        request.resource.data.isSuperAdmin == false &&
+        request.resource.data.tenantId is string &&
+        request.resource.data.tenantId != '';
+    }
+
     match /users/{userId} {
       allow read: if isOwnUserDoc(userId) ||
-        (isAuthenticated() && requesterUserDoc().exists && isTenantAdmin(resource.data.tenantId));
+        (isAuthenticated() && requesterUserDocExists() && isTenantAdmin(resource.data.tenantId));
 
       allow create: if hasSuperAdminClaim() ||
         (isOwnUserDoc(userId) && isOwnerBootstrap(userId)) ||
+        (isOwnUserDoc(userId) && isFinalCustomerSelfCreate(userId)) ||
         (isAuthenticated() && isTenantAdmin(request.resource.data.tenantId));
 
       allow update, delete: if hasSuperAdminClaim() ||
@@ -248,7 +277,7 @@ service cloud.firestore {
         // Bootstrap: propietario creando su propia membresía durante el registro de tienda
         (request.resource.data.role == 'owner' &&
           request.resource.data.tenantId is string &&
-          request.resource.data.email == request.auth.token.email)
+          request.resource.data.email == tokenStringClaim('email'))
       );
       allow update, delete: if isAuthenticated() && resource.data.tenantId is string && isTenantAdmin(resource.data.tenantId);
     }
@@ -352,6 +381,11 @@ service cloud.firestore {
     }
 
     match /public_products/{productId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /public_catalog_inventory/{tenantId} {
       allow read: if true;
       allow write: if false;
     }

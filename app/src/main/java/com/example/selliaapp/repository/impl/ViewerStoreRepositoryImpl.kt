@@ -84,6 +84,35 @@ class ViewerStoreRepositoryImpl @Inject constructor(
 
     override suspend fun fetchPublicCatalog(storeId: String): Result<List<PublicCatalogProduct>> = withContext(io) {
         runCatching {
+            val inventoryDoc = firestore.collection("public_catalog_inventory")
+                .document(storeId)
+                .get()
+                .await()
+
+            val inventoryItems = (inventoryDoc.get("items") as? Map<*, *>).orEmpty()
+            val fromInventory = inventoryItems.mapNotNull { (rawId, rawValue) ->
+                val idFromKey = (rawId as? String)?.toIntOrNull()
+                val item = rawValue as? Map<*, *> ?: return@mapNotNull null
+                val idFromItem = (item["id"] as? String)?.toIntOrNull()
+                val id = idFromItem ?: idFromKey ?: return@mapNotNull null
+                val name = (item["name"] as? String)?.trim().orEmpty()
+                if (name.isBlank()) return@mapNotNull null
+                PublicCatalogProduct(
+                    id = id,
+                    name = name,
+                    imageUrl = item["imageUrl"] as? String,
+                    listPrice = (item["listPrice"] as? Number)?.toDouble(),
+                    cashPrice = (item["cashPrice"] as? Number)?.toDouble(),
+                    transferPrice = (item["transferPrice"] as? Number)?.toDouble(),
+                    category = item["parentCategory"] as? String,
+                    subcategory = item["category"] as? String
+                )
+            }
+
+            if (fromInventory.isNotEmpty()) {
+                return@runCatching fromInventory.sortedBy { it.name.lowercase() }
+            }
+
             val snapshot = firestore.collection("tenants")
                 .document(storeId)
                 .collection("public_products")

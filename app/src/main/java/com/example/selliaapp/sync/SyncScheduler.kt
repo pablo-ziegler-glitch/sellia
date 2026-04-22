@@ -16,6 +16,7 @@ object SyncScheduler {
     private const val PREFS_NAME = "sync_scheduler_preferences"
     private const val KEY_INTERVAL_MINUTES = "sync_interval_minutes"
     private const val DEFAULT_INTERVAL_MINUTES = 1440 // 24 hs
+    private const val ENABLE_PERIODIC_SYNC = false
     const val PERIODIC_UNIQUE_NAME: String = "sync_periodic_work"
 
     fun enqueueNow(context: Context, includeBackup: Boolean = false) {
@@ -40,6 +41,10 @@ object SyncScheduler {
     }
 
     fun enqueuePeriodic(context: Context, intervalMinutes: Int = getIntervalMinutes(context)) {
+        if (!ENABLE_PERIODIC_SYNC) {
+            cancelPeriodic(context)
+            return
+        }
         val safeIntervalMinutes = intervalMinutes.coerceAtLeast(15)
         persistIntervalMinutes(context, safeIntervalMinutes)
 
@@ -62,6 +67,10 @@ object SyncScheduler {
                 ExistingPeriodicWorkPolicy.UPDATE,
                 request
             )
+    }
+
+    fun cancelPeriodic(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_UNIQUE_NAME)
     }
 
     fun getIntervalMinutes(context: Context): Int {

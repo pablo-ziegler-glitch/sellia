@@ -22,7 +22,13 @@ function roleUserId(role) {
 }
 
 function dbWithClaims(uid, claims = {}) {
-  return testEnv.authenticatedContext(uid, claims).firestore();
+  const {
+    uid: _ignoredUid,
+    sub: _ignoredSub,
+    user_id: _ignoredUserId,
+    ...safeClaims
+  } = claims;
+  return testEnv.authenticatedContext(uid, safeClaims).firestore();
 }
 
 async function seedUser(uid, data) {
@@ -542,5 +548,36 @@ describe('firestore.rules - multi-tenant admin policy', () => {
     });
 
     await assertSucceeds(getDoc(doc(db, 'tenants', 'tenant-owner-direct')));
+  });
+
+  it('denies authenticated access to unmatched top-level config documents', async () => {
+    const db = dbWithClaims('authenticated-user-config', { uid: 'authenticated-user-config' });
+    await assertFails(getDoc(doc(db, 'config', 'runtime_flags')));
+    await assertFails(
+      setDoc(doc(db, 'config', 'runtime_flags'), {
+        mercadopagoEnabled: true,
+      }),
+    );
+  });
+
+  it('denies authenticated access to unmatched top-level usage analytics documents', async () => {
+    const db = dbWithClaims('authenticated-user-usage', { uid: 'authenticated-user-usage' });
+    await assertFails(getDoc(doc(db, 'usage_series', '2026-01-01')));
+    await assertFails(
+      setDoc(doc(db, 'usage_services', 'summary'), {
+        total: 123,
+      }),
+    );
+  });
+
+  it('denies authenticated writes to unmatched admin metadata collections', async () => {
+    const db = dbWithClaims('authenticated-user-admin-metadata', {
+      uid: 'authenticated-user-admin-metadata',
+    });
+    await assertFails(
+      setDoc(doc(db, 'admin_email_hashes', 'sample-hash'), {
+        email: 'sample@example.com',
+      }),
+    );
   });
 });

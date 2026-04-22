@@ -1,4 +1,5 @@
 import { getDb } from "./firebase-admin";
+import { unstable_cache } from "next/cache";
 
 /**
  * Tenant público por defecto para la web.
@@ -55,8 +56,20 @@ export interface CatalogConfig {
   featuredTitle: string;
 }
 
+type PublicCatalogInventoryItem = {
+  id?: string;
+  name?: string;
+  imageUrl?: string | null;
+  listPrice?: number | null;
+  cashPrice?: number | null;
+  transferPrice?: number | null;
+  parentCategory?: string | null;
+  category?: string | null;
+  description?: string | null;
+};
+
 /** Get catalog display config for a tenant. Returns safe defaults if not configured. */
-export async function getCatalogConfig(tenantId: string): Promise<CatalogConfig> {
+const getCatalogConfigCached = unstable_cache(async (tenantId: string): Promise<CatalogConfig> => {
   const db = getDb();
   const doc = await db
     .collection("tenants")
@@ -76,12 +89,16 @@ export async function getCatalogConfig(tenantId: string): Promise<CatalogConfig>
       : [],
     featuredTitle: (raw.featuredTitle as string) || "Productos destacados",
   };
+}, ["catalog-config"], { revalidate: 300 });
+
+export async function getCatalogConfig(tenantId: string): Promise<CatalogConfig> {
+  return getCatalogConfigCached(tenantId);
 }
 
 /** Get storefront configuration for a tenant. */
-export async function getStorefront(
+const getStorefrontCached = unstable_cache(async (
   tenantId: string
-): Promise<StorefrontConfig | null> {
+): Promise<StorefrontConfig | null> => {
   const db = getDb();
   const doc = await db
     .collection("tenants")
@@ -118,12 +135,57 @@ export async function getStorefront(
     storeType,
     hasDelivery: Boolean(raw.hasDelivery),
   };
+}, ["storefront"], { revalidate: 300 });
+
+export async function getStorefront(
+  tenantId: string
+): Promise<StorefrontConfig | null> {
+  return getStorefrontCached(tenantId);
+}
+
+const getPublicCatalogInventoryCached = unstable_cache(async (
+  tenantId: string
+): Promise<Record<string, PublicCatalogInventoryItem> | null> => {
+  const db = getDb();
+  const inventoryDoc = await db
+    .collection("public_catalog_inventory")
+    .doc(tenantId)
+    .get();
+
+  if (!inventoryDoc.exists) return null;
+  const rawItems = inventoryDoc.data()?.items as Record<string, PublicCatalogInventoryItem> | undefined;
+  if (!rawItems || typeof rawItems !== "object") return null;
+  return rawItems;
+}, ["public-catalog-inventory"], { revalidate: 300 });
+
+function inventoryEntryToPublicProduct(
+  id: string,
+  item: PublicCatalogInventoryItem
+): PublicProduct {
+  return {
+    id,
+    name: (item.name as string) || "",
+    imageUrl: (item.imageUrl as string) || null,
+    listPrice: (item.listPrice as number) ?? null,
+    cashPrice: (item.cashPrice as number) ?? null,
+    transferPrice: (item.transferPrice as number) ?? null,
+    category: (item.parentCategory as string) || (item.category as string) || null,
+    subcategory: (item.category as string) || null,
+    description: (item.description as string) || null,
+  };
 }
 
 /** Get all published products for a tenant, ordered by name. */
-export async function getPublicProducts(
+const getPublicProductsCached = unstable_cache(async (
   tenantId: string
-): Promise<PublicProduct[]> {
+): Promise<PublicProduct[]> => {
+  const inventory = await getPublicCatalogInventoryCached(tenantId);
+  if (inventory && Object.keys(inventory).length > 0) {
+    return Object.entries(inventory)
+      .map(([id, item]) => inventoryEntryToPublicProduct(id, item))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }
+
   const db = getDb();
   const snap = await db
     .collection("tenants")
@@ -145,13 +207,25 @@ export async function getPublicProducts(
       description: (d.description as string) || null,
     };
   });
+}, ["public-products"], { revalidate: 300 });
+
+export async function getPublicProducts(
+  tenantId: string
+): Promise<PublicProduct[]> {
+  return getPublicProductsCached(tenantId);
 }
 
 /** Get a single public product. */
-export async function getPublicProduct(
+const getPublicProductCached = unstable_cache(async (
   tenantId: string,
   productId: string
-): Promise<PublicProduct | null> {
+): Promise<PublicProduct | null> => {
+  const inventory = await getPublicCatalogInventoryCached(tenantId);
+  const inventoryEntry = inventory?.[productId];
+  if (inventoryEntry) {
+    return inventoryEntryToPublicProduct(productId, inventoryEntry);
+  }
+
   const db = getDb();
   const doc = await db
     .collection("tenants")
@@ -172,4 +246,11 @@ export async function getPublicProduct(
     subcategory: (d.category as string) || null,
     description: (d.description as string) || null,
   };
+}, ["public-product"], { revalidate: 300 });
+
+export async function getPublicProduct(
+  tenantId: string,
+  productId: string
+): Promise<PublicProduct | null> {
+  return getPublicProductCached(tenantId, productId);
 }
