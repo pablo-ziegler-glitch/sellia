@@ -74,6 +74,11 @@ class IProductRepositoryAdapter @Inject constructor(
         note: String?
     ): Boolean = legacy.adjustStock(productId, delta, reason, note)
 
+    override suspend fun updatePublicStatusByIds(
+        productIds: Collection<Int>,
+        publicStatus: String
+    ): Int = legacy.updatePublicStatusByIds(productIds, publicStatus)
+
     // ---------- Archivo tabular: filas parseadas ----------
     override suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) =
         legacy.bulkUpsert(rows)

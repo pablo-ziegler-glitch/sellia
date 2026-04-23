@@ -58,6 +58,7 @@ interface IProductRepository {
     // ---------- Stock ----------
     suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean
     suspend fun adjustStock(productId: Int, delta: Int, reason: String, note: String? = null): Boolean
+    suspend fun updatePublicStatusByIds(productIds: Collection<Int>, publicStatus: String): Int
 
     // ---------- Archivo tabular: filas parseadas ----------
     suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>)

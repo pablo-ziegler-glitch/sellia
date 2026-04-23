@@ -50,6 +50,8 @@ fun PublicCatalogConfigScreen(
     onBack: () -> Unit
 ) {
     val settings by vm.settings.collectAsState(initial = PublicCatalogSettings())
+    val syncInProgress by vm.syncInProgress.collectAsState()
+    val syncMessage by vm.syncMessage.collectAsState()
     var catalogEnabled by remember { mutableStateOf(settings.catalogEnabled) }
     var showPrices by remember { mutableStateOf(settings.showPrices) }
     var showCashPrice by remember { mutableStateOf(settings.showCashPrice) }
@@ -130,6 +132,29 @@ fun PublicCatalogConfigScreen(
                 selectedSort = defaultSort,
                 onSortSelected = { defaultSort = it }
             )
+
+            HorizontalDivider()
+            Text("Sincronización", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Modo on-demand: el catálogo público se actualiza solo cuando hay cambios o cuando lo forzás manualmente.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Button(
+                onClick = vm::triggerCatalogSync,
+                enabled = !syncInProgress,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (syncInProgress) "Sincronizando..." else "Forzar sincronización ahora")
+            }
+            syncMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(onClick = vm::clearSyncMessage) {
+                    Text("Cerrar mensaje")
+                }
+            }
 
             Spacer(Modifier.height(8.dp))
 

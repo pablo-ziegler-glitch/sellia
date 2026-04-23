@@ -65,6 +65,7 @@ class FakeProductRepository : IProductRepository {
     // ---------- Stock ----------
     override suspend fun increaseStockByBarcode(barcode: String, delta: Int): Boolean = false
     override suspend fun adjustStock(productId: Int, delta: Int, reason: String, note: String?): Boolean = false
+    override suspend fun updatePublicStatusByIds(productIds: Collection<Int>, publicStatus: String): Int = 0
 
     // ---------- Archivo tabular: filas parseadas ----------
     override suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) {}

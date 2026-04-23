@@ -11,6 +11,7 @@ import com.example.selliaapp.di.AppModule
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.functions.FirebaseFunctions
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,7 @@ data class PublicCatalogSettings(
 class PublicCatalogConfigRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     private val firestore: FirebaseFirestore,
+    private val functions: FirebaseFunctions,
     private val tenantProvider: TenantProvider,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) {
@@ -124,5 +126,15 @@ class PublicCatalogConfigRepository @Inject constructor(
             prefs[Keys.footerText] = updated.footerText.trim()
             prefs[Keys.defaultSort] = updated.defaultSort
         }
+    }
+
+    suspend fun triggerStoreProductsSync(): Int = withContext(io) {
+        val tenantId = tenantProvider.requireTenantId()
+        val response = functions
+            .getHttpsCallable("triggerStoreProductsSync")
+            .call(mapOf("tenantId" to tenantId))
+            .await()
+        val payload = response.data as? Map<*, *>
+        (payload?.get("syncedCount") as? Number)?.toInt() ?: 0
     }
 }

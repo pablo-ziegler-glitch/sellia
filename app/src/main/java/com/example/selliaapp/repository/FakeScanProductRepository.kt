@@ -112,6 +112,24 @@ class FakeScanProductRepository(
         return true
     }
 
+    override suspend fun updatePublicStatusByIds(productIds: Collection<Int>, publicStatus: String): Int {
+        val uniqueIds = productIds.filter { it > 0 }.toSet()
+        if (uniqueIds.isEmpty()) return 0
+        var changed = 0
+        val normalized = publicStatus.lowercase()
+        products.indices.forEach { index ->
+            val item = products[index]
+            if (item.id in uniqueIds && item.publicStatus != normalized) {
+                products[index] = item.copy(publicStatus = normalized)
+                changed += 1
+            }
+        }
+        if (changed > 0) {
+            productsFlow.value = products.toList()
+        }
+        return changed
+    }
+
     // ---------- Archivo tabular: filas parseadas ----------
     override suspend fun bulkUpsert(rows: List<ProductCsvImporter.Row>) { /* no usado acá */ }
 
