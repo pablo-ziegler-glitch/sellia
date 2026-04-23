@@ -38,6 +38,7 @@ export interface PublicProduct {
   id: string;
   name: string;
   imageUrl: string | null;
+  imageUrls: string[];
   listPrice: number | null;
   cashPrice: number | null;
   transferPrice: number | null;
@@ -60,6 +61,7 @@ type PublicCatalogInventoryItem = {
   id?: string;
   name?: string;
   imageUrl?: string | null;
+  imageUrls?: string[] | null;
   listPrice?: number | null;
   cashPrice?: number | null;
   transferPrice?: number | null;
@@ -67,6 +69,40 @@ type PublicCatalogInventoryItem = {
   category?: string | null;
   description?: string | null;
 };
+
+function normalizeImageUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("gs://")) {
+    const withoutScheme = raw.slice("gs://".length);
+    const separator = withoutScheme.indexOf("/");
+    if (separator <= 0) return null;
+    const bucket = withoutScheme.slice(0, separator);
+    const objectPath = withoutScheme.slice(separator + 1);
+    if (!bucket || !objectPath) return null;
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(objectPath)}?alt=media`;
+  }
+
+  if (raw.startsWith("//")) return `https:${raw}`;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "https:" || url.protocol === "http:") return url.toString();
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function normalizeImageList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const urls = values
+    .map(normalizeImageUrl)
+    .filter((url): url is string => Boolean(url));
+  return Array.from(new Set(urls));
+}
 
 /** Get catalog display config for a tenant. Returns safe defaults if not configured. */
 const getCatalogConfigCached = unstable_cache(async (tenantId: string): Promise<CatalogConfig> => {
@@ -162,10 +198,13 @@ function inventoryEntryToPublicProduct(
   id: string,
   item: PublicCatalogInventoryItem
 ): PublicProduct {
+  const imageUrls = normalizeImageList(item.imageUrls);
+  const primary = normalizeImageUrl(item.imageUrl) ?? imageUrls[0] ?? null;
   return {
     id,
     name: (item.name as string) || "",
-    imageUrl: (item.imageUrl as string) || null,
+    imageUrl: primary,
+    imageUrls: primary ? [primary, ...imageUrls.filter((url) => url !== primary)] : imageUrls,
     listPrice: (item.listPrice as number) ?? null,
     cashPrice: (item.cashPrice as number) ?? null,
     transferPrice: (item.transferPrice as number) ?? null,
@@ -193,12 +232,16 @@ const getPublicProductsCached = unstable_cache(async (
     .collection("public_products")
     .orderBy("name")
     .get();
-  return snap.docs.map((doc) => {
+
+  const products = snap.docs.map((doc) => {
     const d = doc.data();
+    const imageUrls = normalizeImageList(d.imageUrls);
+    const primary = normalizeImageUrl(d.imageUrl) ?? imageUrls[0] ?? null;
     return {
       id: doc.id,
       name: (d.name as string) || "",
-      imageUrl: (d.imageUrl as string) || null,
+      imageUrl: primary,
+      imageUrls: primary ? [primary, ...imageUrls.filter((url) => url !== primary)] : imageUrls,
       listPrice: (d.listPrice as number) ?? null,
       cashPrice: (d.cashPrice as number) ?? null,
       transferPrice: (d.transferPrice as number) ?? null,
@@ -207,6 +250,13 @@ const getPublicProductsCached = unstable_cache(async (
       description: (d.description as string) || null,
     };
   });
+
+  return Array.from(
+    products.reduce((acc, product) => {
+      if (!acc.has(product.id)) acc.set(product.id, product);
+      return acc;
+    }, new Map<string, PublicProduct>()).values()
+  );
 }, ["public-products"], { revalidate: 300 });
 
 export async function getPublicProducts(
@@ -235,10 +285,13 @@ const getPublicProductCached = unstable_cache(async (
     .get();
   if (!doc.exists) return null;
   const d = doc.data()!;
+  const imageUrls = normalizeImageList(d.imageUrls);
+  const primary = normalizeImageUrl(d.imageUrl) ?? imageUrls[0] ?? null;
   return {
     id: doc.id,
     name: (d.name as string) || "",
-    imageUrl: (d.imageUrl as string) || null,
+    imageUrl: primary,
+    imageUrls: primary ? [primary, ...imageUrls.filter((url) => url !== primary)] : imageUrls,
     listPrice: (d.listPrice as number) ?? null,
     cashPrice: (d.cashPrice as number) ?? null,
     transferPrice: (d.transferPrice as number) ?? null,
