@@ -3,179 +3,136 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Historia real de FLOKI</title>
+    <title>VALKIRJA | Catálogo</title>
     <meta
       name="description"
-      content="Llevá tu negocio al siguiente nivel con una presencia digital profesional."
-      data-landing-seo="description"
+      content="Catálogo completo de productos publicados de VALKIRJA."
     />
-    <link rel="canonical" href="https://tu-dominio.web.app/" />
-    <meta property="og:title" content="Historia real de FLOKI" />
-    <meta
-      property="og:description"
-      content="Llevá tu negocio al siguiente nivel con una presencia digital profesional."
-      data-landing-seo="og:description"
-    />
+    <link rel="canonical" href="https://sellia1993.web.app/" />
+    <meta property="og:title" content="VALKIRJA | Catálogo" />
+    <meta property="og:description" content="Catálogo completo de productos publicados de VALKIRJA." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://tu-dominio.web.app/" />
+    <meta property="og:url" content="https://sellia1993.web.app/" />
     <meta property="og:image" content="/assets/og-image.v1.svg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Historia real de FLOKI" />
-    <meta
-      name="twitter:description"
-      content="Llevá tu negocio al siguiente nivel con una presencia digital profesional."
-      data-landing-seo="twitter:description"
-    />
-    <meta name="twitter:image" content="/assets/og-image.svg" data-landing-seo="twitter:image" />
-    <meta name="theme-color" content="#C9A227" />
+    <meta name="twitter:title" content="VALKIRJA | Catálogo" />
+    <meta name="twitter:description" content="Catálogo completo de productos publicados de VALKIRJA." />
+    <meta name="twitter:image" content="/assets/og-image.v1.svg" />
+    <meta name="theme-color" content="#0e5bd8" />
     <link rel="icon" href="/assets/favicon.v1.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/assets/favicon.v1.svg" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260422b" />
+    <link rel="stylesheet" href="/styles.css?v=20260422c" />
   </head>
-  <body class="landing-body">
-    <!-- Splash screen / preloader — removed by JS after bootstrap; hidden if JS unavailable -->
-    <noscript><style>#floki-splash { display: none !important; }</style></noscript>
-    <div id="floki-splash" class="floki-splash" aria-hidden="true">
-      <img src="/assets/logo-splash.svg" class="floki-splash__img" alt="" />
-    </div>
-
+  <body class="catalog-body">
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-    <header class="site-header landing-header">
-      <nav class="nav" aria-label="Secciones">
-        <a class="nav-brand" href="/" aria-label="VALKIRJA — Inicio">
-          <img src="/assets/logo.svg" class="nav-logo" alt="FLOKI" />
+    <header id="catalogHeader" class="catalog-topbar">
+      <div class="catalog-topbar-inner">
+        <a class="catalog-brand" href="#catalogo">
+          <img id="catalogLogo" class="catalog-logo" src="" alt="" hidden />
+          <span id="catalogStoreName" class="catalog-store-name">VALKIRJA</span>
         </a>
-        <div class="nav-links">
-          <a class="nav-link" href="#historia">Historia</a>
-          <a class="nav-link" href="#catalogo">Catálogo</a>
-          <a class="nav-link" href="#redes">Redes</a>
-          <a class="nav-link" href="#contacto">Contacto</a>
-        </div>
-        <div class="landing-header-actions">
-          <a class="button ghost nav-login" href="/catalog.html" aria-label="Ver catálogo">
-            Ver catálogo
-          </a>
-          <a class="button primary nav-login" data-contact="whatsapp" href="#" aria-label="Contactar por WhatsApp">
-            WhatsApp
-          </a>
-        </div>
-        <button id="mobileMenuOpen" class="mobile-menu-open" aria-label="Abrir menú" type="button">
-          ☰
-        </button>
-      </nav>
-    </header>
-    <aside id="mobileMenuOverlay" class="mobile-menu-overlay" hidden>
-      <div class="mobile-menu-panel">
-        <div class="mobile-menu-head">
-          <strong>VALKIRJA</strong>
-          <button id="mobileMenuClose" aria-label="Cerrar menú" type="button">✕</button>
-        </div>
-        <nav class="mobile-menu-links">
-          <a href="#historia">Historia</a>
-          <a href="#catalogo">Catálogo</a>
+        <nav class="catalog-nav">
+          <a href="#catalogo" aria-current="page">Catálogo</a>
           <a href="#redes">Redes</a>
-          <a href="#contacto">Contacto</a>
-          <a href="/catalog.html">Ver catálogo</a>
         </nav>
+        <a id="catalogWhatsappTop" class="catalog-top-cta" href="#" hidden>WhatsApp</a>
       </div>
-    </aside>
+    </header>
 
-    <main id="contenido">
-      <section class="hero landing-hero" aria-labelledby="hero-title">
-        <div class="landing-hero-media">
-          <img
-            src="/assets/og-image.v1.svg"
-            alt="Vista principal de tienda"
-            loading="eager"
-          />
+    <main id="contenido" class="catalog-main">
+      <section id="catalogHero" class="catalog-hero" hidden>
+        <h1 id="catalogHeroTitle"></h1>
+        <p id="catalogHeroSubtitle"></p>
+      </section>
+
+      <section id="catalogo" class="catalog-heading">
+        <div id="catalogDefaultHeader">
+          <h1 id="catalog-title">Catálogo completo</h1>
+          <p>Todos los productos publicados, sin previsualización ni duplicados.</p>
         </div>
-        <div class="hero-content">
-          <div class="hero-live-pill">
-            <span></span>
-            Abierto ahora
-          </div>
-          <h1 id="hero-title" data-landing="hero.title">Tu negocio, listo para crecer online</h1>
-          <p class="hero-subtitle" data-landing="hero.subtitle">Mostrá tus productos, captá clientes y centralizá tu operación en una sola plataforma.</p>
-          <div class="hero-actions">
-            <a class="button primary" href="#catalogo" aria-label="Ver catálogo" data-landing="cta.primary">VER CATÁLOGO</a>
-            <a class="button ghost" data-contact="whatsapp" href="#" aria-label="Consultar por WhatsApp" data-landing="cta.secondary">WHATSAPP</a>
+      </section>
+
+      <section class="catalog-toolbar">
+        <div class="catalog-toolbar-main">
+          <label for="catalogSearchInput" class="sr-only">Buscar productos</label>
+          <input
+            id="catalogSearchInput"
+            class="catalog-search"
+            type="search"
+            placeholder="Buscar por nombre, código o SKU..."
+            autocomplete="off"
+          />
+          <label for="storeFilter" class="sr-only">Filtrar por tienda</label>
+          <select id="storeFilter" aria-label="Filtrar productos por tienda">
+            <option value="all">Todas las tiendas</option>
+          </select>
+        </div>
+        <p class="muted" id="catalogCount">Cargando productos...</p>
+        <p id="catalogStatus" class="muted"></p>
+      </section>
+
+      <section
+        id="catalogGrid"
+        class="catalog-grid"
+        role="region"
+        aria-live="polite"
+        aria-label="Listado de productos"
+      ></section>
+
+      <section class="catalog-table-shell" hidden>
+        <table class="catalog-table">
+          <thead>
+            <tr>
+              <th scope="col">Nombre</th>
+              <th scope="col">SKU</th>
+              <th scope="col" id="colHeaderListPrice">Precio lista</th>
+              <th scope="col" id="colHeaderCashPrice">Precio efectivo</th>
+            </tr>
+          </thead>
+          <tbody id="catalogRows"></tbody>
+        </table>
+      </section>
+
+      <section id="redes" class="section" aria-labelledby="redes-title">
+        <div class="section-header">
+          <h2 id="redes-title">Seguinos y mantenete cerca</h2>
+          <p>Novedades de productos, reposiciones y promociones de la tienda.</p>
+        </div>
+        <div class="contact-card">
+          <div class="contact-actions">
+            <a class="button primary" data-contact="instagram" data-utm-link href="#" aria-label="Abrir Instagram">Instagram</a>
+            <a class="button ghost" data-contact="whatsapp" data-utm-link href="#" aria-label="Abrir WhatsApp">WhatsApp</a>
+            <a class="button ghost" data-contact="maps" data-utm-link href="#" aria-label="Abrir ubicación">Ubicación</a>
           </div>
         </div>
       </section>
 
-      <div id="secondarySectionsMount" aria-live="polite"></div>
-
-      <template id="secondarySectionsTemplate">
-        <section id="historia" class="section" aria-labelledby="historia-title">
-          <div class="section-header">
-            <h2 id="historia-title">La historia en 55 segundos</h2>
-            <p>Una mirada corta y honesta a lo que nos trajo hasta acá. Sin épica artificial, con verdad.</p>
-          </div>
-          <div class="video" data-reveal>
-            <div class="video-placeholder" id="videoPlaceholder">
-              <img id="videoPoster" src="/assets/og-image.v1.svg" alt="Poster del video de la historia" loading="lazy" />
-              <button class="video-play" type="button" aria-label="Reproducir video">▶</button>
-            </div>
-          </div>
-        </section>
-
-        <section id="catalogo" class="section" aria-labelledby="productos-title">
-          <div class="section-header">
-            <h2 id="productos-title">Destacados de la semana</h2>
-            <p>Nuestros productos más elegidos por el barrio.</p>
-          </div>
-          <div class="product-grid" id="productGrid" aria-live="polite"></div>
-          <div class="section-footer">
-            <a class="button primary" href="/catalog.html" aria-label="Ver catálogo completo de todas las tiendas" data-landing="cta.catalog">Ver catálogo completo →</a>
-          </div>
-        </section>
-
-        <section id="redes" class="section" aria-labelledby="redes-title">
-          <div class="section-header">
-            <h2 id="redes-title">Seguinos y mantenete cerca</h2>
-            <p>Novedades de productos, reposiciones y promociones de la tienda.</p>
-          </div>
-          <div class="contact-card">
-            <div class="contact-actions">
-              <a class="button primary" data-contact="instagram" data-utm-link href="#" aria-label="Abrir Instagram">Instagram</a>
-              <a class="button ghost" data-contact="whatsapp" data-utm-link href="#" aria-label="Abrir WhatsApp">WhatsApp</a>
-              <a class="button ghost" data-contact="maps" data-utm-link href="#" aria-label="Abrir ubicación">Ubicación</a>
-            </div>
-          </div>
-        </section>
-
-        <section id="contacto" class="section" aria-labelledby="contacto-title">
-          <div class="section-header">
-            <h2 id="contacto-title">Gracias por escanear. Gracias por quedarte.</h2>
-            <p>Si querés conocer más o consultar por productos, escribinos.</p>
-          </div>
-          <div class="contact-card">
-            <div class="contact-actions">
-              <a class="button primary" data-contact="whatsapp" data-utm-link href="#" aria-label="Abrir WhatsApp">WhatsApp</a>
-              <a class="button ghost" data-contact="instagram" data-utm-link href="#" aria-label="Abrir Instagram">Instagram</a>
-              <a class="button ghost" data-contact="maps" data-utm-link href="#" aria-label="Abrir ubicación">Ubicación</a>
-            </div>
-          </div>
-        </section>
-      </template>
+      <footer id="catalogFooter" class="catalog-footer" hidden>
+        <p id="catalogFooterText"></p>
+      </footer>
     </main>
 
     <footer class="site-footer">
-      <p class="footer-brand" data-brand>VALKIRJA — Hecho con pasión.</p>
+      <p class="footer-brand">VALKIRJA — Hecho con pasión.</p>
       <p class="muted">© <span id="year"></span></p>
     </footer>
 
-    <script src="/config.js?v=20260422b"></script>
-    <script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous" defer></script>
-    <script src="/safe-dom.js?v=20260422b" defer></script>
-    <script src="/main.js?v=20260422b" defer></script>
+    <script src="/config.js?v=20260422c"></script>
+    <script src="/safe-dom.js?v=20260422c" defer></script>
+    <script src="/catalog.js?v=20260422c" defer></script>
+    <script>
+      (function () {
+        var year = document.getElementById("year");
+        if (year) year.textContent = String(new Date().getFullYear());
+      })();
+    </script>
   </body>
 </html>

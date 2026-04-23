@@ -190,6 +190,24 @@ function buildFriendlyCatalogError(error) {
   return message || "Error al cargar catálogo público.";
 }
 
+function applyContactLinks() {
+  const contactMap = {
+    whatsapp: config.contact?.whatsapp,
+    instagram: config.contact?.instagram,
+    maps: config.contact?.maps,
+  };
+  Object.entries(contactMap).forEach(([key, value]) => {
+    const link = document.querySelector(`[data-contact="${key}"]`);
+    if (!link) return;
+    if (isConfiguredValue(value)) {
+      safeDom.setSafeUrl?.(link, "href", value);
+      link.hidden = false;
+    } else {
+      link.hidden = true;
+    }
+  });
+}
+
 async function fetchCatalogProductsFromBackend() {
   const catalogTenantId = getCatalogTenantId();
   if (!catalogTenantId) {
@@ -291,6 +309,8 @@ function applyStoreMeta(meta) {
   if (meta.palette?.secondary) {
     document.documentElement.style.setProperty("--catalog-secondary", meta.palette.secondary);
   }
+
+  applyContactLinks();
 
   if (meta.showPrices === false) {
     if (elements.colHeaderListPrice) elements.colHeaderListPrice.hidden = true;
@@ -522,6 +542,7 @@ if (elements.catalogSearchInput) {
 
 async function bootstrap() {
   await Promise.resolve(window.__STORE_CONFIG_READY__);
+  applyContactLinks();
   await loadCatalog();
 }
 
