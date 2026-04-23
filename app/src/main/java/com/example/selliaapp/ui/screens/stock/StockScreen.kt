@@ -63,6 +63,7 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -216,6 +217,7 @@ fun StockScreen(
             p.quantity > 0 && min > 0 && p.quantity < min
         }
     }
+    val allProductIds = remember(products) { products.map { it.id }.filter { it > 0 }.toSet() }
 
     val currency = remember { NumberFormat.getCurrencyInstance(Locale("es", "AR")) }
 
@@ -224,6 +226,26 @@ fun StockScreen(
     val onForcePriceRefresh = {
         vm.forceRecalculateAutoPricing()
         importMessage = "Recalculando precios automáticos en segundo plano."
+    }
+
+    val updateSelectedVisibility: (Boolean) -> Unit = { makePublic ->
+        stockVm.updateProductsPublicStatus(
+            productIds = selectedProductIds,
+            makePublic = makePublic
+        ) { result ->
+            result.onSuccess { updated ->
+                importMessage = when {
+                    updated <= 0 && makePublic -> "Los productos seleccionados ya estaban públicos."
+                    updated <= 0 -> "Los productos seleccionados ya estaban ocultos."
+                    makePublic -> "Se publicaron $updated productos."
+                    else -> "Se ocultaron $updated productos."
+                }
+                selectionModeEnabled = false
+                selectedProductIds = emptySet()
+            }.onFailure { error ->
+                importMessage = error.message ?: "No se pudo actualizar la visibilidad."
+            }
+        }
     }
 
     Scaffold(
@@ -242,6 +264,27 @@ fun StockScreen(
                     },
                     actions = {
                         if (selectionModeEnabled) {
+                            val allSelected = allProductIds.isNotEmpty() && selectedProductIds.size == allProductIds.size
+                            TextButton(
+                                onClick = {
+                                    selectedProductIds = if (allSelected) emptySet() else allProductIds
+                                },
+                                enabled = allProductIds.isNotEmpty()
+                            ) {
+                                Text(if (allSelected) "Limpiar" else "Todos")
+                            }
+                            TextButton(
+                                onClick = { updateSelectedVisibility(true) },
+                                enabled = selectedProductIds.isNotEmpty()
+                            ) {
+                                Text("Publicar")
+                            }
+                            TextButton(
+                                onClick = { updateSelectedVisibility(false) },
+                                enabled = selectedProductIds.isNotEmpty()
+                            ) {
+                                Text("Ocultar")
+                            }
                             IconButton(onClick = {
                                 if (selectedProductIds.isNotEmpty()) {
                                     showDeleteSelectedDialog = true

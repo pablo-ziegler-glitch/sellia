@@ -1507,6 +1507,13 @@ const runScheduledBackgroundJob = async (params: {
   jobId: BackgroundJobId;
   runner: () => Promise<unknown>;
 }): Promise<null> => {
+  if (params.jobId == "refresh_public_products") {
+    console.info("Background job forced to on-demand mode. Scheduled run skipped.", {
+      jobId: params.jobId,
+      reason: "forced_on_demand",
+    });
+    return null;
+  }
   if (!ENABLE_SCHEDULED_BACKGROUND_JOBS) {
     console.info("Scheduled background jobs are disabled. Skipping run.", {
       jobId: params.jobId,

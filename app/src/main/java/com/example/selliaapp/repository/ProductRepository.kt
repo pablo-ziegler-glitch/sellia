@@ -785,6 +785,48 @@ class ProductRepository(
         }
     }
 
+    suspend fun updatePublicStatusByIds(
+        productIds: Collection<Int>,
+        publicStatus: String
+    ): Int = withContext(io) {
+        val normalizedStatus = publicStatus.lowercase()
+        require(normalizedStatus == "published" || normalizedStatus == "draft") {
+            "publicStatus inválido: $publicStatus"
+        }
+        val uniqueIds = productIds.mapNotNull { id -> id.takeIf { it > 0 } }.distinct()
+        if (uniqueIds.isEmpty()) return@withContext 0
+
+        val now = System.currentTimeMillis()
+        val changedIds = mutableListOf<Int>()
+        db.withTransaction {
+            val currentProducts = productDao.getByIds(uniqueIds)
+            changedIds += currentProducts
+                .filter { it.publicStatus != normalizedStatus }
+                .map { it.id }
+            if (changedIds.isEmpty()) return@withTransaction
+
+            productDao.updatePublicStatusByIds(
+                ids = changedIds,
+                publicStatus = normalizedStatus,
+                today = LocalDate.now()
+            )
+            changedIds.forEach { id ->
+                syncOutboxDao.upsert(
+                    SyncOutboxEntity(
+                        entityType = SyncEntityType.PRODUCT.storageKey,
+                        entityId = id.toLong(),
+                        createdAt = now
+                    )
+                )
+            }
+            lastCache = productDao.getAllOnce()
+        }
+        if (changedIds.isNotEmpty()) {
+            trySyncProductsNow(changedIds, now)
+        }
+        changedIds.size
+    }
+
 
     // ---------- Sync manual (pull) ----------
     /**

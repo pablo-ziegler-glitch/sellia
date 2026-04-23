@@ -125,6 +125,21 @@ interface ProductDao {
     @Query("DELETE FROM products WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Int>): Int
 
+    @Query(
+        """
+        UPDATE products
+        SET publicStatus = :publicStatus,
+            updatedAt = :today
+        WHERE id IN (:ids)
+          AND publicStatus != :publicStatus
+        """
+    )
+    suspend fun updatePublicStatusByIds(
+        ids: List<Int>,
+        publicStatus: String,
+        today: LocalDate
+    ): Int
+
     /** Borrado completo de productos (uso exclusivo en recuperaciones críticas). */
     @Query("DELETE FROM products")
     suspend fun deleteAll()

@@ -55,6 +55,35 @@ class StockViewModel @Inject constructor(
         }
     }
 
+    fun updateProductsPublicStatus(
+        productIds: Set<Int>,
+        makePublic: Boolean,
+        onDone: (Result<Int>) -> Unit = {}
+    ) {
+        val uniqueIds = productIds.filter { it > 0 }.toSet()
+        if (uniqueIds.isEmpty()) {
+            onDone(Result.success(0))
+            return
+        }
+        val targetStatus = if (makePublic) "published" else "draft"
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                repo.updatePublicStatusByIds(
+                    productIds = uniqueIds,
+                    publicStatus = targetStatus
+                )
+            }.onSuccess { updated ->
+                withContext(Dispatchers.Main) {
+                    onDone(Result.success(updated))
+                }
+            }.onFailure { error ->
+                withContext(Dispatchers.Main) {
+                    onDone(Result.failure(error))
+                }
+            }
+        }
+    }
+
     // ====== Listados / Búsquedas ======
 
     /** Listado principal para pantallas de stock (mantengo tu semántica). */

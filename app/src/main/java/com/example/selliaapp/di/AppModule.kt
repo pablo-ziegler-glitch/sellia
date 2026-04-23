@@ -429,11 +429,13 @@ object AppModule {
     fun providePublicCatalogConfigRepository(
         dataStore: DataStore<Preferences>,
         firestore: FirebaseFirestore,
+        functions: com.google.firebase.functions.FirebaseFunctions,
         tenantProvider: TenantProvider,
         @IoDispatcher io: CoroutineDispatcher
     ): PublicCatalogConfigRepository = PublicCatalogConfigRepository(
         dataStore = dataStore,
         firestore = firestore,
+        functions = functions,
         tenantProvider = tenantProvider,
         io = io
     )
