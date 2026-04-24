@@ -101,9 +101,9 @@ internal fun exportQrPdf(
                 maxWidthPx = textMaxWidth
             )
             textLines += buildPriceLine(
-                fullLabel = "Efectivo",
-                shortLabel = "Efect",
-                value = product.cashPrice ?: product.listPrice,
+                fullLabel = "Efectivo/Transferencia",
+                shortLabel = "Efec/Transf",
+                value = product.cashPrice ?: product.transferPrice ?: product.listPrice,
                 currencyFormatter = currencyFormatter,
                 paint = pricePaint,
                 maxWidthPx = textMaxWidth

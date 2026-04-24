@@ -68,8 +68,9 @@ fun ProductEditorDialog(
     var purchasePrice by remember { mutableStateOf(TextFieldValue(initial?.purchasePrice?.toString() ?: "")) }
     var gainTargetPercent by remember { mutableStateOf(TextFieldValue(initial?.gainTargetPercent?.toString() ?: "")) }
     var listPrice by remember { mutableStateOf(TextFieldValue(initial?.listPrice?.toString() ?: "")) }
-    var cashPrice by remember { mutableStateOf(TextFieldValue(initial?.cashPrice?.toString() ?: "")) }
-    var transferPrice by remember { mutableStateOf(TextFieldValue(initial?.transferPrice?.toString() ?: "")) }
+    var effectiveTransferPrice by remember {
+        mutableStateOf(TextFieldValue((initial?.cashPrice ?: initial?.transferPrice)?.toString() ?: ""))
+    }
     var mlPrice by remember { mutableStateOf(TextFieldValue(initial?.mlPrice?.toString() ?: "")) }
     var ml3cPrice by remember { mutableStateOf(TextFieldValue(initial?.ml3cPrice?.toString() ?: "")) }
     var ml6cPrice by remember { mutableStateOf(TextFieldValue(initial?.ml6cPrice?.toString() ?: "")) }
@@ -85,8 +86,7 @@ fun ProductEditorDialog(
     var stockError by remember { mutableStateOf<String?>(null) }
     var minStockError by remember { mutableStateOf<String?>(null) }
     var listPriceError by remember { mutableStateOf<String?>(null) }
-    var cashPriceError by remember { mutableStateOf<String?>(null) }
-    var transferPriceError by remember { mutableStateOf<String?>(null) }
+    var effectiveTransferPriceError by remember { mutableStateOf<String?>(null) }
     var mlPriceError by remember { mutableStateOf<String?>(null) }
     var ml3cPriceError by remember { mutableStateOf<String?>(null) }
     var ml6cPriceError by remember { mutableStateOf<String?>(null) }
@@ -133,8 +133,8 @@ fun ProductEditorDialog(
             barcode.text.trim(),
             purchase,
             listPrice.text.toDoubleOrNull(),
-            cashPrice.text.toDoubleOrNull(),
-            transferPrice.text.toDoubleOrNull(),
+            effectiveTransferPrice.text.toDoubleOrNull(),
+            effectiveTransferPrice.text.toDoubleOrNull(),
             mlPrice.text.toDoubleOrNull(),
             ml3cPrice.text.toDoubleOrNull(),
             ml6cPrice.text.toDoubleOrNull(),
@@ -263,33 +263,17 @@ fun ProductEditorDialog(
             )
 
             OutlinedTextField(
-                value = cashPrice,
-                onValueChange = { cashPrice = it; cashPriceError = null },
-                label = { Text("Precio efectivo") },
-                isError = cashPriceError != null,
-                supportingText = cashPriceError?.let { msg -> { Text(msg) } },
+                value = effectiveTransferPrice,
+                onValueChange = { effectiveTransferPrice = it; effectiveTransferPriceError = null },
+                label = { Text("Precio efectivo/transferencia") },
+                isError = effectiveTransferPriceError != null,
+                supportingText = effectiveTransferPriceError?.let { msg -> { Text(msg) } },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier
                     .fillMaxWidth()
                     .onFocusChanged {
-                        if (!it.isFocused && cashPrice.text.isNotBlank() && cashPrice.text.toDoubleOrNull() == null) {
-                            cashPriceError = "Ingresá un precio válido."
-                        }
-                    }
-            )
-
-            OutlinedTextField(
-                value = transferPrice,
-                onValueChange = { transferPrice = it; transferPriceError = null },
-                label = { Text("Precio transferencia") },
-                isError = transferPriceError != null,
-                supportingText = transferPriceError?.let { msg -> { Text(msg) } },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged {
-                        if (!it.isFocused && transferPrice.text.isNotBlank() && transferPrice.text.toDoubleOrNull() == null) {
-                            transferPriceError = "Ingresá un precio válido."
+                        if (!it.isFocused && effectiveTransferPrice.text.isNotBlank() && effectiveTransferPrice.text.toDoubleOrNull() == null) {
+                            effectiveTransferPriceError = "Ingresá un precio válido."
                         }
                     }
             )
@@ -350,8 +334,7 @@ fun ProductEditorDialog(
                     operativosPercent = operativosPercent,
                     channels = listOfNotNull(
                         listPrice.text.toDoubleOrNull()?.let { NetGainChannel("Lista", it, applyPosnet = true) },
-                        cashPrice.text.toDoubleOrNull()?.let { NetGainChannel("Efectivo", it, applyPosnet = false) },
-                        transferPrice.text.toDoubleOrNull()?.let { NetGainChannel("Transferencia", it, applyPosnet = false) },
+                        effectiveTransferPrice.text.toDoubleOrNull()?.let { NetGainChannel("Efectivo/Transferencia", it, applyPosnet = false) },
                         mlPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (0C)", it, applyPosnet = false) },
                         ml3cPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (3C)", it, applyPosnet = false) },
                         ml6cPrice.text.toDoubleOrNull()?.let { NetGainChannel("ML (6C)", it, applyPosnet = false) }

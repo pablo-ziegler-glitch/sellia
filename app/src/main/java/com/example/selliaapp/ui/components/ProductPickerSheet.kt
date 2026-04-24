@@ -69,10 +69,10 @@ fun ProductPickerSheet(
                         ListItem(
                             headlineContent = { Text(p.name) },
                             supportingContent = {
+                                val effectiveTransferPrice = p.cashPrice ?: p.transferPrice ?: p.listPrice
                                 Text(
                                     "Lista: ${p.listPrice ?: "-"} · " +
-                                        "Efectivo: ${p.cashPrice ?: p.listPrice ?: "-"} · " +
-                                        "Transferencia: ${p.transferPrice ?: p.listPrice ?: "-"} · " +
+                                        "Efectivo/Transferencia: ${effectiveTransferPrice ?: "-"} · " +
                                         "Stock: ${p.quantity} · ${p.barcode}"
                                 )
                             },

@@ -280,9 +280,9 @@ fun ViewerPublicCatalogScreen(
             title = { Text(product.name) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val effectiveTransferPrice = product.cashPrice ?: product.transferPrice
                     Text("Precio lista: ${formatViewerPrice(product.listPrice, currencyFormatter)}")
-                    Text("Precio efectivo: ${formatViewerPrice(product.cashPrice, currencyFormatter)}")
-                    Text("Precio transferencia: ${formatViewerPrice(product.transferPrice, currencyFormatter)}")
+                    Text("Precio efectivo/transferencia: ${formatViewerPrice(effectiveTransferPrice, currencyFormatter)}")
                     if (!product.category.isNullOrBlank()) {
                         Text("Categoría: ${product.category}")
                     }

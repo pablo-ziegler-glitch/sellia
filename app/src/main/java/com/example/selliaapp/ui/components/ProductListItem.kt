@@ -72,10 +72,10 @@ fun ProductListItem(
                 )
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            val effectiveTransferPrice = product.cashPrice ?: product.transferPrice ?: product.listPrice
             Text(
                 text = "Lista: ${product.listPrice ?: "-"} · " +
-                    "Efectivo: ${product.cashPrice ?: product.listPrice ?: "-"} · " +
-                    "Transferencia: ${product.transferPrice ?: product.listPrice ?: "-"}",
+                    "Efectivo/Transferencia: ${effectiveTransferPrice ?: "-"}",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(

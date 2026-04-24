@@ -222,9 +222,9 @@ private fun ProductCard(
                 style = MaterialTheme.typography.titleLarge
             )
 
+            val effectiveTransferPrice = product.cashPrice ?: product.transferPrice
             PriceRow(label = "PRECIO LISTA", value = formatPrice(product.listPrice, currency))
-            PriceRow(label = "PRECIO EFECTIVO", value = formatPrice(product.cashPrice, currency))
-            PriceRow(label = "PRECIO TRANSFERENCIA", value = formatPrice(product.transferPrice, currency))
+            PriceRow(label = "PRECIO EFECTIVO/TRANSFERENCIA", value = formatPrice(effectiveTransferPrice, currency))
 
             if (!product.code.isNullOrBlank()) {
                 Text(text = "Código: ${product.code}", style = MaterialTheme.typography.bodyMedium)

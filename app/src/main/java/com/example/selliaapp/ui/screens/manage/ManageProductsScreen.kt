@@ -298,10 +298,10 @@ fun ManageProductsScreen(
                             headlineContent = { Text(p.name) },
                             supportingContent = {
                                 val sizesInfo = if (p.sizes.isEmpty()) "Talles: sin info por el momento" else "Talles: ${p.sizes.joinToString()}"
+                                val effectiveTransferPrice = p.cashPrice ?: p.transferPrice ?: p.listPrice ?: 0.0
                                 Text(
                                     "Lista: ${p.listPrice ?: 0.0} · " +
-                                        "Efectivo: ${p.cashPrice ?: p.listPrice ?: 0.0} · " +
-                                        "Transferencia: ${p.transferPrice ?: p.listPrice ?: 0.0} · " +
+                                        "Efectivo/Transferencia: $effectiveTransferPrice · " +
                                         "Stock: ${p.quantity} · Código: ${p.barcode ?: "—"} · $sizesInfo"
                                 )
                             },

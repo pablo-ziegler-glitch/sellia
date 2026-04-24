@@ -189,6 +189,7 @@ class ProductViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _imageUploadState.value = ImageUploadUiState(uploading = false, message = null)
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+            val unifiedEffectiveTransferPrice = cashPrice ?: transferPrice
             val normalizedPublicStatus = resolvePublicStatusForCreate(
                 canManagePublication = canManagePublication,
                 publishRequested = publishRequested
@@ -202,8 +203,8 @@ class ProductViewModel @Inject constructor(
                 purchasePrice = purchasePrice,
                 // Legacy:
                 listPrice = listPrice,
-                cashPrice = cashPrice,
-                transferPrice = transferPrice,
+                cashPrice = unifiedEffectiveTransferPrice,
+                transferPrice = unifiedEffectiveTransferPrice,
                 transferNetPrice = transferNetPrice,
                 mlPrice = mlPrice,
                 ml3cPrice = ml3cPrice,
@@ -293,6 +294,7 @@ class ProductViewModel @Inject constructor(
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val normalizedImages = imageUrls.map { it.trim() }.filter { it.isNotBlank() }
+            val unifiedEffectiveTransferPrice = cashPrice ?: transferPrice
             val current = repo.getById(id)
             val normalizedPublicStatus = resolvePublicStatusForUpdate(
                 canManagePublication = canManagePublication,
@@ -306,8 +308,8 @@ class ProductViewModel @Inject constructor(
                 name = name,
                 purchasePrice = purchasePrice,
                 listPrice = listPrice,
-                cashPrice = cashPrice,
-                transferPrice = transferPrice,
+                cashPrice = unifiedEffectiveTransferPrice,
+                transferPrice = unifiedEffectiveTransferPrice,
                 transferNetPrice = transferNetPrice,
                 mlPrice = mlPrice,
                 ml3cPrice = ml3cPrice,

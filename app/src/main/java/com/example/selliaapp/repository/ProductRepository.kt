@@ -160,36 +160,43 @@ class ProductRepository(
         existing: ProductEntity? = null,
         force: Boolean = false
     ): ProductEntity {
-        val purchasePrice = incoming.purchasePrice ?: existing?.purchasePrice ?: return incoming
+        val normalizedIncoming = normalizeUnifiedEffectiveTransferPrice(incoming, existing)
+        val purchasePrice = normalizedIncoming.purchasePrice ?: existing?.purchasePrice ?: return normalizedIncoming
         val hasManualPrices = when {
             existing == null -> listOf(
-                incoming.listPrice,
-                incoming.cashPrice,
-                incoming.transferPrice,
+                normalizedIncoming.listPrice,
+                normalizedIncoming.cashPrice,
             ).any { it != null }
 
             existing.autoPricing -> {
-                val listChangedManually = incoming.listPrice != null && incoming.listPrice != existing.listPrice
-                val cashChangedManually = incoming.cashPrice != null && incoming.cashPrice != existing.cashPrice
-                val transferChangedManually = incoming.transferPrice != null && incoming.transferPrice != existing.transferPrice
-                listChangedManually || cashChangedManually || transferChangedManually
+                val listChangedManually = normalizedIncoming.listPrice != null && normalizedIncoming.listPrice != existing.listPrice
+                val effectiveChangedManually = normalizedIncoming.cashPrice != null && normalizedIncoming.cashPrice != (existing.cashPrice ?: existing.transferPrice)
+                listChangedManually || effectiveChangedManually
             }
 
             else -> listOf(
-                incoming.listPrice,
-                incoming.cashPrice,
-                incoming.transferPrice,
+                normalizedIncoming.listPrice,
+                normalizedIncoming.cashPrice,
             ).any { it != null }
         }
         val shouldAuto = when {
             force -> true
             hasManualPrices -> false
-            incoming.autoPricing -> true
+            normalizedIncoming.autoPricing -> true
             existing != null -> existing.autoPricing
             else -> true
         }
         if (!shouldAuto) {
-            return incoming.copy(autoPricing = false)
+            val settings = pricingConfigRepository.getSettings()
+            val transferPrice = normalizedIncoming.cashPrice
+            val transferNetPrice = transferPrice?.let { price ->
+                price * (1 - settings.transferenciaRetencionPercent / 100.0)
+            }
+            return normalizedIncoming.copy(
+                autoPricing = false,
+                transferPrice = transferPrice,
+                transferNetPrice = transferNetPrice
+            )
         }
         val settings = pricingConfigRepository.getSettings()
         val fixedCosts = pricingConfigRepository.getFixedCosts()
@@ -206,13 +213,31 @@ class ProductRepository(
         return incoming.copy(
             listPrice = result.listPrice,
             cashPrice = result.cashPrice,
-            transferPrice = result.transferPrice,
+            transferPrice = result.cashPrice,
             transferNetPrice = result.transferNetPrice,
             mlPrice = result.mlPrice,
             ml3cPrice = result.ml3cPrice,
             ml6cPrice = result.ml6cPrice,
             autoPricing = true
         )
+    }
+
+    private fun normalizeUnifiedEffectiveTransferPrice(
+        incoming: ProductEntity,
+        existing: ProductEntity? = null
+    ): ProductEntity {
+        val unifiedEffectivePrice = incoming.cashPrice
+            ?: incoming.transferPrice
+            ?: existing?.cashPrice
+            ?: existing?.transferPrice
+        return if (unifiedEffectivePrice != null) {
+            incoming.copy(
+                cashPrice = unifiedEffectivePrice,
+                transferPrice = unifiedEffectivePrice
+            )
+        } else {
+            incoming
+        }
     }
 
     // ---------- Importación tabular: bulkUpsert desde filas parseadas ----------
@@ -901,9 +926,12 @@ class ProductRepository(
                 .toMap(mutableMapOf())
 
             for (remoteProduct in remoteList) {
+                val unifiedEffectiveTransfer = remoteProduct.entity.cashPrice ?: remoteProduct.entity.transferPrice
                 val r = remoteProduct.entity.copy(
                     code = remoteProduct.entity.code?.trim()?.ifBlank { null },
-                    barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null }
+                    barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null },
+                    cashPrice = unifiedEffectiveTransfer,
+                    transferPrice = unifiedEffectiveTransfer
                 )
                 val remoteImages = remoteProduct.imageUrls
                 val local = localById[r.id]
@@ -976,10 +1004,13 @@ class ProductRepository(
         val uniqueBackup = remoteList
             .asSequence()
             .map { remoteProduct ->
+                val unifiedEffectiveTransfer = remoteProduct.entity.cashPrice ?: remoteProduct.entity.transferPrice
                 remoteProduct.copy(
                     entity = remoteProduct.entity.copy(
                         code = remoteProduct.entity.code?.trim()?.ifBlank { null },
-                        barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null }
+                        barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null },
+                        cashPrice = unifiedEffectiveTransfer,
+                        transferPrice = unifiedEffectiveTransfer
                     )
                 )
             }
@@ -1129,7 +1160,7 @@ class ProductRepository(
                             productName = product.name,
                             delta = 0,
                             reason = StockMovementReasons.PRICING_RECALC,
-                            note = "Lista ${product.listPrice}→${priced.listPrice}, Efectivo ${product.cashPrice}→${priced.cashPrice}",
+                            note = "Lista ${product.listPrice}→${priced.listPrice}, Efectivo/Transferencia ${(product.cashPrice ?: product.transferPrice)}→${priced.cashPrice}",
                             source = source,
                             occurredAtEpochMs = now
                         )
@@ -1310,8 +1341,10 @@ class ProductRepository(
             assertCodeAvailable(entity.code, currentId = current.id)
             val normalized = entity.copy(updatedAt = LocalDate.now())
             val purchaseChanged = current.purchasePrice != normalized.purchasePrice
+            val gainTargetChanged = current.gainTargetPercent != normalized.gainTargetPercent
+            val shouldForceRecalculation = current.autoPricing && (purchaseChanged || gainTargetChanged)
             val priced = when {
-                purchaseChanged && current.autoPricing -> applyAutoPricing(normalized, current, force = true)
+                shouldForceRecalculation -> applyAutoPricing(normalized, current, force = true)
                 else -> applyAutoPricing(normalized, current)
             }
             rows = productDao.update(priced)
