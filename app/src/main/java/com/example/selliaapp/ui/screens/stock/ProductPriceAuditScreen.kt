@@ -46,14 +46,12 @@ fun ProductPriceAuditScreen(
             ) {
                 items(state.entries) { entry ->
                     Column(modifier = Modifier.fillMaxWidth()) {
+                        val oldEffectiveTransfer = entry.oldCashPrice ?: entry.oldTransferPrice
+                        val newEffectiveTransfer = entry.newCashPrice ?: entry.newTransferPrice
                         Text(entry.productName, style = MaterialTheme.typography.titleSmall)
                         Text(
                             "Lista: ${entry.oldListPrice ?: "-"} → ${entry.newListPrice ?: "-"} | " +
-                                "Efectivo: ${entry.oldCashPrice ?: "-"} → ${entry.newCashPrice ?: "-"}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            "Transferencia: ${entry.oldTransferPrice ?: "-"} → ${entry.newTransferPrice ?: "-"}",
+                                "Efectivo/Transferencia: ${oldEffectiveTransfer ?: "-"} → ${newEffectiveTransfer ?: "-"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

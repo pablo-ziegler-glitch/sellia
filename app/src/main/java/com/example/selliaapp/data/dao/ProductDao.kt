@@ -168,14 +168,16 @@ interface ProductDao {
         return if (existing == null) {
             insert(incoming).toInt()
         } else {
+            val unifiedEffectiveTransferPrice =
+                incoming.cashPrice ?: incoming.transferPrice ?: existing.cashPrice ?: existing.transferPrice
             val merged = existing.copy(
                 code        = incoming.code        ?: existing.code,
                 barcode     = incoming.barcode     ?: existing.barcode,
                 name        = if (incoming.name.isNotBlank()) incoming.name else existing.name,
                 purchasePrice = incoming.purchasePrice ?: existing.purchasePrice,
                 listPrice   = incoming.listPrice   ?: existing.listPrice,
-                cashPrice   = incoming.cashPrice   ?: existing.cashPrice,
-                transferPrice = incoming.transferPrice ?: existing.transferPrice,
+                cashPrice   = unifiedEffectiveTransferPrice,
+                transferPrice = unifiedEffectiveTransferPrice,
                 transferNetPrice = incoming.transferNetPrice ?: existing.transferNetPrice,
                 mlPrice     = incoming.mlPrice     ?: existing.mlPrice,
                 ml3cPrice   = incoming.ml3cPrice   ?: existing.ml3cPrice,

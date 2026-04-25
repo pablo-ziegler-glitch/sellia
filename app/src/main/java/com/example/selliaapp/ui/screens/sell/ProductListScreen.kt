@@ -45,14 +45,14 @@ fun ProductListScreen(
 
 @Composable
 fun ProductItem(product: ProductEntity) {
+    val effectiveTransferPrice = product.cashPrice ?: product.transferPrice ?: product.listPrice
     Column(modifier = Modifier
         .fillMaxWidth()
         .padding(16.dp)) {
         Text(text = product.name, style = MaterialTheme.typography.titleMedium)
         Text(
             text = "Lista: ${product.listPrice ?: "-"} · " +
-                "Efectivo: ${product.cashPrice ?: product.listPrice ?: "-"} · " +
-                "Transferencia: ${product.transferPrice ?: product.listPrice ?: "-"}",
+                "Efectivo/Transferencia: ${effectiveTransferPrice ?: "-"}",
             style = MaterialTheme.typography.bodyMedium
         )
         Text(

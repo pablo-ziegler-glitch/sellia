@@ -159,8 +159,7 @@ fun ProductQuickDetailDialog(
                 }
 
                 PriceLine("Lista", product.listPrice, currency)
-                PriceLine("Efectivo", product.cashPrice ?: product.listPrice, currency)
-                PriceLine("Transferencia", product.transferPrice ?: product.listPrice, currency)
+                PriceLine("Efectivo/Transferencia", product.cashPrice ?: product.transferPrice ?: product.listPrice, currency)
                 PriceLine("ML", product.mlPrice, currency)
                 PriceLine("ML 3C", product.ml3cPrice, currency)
                 PriceLine("ML 6C", product.ml6cPrice, currency)

@@ -127,8 +127,7 @@ fun AddProductScreen(
     var purchasePriceText by remember { mutableStateOf("") }
     var gainTargetPercentText by remember { mutableStateOf("") }
     var listPriceText by remember { mutableStateOf("") }
-    var cashPriceText by remember { mutableStateOf("") }
-    var transferPriceText by remember { mutableStateOf("") }
+    var effectiveTransferPriceText by remember { mutableStateOf("") }
     var mlPriceText by remember { mutableStateOf("") }
     var ml3cPriceText by remember { mutableStateOf("") }
     var ml6cPriceText by remember { mutableStateOf("") }
@@ -172,8 +171,7 @@ fun AddProductScreen(
                 barcode = p.barcode.orEmpty()
 
                 listPriceText = p.listPrice?.toString() ?: ""
-                cashPriceText = p.cashPrice?.toString() ?: ""
-                transferPriceText = p.transferPrice?.toString() ?: ""
+                effectiveTransferPriceText = (p.cashPrice ?: p.transferPrice)?.toString() ?: ""
                 purchasePriceText = p.purchasePrice?.toString() ?: ""
                 gainTargetPercentText = p.gainTargetPercent?.toString() ?: ""
                 mlPriceText = p.mlPrice?.toString() ?: ""
@@ -441,20 +439,14 @@ fun AddProductScreen(
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
-                    value = cashPriceText,
-                    onValueChange = { cashPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Precio en efectivo") },
+                    value = effectiveTransferPriceText,
+                    onValueChange = { effectiveTransferPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Precio efectivo/transferencia") },
                     modifier = Modifier.weight(1f)
                 )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = transferPriceText,
-                    onValueChange = { transferPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Precio transferencia") },
-                    modifier = Modifier.weight(1f)
-                )
                 OutlinedTextField(
                     value = mlPriceText,
                     onValueChange = { mlPriceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
@@ -487,8 +479,7 @@ fun AddProductScreen(
                     operativosPercent = pricingSettings?.operativosLocalPercent ?: 0.0,
                     channels = listOfNotNull(
                         listPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Lista", it, applyPosnet = true) },
-                        cashPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Efectivo", it, applyPosnet = false) },
-                        transferPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Transferencia", it, applyPosnet = false) },
+                        effectiveTransferPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("Efectivo/Transferencia", it, applyPosnet = false) },
                         mlPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (0C)", it, applyPosnet = false) },
                         ml3cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (3C)", it, applyPosnet = false) },
                         ml6cPriceText.replace(',', '.').toDoubleOrNull()?.let { NetGainChannel("ML (6C)", it, applyPosnet = false) }
@@ -699,8 +690,7 @@ fun AddProductScreen(
                             return@Button
                         }
                         val listPrice = listPriceText.replace(',', '.').toDoubleOrNull()
-                        val cashPrice = cashPriceText.replace(',', '.').toDoubleOrNull()
-                        val transferPrice = transferPriceText.replace(',', '.').toDoubleOrNull()
+                        val effectiveTransferPrice = effectiveTransferPriceText.replace(',', '.').toDoubleOrNull()
                         val transferNetPrice: Double? = null
                         val mlPrice = mlPriceText.replace(',', '.').toDoubleOrNull()
                         val ml3cPrice = ml3cPriceText.replace(',', '.').toDoubleOrNull()
@@ -717,8 +707,8 @@ fun AddProductScreen(
                                 barcode = barcode.ifBlank { null },
                                 purchasePrice = purchase,
                                 listPrice = listPrice,
-                                cashPrice = cashPrice,
-                                transferPrice = transferPrice,
+                                cashPrice = effectiveTransferPrice,
+                                transferPrice = effectiveTransferPrice,
                                 transferNetPrice = transferNetPrice,
                                 mlPrice = mlPrice,
                                 ml3cPrice = ml3cPrice,
@@ -754,8 +744,8 @@ fun AddProductScreen(
                                 barcode = barcode.ifBlank { null },
                                 purchasePrice = purchase,
                                 listPrice = listPrice,
-                                cashPrice = cashPrice,
-                                transferPrice = transferPrice,
+                                cashPrice = effectiveTransferPrice,
+                                transferPrice = effectiveTransferPrice,
                                 transferNetPrice = transferNetPrice,
                                 mlPrice = mlPrice,
                                 ml3cPrice = ml3cPrice,

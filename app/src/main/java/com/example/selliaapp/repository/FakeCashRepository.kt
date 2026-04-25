@@ -43,4 +43,6 @@ class FakeCashRepository : CashRepository {
         closingAmount: Double?,
         note: String?
     ) = error("FakeCashRepository.closeSession no implementado para este test")
+
+    override suspend fun closeOpenSessionWithCurrentBalance(note: String?): Boolean = false
 }

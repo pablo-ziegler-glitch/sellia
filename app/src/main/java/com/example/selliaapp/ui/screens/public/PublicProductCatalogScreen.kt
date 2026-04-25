@@ -318,6 +318,7 @@ private fun PublicCatalogItem(
             )
 
             Column(modifier = Modifier.weight(1f)) {
+                val effectiveTransferPrice = product.cashPrice ?: product.transferPrice
                 Text(
                     text = product.name,
                     style = MaterialTheme.typography.titleMedium,
@@ -330,12 +331,7 @@ private fun PublicCatalogItem(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = "PRECIO EFECTIVO: ${formatPrice(product.cashPrice, currency)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "PRECIO TRANSFERENCIA: ${formatPrice(product.transferPrice, currency)}",
+                    text = "PRECIO EFECTIVO/TRANSFERENCIA: ${formatPrice(effectiveTransferPrice, currency)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

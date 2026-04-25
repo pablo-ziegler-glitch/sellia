@@ -33,6 +33,8 @@ interface CashRepository {
         closingAmount: Double?,
         note: String? = null
     )
+
+    suspend fun closeOpenSessionWithCurrentBalance(note: String? = null): Boolean
 }
 
 data class CashSessionSummary(
