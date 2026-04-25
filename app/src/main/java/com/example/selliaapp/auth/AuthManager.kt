@@ -4,6 +4,7 @@ import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.di.AppModule
+import com.example.selliaapp.repository.CashRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -36,6 +38,7 @@ class AuthManager @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val tenantSkuConfigDao: TenantSkuConfigDao,
     private val database: AppDatabase,
+    private val cashRepository: CashRepository,
     @AppModule.IoDispatcher private val io: CoroutineDispatcher
 ) : TenantProvider {
 
@@ -57,8 +60,10 @@ class AuthManager @Inject constructor(
 
     private var authStateListener: FirebaseAuth.AuthStateListener? = null
     private var idTokenListener: FirebaseAuth.IdTokenListener? = null
+    private var sessionExpiryJob: Job? = null
 
     companion object {
+        private const val ABSOLUTE_SESSION_MAX_MS = 12 * 60 * 60 * 1000L
     }
 
     init {
@@ -130,10 +135,12 @@ class AuthManager @Inject constructor(
         resetLoading()
     }
 
-    fun signOut() {
+    suspend fun signOut() {
+        closeCashIfNeeded(reason = "Cierre automático de caja por cierre de sesión.")
         firebaseAuth.signOut()
         _state.value = AuthState.Unauthenticated
         _lastSessionRefreshAtMs.value = null
+        clearSessionExpiryWatchdog()
         resetLoading()
     }
 
@@ -147,6 +154,7 @@ class AuthManager @Inject constructor(
         authStateListener = null
         idTokenListener?.let(firebaseAuth::removeIdTokenListener)
         idTokenListener = null
+        clearSessionExpiryWatchdog()
         scope.cancel("AuthManager fue liberado")
     }
 
@@ -187,6 +195,7 @@ class AuthManager @Inject constructor(
         if (user == null) {
             _state.value = AuthState.Unauthenticated
             _lastSessionRefreshAtMs.value = null
+            clearSessionExpiryWatchdog()
             resetLoading()
             return
         }
@@ -217,12 +226,55 @@ class AuthManager @Inject constructor(
     private fun publishAuthenticatedState(session: AuthSession) {
         showLoading(progress = 1f, label = "Listo")
         val refreshedAtMs = System.currentTimeMillis()
+        val sessionStartedAtMs = resolveSessionStartedAtMs(refreshedAtMs)
         _lastSessionRefreshAtMs.value = refreshedAtMs
         _state.value = AuthState.Authenticated(
             session = session,
-            refreshedAtMs = refreshedAtMs
+            refreshedAtMs = refreshedAtMs,
+            sessionStartedAtMs = sessionStartedAtMs
         )
+        startSessionExpiryWatchdog(sessionStartedAtMs)
         resetLoading()
+    }
+
+    private fun resolveSessionStartedAtMs(fallbackNowMs: Long): Long {
+        val lastSignInMs = firebaseAuth.currentUser?.metadata?.lastSignInTimestamp ?: 0L
+        if (lastSignInMs <= 0L) return fallbackNowMs
+        return minOf(lastSignInMs, fallbackNowMs)
+    }
+
+    private fun startSessionExpiryWatchdog(sessionStartedAtMs: Long) {
+        clearSessionExpiryWatchdog()
+        val elapsed = System.currentTimeMillis() - sessionStartedAtMs
+        val remainingMs = ABSOLUTE_SESSION_MAX_MS - elapsed
+        if (remainingMs <= 0L) {
+            sessionExpiryJob = scope.launch {
+                signOut()
+            }
+            return
+        }
+
+        sessionExpiryJob = scope.launch {
+            delay(remainingMs)
+            val currentState = _state.value as? AuthState.Authenticated ?: return@launch
+            val currentElapsed = System.currentTimeMillis() - currentState.sessionStartedAtMs
+            if (currentElapsed >= ABSOLUTE_SESSION_MAX_MS) {
+                signOut()
+            } else {
+                startSessionExpiryWatchdog(currentState.sessionStartedAtMs)
+            }
+        }
+    }
+
+    private fun clearSessionExpiryWatchdog() {
+        sessionExpiryJob?.cancel()
+        sessionExpiryJob = null
+    }
+
+    private suspend fun closeCashIfNeeded(reason: String) {
+        runCatching {
+            cashRepository.closeOpenSessionWithCurrentBalance(note = reason)
+        }
     }
 
     private suspend fun enforceEmailVerification(user: FirebaseUser) {

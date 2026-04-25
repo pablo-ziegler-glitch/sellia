@@ -71,6 +71,12 @@ class CashRepositoryImpl @Inject constructor(
             note = note
         )
         cashSessionDao.insert(session)
+        recordSystemSnapshot(
+            sessionId = session.id,
+            expectedAmount = openingAmount,
+            countedAmount = openingAmount,
+            note = "SYSTEM|STATE=OPEN|openingAmount=$openingAmount|openedBy=${openedBy.orEmpty()}|note=${note.orEmpty()}"
+        )
         return session
     }
 
@@ -91,6 +97,16 @@ class CashRepositoryImpl @Inject constructor(
             referenceId = referenceId
         )
         cashMovementDao.insert(movement)
+        val session = cashSessionDao.getById(sessionId)
+        val movements = cashMovementDao.listBySession(sessionId)
+        val openingAmount = session?.openingAmount ?: 0.0
+        val expected = CashCalculations.expectedAmount(openingAmount, movements)
+        recordSystemSnapshot(
+            sessionId = sessionId,
+            expectedAmount = expected,
+            countedAmount = expected,
+            note = "SYSTEM|STATE=MOVEMENT|type=$type|amount=$amount|reference=${referenceId.orEmpty()}|note=${note.orEmpty()}"
+        )
         return movement
     }
 
@@ -124,6 +140,13 @@ class CashRepositoryImpl @Inject constructor(
         val session = cashSessionDao.getById(sessionId)
         val openingAmount = session?.openingAmount ?: 0.0
         val expected = CashCalculations.expectedAmount(openingAmount, movements)
+        val counted = closingAmount ?: expected
+        recordSystemSnapshot(
+            sessionId = sessionId,
+            expectedAmount = expected,
+            countedAmount = counted,
+            note = "SYSTEM|STATE=CLOSE|expected=$expected|counted=$counted|difference=${counted - expected}|note=${note.orEmpty()}"
+        )
         cashSessionDao.closeSession(
             sessionId = sessionId,
             closedAt = Instant.now().toEpochMilli(),
@@ -131,6 +154,34 @@ class CashRepositoryImpl @Inject constructor(
             expectedAmount = expected,
             closingAmount = closingAmount,
             closingNote = note
+        )
+    }
+
+    override suspend fun closeOpenSessionWithCurrentBalance(note: String?): Boolean {
+        val openSession = cashSessionDao.getOpenSession() ?: return false
+        closeSession(
+            sessionId = openSession.id,
+            closingAmount = null,
+            note = note
+        )
+        return true
+    }
+
+    private suspend fun recordSystemSnapshot(
+        sessionId: String,
+        expectedAmount: Double,
+        countedAmount: Double,
+        note: String
+    ) {
+        cashAuditDao.insert(
+            CashAuditEntity(
+                id = UUID.randomUUID().toString(),
+                sessionId = sessionId,
+                countedAmount = countedAmount,
+                difference = countedAmount - expectedAmount,
+                note = note,
+                createdAt = Instant.now()
+            )
         )
     }
 }

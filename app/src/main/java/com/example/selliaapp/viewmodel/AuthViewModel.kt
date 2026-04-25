@@ -38,7 +38,9 @@ class AuthViewModel @Inject constructor(
     }
 
     fun signOut() {
-        authManager.signOut()
+        viewModelScope.launch {
+            authManager.signOut()
+        }
     }
 
     fun selectTenantForSession(tenantId: String) {

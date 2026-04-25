@@ -657,10 +657,30 @@ class ProductRepository(
                                 return@forEach
                             }
                             val replacementQty = max(0, r.quantity ?: 0)
-                            val merged = current.copy(
+                            val mergedRaw = current.copy(
                                 quantity = replacementQty,
+                                purchasePrice = r.purchasePrice ?: current.purchasePrice,
+                                listPrice = r.listPrice ?: current.listPrice,
+                                cashPrice = r.cashPrice ?: current.cashPrice,
+                                transferPrice = r.transferPrice ?: current.transferPrice,
+                                transferNetPrice = r.transferNetPrice ?: current.transferNetPrice,
+                                mlPrice = r.mlPrice ?: current.mlPrice,
+                                ml3cPrice = r.ml3cPrice ?: current.ml3cPrice,
+                                ml6cPrice = r.ml6cPrice ?: current.ml6cPrice,
+                                description = r.description ?: current.description,
+                                imageUrl = r.imageUrl ?: current.imageUrl,
+                                imageUrls = if (r.imageUrls.isNotEmpty()) r.imageUrls else current.imageUrls,
+                                providerName = r.providerName ?: current.providerName,
+                                providerSku = r.providerSku ?: current.providerSku,
+                                brand = r.brand ?: current.brand,
+                                parentCategory = r.parentCategory ?: current.parentCategory,
+                                category = r.category ?: current.category,
+                                color = r.color ?: current.color,
+                                sizes = if (r.sizes.isNotEmpty()) r.sizes else current.sizes,
+                                minStock = r.minStock?.let { max(0, it) } ?: current.minStock,
                                 updatedAt = r.updatedAt ?: LocalDate.now()
                             )
+                            val merged = applyAutoPricing(mergedRaw, existing = current)
                             productDao.update(merged)
                             touchedIds += current.id
                             val delta = replacementQty - current.quantity
@@ -1271,7 +1291,7 @@ class ProductRepository(
             val offset = prefix.length + 1
             var next = (productDao.getMaxSequenceForCode(prefix, offset) ?: 0) + 1
             while (true) {
-                val candidate = "$prefix${next.toString().padStart(6, '0')}"
+                val candidate = "$prefix$next"
                 if (productDao.getByCodeOnce(candidate) == null) {
                     code = candidate
                     break

@@ -34,7 +34,8 @@ sealed interface AuthState {
     ) : AuthState
     data class Authenticated(
         val session: AuthSession,
-        val refreshedAtMs: Long
+        val refreshedAtMs: Long,
+        val sessionStartedAtMs: Long
     ) : AuthState
     data class Error(val message: String) : AuthState
 }
