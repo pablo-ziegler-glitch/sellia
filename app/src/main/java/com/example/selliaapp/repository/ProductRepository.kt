@@ -60,6 +60,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.LocalDate
+import java.text.Normalizer
+import java.util.Locale
 import kotlin.math.max
 
 
@@ -631,15 +633,16 @@ class ProductRepository(
                             val qty = max(0, r.quantity ?: 0)
                             val existingByCode = normalizedCode?.let { productDao.getByCodeOnce(it) }
                             val existingByBarcode = normalizedBarcode?.let { productDao.getByBarcodeOnce(it) }
-                            if (existingByCode != null || existingByBarcode != null) {
+                            val existingByName = productDao.getActiveByNameNormalizedOnce(r.name.trim())
+                            if (existingByCode != null || existingByBarcode != null || existingByName != null) {
                                 val issue = ImportRowIssue(
                                     line = r.lineNumber,
                                     productName = r.name.ifBlank { null },
                                     skuOrBarcode = normalizedCode ?: normalizedBarcode,
                                     attemptedAction = "crear",
-                                    technicalReason = "concurrency_uniqueness_conflict",
-                                    userMessage = "El producto ya existe y no se pudo crear por conflicto concurrente.",
-                                    suggestion = "Reintentá importación usando actualizar_stock para productos existentes."
+                                    technicalReason = "concurrency_uniqueness_conflict_or_duplicate_name",
+                                    userMessage = "El producto ya existe por código, barcode o nombre y no se puede crear duplicado.",
+                                    suggestion = "Usá actualizar_stock o corregí nombre/código/barcode en el archivo."
                                 )
                                 issues += issue
                                 return@forEach
@@ -1587,9 +1590,11 @@ class ProductRepository(
         var newId = 0
         db.withTransaction {
             assertCodeAvailable(normalized.code, currentId = null)
+            assertNameAvailable(normalized.name, currentId = null)
             val priced = applyAutoPricing(normalized)
             val prepared = ensureAutoCodes(priced, prefix = skuPrefix)
             assertCodeAvailable(prepared.code, currentId = null)
+            assertNameAvailable(prepared.name, currentId = null)
             newId = productDao.upsert(prepared)
             replaceProductImages(newId, prepared.imageUrls)
             if (prepared.quantity != 0) {
@@ -1710,6 +1715,7 @@ class ProductRepository(
         db.withTransaction {
             val current = productDao.getById(entity.id) ?: return@withTransaction
             assertCodeAvailable(entity.code, currentId = current.id)
+            assertNameAvailable(entity.name, currentId = current.id)
             val normalized = ensureIdentity(
                 entity.copy(
                     updatedAt = LocalDate.now(),
@@ -1780,6 +1786,28 @@ class ProductRepository(
         if (currentId == null || existing.id != currentId) {
             throw IllegalArgumentException("El código \"$normalized\" ya existe.")
         }
+    }
+
+    private suspend fun assertNameAvailable(name: String?, currentId: Int?) {
+        val normalized = normalizeNameKey(name) ?: return
+        val existing = productDao.getAllOnce()
+            .asSequence()
+            .filter { it.deletedAtEpochMs == null }
+            .firstOrNull { candidate ->
+                normalizeNameKey(candidate.name) == normalized
+            } ?: return
+        if (currentId == null || existing.id != currentId) {
+            throw IllegalArgumentException("El nombre \"$name\" ya existe.")
+        }
+    }
+
+    private fun normalizeNameKey(value: String?): String? {
+        val trimmed = value?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: return null
+        return Normalizer.normalize(trimmed, Normalizer.Form.NFD)
+            .replace("\\p{Mn}+".toRegex(), "")
+            .replace("\\s+".toRegex(), " ")
+            .trim()
+            .ifBlank { null }
     }
 
     private suspend fun adjustStockInternal(

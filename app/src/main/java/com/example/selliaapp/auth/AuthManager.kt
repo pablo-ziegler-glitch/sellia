@@ -73,7 +73,7 @@ class AuthManager @Inject constructor(
         private const val ENABLE_ABSOLUTE_SESSION_EXPIRY = false
         private const val SESSION_PREFS_NAME = "auth_session_prefs"
         private const val KEY_LAST_FORCED_RELOGIN_VERSION = "last_forced_relogin_version"
-        private const val FORCE_RELOGIN_VERSION = 1
+        private const val FORCE_RELOGIN_VERSION = 2
     }
 
     init {

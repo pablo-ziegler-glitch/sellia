@@ -56,6 +56,16 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name)) LIMIT 1")
     suspend fun getByNameNormalizedOnce(name: String): ProductEntity?
 
+    @Query(
+        """
+        SELECT * FROM products
+        WHERE deletedAtEpochMs IS NULL
+          AND LOWER(TRIM(name)) = LOWER(TRIM(:name))
+        LIMIT 1
+        """
+    )
+    suspend fun getActiveByNameNormalizedOnce(name: String): ProductEntity?
+
     @Query("SELECT * FROM products WHERE barcode = :barcode LIMIT 1")
     suspend fun getByBarcode(barcode: String): ProductEntity?
 

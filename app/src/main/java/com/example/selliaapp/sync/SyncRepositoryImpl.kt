@@ -317,6 +317,7 @@ class SyncRepositoryImpl @Inject constructor(
 
     private suspend fun runIncrementalPull(tenantId: String, force: Boolean = false) {
         try {
+            applyProductsForceReloadIfNeeded(tenantId)
             val productApplied = pullProductsIncremental(tenantId)
             val invoiceApplied = pullInvoicesIncremental(tenantId)
             val customerApplied = pullCustomersIncremental(tenantId)
@@ -330,6 +331,37 @@ class SyncRepositoryImpl @Inject constructor(
             Log.e(TAG, "Error en pull incremental tenant=$tenantId", t)
             throw t
         }
+    }
+
+    private suspend fun applyProductsForceReloadIfNeeded(tenantId: String) {
+        val remoteVersion = runCatching {
+            firestore.collection("tenants")
+                .document(tenantId)
+                .get()
+                .await()
+                .getLong(FIELD_PRODUCTS_FORCE_RELOAD_VERSION)
+                ?: 0L
+        }.getOrElse { error ->
+            Log.w(TAG, "No se pudo leer productsForceReloadVersion tenant=$tenantId", error)
+            0L
+        }
+        if (remoteVersion <= 0L) return
+        val localAppliedVersion = syncPrefs.getLong(
+            keyFor(tenantId, KEY_PRODUCTS_FORCE_RELOAD_APPLIED_VERSION),
+            0L
+        )
+        if (remoteVersion <= localAppliedVersion) return
+
+        syncPrefs.edit {
+            putBoolean(keyFor(tenantId, KEY_PRODUCTS_BASELINE_DONE), false)
+            putLong(keyFor(tenantId, KEY_PRODUCTS_UPDATED_CURSOR_MS), 0L)
+            putLong(keyFor(tenantId, KEY_PRODUCTS_DELETED_CURSOR_MS), 0L)
+            putLong(keyFor(tenantId, KEY_PRODUCTS_FORCE_RELOAD_APPLIED_VERSION), remoteVersion)
+        }
+        Log.i(
+            TAG,
+            "Forzando recarga completa de catálogo tenant=$tenantId remoteVersion=$remoteVersion previousApplied=$localAppliedVersion"
+        )
     }
 
     private suspend fun pullProductsIncremental(tenantId: String): Int {
@@ -714,6 +746,8 @@ class SyncRepositoryImpl @Inject constructor(
         private const val KEY_PRODUCTS_BASELINE_DONE = "products_baseline_done"
         private const val KEY_INVOICES_BASELINE_DONE = "invoices_baseline_done"
         private const val KEY_CUSTOMERS_BASELINE_DONE = "customers_baseline_done"
+        private const val KEY_PRODUCTS_FORCE_RELOAD_APPLIED_VERSION = "products_force_reload_applied_version"
+        private const val FIELD_PRODUCTS_FORCE_RELOAD_VERSION = "productsForceReloadVersion"
         private val EXCLUDED_SYNC_TABLES = setOf(
             "android_metadata",
             "room_master_table",
