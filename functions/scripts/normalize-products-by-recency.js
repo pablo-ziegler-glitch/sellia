@@ -24,6 +24,8 @@ const tenantId = readArgValue('--tenant');
 const isApply = args.includes('--apply');
 const isDryRun = !isApply;
 const runId = readArgValue('--run-id') || `products_norm_${Date.now()}`;
+const maxReportItems = Number(readArgValue('--max-report-items') || '200');
+const maxGroupIds = Number(readArgValue('--max-group-ids') || '100');
 
 if (!tenantId) {
   console.error('Falta --tenant TENANT_ID');
@@ -239,8 +241,9 @@ async function main() {
       manualReviewGroups += 1;
       conflicts.push({
         reason: ambiguity,
-        groupDocIds: group.map((g) => g.docId),
-        groupProductUuids: group.map((g) => g.productUuid),
+        groupDocIdsCount: group.length,
+        groupDocIdsSample: group.map((g) => g.docId).slice(0, maxGroupIds),
+        groupProductUuidsSample: group.map((g) => g.productUuid).slice(0, maxGroupIds),
       });
       continue;
     }
@@ -263,8 +266,9 @@ async function main() {
     mapping.push({
       canonicalDocId: canonical.docId,
       canonicalProductUuid: canonical.productUuid,
-      mergedDocIds: mergedGroupMembers.map((d) => d.docId),
-      mergedProductUuids: mergedGroupMembers.map((d) => d.productUuid),
+      mergedCount: mergedGroupMembers.length,
+      mergedDocIdsSample: mergedGroupMembers.map((d) => d.docId).slice(0, maxGroupIds),
+      mergedProductUuidsSample: mergedGroupMembers.map((d) => d.productUuid).slice(0, maxGroupIds),
     });
 
     const canonicalRef = productsRef.doc(canonical.productUuid);
@@ -376,8 +380,11 @@ async function main() {
     manualReviewGroups,
     archivedDocuments,
     canonicalDocumentsCreatedOrUpdated: canonicalDocumentsUpdated,
-    conflicts,
-    mapping,
+    conflictsCount: conflicts.length,
+    mappingCount: mapping.length,
+    conflicts: conflicts.slice(0, maxReportItems),
+    mapping: mapping.slice(0, maxReportItems),
+    reportTruncated: conflicts.length > maxReportItems || mapping.length > maxReportItems,
   };
 
   if (isDryRun) {
