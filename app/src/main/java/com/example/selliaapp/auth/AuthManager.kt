@@ -1,10 +1,12 @@
 package com.example.selliaapp.auth
 
+import android.content.Context
 import com.example.selliaapp.data.AppDatabase
 import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.di.AppModule
 import com.example.selliaapp.repository.CashRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -34,6 +36,7 @@ import javax.inject.Singleton
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Singleton
 class AuthManager @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val firebaseAuth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
     private val tenantSkuConfigDao: TenantSkuConfigDao,
@@ -61,12 +64,22 @@ class AuthManager @Inject constructor(
     private var authStateListener: FirebaseAuth.AuthStateListener? = null
     private var idTokenListener: FirebaseAuth.IdTokenListener? = null
     private var sessionExpiryJob: Job? = null
+    private val sessionPrefs by lazy {
+        appContext.getSharedPreferences(SESSION_PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     companion object {
         private const val ABSOLUTE_SESSION_MAX_MS = 12 * 60 * 60 * 1000L
+        private const val ENABLE_ABSOLUTE_SESSION_EXPIRY = false
+        private const val SESSION_PREFS_NAME = "auth_session_prefs"
+        private const val KEY_LAST_FORCED_RELOGIN_VERSION = "last_forced_relogin_version"
+        private const val FORCE_RELOGIN_VERSION = 1
     }
 
     init {
+        scope.launch {
+            enforceForcedReloginIfNeeded()
+        }
         observeRefreshSignals()
         registerAuthListeners()
     }
@@ -244,6 +257,10 @@ class AuthManager @Inject constructor(
     }
 
     private fun startSessionExpiryWatchdog(sessionStartedAtMs: Long) {
+        if (!ENABLE_ABSOLUTE_SESSION_EXPIRY) {
+            clearSessionExpiryWatchdog()
+            return
+        }
         clearSessionExpiryWatchdog()
         val elapsed = System.currentTimeMillis() - sessionStartedAtMs
         val remainingMs = ABSOLUTE_SESSION_MAX_MS - elapsed
@@ -269,6 +286,25 @@ class AuthManager @Inject constructor(
     private fun clearSessionExpiryWatchdog() {
         sessionExpiryJob?.cancel()
         sessionExpiryJob = null
+    }
+
+    private suspend fun enforceForcedReloginIfNeeded() {
+        val lastApplied = sessionPrefs.getInt(KEY_LAST_FORCED_RELOGIN_VERSION, 0)
+        if (lastApplied >= FORCE_RELOGIN_VERSION) return
+
+        if (firebaseAuth.currentUser != null) {
+            runCatching {
+                closeCashIfNeeded(reason = "Relogin forzado por actualización de seguridad de sesión.")
+            }
+            firebaseAuth.signOut()
+            _state.value = AuthState.Unauthenticated
+            _lastSessionRefreshAtMs.value = null
+            clearSessionExpiryWatchdog()
+            resetLoading()
+        }
+        sessionPrefs.edit()
+            .putInt(KEY_LAST_FORCED_RELOGIN_VERSION, FORCE_RELOGIN_VERSION)
+            .apply()
     }
 
     private suspend fun closeCashIfNeeded(reason: String) {

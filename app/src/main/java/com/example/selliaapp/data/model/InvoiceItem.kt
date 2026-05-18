@@ -25,13 +25,16 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("invoiceId"), Index("productId")]
+    indices = [Index("invoiceId"), Index("productId"), Index("productUuid")]
     )
 data class InvoiceItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     val invoiceId: Long,
     val productId: Int,
+    val productUuid: String? = null,
+    val productLegacyLocalId: Int? = null,
     val productName: String,
+    val productNameSnapshot: String? = null,
     val quantity: Int,
     val unitPrice: Double,
     val lineTotal: Double

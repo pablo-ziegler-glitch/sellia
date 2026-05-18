@@ -20,6 +20,8 @@ import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductPriceAuditDao
 import com.example.selliaapp.data.dao.ProductImageDao
+import com.example.selliaapp.data.dao.ProductStateHistoryDao
+import com.example.selliaapp.data.dao.ProductSyncConflictDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.PricingAuditDao
@@ -44,6 +46,8 @@ import com.example.selliaapp.data.local.entity.CloudServiceConfigEntity
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
 import com.example.selliaapp.data.local.entity.ProductPriceAuditEntity
+import com.example.selliaapp.data.local.entity.ProductStateHistoryEntity
+import com.example.selliaapp.data.local.entity.ProductSyncConflictEntity
 import com.example.selliaapp.data.local.entity.ProviderEntity
 import com.example.selliaapp.data.local.entity.PricingAuditEntity
 import com.example.selliaapp.data.local.entity.PricingFixedCostEntity
@@ -75,6 +79,8 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProductEntity::class,
         ProductImageEntity::class,
         ProductPriceAuditEntity::class,
+        ProductStateHistoryEntity::class,
+        ProductSyncConflictEntity::class,
         CustomerEntity::class,
         ProviderEntity::class,
         ReportDataEntity::class,
@@ -104,7 +110,7 @@ import com.example.selliaapp.data.local.entity.DevelopmentOptionsEntity
         ProviderInvoiceItem::class,
         User::class
     ],
-    version = 48,
+    version = 50,
     //autoMigrations = [AutoMigration(from = 1, to = 2)],
     exportSchema = true
 )
@@ -113,6 +119,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun productPriceAuditDao(): ProductPriceAuditDao
     abstract fun productImageDao(): ProductImageDao
+    abstract fun productStateHistoryDao(): ProductStateHistoryDao
+    abstract fun productSyncConflictDao(): ProductSyncConflictDao
     abstract fun userDao(): UserDao
     abstract fun customerDao(): CustomerDao
     abstract fun invoiceDao(): InvoiceDao
@@ -576,6 +584,161 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "ALTER TABLE `provider_invoice_items` ADD COLUMN `receivedQuantity` REAL"
                 )
+            }
+        }
+
+        val MIGRATION_48_49 = object : Migration(48, 49) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                if (!db.hasColumn("products", "productUuid")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `productUuid` TEXT NOT NULL DEFAULT ''")
+                }
+                if (!db.hasColumn("products", "legacyLocalId")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `legacyLocalId` INTEGER")
+                }
+                if (!db.hasColumn("products", "createdAtEpochMs")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `createdAtEpochMs` INTEGER NOT NULL DEFAULT 0")
+                }
+                if (!db.hasColumn("products", "updatedAtEpochMs")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `updatedAtEpochMs` INTEGER NOT NULL DEFAULT 0")
+                }
+                if (!db.hasColumn("products", "deletedAtEpochMs")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `deletedAtEpochMs` INTEGER")
+                }
+                if (!db.hasColumn("products", "syncVersion")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `syncVersion` INTEGER NOT NULL DEFAULT 0")
+                }
+                if (!db.hasColumn("products", "syncStatus")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `syncStatus` TEXT NOT NULL DEFAULT 'PENDING'")
+                }
+
+                db.execSQL(
+                    """
+                    UPDATE products
+                    SET legacyLocalId = COALESCE(legacyLocalId, id),
+                        productUuid = CASE
+                            WHEN TRIM(COALESCE(productUuid, '')) = '' THEN 'legacy-' || id
+                            ELSE productUuid
+                        END,
+                        createdAtEpochMs = CASE
+                            WHEN createdAtEpochMs <= 0 THEN COALESCE(updatedAt, 0) * 86400000
+                            ELSE createdAtEpochMs
+                        END,
+                        updatedAtEpochMs = CASE
+                            WHEN updatedAtEpochMs <= 0 THEN COALESCE(updatedAt, 0) * 86400000
+                            ELSE updatedAtEpochMs
+                        END,
+                        syncStatus = CASE
+                            WHEN deletedAtEpochMs IS NULL THEN 'SYNCED'
+                            ELSE 'DELETED'
+                        END
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_products_productUuid` ON `products` (`productUuid`)"
+                )
+
+                if (!db.hasColumn("sync_outbox", "entityUuid")) {
+                    db.execSQL("ALTER TABLE `sync_outbox` ADD COLUMN `entityUuid` TEXT")
+                }
+                if (!db.hasColumn("sync_outbox", "operation")) {
+                    db.execSQL("ALTER TABLE `sync_outbox` ADD COLUMN `operation` TEXT NOT NULL DEFAULT 'UPSERT'")
+                }
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_entityType_entityUuid_operation` ON `sync_outbox` (`entityType`, `entityUuid`, `operation`)"
+                )
+
+                if (!db.hasColumn("invoice_items", "productUuid")) {
+                    db.execSQL("ALTER TABLE `invoice_items` ADD COLUMN `productUuid` TEXT")
+                }
+                if (!db.hasColumn("invoice_items", "productLegacyLocalId")) {
+                    db.execSQL("ALTER TABLE `invoice_items` ADD COLUMN `productLegacyLocalId` INTEGER")
+                }
+                if (!db.hasColumn("invoice_items", "productNameSnapshot")) {
+                    db.execSQL("ALTER TABLE `invoice_items` ADD COLUMN `productNameSnapshot` TEXT")
+                }
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_invoice_items_productUuid` ON `invoice_items` (`productUuid`)")
+                db.execSQL(
+                    """
+                    UPDATE invoice_items
+                    SET productLegacyLocalId = COALESCE(productLegacyLocalId, productId),
+                        productNameSnapshot = COALESCE(productNameSnapshot, productName),
+                        productUuid = (
+                            SELECT p.productUuid
+                            FROM products p
+                            WHERE p.id = invoice_items.productId
+                            LIMIT 1
+                        )
+                    WHERE productUuid IS NULL
+                    """.trimIndent()
+                )
+
+                if (!db.hasColumn("stock_movements", "productUuid")) {
+                    db.execSQL("ALTER TABLE `stock_movements` ADD COLUMN `productUuid` TEXT")
+                }
+                if (!db.hasColumn("stock_movements", "productLegacyLocalId")) {
+                    db.execSQL("ALTER TABLE `stock_movements` ADD COLUMN `productLegacyLocalId` INTEGER")
+                }
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_stock_movements_productUuid` ON `stock_movements` (`productUuid`)")
+                db.execSQL(
+                    """
+                    UPDATE stock_movements
+                    SET productLegacyLocalId = COALESCE(productLegacyLocalId, productId),
+                        productUuid = (
+                            SELECT p.productUuid
+                            FROM products p
+                            WHERE p.id = stock_movements.productId
+                            LIMIT 1
+                        )
+                    WHERE productUuid IS NULL
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `product_sync_conflicts` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `localProductId` INTEGER,
+                        `localProductUuid` TEXT,
+                        `remoteProductUuid` TEXT,
+                        `remoteDocumentId` TEXT,
+                        `conflictType` TEXT NOT NULL,
+                        `detailsJson` TEXT,
+                        `createdAtEpochMs` INTEGER NOT NULL,
+                        `resolvedAtEpochMs` INTEGER,
+                        `resolutionStatus` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_sync_conflicts_localProductId` ON `product_sync_conflicts` (`localProductId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_sync_conflicts_localProductUuid` ON `product_sync_conflicts` (`localProductUuid`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_sync_conflicts_remoteProductUuid` ON `product_sync_conflicts` (`remoteProductUuid`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_sync_conflicts_resolutionStatus` ON `product_sync_conflicts` (`resolutionStatus`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_sync_conflicts_createdAtEpochMs` ON `product_sync_conflicts` (`createdAtEpochMs`)")
+            }
+        }
+
+        val MIGRATION_49_50 = object : Migration(49, 50) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `product_state_history` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productId` INTEGER,
+                        `productUuid` TEXT NOT NULL,
+                        `legacyLocalId` INTEGER,
+                        `snapshotJson` TEXT NOT NULL,
+                        `source` TEXT NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        `supersededByProductUuid` TEXT,
+                        `remoteDocumentId` TEXT,
+                        `recordedAtEpochMs` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_state_history_productUuid` ON `product_state_history` (`productUuid`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_state_history_recordedAtEpochMs` ON `product_state_history` (`recordedAtEpochMs`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_state_history_source` ON `product_state_history` (`source`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_state_history_reason` ON `product_state_history` (`reason`)")
             }
         }
 

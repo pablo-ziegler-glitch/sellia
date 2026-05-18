@@ -12,6 +12,13 @@ import java.time.LocalDate
 fun ProductEntity.toModel(): Product =
     Product(
         id = id,
+        productUuid = productUuid,
+        legacyLocalId = legacyLocalId,
+        createdAtEpochMs = createdAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+        deletedAtEpochMs = deletedAtEpochMs,
+        syncVersion = syncVersion,
+        syncStatus = syncStatus,
         code = code,
         barcode = barcode,
         name = name,
@@ -44,6 +51,13 @@ fun ProductEntity.toModel(): Product =
 fun Product.toEntity(): ProductEntity =
     ProductEntity(
         id = id,
+        productUuid = productUuid,
+        legacyLocalId = legacyLocalId,
+        createdAtEpochMs = createdAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+        deletedAtEpochMs = deletedAtEpochMs,
+        syncVersion = syncVersion,
+        syncStatus = syncStatus,
         code = code,
         barcode = barcode,
         name = name,

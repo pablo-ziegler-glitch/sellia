@@ -26,7 +26,9 @@
     "check:permissions-drift": "node scripts/check-role-permissions-drift.js",
     "test:security:bo": "vitest run test/backofficeSecurity.integration.test.ts",
     "catalog:backfill:dry": "node scripts/backfill-valkirja-catalog.js --dry-run",
-    "catalog:backfill:apply": "node scripts/backfill-valkirja-catalog.js --apply"
+    "catalog:backfill:apply": "node scripts/backfill-valkirja-catalog.js --apply",
+    "products:normalize:dry": "node scripts/normalize-products-by-recency.js --dry-run",
+    "products:normalize:apply": "node scripts/normalize-products-by-recency.js --apply"
   },
   "dependencies": {
     "axios": "^1.6.7",

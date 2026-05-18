@@ -23,9 +23,12 @@ import com.example.selliaapp.data.dao.TenantSkuConfigDao
 import com.example.selliaapp.data.local.entity.ProductEntity
 import com.example.selliaapp.data.local.entity.ProductImageEntity
 import com.example.selliaapp.data.local.entity.ProductPriceAuditEntity
+import com.example.selliaapp.data.local.entity.ProductStateHistoryEntity
+import com.example.selliaapp.data.local.entity.ProductSyncConflictEntity
 import com.example.selliaapp.data.local.entity.StockMovementEntity
 import com.example.selliaapp.data.local.entity.SyncEntityType
 import com.example.selliaapp.data.local.entity.SyncOutboxEntity
+import com.example.selliaapp.data.local.entity.SyncOutboxOperation
 import com.example.selliaapp.data.local.entity.TenantSkuConfigEntity
 import com.example.selliaapp.data.mappers.toModel
 import com.example.selliaapp.data.model.ImportResult
@@ -39,6 +42,7 @@ import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.CrossCatalogAuditContext
 import com.example.selliaapp.data.remote.CrossCatalogRemoteDataSource
 import com.example.selliaapp.data.remote.InvalidCrossCatalogDataException
+import com.example.selliaapp.data.remote.ProductFirestoreMappers
 import com.example.selliaapp.data.remote.ProductRemoteDataSource
 import com.example.selliaapp.data.remote.StockInteractionEvent
 import com.example.selliaapp.data.remote.StockInteractionRemoteDataSource
@@ -48,6 +52,7 @@ import com.example.selliaapp.sync.CsvImportWorker
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -98,9 +103,28 @@ class ProductRepository(
 
     private val stockMovementDao = db.stockMovementDao()
     private val syncOutboxDao = db.syncOutboxDao()
+    private val productStateHistoryDao = db.productStateHistoryDao()
+    private val productSyncConflictDao = db.productSyncConflictDao()
     private val remote = ProductRemoteDataSource(firestore, tenantProvider)
     private val crossCatalogRemote = CrossCatalogRemoteDataSource(firestore)
     private val stockInteractionRemote = StockInteractionRemoteDataSource(firestore, tenantProvider)
+    private val gson = Gson()
+
+    private fun ensureIdentity(product: ProductEntity, now: Long = System.currentTimeMillis()): ProductEntity {
+        val productUuid = product.productUuid.takeIf { it.isNotBlank() }
+            ?: ProductFirestoreMappers.buildLegacyProductUuid(
+                "local-${product.legacyLocalId ?: product.id.takeIf { it > 0 } ?: now}"
+            )
+        val createdAt = product.createdAtEpochMs.takeIf { it > 0L } ?: now
+        val updatedAt = product.updatedAtEpochMs.takeIf { it > 0L } ?: now
+        val legacyLocalId = product.legacyLocalId ?: product.id.takeIf { it > 0 }
+        return product.copy(
+            productUuid = productUuid,
+            legacyLocalId = legacyLocalId,
+            createdAtEpochMs = createdAt,
+            updatedAtEpochMs = updatedAt
+        )
+    }
 
     suspend fun insert(entity: ProductEntity): Int = withContext(io) {
         persistProduct(entity.copy(id = 0), StockMovementReasons.PRODUCT_CREATE)
@@ -132,7 +156,11 @@ class ProductRepository(
 
 
     suspend fun cachedOrEmpty(): List<ProductEntity> =
-        if (lastCache.isNotEmpty()) lastCache else attachImages(productDao.getAllOnce())
+        if (lastCache.isNotEmpty()) {
+            lastCache
+        } else {
+            attachImages(productDao.getAllOnce().filter { it.deletedAtEpochMs == null })
+        }
 
     suspend fun getAllForExport(): List<ProductEntity> = withContext(io) {
         productDao.getAllOnce()
@@ -262,7 +290,8 @@ class ProductRepository(
                     else                      -> null
                 }
                 val beforeQty = existing?.quantity ?: 0
-                val incoming = ProductEntity(
+                val incoming = ensureIdentity(
+                    ProductEntity(
                     code = normalizedCode,
                     barcode = r.barcode,
                     name = r.name,
@@ -275,7 +304,6 @@ class ProductRepository(
                     ml3cPrice = r.ml3cPrice,
                     ml6cPrice = r.ml6cPrice,
                     autoPricing = false,
-                    quantity = max(0, r.quantity ?: 0),
                     description = r.description,
                     imageUrl = r.imageUrl,
                     imageUrls = r.imageUrls,
@@ -289,7 +317,11 @@ class ProductRepository(
                     color = r.color ?: existing?.color,
                     sizes = if (r.sizes.isNotEmpty()) r.sizes else existing?.sizes.orEmpty(),
                     minStock = r.minStock?.let { max(0, it) } ?: existing?.minStock,
-                    updatedAt = updated
+                    quantity = max(0, r.quantity ?: existing?.quantity ?: 0),
+                    updatedAt = updated,
+                    updatedAtEpochMs = now,
+                    syncStatus = "PENDING"
+                )
                 )
 
                 val priced = applyAutoPricing(incoming, existing)
@@ -305,6 +337,8 @@ class ProductRepository(
                     stockMovementDao.insert(
                         StockMovementEntity(
                             productId = id,
+                            productUuid = current.productUuid,
+                            productLegacyLocalId = current.legacyLocalId ?: current.id,
                             delta = delta,
                             reason = StockMovementReasons.CSV_IMPORT,
                             ts = Instant.ofEpochMilli(now),
@@ -316,6 +350,8 @@ class ProductRepository(
                     SyncOutboxEntity(
                         entityType = SyncEntityType.PRODUCT.storageKey,
                         entityId = id.toLong(),
+                        entityUuid = current.productUuid,
+                        operation = SyncOutboxOperation.UPSERT.storageKey,
                         createdAt = now
                     )
                 )
@@ -339,7 +375,7 @@ class ProductRepository(
 
     // ---------- Flujo/consultas básicas ----------
     fun observeAll(): Flow<List<ProductEntity>> = productDao.observeAll()
-        .map { products -> attachImages(products) }
+        .map { products -> attachImages(products.filter { it.deletedAtEpochMs == null }) }
 
 
     suspend fun getById(id: Int): ProductEntity? = withContext(io) {
@@ -418,10 +454,39 @@ class ProductRepository(
                 val keeper = duplicates.minByOrNull { it.id } ?: return@forEach
                 val others = duplicates.filter { it.id != keeper.id }
                 val mergedQty = duplicates.sumOf { it.quantity }
-                val merged = keeper.copy(quantity = mergedQty, updatedAt = LocalDate.now())
+                recordProductHistory(
+                    product = keeper,
+                    source = "LOCAL_REGEN_DEDUP",
+                    reason = "merge_duplicates_keep_latest_state",
+                    recordedAtEpochMs = now
+                )
+                val merged = ensureIdentity(
+                    keeper.copy(
+                        quantity = mergedQty,
+                        updatedAt = LocalDate.now(),
+                        updatedAtEpochMs = now,
+                        syncStatus = "PENDING"
+                    ),
+                    now
+                )
                 productDao.update(merged)
                 if (others.isNotEmpty()) {
-                    productDao.deleteByIds(others.map { it.id })
+                    others.forEach { duplicate ->
+                        recordProductHistory(
+                            product = duplicate,
+                            source = "LOCAL_REGEN_DEDUP",
+                            reason = "duplicate_archived_keep_most_recent",
+                            supersededByProductUuid = merged.productUuid,
+                            recordedAtEpochMs = now
+                        )
+                        productDao.markDeletedById(
+                            id = duplicate.id,
+                            deletedAtEpochMs = now,
+                            updatedAtEpochMs = now,
+                            today = LocalDate.now(),
+                            syncStatus = "MERGED"
+                        )
+                    }
                     removedDuplicates += others.size
                 }
                 val delta = mergedQty - keeper.quantity
@@ -429,6 +494,8 @@ class ProductRepository(
                     stockMovementDao.insert(
                         StockMovementEntity(
                             productId = keeper.id,
+                            productUuid = merged.productUuid,
+                            productLegacyLocalId = merged.legacyLocalId ?: merged.id,
                             delta = delta,
                             reason = StockMovementReasons.CSV_IMPORT,
                             ts = Instant.ofEpochMilli(now),
@@ -440,13 +507,19 @@ class ProductRepository(
                     SyncOutboxEntity(
                         entityType = SyncEntityType.PRODUCT.storageKey,
                         entityId = keeper.id.toLong(),
+                        entityUuid = merged.productUuid,
+                        operation = SyncOutboxOperation.UPSERT.storageKey,
                         createdAt = now
                     )
                 )
             }
             productDao.getAllOnce().forEach { product ->
                 if (product.code.isNullOrBlank()) {
-                    val regenerated = ensureAutoCodes(product, prefix = skuPrefix)
+                    val regenerated = ensureAutoCodes(product, prefix = skuPrefix).copy(
+                        updatedAt = LocalDate.now(),
+                        updatedAtEpochMs = now,
+                        syncStatus = "PENDING"
+                    )
                     if (regenerated.code != product.code) {
                         productDao.update(regenerated)
                         generatedSkuCodes += 1
@@ -454,6 +527,8 @@ class ProductRepository(
                             SyncOutboxEntity(
                                 entityType = SyncEntityType.PRODUCT.storageKey,
                                 entityId = product.id.toLong(),
+                                entityUuid = regenerated.productUuid,
+                                operation = SyncOutboxOperation.UPSERT.storageKey,
                                 createdAt = now
                             )
                         )
@@ -572,7 +647,8 @@ class ProductRepository(
                             if (strategy != ImportStrategy.Append && strategy != ImportStrategy.Replace) {
                                 throw IllegalArgumentException("Estrategia no soportada: $strategy")
                             }
-                            val p = ProductEntity(
+                            val p = ensureIdentity(
+                                ProductEntity(
                                 code = normalizedCode,
                                 barcode = normalizedBarcode,
                                 name = r.name.trim(),
@@ -599,7 +675,10 @@ class ProductRepository(
                                 color = r.color,
                                 sizes = r.sizes,
                                 minStock = r.minStock?.let { max(0, it) },
-                                updatedAt = r.updatedAt ?: LocalDate.now()
+                                updatedAt = r.updatedAt ?: LocalDate.now(),
+                                updatedAtEpochMs = now,
+                                syncStatus = "PENDING"
+                                )
                             )
                             val priced = applyAutoPricing(p, existing = null)
                             val prepared = ensureAutoCodes(priced, prefix = skuPrefix)
@@ -613,6 +692,8 @@ class ProductRepository(
                                 stockMovementDao.insert(
                                     StockMovementEntity(
                                         productId = id,
+                                        productUuid = prepared.productUuid,
+                                        productLegacyLocalId = prepared.legacyLocalId ?: id,
                                         delta = prepared.quantity,
                                         reason = StockMovementReasons.CSV_IMPORT,
                                         ts = Instant.ofEpochMilli(now),
@@ -624,6 +705,8 @@ class ProductRepository(
                                 SyncOutboxEntity(
                                     entityType = SyncEntityType.PRODUCT.storageKey,
                                     entityId = id.toLong(),
+                                    entityUuid = prepared.productUuid,
+                                    operation = SyncOutboxOperation.UPSERT.storageKey,
                                     createdAt = now
                                 )
                             )
@@ -656,9 +739,15 @@ class ProductRepository(
                                 )
                                 return@forEach
                             }
-                            val replacementQty = max(0, r.quantity ?: 0)
-                            val mergedRaw = current.copy(
-                                quantity = replacementQty,
+                            val importedQty = r.quantity
+                            val targetQty = when {
+                                importedQty == null -> current.quantity
+                                strategy == ImportStrategy.Append -> current.quantity + max(0, importedQty)
+                                else -> max(0, importedQty)
+                            }
+                            val mergedRaw = ensureIdentity(
+                                current.copy(
+                                quantity = targetQty,
                                 purchasePrice = r.purchasePrice ?: current.purchasePrice,
                                 listPrice = r.listPrice ?: current.listPrice,
                                 cashPrice = r.cashPrice ?: current.cashPrice,
@@ -678,16 +767,21 @@ class ProductRepository(
                                 color = r.color ?: current.color,
                                 sizes = if (r.sizes.isNotEmpty()) r.sizes else current.sizes,
                                 minStock = r.minStock?.let { max(0, it) } ?: current.minStock,
-                                updatedAt = r.updatedAt ?: LocalDate.now()
+                                updatedAt = r.updatedAt ?: LocalDate.now(),
+                                updatedAtEpochMs = now,
+                                syncStatus = "PENDING"
+                            )
                             )
                             val merged = applyAutoPricing(mergedRaw, existing = current)
                             productDao.update(merged)
                             touchedIds += current.id
-                            val delta = replacementQty - current.quantity
+                            val delta = targetQty - current.quantity
                             if (delta != 0) {
                                 stockMovementDao.insert(
                                     StockMovementEntity(
                                         productId = current.id,
+                                        productUuid = current.productUuid,
+                                        productLegacyLocalId = current.legacyLocalId ?: current.id,
                                         delta = delta,
                                         reason = StockMovementReasons.CSV_IMPORT,
                                         ts = Instant.ofEpochMilli(now),
@@ -699,6 +793,8 @@ class ProductRepository(
                                 SyncOutboxEntity(
                                     entityType = SyncEntityType.PRODUCT.storageKey,
                                     entityId = current.id.toLong(),
+                                    entityUuid = merged.productUuid,
+                                    operation = SyncOutboxOperation.UPSERT.storageKey,
                                     createdAt = now
                                 )
                             )
@@ -799,18 +895,45 @@ class ProductRepository(
 
     suspend fun deleteById(id: Int) = withContext(io) {
         val now = System.currentTimeMillis()
-        val product = productDao.getById(id) ?: return@withContext
+        val product = ensureIdentity(productDao.getById(id) ?: return@withContext, now)
         val removedQuantity = product.quantity
         db.withTransaction {
-            productDao.deleteById(id)
-            syncOutboxDao.deleteByTypeAndIds(
-                SyncEntityType.PRODUCT.storageKey,
-                listOf(id.toLong())
+            productDao.markDeletedById(
+                id = id,
+                deletedAtEpochMs = now,
+                updatedAtEpochMs = now,
+                today = LocalDate.now(),
+                syncStatus = "PENDING_DELETE"
+            )
+            syncOutboxDao.upsert(
+                SyncOutboxEntity(
+                    entityType = SyncEntityType.PRODUCT.storageKey,
+                    entityId = id.toLong(),
+                    entityUuid = product.productUuid,
+                    operation = SyncOutboxOperation.MARK_DELETED.storageKey,
+                    createdAt = now
+                )
             )
             lastCache = productDao.getAllOnce()
         }
         try {
-            remote.deleteById(id)
+            remote.markDeletedByUuid(
+                productUuid = product.productUuid,
+                deletedAtEpochMs = now,
+                legacyLocalId = product.legacyLocalId ?: product.id
+            )
+            db.withTransaction {
+                productDao.markDeletedByProductUuid(
+                    productUuid = product.productUuid,
+                    deletedAtEpochMs = now,
+                    syncStatus = "DELETED"
+                )
+                syncOutboxDao.deleteByTypeAndIds(
+                    SyncEntityType.PRODUCT.storageKey,
+                    listOf(id.toLong())
+                )
+                lastCache = productDao.getAllOnce()
+            }
             saveStockInteractions(
                 listOf(
                     StockInteractionEvent(
@@ -826,6 +949,12 @@ class ProductRepository(
                 )
             )
         } catch (t: Throwable) {
+            syncOutboxDao.markAttempt(
+                entityType = SyncEntityType.PRODUCT.storageKey,
+                entityIds = listOf(id.toLong()),
+                timestamp = now,
+                error = extractErrorMessage(t)
+            )
             Log.w("ProductRepository", "Error eliminando producto en Firestore", t)
         }
     }
@@ -853,13 +982,18 @@ class ProductRepository(
             productDao.updatePublicStatusByIds(
                 ids = changedIds,
                 publicStatus = normalizedStatus,
-                today = LocalDate.now()
+                today = LocalDate.now(),
+                updatedAtEpochMs = now,
+                syncStatus = "PENDING"
             )
             changedIds.forEach { id ->
+                val current = currentProducts.firstOrNull { it.id == id }
                 syncOutboxDao.upsert(
                     SyncOutboxEntity(
                         entityType = SyncEntityType.PRODUCT.storageKey,
                         entityId = id.toLong(),
+                        entityUuid = current?.productUuid,
+                        operation = SyncOutboxOperation.UPSERT.storageKey,
                         createdAt = now
                     )
                 )
@@ -874,11 +1008,6 @@ class ProductRepository(
 
 
     // ---------- Sync manual (pull) ----------
-    /**
-     * Descarga todos los productos desde Firestore y actualiza Room.
-     * Estrategia simple: last-write-wins por updatedAt (LocalDate).
-     * Si el remoto no tiene id numérico, se inserta local con id autogenerado.
-     */
     suspend fun syncDown(): Int = withContext(io) {
         val remoteList = remote.listAll()
         if (remoteList.isEmpty()) {
@@ -887,137 +1016,272 @@ class ProductRepository(
         try {
             syncDownIncremental(remoteList)
         } catch (t: Throwable) {
-            val mustRestoreFromBackup = t is SQLiteConstraintException ||
-                t.message?.contains("SQLITE_CONSTRAINT", ignoreCase = true) == true
-            if (!mustRestoreFromBackup) {
-                throw t
-            }
-            Log.e("ProductRepository", "Conflicto de unicidad detectado en syncDown. Se ejecuta restauración completa de stock.", t)
-            restoreStockFromBackup(remoteList)
+            registerConflict(
+                conflictType = "SYNC_DOWN_FAILURE",
+                details = "syncDown failed: ${extractErrorMessage(t)}"
+            )
+            Log.e("ProductRepository", "SyncDown abortado por conflicto; datos locales preservados.", t)
+            0
         }
     }
 
     suspend fun applyRemoteDelta(
-        remoteList: List<com.example.selliaapp.data.remote.ProductFirestoreMappers.RemoteProduct>,
-        deletedIds: Set<Int>
+        remoteList: List<ProductFirestoreMappers.RemoteProduct>,
+        deletedMarkers: List<ProductFirestoreMappers.RemoteTombstone>
     ): Int = withContext(io) {
-        if (deletedIds.isNotEmpty()) {
+        if (deletedMarkers.isNotEmpty()) {
             db.withTransaction {
-                productDao.deleteByIds(deletedIds.toList())
-                syncOutboxDao.deleteByTypeAndIds(
-                    SyncEntityType.PRODUCT.storageKey,
-                    deletedIds.map(Int::toLong)
-                )
-                lastCache = productDao.getAllOnce()
-            }
-        }
-        if (remoteList.isEmpty()) {
-            return@withContext deletedIds.size
-        }
-        val applied = try {
-            syncDownIncremental(remoteList)
-        } catch (t: Throwable) {
-            val mustRestoreFromBackup = t is SQLiteConstraintException ||
-                t.message?.contains("SQLITE_CONSTRAINT", ignoreCase = true) == true
-            if (!mustRestoreFromBackup) {
-                throw t
-            }
-            Log.e(
-                "ProductRepository",
-                "Conflicto de unicidad detectado en delta sync. Se ejecuta restauración de stock.",
-                t
-            )
-            restoreStockFromBackup(remoteList)
-        }
-        deletedIds.size + applied
-    }
+                deletedMarkers.forEach { marker ->
+                    val local = productDao.getByProductUuid(marker.productUuid)
+                        ?: marker.legacyLocalId?.let { productDao.getByLegacyLocalId(it) }
+                    if (local == null) return@forEach
 
-    private suspend fun syncDownIncremental(
-        remoteList: List<com.example.selliaapp.data.remote.ProductFirestoreMappers.RemoteProduct>
-    ): Int {
-        var applied = 0
-        db.withTransaction {
-            val localById = productDao.getAllOnce().associateByTo(mutableMapOf()) { it.id }
-            val localByBarcode = localById.values
-                .mapNotNull { product -> product.barcode?.takeIf { it.isNotBlank() }?.let { it to product } }
-                .toMap(mutableMapOf())
-            val localByCode = localById.values
-                .mapNotNull { product -> product.code?.takeIf { it.isNotBlank() }?.let { it to product } }
-                .toMap(mutableMapOf())
-
-            for (remoteProduct in remoteList) {
-                val unifiedEffectiveTransfer = remoteProduct.entity.cashPrice ?: remoteProduct.entity.transferPrice
-                val r = remoteProduct.entity.copy(
-                    code = remoteProduct.entity.code?.trim()?.ifBlank { null },
-                    barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null },
-                    cashPrice = unifiedEffectiveTransfer,
-                    transferPrice = unifiedEffectiveTransfer
-                )
-                val remoteImages = remoteProduct.imageUrls
-                val local = localById[r.id]
-                    ?: r.barcode?.let { localByBarcode[it] }
-                    ?: r.code?.let { localByCode[it] }
-                if (local == null) {
-                    val newId = productDao.upsert(r.copy(id = 0))
-                    if (remoteImages.isNotEmpty()) {
-                        replaceProductImages(newId, remoteImages)
-                    }
-                    applied++
-                    if (r.id != newId) remote.upsert(r.copy(id = newId), remoteImages)
-
-                    productDao.getById(newId)?.also { saved ->
-                        localById[saved.id] = saved
-                        saved.barcode?.let { localByBarcode[it] = saved }
-                        saved.code?.let { localByCode[it] = saved }
-                    }
-                } else {
-                    if (r.updatedAt >= local.updatedAt) {
-                        val conflictingCode = r.code
-                            ?.let { remoteCode -> localByCode[remoteCode] }
-                            ?.takeIf { candidate -> candidate.id != local.id }
-                        val conflictingBarcode = r.barcode
-                            ?.let { remoteBarcode -> localByBarcode[remoteBarcode] }
-                            ?.takeIf { candidate -> candidate.id != local.id }
-
-                        val merged = r.copy(
-                            id = local.id,
-                            code = if (conflictingCode != null) local.code else r.code,
-                            barcode = if (conflictingBarcode != null) local.barcode else r.barcode
+                    if (local.updatedAtEpochMs > marker.deletedAtEpochMs) {
+                        registerConflict(
+                            localProduct = local,
+                            remoteProductUuid = marker.productUuid,
+                            remoteDocumentId = marker.remoteDocumentId,
+                            conflictType = "TOMBSTONE_OLDER_THAN_LOCAL",
+                            details = "localUpdatedAt=${local.updatedAtEpochMs}, tombstone=${marker.deletedAtEpochMs}"
                         )
-
-                        productDao.update(merged)
-                        if (remoteImages.isNotEmpty()) {
-                            replaceProductImages(local.id, remoteImages)
-                        }
-                        applied++
-
-                        productDao.getById(local.id)?.also { saved ->
-                            localById[saved.id] = saved
-                            localByBarcode.entries.removeAll { (_, value) -> value.id == saved.id }
-                            localByCode.entries.removeAll { (_, value) -> value.id == saved.id }
-                            saved.barcode?.let { localByBarcode[it] = saved }
-                            saved.code?.let { localByCode[it] = saved }
-                        }
-                    } else {
-                        // Evita write-back automático cuando local es más nuevo:
-                        // ya existe sync outbox y este push directo amplifica costo en Firestore.
                         syncOutboxDao.upsert(
                             SyncOutboxEntity(
                                 entityType = SyncEntityType.PRODUCT.storageKey,
                                 entityId = local.id.toLong(),
+                                entityUuid = local.productUuid,
+                                operation = if (local.deletedAtEpochMs != null) {
+                                    SyncOutboxOperation.MARK_DELETED.storageKey
+                                } else {
+                                    SyncOutboxOperation.UPSERT.storageKey
+                                },
+                                createdAt = System.currentTimeMillis()
+                            )
+                        )
+                        return@forEach
+                    }
+
+                    productDao.markDeletedById(
+                        id = local.id,
+                        deletedAtEpochMs = marker.deletedAtEpochMs,
+                        updatedAtEpochMs = marker.deletedAtEpochMs,
+                        today = LocalDate.now(),
+                        syncStatus = "DELETED"
+                    )
+                    syncOutboxDao.deleteByTypeAndIds(
+                        SyncEntityType.PRODUCT.storageKey,
+                        listOf(local.id.toLong())
+                    )
+                }
+                lastCache = productDao.getAllOnce()
+            }
+        }
+        if (remoteList.isEmpty()) {
+            return@withContext deletedMarkers.size
+        }
+        val applied = syncDownIncremental(remoteList)
+        deletedMarkers.size + applied
+    }
+
+    private suspend fun syncDownIncremental(
+        remoteList: List<ProductFirestoreMappers.RemoteProduct>
+    ): Int {
+        var applied = 0
+        db.withTransaction {
+            val locals = productDao.getAllOnce().toMutableList()
+            for (remoteProduct in remoteList) {
+                val now = System.currentTimeMillis()
+                val r = ensureIdentity(remoteProduct.entity, now).copy(
+                    code = remoteProduct.entity.code?.trim()?.ifBlank { null },
+                    barcode = remoteProduct.entity.barcode?.trim()?.ifBlank { null },
+                    cashPrice = remoteProduct.entity.cashPrice ?: remoteProduct.entity.transferPrice,
+                    transferPrice = remoteProduct.entity.cashPrice ?: remoteProduct.entity.transferPrice
+                )
+                val remoteImages = remoteProduct.imageUrls
+                val candidates = locals.filter { local ->
+                    (r.productUuid.isNotBlank() && local.productUuid == r.productUuid) ||
+                        (r.legacyLocalId != null && (local.legacyLocalId == r.legacyLocalId || local.id == r.legacyLocalId)) ||
+                        (!r.code.isNullOrBlank() && local.code.equals(r.code, ignoreCase = true)) ||
+                        (!r.barcode.isNullOrBlank() && local.barcode == r.barcode)
+                }.distinctBy { it.id }
+
+                val local = if (candidates.size > 1) {
+                    val canonical = candidates.maxByOrNull { candidate ->
+                        candidate.updatedAtEpochMs.takeIf { it > 0L } ?: 0L
+                    } ?: candidates.first()
+                    val toArchive = candidates.filter { it.id != canonical.id }
+                    toArchive.forEach { duplicate ->
+                        recordProductHistory(
+                            product = duplicate,
+                            source = "SYNC_LOCAL_DEDUP",
+                            reason = "duplicate_resolved_keep_most_recent",
+                            supersededByProductUuid = canonical.productUuid,
+                            remoteDocumentId = remoteProduct.remoteDocumentId,
+                            recordedAtEpochMs = now
+                        )
+                        productDao.markDeletedById(
+                            id = duplicate.id,
+                            deletedAtEpochMs = now,
+                            updatedAtEpochMs = now,
+                            today = LocalDate.now(),
+                            syncStatus = "MERGED_DUPLICATE"
+                        )
+                        syncOutboxDao.upsert(
+                            SyncOutboxEntity(
+                                entityType = SyncEntityType.PRODUCT.storageKey,
+                                entityId = duplicate.id.toLong(),
+                                entityUuid = duplicate.productUuid,
+                                operation = SyncOutboxOperation.MARK_DELETED.storageKey,
+                                createdAt = now
+                            )
+                        )
+                        locals.removeAll { it.id == duplicate.id }
+                    }
+                    canonical
+                } else {
+                    candidates.firstOrNull()
+                }
+
+                if (local == null) {
+                    try {
+                        val incoming = r.copy(
+                            id = 0,
+                            legacyLocalId = r.legacyLocalId,
+                            syncStatus = "SYNCED",
+                            deletedAtEpochMs = r.deletedAtEpochMs
+                        )
+                        val newId = productDao.insert(incoming).toInt()
+                        if (remoteImages.isNotEmpty()) {
+                            replaceProductImages(newId, remoteImages)
+                        }
+                        productDao.getById(newId)?.let { saved ->
+                            locals += saved
+                        }
+                        applied++
+                    } catch (constraint: SQLiteConstraintException) {
+                        val fallbackCandidates = productDao.getAllOnce().filter { local ->
+                            (r.productUuid.isNotBlank() && local.productUuid == r.productUuid) ||
+                                (r.legacyLocalId != null && (local.legacyLocalId == r.legacyLocalId || local.id == r.legacyLocalId)) ||
+                                (!r.code.isNullOrBlank() && local.code.equals(r.code, ignoreCase = true)) ||
+                                (!r.barcode.isNullOrBlank() && local.barcode == r.barcode)
+                        }
+                        val canonical = (fallbackCandidates + listOf(r.copy(id = 0)))
+                            .maxByOrNull { candidate -> candidate.updatedAtEpochMs }
+                        if (canonical != null && canonical.id > 0) {
+                            val localCanonical = productDao.getById(canonical.id)
+                            if (localCanonical != null) {
+                                recordProductHistory(
+                                    product = localCanonical,
+                                    source = "SYNC_INSERT_CONSTRAINT_RESOLVE",
+                                    reason = "keep_most_recent_after_constraint",
+                                    supersededByProductUuid = r.productUuid,
+                                    remoteDocumentId = remoteProduct.remoteDocumentId,
+                                    recordedAtEpochMs = now
+                                )
+                            }
+                        } else {
+                            registerConflict(
+                                remoteProductUuid = r.productUuid,
+                                remoteDocumentId = remoteProduct.remoteDocumentId,
+                                conflictType = "REMOTE_INSERT_CONSTRAINT",
+                                details = extractErrorMessage(constraint)
+                            )
+                        }
+                    }
+                } else {
+                    if (r.updatedAtEpochMs > local.updatedAtEpochMs) {
+                        recordProductHistory(
+                            product = local,
+                            source = "SYNC_REMOTE_OVERWRITE",
+                            reason = "remote_more_recent",
+                            supersededByProductUuid = r.productUuid,
+                            remoteDocumentId = remoteProduct.remoteDocumentId,
+                            recordedAtEpochMs = now
+                        )
+                        val merged = local.copy(
+                            productUuid = r.productUuid.ifBlank { local.productUuid },
+                            legacyLocalId = local.legacyLocalId ?: r.legacyLocalId ?: local.id,
+                            id = local.id,
+                            code = r.code ?: local.code,
+                            barcode = r.barcode ?: local.barcode,
+                            name = r.name.ifBlank { local.name },
+                            purchasePrice = r.purchasePrice ?: local.purchasePrice,
+                            listPrice = r.listPrice ?: local.listPrice,
+                            cashPrice = r.cashPrice ?: local.cashPrice,
+                            transferPrice = r.transferPrice ?: local.transferPrice,
+                            transferNetPrice = r.transferNetPrice ?: local.transferNetPrice,
+                            mlPrice = r.mlPrice ?: local.mlPrice,
+                            ml3cPrice = r.ml3cPrice ?: local.ml3cPrice,
+                            ml6cPrice = r.ml6cPrice ?: local.ml6cPrice,
+                            manualGainPercent = r.manualGainPercent ?: local.manualGainPercent,
+                            autoPricing = r.autoPricing,
+                            quantity = r.quantity,
+                            description = r.description ?: local.description,
+                            imageUrl = r.imageUrl ?: local.imageUrl,
+                            categoryId = r.categoryId ?: local.categoryId,
+                            providerId = r.providerId ?: local.providerId,
+                            providerName = r.providerName ?: local.providerName,
+                            providerSku = r.providerSku ?: local.providerSku,
+                            brand = r.brand ?: local.brand,
+                            parentCategory = r.parentCategory ?: local.parentCategory,
+                            category = r.category ?: local.category,
+                            color = r.color ?: local.color,
+                            sizes = if (r.sizes.isNotEmpty()) r.sizes else local.sizes,
+                            minStock = r.minStock ?: local.minStock,
+                            publicStatus = r.publicStatus,
+                            gainTargetPercent = r.gainTargetPercent ?: local.gainTargetPercent,
+                            updatedAt = r.updatedAt,
+                            createdAtEpochMs = minOf(local.createdAtEpochMs, r.createdAtEpochMs),
+                            updatedAtEpochMs = r.updatedAtEpochMs,
+                            deletedAtEpochMs = r.deletedAtEpochMs,
+                            syncVersion = maxOf(local.syncVersion, r.syncVersion),
+                            syncStatus = if (r.deletedAtEpochMs == null) "SYNCED" else "DELETED"
+                        )
+                        try {
+                            productDao.update(merged)
+                            if (remoteImages.isNotEmpty()) {
+                                replaceProductImages(local.id, remoteImages)
+                            }
+                            locals.removeAll { it.id == local.id }
+                            productDao.getById(local.id)?.let { saved -> locals += saved }
+                            applied++
+                        } catch (constraint: SQLiteConstraintException) {
+                            registerConflict(
+                                localProduct = local,
+                                remoteProductUuid = r.productUuid,
+                                remoteDocumentId = remoteProduct.remoteDocumentId,
+                                conflictType = "REMOTE_UPDATE_CONSTRAINT",
+                                details = extractErrorMessage(constraint)
+                            )
+                        }
+                    } else {
+                        syncOutboxDao.upsert(
+                            SyncOutboxEntity(
+                                entityType = SyncEntityType.PRODUCT.storageKey,
+                                entityId = local.id.toLong(),
+                                entityUuid = local.productUuid,
+                                operation = if (local.deletedAtEpochMs != null) {
+                                    SyncOutboxOperation.MARK_DELETED.storageKey
+                                } else {
+                                    SyncOutboxOperation.UPSERT.storageKey
+                                },
                                 createdAt = System.currentTimeMillis()
                             )
                         )
                     }
                 }
             }
+            lastCache = productDao.getAllOnce()
         }
         return applied
     }
 
-    private suspend fun restoreStockFromBackup(
-        remoteList: List<com.example.selliaapp.data.remote.ProductFirestoreMappers.RemoteProduct>
+    suspend fun manualRestoreStockFromRemoteBackupUnsafe(
+        remoteList: List<ProductFirestoreMappers.RemoteProduct>,
+        adminApproved: Boolean
     ): Int {
+        require(adminApproved) {
+            "Esta operación es insegura y requiere aprobación explícita de administrador."
+        }
         require(remoteList.isNotEmpty()) {
             "No existe backup remoto de productos para restaurar el stock."
         }
@@ -1046,13 +1310,11 @@ class ProductRepository(
             .toList()
 
         db.withTransaction {
+            // Método manual/administrativo. Nunca invocarlo desde sync automático.
             productDao.deleteAll()
-            syncOutboxDao.deleteByTypeAndIds(
-                SyncEntityType.PRODUCT.storageKey,
-                syncOutboxDao.getByType(SyncEntityType.PRODUCT.storageKey).map { it.entityId }
-            )
             uniqueBackup.forEach { remoteProduct ->
-                val restoredId = productDao.insert(remoteProduct.entity.copy(id = 0)).toInt()
+                val restored = ensureIdentity(remoteProduct.entity)
+                val restoredId = productDao.insert(restored.copy(id = 0)).toInt()
                 if (remoteProduct.imageUrls.isNotEmpty()) {
                     replaceProductImages(restoredId, remoteProduct.imageUrls)
                 }
@@ -1061,10 +1323,78 @@ class ProductRepository(
         }
         return uniqueBackup.size
     }
+
+    private suspend fun registerConflict(
+        localProduct: ProductEntity? = null,
+        remoteProductUuid: String? = null,
+        remoteDocumentId: String? = null,
+        conflictType: String,
+        details: String? = null
+    ) {
+        productSyncConflictDao.insert(
+            ProductSyncConflictEntity(
+                localProductId = localProduct?.id,
+                localProductUuid = localProduct?.productUuid,
+                remoteProductUuid = remoteProductUuid,
+                remoteDocumentId = remoteDocumentId,
+                conflictType = conflictType,
+                detailsJson = details
+            )
+        )
+    }
+
+    private fun snapshotOf(product: ProductEntity): String {
+        val map = mapOf(
+            "id" to product.id,
+            "productUuid" to product.productUuid,
+            "legacyLocalId" to product.legacyLocalId,
+            "code" to product.code,
+            "barcode" to product.barcode,
+            "name" to product.name,
+            "quantity" to product.quantity,
+            "purchasePrice" to product.purchasePrice,
+            "listPrice" to product.listPrice,
+            "cashPrice" to product.cashPrice,
+            "transferPrice" to product.transferPrice,
+            "mlPrice" to product.mlPrice,
+            "brand" to product.brand,
+            "category" to product.category,
+            "providerSku" to product.providerSku,
+            "updatedAtEpochMs" to product.updatedAtEpochMs,
+            "syncStatus" to product.syncStatus,
+            "deletedAtEpochMs" to product.deletedAtEpochMs
+        )
+        return gson.toJson(map)
+    }
+
+    private suspend fun recordProductHistory(
+        product: ProductEntity,
+        source: String,
+        reason: String,
+        supersededByProductUuid: String? = null,
+        remoteDocumentId: String? = null,
+        recordedAtEpochMs: Long = System.currentTimeMillis()
+    ) {
+        if (product.productUuid.isBlank()) return
+        productStateHistoryDao.insert(
+            ProductStateHistoryEntity(
+                productId = product.id,
+                productUuid = product.productUuid,
+                legacyLocalId = product.legacyLocalId ?: product.id,
+                snapshotJson = snapshotOf(product),
+                source = source,
+                reason = reason,
+                supersededByProductUuid = supersededByProductUuid,
+                remoteDocumentId = remoteDocumentId,
+                recordedAtEpochMs = recordedAtEpochMs
+            )
+        )
+    }
     // ---------- WRAPPERS que espera la UI / ViewModel ----------
 
     /** Búsqueda reactiva por texto libre (nombre, código, barcode). */
-    fun search(q: String?): Flow<List<ProductEntity>> = productDao.search(q)
+    fun search(q: String?): Flow<List<ProductEntity>> =
+        productDao.search(q).map { list -> list.filter { it.deletedAtEpochMs == null } }
 
     /** Listado reactivo de categorías distintas. */
     fun distinctCategories(): Flow<List<String>> = productDao.distinctCategories()
@@ -1185,7 +1515,16 @@ class ProductRepository(
                             occurredAtEpochMs = now
                         )
                     }
-                    productDao.update(priced.copy(updatedAt = LocalDate.now()))
+                    productDao.update(
+                        ensureIdentity(
+                            priced.copy(
+                                updatedAt = LocalDate.now(),
+                                updatedAtEpochMs = now,
+                                syncStatus = "PENDING"
+                            ),
+                            now
+                        )
+                    )
                     updatedIds += product.id
                 }
             }
@@ -1234,8 +1573,16 @@ class ProductRepository(
     ): Boolean = adjustStock(productId, delta, reason.code, note)
 
     private suspend fun persistProduct(entity: ProductEntity, reason: String): Int {
-        val normalized = entity.copy(id = 0, updatedAt = LocalDate.now())
         val now = System.currentTimeMillis()
+        val normalized = ensureIdentity(
+            entity.copy(
+                id = 0,
+                updatedAt = LocalDate.now(),
+                updatedAtEpochMs = now,
+                syncStatus = "PENDING"
+            ),
+            now
+        )
         val skuPrefix = resolveSkuPrefix()
         var newId = 0
         db.withTransaction {
@@ -1249,6 +1596,8 @@ class ProductRepository(
                 stockMovementDao.insert(
                     StockMovementEntity(
                         productId = newId,
+                        productUuid = prepared.productUuid,
+                        productLegacyLocalId = prepared.legacyLocalId ?: newId,
                         delta = prepared.quantity,
                         reason = reason,
                         ts = Instant.ofEpochMilli(now),
@@ -1260,6 +1609,8 @@ class ProductRepository(
                 SyncOutboxEntity(
                     entityType = SyncEntityType.PRODUCT.storageKey,
                     entityId = newId.toLong(),
+                    entityUuid = prepared.productUuid,
+                    operation = SyncOutboxOperation.UPSERT.storageKey,
                     createdAt = now
                 )
             )
@@ -1359,7 +1710,14 @@ class ProductRepository(
         db.withTransaction {
             val current = productDao.getById(entity.id) ?: return@withTransaction
             assertCodeAvailable(entity.code, currentId = current.id)
-            val normalized = entity.copy(updatedAt = LocalDate.now())
+            val normalized = ensureIdentity(
+                entity.copy(
+                    updatedAt = LocalDate.now(),
+                    updatedAtEpochMs = now,
+                    syncStatus = "PENDING"
+                ),
+                now
+            )
             val purchaseChanged = current.purchasePrice != normalized.purchasePrice
             val gainTargetChanged = current.gainTargetPercent != normalized.gainTargetPercent
             val shouldForceRecalculation = current.autoPricing && (purchaseChanged || gainTargetChanged)
@@ -1375,6 +1733,8 @@ class ProductRepository(
                     stockMovementDao.insert(
                         StockMovementEntity(
                             productId = current.id,
+                            productUuid = current.productUuid,
+                            productLegacyLocalId = current.legacyLocalId ?: current.id,
                             delta = delta,
                             reason = reason,
                             ts = Instant.ofEpochMilli(now),
@@ -1386,6 +1746,8 @@ class ProductRepository(
                     SyncOutboxEntity(
                         entityType = SyncEntityType.PRODUCT.storageKey,
                         entityId = current.id.toLong(),
+                        entityUuid = priced.productUuid,
+                        operation = SyncOutboxOperation.UPSERT.storageKey,
                         createdAt = now
                     )
                 )
@@ -1430,10 +1792,15 @@ class ProductRepository(
         val now = System.currentTimeMillis()
         var success = false
         db.withTransaction {
-            val product = productDao.getById(productId) ?: return@withTransaction
+            val product = ensureIdentity(productDao.getById(productId) ?: return@withTransaction, now)
             val newQty = (product.quantity + delta).coerceAtLeast(0)
             val affected = productDao.update(
-                product.copy(quantity = newQty, updatedAt = LocalDate.now())
+                product.copy(
+                    quantity = newQty,
+                    updatedAt = LocalDate.now(),
+                    updatedAtEpochMs = now,
+                    syncStatus = "PENDING"
+                )
             )
             if (affected == 0) return@withTransaction
             if (product.imageUrls.isNotEmpty()) {
@@ -1442,6 +1809,8 @@ class ProductRepository(
             stockMovementDao.insert(
                 StockMovementEntity(
                     productId = productId,
+                    productUuid = product.productUuid,
+                    productLegacyLocalId = product.legacyLocalId ?: product.id,
                     delta = delta,
                     reason = reason,
                     ts = Instant.ofEpochMilli(now),
@@ -1452,6 +1821,8 @@ class ProductRepository(
                 SyncOutboxEntity(
                     entityType = SyncEntityType.PRODUCT.storageKey,
                     entityId = productId.toLong(),
+                    entityUuid = product.productUuid,
+                    operation = SyncOutboxOperation.UPSERT.storageKey,
                     createdAt = now
                 )
             )
@@ -1482,20 +1853,23 @@ class ProductRepository(
     private suspend fun trySyncProductsNow(ids: Collection<Int>, now: Long) {
         val uniqueIds = ids.mapNotNull { id -> id.takeIf { it > 0 } }.distinct()
         if (uniqueIds.isEmpty()) return
-        val entities = productDao.getByIds(uniqueIds)
+        val entities = productDao.getByIds(uniqueIds).map { ensureIdentity(it, now) }
         if (entities.isEmpty()) return
+        val activeEntities = entities.filter { it.deletedAtEpochMs == null }
         try {
-            val imageUrlsByProductId = loadProductImagesByProductId(uniqueIds)
-            remote.upsertAll(entities, imageUrlsByProductId)
-            syncOutboxDao.deleteByTypeAndIds(
-                SyncEntityType.PRODUCT.storageKey,
-                uniqueIds.map(Int::toLong)
-            )
+            if (activeEntities.isNotEmpty()) {
+                val imageUrlsByProductId = loadProductImagesByProductId(activeEntities.map { it.id })
+                remote.upsertAll(activeEntities, imageUrlsByProductId)
+                syncOutboxDao.deleteByTypeAndIds(
+                    SyncEntityType.PRODUCT.storageKey,
+                    activeEntities.map { it.id.toLong() }
+                )
+            }
         } catch (t: Throwable) {
-            val error = t.message?.take(512) ?: t::class.java.simpleName
+            val error = extractErrorMessage(t)
             syncOutboxDao.markAttempt(
                 SyncEntityType.PRODUCT.storageKey,
-                uniqueIds.map(Int::toLong),
+                activeEntities.map { it.id.toLong() },
                 now,
                 error
             )
@@ -1506,6 +1880,9 @@ class ProductRepository(
             )
         }
     }
+
+    private fun extractErrorMessage(t: Throwable): String =
+        t.message?.take(512) ?: t::class.java.simpleName
 
     private fun issueToLegacyError(issue: ImportRowIssue): String = buildString {
         append("Línea ${issue.line}")

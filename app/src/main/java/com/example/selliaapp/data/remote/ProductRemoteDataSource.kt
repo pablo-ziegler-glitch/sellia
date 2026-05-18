@@ -27,21 +27,19 @@ class ProductRemoteDataSource(
         val tenantId = tenantProvider.requireTenantId()
         val col = firestore.collection("tenants").document(tenantId).collection("products")
         val deletionsCol = firestore.collection("tenants").document(tenantId).collection("product_deletions")
-        val docRef = if (product.id != 0) col.document(product.id.toString()) else col.document()
+        val resolvedUuid = resolveProductUuid(product)
+        val docRef = col.document(resolvedUuid)
         val map = ProductFirestoreMappers.toMap(
-            product = product,
+            product = product.copy(productUuid = resolvedUuid),
             imageUrls = imageUrls,
             tenantId = tenantId
         ).toMutableMap()
-        map["id"] = docRef.id.toIntOrNull() ?: product.id
-        if (product.id != 0) {
-            val batch = firestore.batch()
-            batch.set(docRef, map)
-            batch.delete(deletionsCol.document(product.id.toString()))
-            batch.commit().await()
-        } else {
-            docRef.set(map).await()
-        }
+        map["id"] = product.id
+        map["productUuid"] = resolvedUuid
+        val batch = firestore.batch()
+        batch.set(docRef, map)
+        batch.delete(deletionsCol.document(resolvedUuid))
+        batch.commit().await()
     }
 
     suspend fun upsertAll(
@@ -55,39 +53,65 @@ class ProductRemoteDataSource(
         products.chunked(MAX_BATCH_OPS).forEach { chunk ->
             val batch = firestore.batch()
             chunk.forEach { product ->
-                if (product.id == 0) return@forEach
-                val doc = col.document(product.id.toString())
+                val resolvedUuid = resolveProductUuid(product)
+                val doc = col.document(resolvedUuid)
                 val imageUrls = imageUrlsByProductId[product.id].orEmpty()
                 batch.set(
                     doc,
                     ProductFirestoreMappers.toMap(
-                        product = product,
+                        product = product.copy(productUuid = resolvedUuid),
                         imageUrls = imageUrls,
                         tenantId = tenantId
                     ),
                     SetOptions.merge()
                 )
-                batch.delete(deletionsCol.document(product.id.toString()))
+                batch.delete(deletionsCol.document(resolvedUuid))
             }
             batch.commit().await()
         }
     }
 
+    @Deprecated("Usar markDeletedByUuid para identidad estable.")
     suspend fun deleteById(id: Int) {
-        if (id == 0) return
+        if (id <= 0) return
+        val legacyUuid = ProductFirestoreMappers.buildLegacyProductUuid("legacy-local-$id")
+        markDeletedByUuid(
+            productUuid = legacyUuid,
+            deletedAtEpochMs = System.currentTimeMillis(),
+            legacyLocalId = id
+        )
+    }
+
+    suspend fun markDeletedByUuid(
+        productUuid: String,
+        deletedAtEpochMs: Long,
+        legacyLocalId: Int? = null
+    ) {
+        if (productUuid.isBlank()) return
         val tenantId = tenantProvider.requireTenantId()
         val col = firestore.collection("tenants").document(tenantId).collection("products")
         val deletionsCol = firestore.collection("tenants").document(tenantId).collection("product_deletions")
-        val now = System.currentTimeMillis()
         val batch = firestore.batch()
-        batch.delete(col.document(id.toString()))
         batch.set(
-            deletionsCol.document(id.toString()),
+            col.document(productUuid),
             mapOf(
-                "productId" to id,
+                "productUuid" to productUuid,
+                "deletedAtEpochMs" to deletedAtEpochMs,
+                "syncStatus" to "DELETED",
+                "visible" to false,
+                "updatedAtEpochMs" to deletedAtEpochMs
+            ),
+            SetOptions.merge()
+        )
+        batch.set(
+            deletionsCol.document(productUuid),
+            mapOf(
+                "productUuid" to productUuid,
+                "legacyLocalId" to legacyLocalId,
+                "productId" to legacyLocalId,
                 "deletedAt" to FieldValue.serverTimestamp(),
-                "deletedAtEpochMs" to now,
-                "purgeBackup" to true
+                "deletedAtEpochMs" to deletedAtEpochMs,
+                "purgeBackup" to false
             ),
             SetOptions.merge()
         )
@@ -106,13 +130,43 @@ class ProductRemoteDataSource(
             allDocs.addAll(page.documents)
             lastDoc = page.documents.lastOrNull()
         } while (page.size() >= PAGE_SIZE)
-        val deletedIds = deletionsCollection().get().await().documents.mapNotNull { it.id.toIntOrNull() }.toSet()
+        val tombstones = mutableMapOf<String, ProductFirestoreMappers.RemoteTombstone>()
+        var lastDeletionDoc: DocumentSnapshot? = null
+        do {
+            val query = deletionsCollection()
+                .orderBy(FieldPath.documentId())
+                .let { if (lastDeletionDoc != null) it.startAfter(lastDeletionDoc!!) else it }
+                .limit(PAGE_SIZE)
+            val page = query.get().await()
+            page.documents.forEach { doc ->
+                @Suppress("UNCHECKED_CAST")
+                val data = doc.data as? Map<String, Any?> ?: return@forEach
+                val marker = ProductFirestoreMappers.tombstoneFromMap(doc.id, data) ?: return@forEach
+                tombstones[marker.productUuid] = marker
+            }
+            lastDeletionDoc = page.documents.lastOrNull()
+        } while (page.size() >= PAGE_SIZE)
+
         return allDocs.mapNotNull { doc ->
-            if (doc.id.toIntOrNull() in deletedIds) return@mapNotNull null
             @Suppress("UNCHECKED_CAST")
             val data = doc.data as? Map<String, Any?> ?: return@mapNotNull null
-            ProductFirestoreMappers.fromMap(doc.id, data)
+            val remote = ProductFirestoreMappers.fromMap(doc.id, data)
+            val tombstone = tombstones[remote.entity.productUuid]
+            if (tombstone != null && tombstone.deletedAtEpochMs > remote.entity.updatedAtEpochMs) {
+                return@mapNotNull null
+            }
+            remote
         }
+    }
+
+    private fun resolveProductUuid(product: ProductEntity): String {
+        val explicit = product.productUuid.trim()
+        if (explicit.isNotBlank()) return explicit
+        val legacyId = product.legacyLocalId ?: product.id.takeIf { it > 0 }
+        if (legacyId != null) {
+            return ProductFirestoreMappers.buildLegacyProductUuid("legacy-local-$legacyId")
+        }
+        return java.util.UUID.randomUUID().toString()
     }
 
     companion object {

@@ -23,7 +23,7 @@ interface ProductDao {
 
     // --------- Lecturas base ---------
 
-    @Query("SELECT * FROM products ORDER BY name COLLATE NOCASE ASC")
+    @Query("SELECT * FROM products WHERE deletedAtEpochMs IS NULL ORDER BY name COLLATE NOCASE ASC")
     fun observeAll(): Flow<List<ProductEntity>>
 
     @Query("SELECT * FROM products ORDER BY name COLLATE NOCASE ASC")
@@ -31,6 +31,15 @@ interface ProductDao {
 
     @Query("SELECT * FROM products WHERE id = :id")
     suspend fun getById(id: Int): ProductEntity?
+
+    @Query("SELECT * FROM products WHERE productUuid = :productUuid LIMIT 1")
+    suspend fun getByProductUuid(productUuid: String): ProductEntity?
+
+    @Query("SELECT * FROM products WHERE productUuid IN (:productUuids)")
+    suspend fun getByProductUuids(productUuids: List<String>): List<ProductEntity>
+
+    @Query("SELECT * FROM products WHERE legacyLocalId = :legacyLocalId LIMIT 1")
+    suspend fun getByLegacyLocalId(legacyLocalId: Int): ProductEntity?
 
     @Query("SELECT * FROM products WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<Int>): List<ProductEntity>
@@ -62,8 +71,10 @@ interface ProductDao {
 
     @Query("""
         SELECT * FROM products 
-        WHERE (:term IS NULL OR :term = '')
+        WHERE deletedAtEpochMs IS NULL
+          AND ((:term IS NULL OR :term = '')
            OR (name LIKE '%' || :term || '%' OR code LIKE '%' || :term || '%' OR barcode LIKE '%' || :term || '%') 
+          )
         ORDER BY name COLLATE NOCASE ASC
     """)
     fun search(term: String?): Flow<List<ProductEntity>>
@@ -80,6 +91,7 @@ interface ProductDao {
                COALESCE(minStock, 0) AS minStock
         FROM products
         WHERE minStock IS NOT NULL
+          AND deletedAtEpochMs IS NULL
           AND quantity <= minStock
         ORDER BY (COALESCE(minStock, 0) - quantity) DESC,
                  name COLLATE NOCASE ASC
@@ -129,7 +141,9 @@ interface ProductDao {
         """
         UPDATE products
         SET publicStatus = :publicStatus,
-            updatedAt = :today
+            updatedAt = :today,
+            updatedAtEpochMs = :updatedAtEpochMs,
+            syncStatus = :syncStatus
         WHERE id IN (:ids)
           AND publicStatus != :publicStatus
         """
@@ -137,7 +151,9 @@ interface ProductDao {
     suspend fun updatePublicStatusByIds(
         ids: List<Int>,
         publicStatus: String,
-        today: LocalDate
+        today: LocalDate,
+        updatedAtEpochMs: Long,
+        syncStatus: String = "PENDING"
     ): Int
 
     /** Borrado completo de productos (uso exclusivo en recuperaciones críticas). */
@@ -184,7 +200,7 @@ interface ProductDao {
                 ml6cPrice   = incoming.ml6cPrice   ?: existing.ml6cPrice,
                 manualGainPercent = incoming.manualGainPercent ?: existing.manualGainPercent,
                 autoPricing = incoming.autoPricing,
-                quantity    = if (incoming.quantity != 0) incoming.quantity else existing.quantity,
+                quantity    = incoming.quantity,
                 description = incoming.description ?: existing.description,
                 imageUrl    = incoming.imageUrl    ?: existing.imageUrl,
                 imageUrls   = if (incoming.imageUrls.isNotEmpty()) incoming.imageUrls else existing.imageUrls,
@@ -198,7 +214,14 @@ interface ProductDao {
                 color       = incoming.color ?: existing.color,
                 sizes       = if (incoming.sizes.isNotEmpty()) incoming.sizes else existing.sizes,
                 minStock    = incoming.minStock    ?: existing.minStock,
-                updatedAt   = incoming.updatedAt   // no forzamos si viene null; si querés: incoming.updatedAt ?: existing.updatedAt
+                updatedAt   = incoming.updatedAt,
+                productUuid = incoming.productUuid.ifBlank { existing.productUuid },
+                legacyLocalId = incoming.legacyLocalId ?: existing.legacyLocalId,
+                createdAtEpochMs = existing.createdAtEpochMs,
+                updatedAtEpochMs = incoming.updatedAtEpochMs,
+                deletedAtEpochMs = incoming.deletedAtEpochMs ?: existing.deletedAtEpochMs,
+                syncVersion = maxOf(existing.syncVersion, incoming.syncVersion),
+                syncStatus = incoming.syncStatus
             )
             update(merged)
             merged.id
@@ -214,10 +237,19 @@ interface ProductDao {
      */
     @Query("""
         UPDATE products 
-        SET quantity = quantity + :delta, updatedAt = :today 
+        SET quantity = quantity + :delta,
+            updatedAt = :today,
+            updatedAtEpochMs = :updatedAtEpochMs,
+            syncStatus = :syncStatus
         WHERE id = :productId
     """)
-    suspend fun applyDelta(productId: Int, delta: Int, today: LocalDate): Int
+    suspend fun applyDelta(
+        productId: Int,
+        delta: Int,
+        today: LocalDate,
+        updatedAtEpochMs: Long,
+        syncStatus: String = "PENDING"
+    ): Int
 
     /**
      * Decrementa stock en qty *sólo* si hay stock suficiente (quantity >= qty).
@@ -225,49 +257,111 @@ interface ProductDao {
      */
     @Query("""
         UPDATE products 
-        SET quantity = quantity - :qty, updatedAt = :today 
+        SET quantity = quantity - :qty,
+            updatedAt = :today,
+            updatedAtEpochMs = :updatedAtEpochMs,
+            syncStatus = :syncStatus
         WHERE id = :productId AND quantity >= :qty
     """)
-    suspend fun _decrementStockIfEnough(productId: Int, qty: Int, today: LocalDate): Int
+    suspend fun _decrementStockIfEnough(
+        productId: Int,
+        qty: Int,
+        today: LocalDate,
+        updatedAtEpochMs: Long,
+        syncStatus: String = "PENDING"
+    ): Int
 
     /**
      * Wrapper conveniente que pasa LocalDate.now() como 'today'.
      */
     @Transaction
     suspend fun decrementStockIfEnough(productId: Int, qty: Int): Int =
-        _decrementStockIfEnough(productId, qty, LocalDate.now())
+        _decrementStockIfEnough(
+            productId = productId,
+            qty = qty,
+            today = LocalDate.now(),
+            updatedAtEpochMs = System.currentTimeMillis()
+        )
 
     /**
      * Incrementa stock (por ejemplo, al revertir una venta o registrar entrada).
      */
     @Query("""
         UPDATE products 
-        SET quantity = quantity + :qty, updatedAt = :today 
+        SET quantity = quantity + :qty,
+            updatedAt = :today,
+            updatedAtEpochMs = :updatedAtEpochMs,
+            syncStatus = :syncStatus
         WHERE id = :productId
     """)
-    suspend fun _increaseStock(productId: Int, qty: Int, today: LocalDate): Int
+    suspend fun _increaseStock(
+        productId: Int,
+        qty: Int,
+        today: LocalDate,
+        updatedAtEpochMs: Long,
+        syncStatus: String = "PENDING"
+    ): Int
 
     @Transaction
     suspend fun increaseStockIfExists(productId: Int, qty: Int): Int =
-        _increaseStock(productId, qty, LocalDate.now())
+        _increaseStock(
+            productId = productId,
+            qty = qty,
+            today = LocalDate.now(),
+            updatedAtEpochMs = System.currentTimeMillis()
+        )
+
+    @Query(
+        """
+        UPDATE products
+        SET deletedAtEpochMs = :deletedAtEpochMs,
+            syncStatus = :syncStatus,
+            updatedAtEpochMs = :updatedAtEpochMs,
+            updatedAt = :today
+        WHERE id = :id
+        """
+    )
+    suspend fun markDeletedById(
+        id: Int,
+        deletedAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        today: LocalDate,
+        syncStatus: String = "PENDING_DELETE"
+    ): Int
+
+    @Query(
+        """
+        UPDATE products
+        SET deletedAtEpochMs = :deletedAtEpochMs,
+            syncStatus = :syncStatus
+        WHERE productUuid = :productUuid
+        """
+    )
+    suspend fun markDeletedByProductUuid(
+        productUuid: String,
+        deletedAtEpochMs: Long,
+        syncStatus: String = "DELETED"
+    ): Int
 
     // --------- Paging ---------
 
-    @Query("SELECT * FROM products ORDER BY name COLLATE NOCASE ASC")
+    @Query("SELECT * FROM products WHERE deletedAtEpochMs IS NULL ORDER BY name COLLATE NOCASE ASC")
     fun pagingAll(): PagingSource<Int, ProductEntity>
 
     @Query("""
         SELECT * FROM products 
-        WHERE name LIKE '%' || :q || '%' OR 
-              barcode LIKE '%' || :q || '%' OR 
-              code LIKE '%' || :q || '%'
+        WHERE deletedAtEpochMs IS NULL
+          AND (name LIKE '%' || :q || '%' OR 
+               barcode LIKE '%' || :q || '%' OR 
+               code LIKE '%' || :q || '%')
         ORDER BY name COLLATE NOCASE ASC
     """)
     fun pagingSearch(q: String): PagingSource<Int, ProductEntity>
 
     @Query("""
         SELECT * FROM products 
-        WHERE (:category IS NULL OR category = :category)
+        WHERE deletedAtEpochMs IS NULL
+          AND (:category IS NULL OR category = :category)
           AND (:provider IS NULL OR providerName = :provider)
         ORDER BY name COLLATE NOCASE ASC
     """)

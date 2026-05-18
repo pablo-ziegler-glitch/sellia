@@ -98,6 +98,48 @@ class ProductImportPlannerTest {
     }
 
     @Test
+    fun sameNameWithDifferentBarcode_isNotMergedByNameFallback() {
+        val rows = parseRows(
+            listOf("name", "quantity", "barcode"),
+            listOf("Coca Cola", "4", "7791234567009")
+        )
+        val existing = listOf(
+            ProductEntity(
+                id = 1,
+                name = "Coca Cola",
+                barcode = "7791234567001",
+                quantity = 10
+            )
+        )
+
+        val plan = ProductImportPlanner.plan(rows, existing)
+
+        assertThat(plan.totalStockUpdated).isEqualTo(0)
+        assertThat(plan.totalCreated + plan.totalRejected).isEqualTo(1)
+    }
+
+    @Test
+    fun updateWithNullQuantity_isAcceptedForMetadataOnlyUpdate() {
+        val rows = parseRows(
+            listOf("name", "quantity", "barcode", "actualizar_stock"),
+            listOf("Coca Cola", "", "7791234567001", "si")
+        )
+        val existing = listOf(
+            ProductEntity(
+                id = 1,
+                name = "Coca Cola",
+                barcode = "7791234567001",
+                quantity = 10
+            )
+        )
+
+        val plan = ProductImportPlanner.plan(rows, existing)
+
+        assertThat(plan.totalStockUpdated).isEqualTo(1)
+        assertThat(plan.totalRejected).isEqualTo(0)
+    }
+
+    @Test
     fun missingRequiredName_generatesValidationError() {
         val rows = parseRows(
             listOf("name", "quantity"),

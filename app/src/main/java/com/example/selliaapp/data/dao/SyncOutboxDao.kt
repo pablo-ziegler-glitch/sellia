@@ -28,8 +28,28 @@ interface SyncOutboxDao {
     @Query("SELECT * FROM sync_outbox WHERE entityType = :entityType ORDER BY createdAt ASC")
     suspend fun getByType(entityType: String): List<SyncOutboxEntity>
 
+    @Query(
+        "SELECT * FROM sync_outbox WHERE entityType = :entityType AND operation = :operation ORDER BY createdAt ASC"
+    )
+    suspend fun getByTypeAndOperation(entityType: String, operation: String): List<SyncOutboxEntity>
+
     @Query("SELECT * FROM sync_outbox WHERE entityType = :entityType AND entityId = :entityId LIMIT 1")
     suspend fun getByTypeAndId(entityType: String, entityId: Long): SyncOutboxEntity?
+
+    @Query(
+        """
+        SELECT * FROM sync_outbox
+        WHERE entityType = :entityType
+          AND entityUuid = :entityUuid
+          AND operation = :operation
+        LIMIT 1
+        """
+    )
+    suspend fun getByTypeAndUuidAndOperation(
+        entityType: String,
+        entityUuid: String,
+        operation: String
+    ): SyncOutboxEntity?
 
     @Query(
         "DELETE FROM sync_outbox WHERE entityType = :entityType AND entityId IN (:entityIds)"
@@ -46,4 +66,7 @@ interface SyncOutboxDao {
         timestamp: Long,
         error: String?
     )
+
+    @Query("DELETE FROM sync_outbox WHERE id IN (:rowIds)")
+    suspend fun deleteByRowIds(rowIds: List<Long>)
 }
