@@ -24,8 +24,10 @@ const tenantId = readArgValue('--tenant');
 const isApply = args.includes('--apply');
 const isDryRun = !isApply;
 const runId = readArgValue('--run-id') || `products_norm_${Date.now()}`;
-const maxReportItems = Number(readArgValue('--max-report-items') || '200');
+const maxReportItems = Number(readArgValue('--max-report-items') || '50');
 const maxGroupIds = Number(readArgValue('--max-group-ids') || '100');
+const groupingStrategy = (readArgValue('--grouping') || 'union').trim();
+const includeArchived = args.includes('--include-archived');
 
 if (!tenantId) {
   console.error('Falta --tenant TENANT_ID');
@@ -141,6 +143,31 @@ function toProduct(doc) {
 }
 
 function buildDuplicateGroups(products) {
+  if (groupingStrategy === 'preferred-key') {
+    const groups = new Map();
+    for (const p of products) {
+      const nBarcode = normalizeBarcode(p.barcode);
+      const nCode = normalizeCode(p.code);
+      const providerSku = normalizeText(p.providerSku);
+      const providerName = normalizeText(p.providerName);
+      const nName = normalizeText(p.name);
+      const nBrand = normalizeText(p.brand);
+      const nCategory = normalizeText(p.category);
+
+      let key = null;
+      if (nBarcode) key = `barcode:${nBarcode}`;
+      else if (nCode) key = `code:${nCode}`;
+      else if (providerSku && providerName) key = `provider:${providerSku}|${providerName}`;
+      else if (nName && nBrand && nCategory) key = `nameBrandCat:${nName}|${nBrand}|${nCategory}`;
+
+      if (!key) continue;
+      const list = groups.get(key) || [];
+      list.push(p);
+      groups.set(key, list);
+    }
+    return [...groups.values()].filter((group) => group.length > 1);
+  }
+
   const parent = new Map(products.map((p) => [p.docId, p.docId]));
 
   function find(x) {
@@ -225,7 +252,10 @@ async function main() {
   const startedAtEpochMs = Date.now();
   const productDocs = await fetchAllProducts(productsRef);
   const products = productDocs.map(toProduct);
-  const groups = buildDuplicateGroups(products);
+  const productsForGrouping = includeArchived
+    ? products
+    : products.filter((p) => !(p.mergeStatus === 'merged' || p.visible === false));
+  const groups = buildDuplicateGroups(productsForGrouping);
 
   let autoMergedGroups = 0;
   let manualReviewGroups = 0;
