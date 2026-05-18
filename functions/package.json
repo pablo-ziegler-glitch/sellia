@@ -28,7 +28,9 @@
     "catalog:backfill:dry": "node scripts/backfill-valkirja-catalog.js --dry-run",
     "catalog:backfill:apply": "node scripts/backfill-valkirja-catalog.js --apply",
     "products:normalize:dry": "node scripts/normalize-products-by-recency.js --dry-run",
-    "products:normalize:apply": "node scripts/normalize-products-by-recency.js --apply"
+    "products:normalize:apply": "node scripts/normalize-products-by-recency.js --apply",
+    "products:promote-oldest:dry": "node scripts/promote-oldest-vlk-numeric.js --dry-run",
+    "products:promote-oldest:apply": "node scripts/promote-oldest-vlk-numeric.js --apply"
   },
   "dependencies": {
     "axios": "^1.6.7",
