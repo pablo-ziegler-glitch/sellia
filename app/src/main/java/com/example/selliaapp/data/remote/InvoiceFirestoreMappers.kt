@@ -41,7 +41,10 @@ object InvoiceFirestoreMappers {
             mapOf(
                 "id" to item.id,
                 "productId" to item.productId,
+                "productUuid" to item.productUuid,
+                "productLegacyLocalId" to item.productLegacyLocalId,
                 "productName" to item.productName,
+                "productNameSnapshot" to item.productNameSnapshot,
                 "quantity" to item.quantity,
                 "unitPrice" to item.unitPrice,
                 "lineTotal" to item.lineTotal
@@ -92,7 +95,10 @@ object InvoiceFirestoreMappers {
                     id = (map["id"] as? Number)?.toLong() ?: 0L,
                     invoiceId = invoiceId,
                     productId = productId,
+                    productUuid = map["productUuid"] as? String,
+                    productLegacyLocalId = (map["productLegacyLocalId"] as? Number)?.toInt(),
                     productName = (map["productName"] as? String).orEmpty(),
+                    productNameSnapshot = map["productNameSnapshot"] as? String,
                     quantity = quantity,
                     unitPrice = unitPrice,
                     lineTotal = (map["lineTotal"] as? Number)?.toDouble() ?: unitPrice * quantity

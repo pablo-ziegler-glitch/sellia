@@ -14,11 +14,13 @@ import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductImageDao
 import com.example.selliaapp.data.dao.SyncOutboxDao
 import com.example.selliaapp.data.local.entity.SyncEntityType
+import com.example.selliaapp.data.local.entity.SyncOutboxOperation
 import com.example.selliaapp.auth.FirebaseSessionCoordinator
 import com.example.selliaapp.auth.TenantProvider
 import com.example.selliaapp.data.remote.InvoiceFirestoreMappers
 import com.example.selliaapp.data.remote.CustomerFirestoreMappers
 import com.example.selliaapp.data.remote.ProductFirestoreMappers
+import com.example.selliaapp.data.remote.ProductRemoteDataSource
 import com.example.selliaapp.di.AppModule.IoDispatcher // [NUEVO] El qualifier real del ZIP está dentro de AppModule
 import com.example.selliaapp.repository.ProductRepository
 import com.example.selliaapp.repository.PricingConfigRepository
@@ -61,6 +63,7 @@ class SyncRepositoryImpl @Inject constructor(
     private val syncPrefs: SharedPreferences by lazy {
         context.getSharedPreferences(SYNC_PREFS_NAME, Context.MODE_PRIVATE)
     }
+    private val productRemoteDataSource = ProductRemoteDataSource(firestore, tenantProvider)
 
     override suspend fun pushPending() = withContext(io) {
         sessionCoordinator.runWithFreshSession(notifyPermissionDenied = false) {
@@ -126,51 +129,74 @@ class SyncRepositoryImpl @Inject constructor(
         val pending = syncOutboxDao.getByType(SyncEntityType.PRODUCT.storageKey)
         if (pending.isEmpty()) return
 
-        val ids = pending.map { it.entityId.toInt() }
-        val entities = productDao.getByIds(ids)
-        val foundIds = entities.map { it.id.toLong() }.toSet()
-        val missing = pending.map { it.entityId }.filterNot { it in foundIds }
-        if (missing.isNotEmpty()) {
-            syncOutboxDao.deleteByTypeAndIds(SyncEntityType.PRODUCT.storageKey, missing)
-        }
-        if (entities.isEmpty()) return
+        val successIds = mutableSetOf<Long>()
+        val failedIds = mutableSetOf<Long>()
+        var firstError: Throwable? = null
 
-        val imageUrlsByProductId = productImageDao.getByProductIds(ids)
-            .groupBy { it.productId }
-            .mapValues { (_, items) -> items.sortedBy { it.position }.map { it.url } }
-        val tenantId = tenantProvider.requireTenantId()
-        val productsCollection = firestore.collection("tenants")
-            .document(tenantId)
-            .collection("products")
+        pending.forEach { entry ->
+            val local = productDao.getById(entry.entityId.toInt())
+            try {
+                when (entry.operation) {
+                    SyncOutboxOperation.MARK_DELETED.storageKey -> {
+                        val productUuid = entry.entityUuid ?: local?.productUuid
+                        if (productUuid.isNullOrBlank()) {
+                            failedIds += entry.entityId
+                            if (firstError == null) {
+                                firstError = IllegalStateException("Outbox delete sin productUuid (entityId=${entry.entityId})")
+                            }
+                            return@forEach
+                        }
+                        val deletedAtEpochMs = local?.deletedAtEpochMs ?: now
+                        productRemoteDataSource.markDeletedByUuid(
+                            productUuid = productUuid,
+                            deletedAtEpochMs = deletedAtEpochMs,
+                            legacyLocalId = local?.legacyLocalId ?: local?.id
+                        )
+                        successIds += entry.entityId
+                    }
 
-        try {
-            entities.chunked(MAX_BATCH_OPS).forEach { chunk ->
-                val batch = firestore.batch()
-                chunk.forEach { product ->
-                    if (product.id == 0) return@forEach
-                    val doc = productsCollection.document(product.id.toString())
-                    val imageUrls = imageUrlsByProductId[product.id].orEmpty()
-                    batch.set(
-                        doc,
-                        ProductFirestoreMappers.toMap(product, imageUrls, tenantId),
-                        SetOptions.merge()
-                    )
+                    else -> {
+                        if (local == null) {
+                            successIds += entry.entityId
+                            return@forEach
+                        }
+                        val imageUrls = productImageDao.getByProductId(local.id)
+                            .sortedBy { it.position }
+                            .map { it.url }
+                        if (local.deletedAtEpochMs != null) {
+                            productRemoteDataSource.markDeletedByUuid(
+                                productUuid = local.productUuid,
+                                deletedAtEpochMs = local.deletedAtEpochMs ?: now,
+                                legacyLocalId = local.legacyLocalId ?: local.id
+                            )
+                        } else {
+                            productRemoteDataSource.upsert(local, imageUrls)
+                        }
+                        successIds += entry.entityId
+                    }
                 }
-                batch.commit().await()
+            } catch (t: Throwable) {
+                failedIds += entry.entityId
+                if (firstError == null) {
+                    firstError = t
+                }
             }
+        }
+
+        if (successIds.isNotEmpty()) {
             syncOutboxDao.deleteByTypeAndIds(
                 SyncEntityType.PRODUCT.storageKey,
-                entities.map { it.id.toLong() }
+                successIds.toList()
             )
-        } catch (t: Throwable) {
-            val error = extractErrorMessage(t)
+        }
+        if (failedIds.isNotEmpty()) {
             syncOutboxDao.markAttempt(
                 SyncEntityType.PRODUCT.storageKey,
-                entities.map { it.id.toLong() },
+                failedIds.toList(),
                 now,
-                error
+                extractErrorMessage(firstError ?: IllegalStateException("Unknown product sync error"))
             )
-            throw t
+            throw (firstError ?: IllegalStateException("Error sincronizando productos pendientes"))
         }
     }
 
@@ -291,6 +317,7 @@ class SyncRepositoryImpl @Inject constructor(
 
     private suspend fun runIncrementalPull(tenantId: String, force: Boolean = false) {
         try {
+            applyProductsForceReloadIfNeeded(tenantId)
             val productApplied = pullProductsIncremental(tenantId)
             val invoiceApplied = pullInvoicesIncremental(tenantId)
             val customerApplied = pullCustomersIncremental(tenantId)
@@ -304,6 +331,37 @@ class SyncRepositoryImpl @Inject constructor(
             Log.e(TAG, "Error en pull incremental tenant=$tenantId", t)
             throw t
         }
+    }
+
+    private suspend fun applyProductsForceReloadIfNeeded(tenantId: String) {
+        val remoteVersion = runCatching {
+            firestore.collection("tenants")
+                .document(tenantId)
+                .get()
+                .await()
+                .getLong(FIELD_PRODUCTS_FORCE_RELOAD_VERSION)
+                ?: 0L
+        }.getOrElse { error ->
+            Log.w(TAG, "No se pudo leer productsForceReloadVersion tenant=$tenantId", error)
+            0L
+        }
+        if (remoteVersion <= 0L) return
+        val localAppliedVersion = syncPrefs.getLong(
+            keyFor(tenantId, KEY_PRODUCTS_FORCE_RELOAD_APPLIED_VERSION),
+            0L
+        )
+        if (remoteVersion <= localAppliedVersion) return
+
+        syncPrefs.edit {
+            putBoolean(keyFor(tenantId, KEY_PRODUCTS_BASELINE_DONE), false)
+            putLong(keyFor(tenantId, KEY_PRODUCTS_UPDATED_CURSOR_MS), 0L)
+            putLong(keyFor(tenantId, KEY_PRODUCTS_DELETED_CURSOR_MS), 0L)
+            putLong(keyFor(tenantId, KEY_PRODUCTS_FORCE_RELOAD_APPLIED_VERSION), remoteVersion)
+        }
+        Log.i(
+            TAG,
+            "Forzando recarga completa de catálogo tenant=$tenantId remoteVersion=$remoteVersion previousApplied=$localAppliedVersion"
+        )
     }
 
     private suspend fun pullProductsIncremental(tenantId: String): Int {
@@ -349,11 +407,13 @@ class SyncRepositoryImpl @Inject constructor(
                 .orderBy("deletedAtEpochMs", Query.Direction.ASCENDING)
                 .orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
         )
-        val deletedIds = deletionDocs
-            .mapNotNull { doc -> doc.getLong("productId")?.toInt() ?: doc.id.toIntOrNull() }
-            .toSet()
+        val deletedMarkers = deletionDocs.mapNotNull { doc ->
+            @Suppress("UNCHECKED_CAST")
+            val data = doc.data as? Map<String, Any?> ?: return@mapNotNull null
+            ProductFirestoreMappers.tombstoneFromMap(doc.id, data)
+        }
 
-        val applied = productRepository.applyRemoteDelta(remoteProducts, deletedIds)
+        val applied = productRepository.applyRemoteDelta(remoteProducts, deletedMarkers)
         val maxUpdatedSeen = changedDocs.maxOfOrNull { doc -> doc.getLong("updatedAtEpochMs") ?: sinceUpdatedMs }
             ?: sinceUpdatedMs
         val maxDeletedSeen = deletionDocs.maxOfOrNull { doc -> doc.getLong("deletedAtEpochMs") ?: sinceDeletedMs }
@@ -686,6 +746,8 @@ class SyncRepositoryImpl @Inject constructor(
         private const val KEY_PRODUCTS_BASELINE_DONE = "products_baseline_done"
         private const val KEY_INVOICES_BASELINE_DONE = "invoices_baseline_done"
         private const val KEY_CUSTOMERS_BASELINE_DONE = "customers_baseline_done"
+        private const val KEY_PRODUCTS_FORCE_RELOAD_APPLIED_VERSION = "products_force_reload_applied_version"
+        private const val FIELD_PRODUCTS_FORCE_RELOAD_VERSION = "productsForceReloadVersion"
         private val EXCLUDED_SYNC_TABLES = setOf(
             "android_metadata",
             "room_master_table",

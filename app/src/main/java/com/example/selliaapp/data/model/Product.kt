@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.time.LocalDate
+import java.util.UUID
 
 @Entity(
     tableName = "products",
@@ -16,6 +17,13 @@ import java.time.LocalDate
 )
 data class Product(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val productUuid: String = UUID.randomUUID().toString(),
+    val legacyLocalId: Int? = null,
+    val createdAtEpochMs: Long = System.currentTimeMillis(),
+    val updatedAtEpochMs: Long = System.currentTimeMillis(),
+    val deletedAtEpochMs: Long? = null,
+    val syncVersion: Long = 0L,
+    val syncStatus: String = "PENDING",
     val code: String? = null,
     val barcode: String? = null,
     val name: String,

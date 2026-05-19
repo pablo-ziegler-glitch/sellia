@@ -31,6 +31,7 @@ class ProductCsvImporter(
      */
     data class Row(
         val lineNumber: Int,
+        val productUuid: String?,
         val code: String?,
         val barcode: String?,
         val name: String,
@@ -296,6 +297,11 @@ class ProductCsvImporter(
                     .orEmpty()
 
                 val code = idx.get(row, "code", aliases = listOf("codigo_interno", "sku"))?.ifBlank { null }
+                val productUuid = idx.get(
+                    row,
+                    "product_uuid",
+                    aliases = listOf("productUuid", "uuid", "producto_uuid")
+                )?.trim()?.ifBlank { null }
                 val barcode = idx.get(row, "barcode", aliases = listOf("codigo", "código", "ean", "upc", "sku"))?.ifBlank { null }
 
                 val purchasePrice = idx.get(
@@ -404,6 +410,7 @@ class ProductCsvImporter(
 
                 rows += Row(
                     lineNumber = lineNumber,
+                    productUuid = productUuid,
                     code = code,
                     barcode = barcode,
                     name = name,

@@ -23,8 +23,10 @@ object ProductImportPlanner {
     )
 
     private data class ExistingIndexes(
+        val byProductUuid: Map<String, List<ProductEntity>>,
         val byCode: Map<String, List<ProductEntity>>,
         val byBarcode: Map<String, List<ProductEntity>>,
+        val byProviderKey: Map<String, List<ProductEntity>>,
         val byComposite: Map<String, List<ProductEntity>>,
         val byFallbackName: Map<String, List<ProductEntity>>
     )
@@ -64,7 +66,7 @@ object ProductImportPlanner {
                 return@forEach
             }
 
-            if (row.hasInvalidQuantity || row.quantity == null) {
+            if (row.hasInvalidQuantity) {
                 issues += buildIssue(
                     row = row,
                     skuOrBarcode = skuOrBarcode,
@@ -76,7 +78,7 @@ object ProductImportPlanner {
                 validationErrors += 1
                 return@forEach
             }
-            if (row.quantity < 0) {
+            if (row.quantity != null && row.quantity < 0) {
                 issues += buildIssue(
                     row = row,
                     skuOrBarcode = skuOrBarcode,
@@ -197,39 +199,70 @@ object ProductImportPlanner {
     }
 
     private fun findExisting(rowKeys: RowKeys, indexes: ExistingIndexes): MatchResult {
-        val byCode = rowKeys.codeKey?.let { indexes.byCode[it].orEmpty() } ?: emptyList()
-        if (byCode.size > 1) return MatchResult(null, "multiple_products_for_code")
-        if (byCode.size == 1) {
-            val codeMatch = byCode.first()
-            val barcodeMatch = rowKeys.barcodeKey?.let { indexes.byBarcode[it].orEmpty() } ?: emptyList()
-            if (barcodeMatch.size > 1) return MatchResult(null, "multiple_products_for_barcode")
-            if (barcodeMatch.size == 1 && barcodeMatch.first().id != codeMatch.id) {
-                return MatchResult(null, "code_and_barcode_match_different_products")
+        val uuidMatches = rowKeys.productUuidKey?.let { indexes.byProductUuid[it].orEmpty() } ?: emptyList()
+        val codeMatches = rowKeys.codeKey?.let { indexes.byCode[it].orEmpty() } ?: emptyList()
+        val barcodeMatches = rowKeys.barcodeKey?.let { indexes.byBarcode[it].orEmpty() } ?: emptyList()
+        val providerMatches = rowKeys.providerKey?.let { indexes.byProviderKey[it].orEmpty() } ?: emptyList()
+        val compositeMatches = rowKeys.compositeKey?.let { indexes.byComposite[it].orEmpty() } ?: emptyList()
+        val fallbackMatches = rowKeys.fallbackNameKey?.let { indexes.byFallbackName[it].orEmpty() } ?: emptyList()
+
+        fun conflictIfMany(matches: List<ProductEntity>, code: String): MatchResult? =
+            if (matches.size > 1) MatchResult(null, code) else null
+
+        conflictIfMany(uuidMatches, "multiple_products_for_product_uuid")?.let { return it }
+        conflictIfMany(codeMatches, "multiple_products_for_code")?.let { return it }
+        conflictIfMany(barcodeMatches, "multiple_products_for_barcode")?.let { return it }
+        conflictIfMany(providerMatches, "multiple_products_for_provider_key")?.let { return it }
+        conflictIfMany(compositeMatches, "multiple_products_for_composite_key")?.let { return it }
+        conflictIfMany(fallbackMatches, "multiple_products_for_name_fallback")?.let { return it }
+
+        val prioritized = listOfNotNull(
+            uuidMatches.singleOrNull(),
+            codeMatches.singleOrNull(),
+            barcodeMatches.singleOrNull(),
+            providerMatches.singleOrNull(),
+            compositeMatches.singleOrNull()
+        )
+        val uniquePrioritized = prioritized.distinctBy { it.id }
+        if (uniquePrioritized.size > 1) {
+            return MatchResult(null, "multiple_prioritized_keys_point_to_different_products")
+        }
+        if (uniquePrioritized.size == 1) {
+            val candidate = uniquePrioritized.first()
+            if (rowKeys.barcodeKey != null && barcodeMatches.isNotEmpty() && barcodeMatches.singleOrNull()?.id != candidate.id) {
+                return MatchResult(null, "barcode_points_to_different_product")
             }
-            return MatchResult(codeMatch, null)
+            if (rowKeys.codeKey != null && codeMatches.isNotEmpty() && codeMatches.singleOrNull()?.id != candidate.id) {
+                return MatchResult(null, "code_points_to_different_product")
+            }
+            return MatchResult(candidate, null)
         }
 
-        val byBarcode = rowKeys.barcodeKey?.let { indexes.byBarcode[it].orEmpty() } ?: emptyList()
-        if (byBarcode.size > 1) return MatchResult(null, "multiple_products_for_barcode")
-        if (byBarcode.size == 1) return MatchResult(byBarcode.first(), null)
-
-        val byComposite = rowKeys.compositeKey?.let { indexes.byComposite[it].orEmpty() } ?: emptyList()
-        if (byComposite.size > 1) return MatchResult(null, "multiple_products_for_composite_key")
-        if (byComposite.size == 1) return MatchResult(byComposite.first(), null)
-
-        val byFallbackName = rowKeys.fallbackNameKey?.let { indexes.byFallbackName[it].orEmpty() } ?: emptyList()
-        if (byFallbackName.size > 1) return MatchResult(null, "multiple_products_for_name_fallback")
-        if (byFallbackName.size == 1) return MatchResult(byFallbackName.first(), null)
-
+        // Fallback por nombre solo cuando no hay claves fuertes.
+        val hasStrongKey = rowKeys.productUuidKey != null ||
+            rowKeys.codeKey != null ||
+            rowKeys.barcodeKey != null ||
+            rowKeys.providerKey != null
+        if (!hasStrongKey && fallbackMatches.size == 1) {
+            return MatchResult(fallbackMatches.first(), null)
+        }
         return MatchResult(null, null)
     }
 
     private fun buildIndexes(products: List<ProductEntity>): ExistingIndexes {
+        val byProductUuid = products
+            .mapNotNull { product -> product.productUuid.normalizeIdKey()?.let { it to product } }
+            .groupBy({ it.first }, { it.second })
         val byCode = products
             .mapNotNull { product -> product.code?.normalizeIdKey()?.let { it to product } }
             .groupBy({ it.first }, { it.second })
         val byBarcode = products
             .mapNotNull { product -> product.barcode?.normalizeIdKey()?.let { it to product } }
+            .groupBy({ it.first }, { it.second })
+        val byProviderKey = products
+            .mapNotNull { product ->
+                buildProviderKey(product.providerSku, product.providerName)?.let { it to product }
+            }
             .groupBy({ it.first }, { it.second })
         val byComposite = products
             .mapNotNull { product -> buildCompositeKey(product)?.let { it to product } }
@@ -238,34 +271,49 @@ object ProductImportPlanner {
             .mapNotNull { product -> normalizeText(product.name)?.let { it to product } }
             .groupBy({ it.first }, { it.second })
         return ExistingIndexes(
+            byProductUuid = byProductUuid,
             byCode = byCode,
             byBarcode = byBarcode,
+            byProviderKey = byProviderKey,
             byComposite = byComposite,
             byFallbackName = byFallbackName
         )
     }
 
     private data class RowKeys(
+        val productUuidKey: String?,
         val codeKey: String?,
         val barcodeKey: String?,
+        val providerKey: String?,
         val compositeKey: String?,
         val fallbackNameKey: String?
     ) {
         val allKeys: List<String>
             get() = listOfNotNull(
+                productUuidKey?.let { "productUuid:$it" },
                 codeKey?.let { "code:$it" },
                 barcodeKey?.let { "barcode:$it" },
+                providerKey?.let { "provider:$it" },
                 compositeKey?.let { "composite:$it" },
                 fallbackNameKey?.let { "name:$it" }
             )
     }
 
     private fun buildRowKeys(row: ProductCsvImporter.Row): RowKeys {
+        val productUuid = row.productUuid?.normalizeIdKey()
         val code = row.code?.normalizeIdKey()
         val barcode = row.barcode?.normalizeIdKey()
+        val providerKey = buildProviderKey(row.providerSku, row.providerName)
         val composite = buildCompositeKey(row)
         val fallback = normalizeText(row.name)
-        return RowKeys(codeKey = code, barcodeKey = barcode, compositeKey = composite, fallbackNameKey = fallback)
+        return RowKeys(
+            productUuidKey = productUuid,
+            codeKey = code,
+            barcodeKey = barcode,
+            providerKey = providerKey,
+            compositeKey = composite,
+            fallbackNameKey = fallback
+        )
     }
 
     private fun buildCompositeKey(row: ProductCsvImporter.Row): String? {
@@ -292,6 +340,12 @@ object ProductImportPlanner {
             normalizeText(product.providerSku),
             normalizeText(product.sizes.sorted().joinToString("|"))
         ).joinToString("|")
+    }
+
+    private fun buildProviderKey(providerSku: String?, providerName: String?): String? {
+        val sku = normalizeText(providerSku) ?: return null
+        val provider = normalizeText(providerName) ?: return null
+        return "$sku|$provider"
     }
 
     private fun String.normalizeIdKey(): String? = trim().takeIf { it.isNotBlank() }?.lowercase()

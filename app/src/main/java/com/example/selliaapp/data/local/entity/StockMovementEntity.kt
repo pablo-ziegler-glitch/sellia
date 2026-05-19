@@ -23,12 +23,15 @@ import java.time.Instant
     ],
     indices = [
         Index(value = ["productId"]),
+        Index(value = ["productUuid"]),
         Index(value = ["ts"])
     ]
 )
 data class StockMovementEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val productId: Int,
+    val productUuid: String? = null,
+    val productLegacyLocalId: Int? = null,
     val delta: Int,             // >0 entrada, <0 salida
     val reason: String,         // ejemplo: "CSV_APPEND", "CSV_REPLACE", "SALE", "ADJUST", "SCAN_ADD"
     val ts: Instant = Instant.now(),

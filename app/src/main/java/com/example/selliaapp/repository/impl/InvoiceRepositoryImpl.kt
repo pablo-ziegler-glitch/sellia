@@ -76,6 +76,10 @@ class InvoiceRepositoryImpl @Inject constructor(
         val touchedProducts = mutableSetOf<Int>()
 
         db.withTransaction {
+            val productIdentityById = productDao.getByIds(
+                draft.items.map { it.productId.toInt() }.distinct()
+            ).associateBy { it.id }
+
             val baseInvoice = Invoice(
                 id = 0L,
                 dateMillis = now,
@@ -101,11 +105,15 @@ class InvoiceRepositoryImpl @Inject constructor(
             val invId = invoiceDao.insertInvoice(baseInvoice)
 
             persistedItems = draft.items.map { li ->
+                val product = productIdentityById[li.productId.toInt()]
                 InvoiceItem(
                     id = 0L,
                     invoiceId = invId,
                     productId = li.productId.toInt(),
+                    productUuid = product?.productUuid,
+                    productLegacyLocalId = product?.legacyLocalId ?: product?.id,
                     productName = li.name,
+                    productNameSnapshot = li.name,
                     quantity = li.quantity,
                     unitPrice = li.unitPrice,
                     lineTotal = li.quantity * li.unitPrice
@@ -121,9 +129,12 @@ class InvoiceRepositoryImpl @Inject constructor(
                 )
                 require(affected == 1) { "Stock insuficiente o producto inexistente (id=${item.productId})" }
 
+                val identity = productDao.getById(item.productId)
                     movementDao.insert(
                         StockMovementEntity(
                             productId = item.productId,
+                            productUuid = identity?.productUuid,
+                            productLegacyLocalId = identity?.legacyLocalId ?: identity?.id,
                             delta = -item.quantity,
                             reason = StockMovementReasons.SALE,
                             ts = Instant.ofEpochMilli(now),
@@ -146,9 +157,11 @@ class InvoiceRepositoryImpl @Inject constructor(
             )
             if (touchedProducts.isNotEmpty()) {
                 val entries = touchedProducts.map { productId ->
+                    val productUuid = productIdentityById[productId]?.productUuid
                     SyncOutboxEntity(
                         entityType = SyncEntityType.PRODUCT.storageKey,
                         entityId = productId.toLong(),
+                        entityUuid = productUuid,
                         createdAt = now
                     )
                 }
@@ -208,17 +221,31 @@ class InvoiceRepositoryImpl @Inject constructor(
         val touchedProducts = mutableSetOf<Int>()
 
         db.withTransaction {
+            val productIdentityById = productDao.getByIds(items.map { it.productId }.distinct())
+                .associateBy { it.id }
             val invId = invoiceDao.insertInvoice(invoice.copy(id = 0L))
-            itemsWithFk = items.map { it.copy(id = 0L, invoiceId = invId) }
+            itemsWithFk = items.map { item ->
+                val identity = productIdentityById[item.productId]
+                item.copy(
+                    id = 0L,
+                    invoiceId = invId,
+                    productUuid = item.productUuid ?: identity?.productUuid,
+                    productLegacyLocalId = item.productLegacyLocalId ?: identity?.legacyLocalId ?: identity?.id,
+                    productNameSnapshot = item.productNameSnapshot ?: item.productName
+                )
+            }
             invoiceDao.insertItems(itemsWithFk)
 
             val movementDao = db.stockMovementDao()
             for (item in itemsWithFk) {
                 val affected = productDao.decrementStockIfEnough(item.productId, item.quantity)
                 require(affected == 1) { "Stock insuficiente o producto inexistente (id=${item.productId})" }
+                val identity = productDao.getById(item.productId)
                     movementDao.insert(
                         StockMovementEntity(
                             productId = item.productId,
+                            productUuid = identity?.productUuid,
+                            productLegacyLocalId = identity?.legacyLocalId ?: identity?.id,
                             delta = -item.quantity,
                             reason = StockMovementReasons.SALE,
                             ts = Instant.ofEpochMilli(now),
@@ -259,6 +286,7 @@ class InvoiceRepositoryImpl @Inject constructor(
                     SyncOutboxEntity(
                         entityType = SyncEntityType.PRODUCT.storageKey,
                         entityId = productId.toLong(),
+                        entityUuid = productIdentityById[productId]?.productUuid,
                         createdAt = now
                     )
                 }
@@ -335,9 +363,12 @@ class InvoiceRepositoryImpl @Inject constructor(
             relation.items.forEach { item ->
                 val affected = productDao.increaseStockIfExists(item.productId, item.quantity)
                 require(affected == 1) { "Producto inexistente (id=${item.productId})" }
+                val identity = productDao.getById(item.productId)
                 movementDao.insert(
                     StockMovementEntity(
                         productId = item.productId,
+                        productUuid = identity?.productUuid,
+                        productLegacyLocalId = identity?.legacyLocalId ?: identity?.id,
                         delta = item.quantity,
                         reason = StockMovementReasons.SALE_CANCEL,
                         ts = Instant.ofEpochMilli(now),
@@ -373,10 +404,12 @@ class InvoiceRepositoryImpl @Inject constructor(
                 )
             )
             if (touchedProducts.isNotEmpty()) {
+                val productIdentityById = productDao.getByIds(touchedProducts.toList()).associateBy { it.id }
                 val entries = touchedProducts.map { productId ->
                     SyncOutboxEntity(
                         entityType = SyncEntityType.PRODUCT.storageKey,
                         entityId = productId.toLong(),
+                        entityUuid = productIdentityById[productId]?.productUuid,
                         createdAt = now
                     )
                 }
@@ -545,8 +578,8 @@ class InvoiceRepositoryImpl @Inject constructor(
         val inv = rel.invoice
         val itemsUi = rel.items.map {
             InvoiceItemRow(
-                productId = (it.productId ?: 0).toLong(),    // ajustá si tu entity usa Int?
-                name = it.productName ?: "(s/n)",
+                productId = it.productId.toLong(),
+                name = it.productNameSnapshot ?: it.productName,
                 quantity = it.quantity,
                 unitPrice = it.unitPrice
             )
@@ -619,11 +652,18 @@ class InvoiceRepositoryImpl @Inject constructor(
         val batch = firestore.batch()
         products.forEach { product ->
             if (product.id == 0) return@forEach
-            val doc = productsCollection.document(product.id.toString())
+            val productUuid = product.productUuid.ifBlank {
+                ProductFirestoreMappers.buildLegacyProductUuid("local-${product.id}")
+            }
+            val doc = productsCollection.document(productUuid)
             val imageUrls = imageUrlsByProductId[product.id].orEmpty()
             batch.set(
                 doc,
-                ProductFirestoreMappers.toMap(product, imageUrls, tenantId),
+                ProductFirestoreMappers.toMap(
+                    product.copy(productUuid = productUuid),
+                    imageUrls,
+                    tenantId
+                ),
                 SetOptions.merge()
             )
         }

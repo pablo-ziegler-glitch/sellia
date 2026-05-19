@@ -33,6 +33,8 @@ import com.example.selliaapp.data.dao.InvoiceItemDao
 import com.example.selliaapp.data.dao.ProductDao
 import com.example.selliaapp.data.dao.ProductPriceAuditDao
 import com.example.selliaapp.data.dao.ProductImageDao
+import com.example.selliaapp.data.dao.ProductStateHistoryDao
+import com.example.selliaapp.data.dao.ProductSyncConflictDao
 import com.example.selliaapp.data.dao.ProviderDao
 import com.example.selliaapp.data.dao.ProviderInvoiceDao
 import com.example.selliaapp.data.dao.PricingAuditDao
@@ -122,8 +124,6 @@ object AppModule {
     fun provideDatabase(@ApplicationContext appContext: Context): AppDatabase =
         Room.databaseBuilder(appContext, AppDatabase::class.java, "sellia_db_v1")
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // WAL
-            // [NUEVO] Room no admite booleano acá. Si no hay Migration, esto evita que el build/runtime se rompa.
-            .fallbackToDestructiveMigration(dropAllTables = true)
             .addMigrations(
                 AppDatabase.MIGRATION_31_32,
                 AppDatabase.MIGRATION_32_33,
@@ -141,7 +141,9 @@ object AppModule {
                 AppDatabase.MIGRATION_44_45,
                 AppDatabase.MIGRATION_45_46,
                 AppDatabase.MIGRATION_46_47,
-                AppDatabase.MIGRATION_47_48
+                AppDatabase.MIGRATION_47_48,
+                AppDatabase.MIGRATION_48_49,
+                AppDatabase.MIGRATION_49_50
             )
             .addCallback(object : RoomDatabase.Callback() {
                 /**
@@ -161,6 +163,8 @@ object AppModule {
     @Provides @Singleton fun provideProductDao(db: AppDatabase): ProductDao = db.productDao()
     @Provides @Singleton fun provideProductPriceAuditDao(db: AppDatabase): ProductPriceAuditDao = db.productPriceAuditDao()
     @Provides @Singleton fun provideProductImageDao(db: AppDatabase): ProductImageDao = db.productImageDao()
+    @Provides @Singleton fun provideProductStateHistoryDao(db: AppDatabase): ProductStateHistoryDao = db.productStateHistoryDao()
+    @Provides @Singleton fun provideProductSyncConflictDao(db: AppDatabase): ProductSyncConflictDao = db.productSyncConflictDao()
     @Provides @Singleton fun provideCategoryDao(db: AppDatabase): CategoryDao = db.categoryDao()
     @Provides @Singleton fun provideVariantDao(db: AppDatabase): VariantDao = db.variantDao()
     @Provides @Singleton fun provideCustomerDao(db: AppDatabase): CustomerDao = db.customerDao()

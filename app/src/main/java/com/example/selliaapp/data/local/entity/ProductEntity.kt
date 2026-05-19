@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.time.LocalDate
+import java.util.UUID
 
 /**
  * Entidad Room para productos con índices y restricciones de unicidad.
@@ -16,6 +17,7 @@ import java.time.LocalDate
     indices = [
         Index(value = ["barcode"], unique = true),
         Index(value = ["code"], unique = true),
+        Index(value = ["productUuid"], unique = true),
         Index(value = ["name"]),
         Index(value = ["categoryId"]),
         Index(value = ["providerId"])
@@ -24,6 +26,15 @@ import java.time.LocalDate
 data class ProductEntity(
     // PK autogenerada. Para altas nuevas usá id=0 (Room la genera).
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
+
+    // Identidad global estable (NO reemplaza al id local de Room).
+    val productUuid: String = UUID.randomUUID().toString(),
+    val legacyLocalId: Int? = null,
+    val createdAtEpochMs: Long = System.currentTimeMillis(),
+    val updatedAtEpochMs: Long = System.currentTimeMillis(),
+    val deletedAtEpochMs: Long? = null,
+    val syncVersion: Long = 0L,
+    val syncStatus: String = "PENDING",
 
     // Claves de identificación
     val code: String? = null,
